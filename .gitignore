@@ -1,0 +1,32 @@
+
+# Configuration
+config.py
+
+# Environnement virtuel
+env/
+venv/
+
+# Fichiers Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Catalogues téléchargés
+catalogues/
+
+# Base de données
+*.db
+
+# IDE
+.vscode/
+.idea/
+
+# Fichiers système
+.DS_Store
+*.swp
+*.swo
+
+# Autres
+*.log
+.env
