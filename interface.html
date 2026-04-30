@@ -337,10 +337,18 @@
 
       <!-- Remise globale (visible après clic labo) -->
       <div class="rg-section" id="rgSection">
-        <div class="rg-label">REMISE GLOBALE CIBLE</div>
-        <input type="text" id="rgInput" class="rsf-input" style="width:130px" placeholder="ex : 35.00" />
-        <span class="rg-unit">%</span>
-        <div class="rg-hint" id="rgHint"></div>
+        <div style="display:flex;flex-direction:column;gap:12px;width:100%">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <div class="rg-label">REMISE GLOBALE CIBLE</div>
+            <input type="text" id="rgInput" class="rsf-input" style="width:130px" placeholder="ex : 35.00" />
+            <span class="rg-unit">%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <div class="rg-label">CONDITION CA POTENTIEL BRUT HT</div>
+            <input type="text" id="caInput" class="rsf-input" style="width:160px" placeholder="ex : 50000.00" />
+            <span class="rg-unit" style="font-size:11px;color:var(--text-dim)">€</span>
+          </div>
+        </div>
       </div>
 
       <div class="loading" id="rsfLoading">
@@ -413,6 +421,7 @@ let state = {
   csvRows:       0,
   selectedLab:   null,
   remiseGlobale: null,
+  caCondition:   null,
   rsfValues:     [],   // [{rsf_pct, remise2, remise3, excluded}]
   exceptions:    {},   // {key: {open, libelles:[{id,text}], remiseCible}}
 };
@@ -466,6 +475,7 @@ const rsfLoading = document.getElementById('rsfLoading');
 const rsfSection = document.getElementById('rsfSection');
 const rgSection  = document.getElementById('rgSection');
 const rgInput    = document.getElementById('rgInput');
+const caInput    = document.getElementById('caInput');
 const rgHint     = document.getElementById('rgHint');
 const btn2Next   = document.getElementById('btn2Next');
 
@@ -476,6 +486,11 @@ LABS.forEach(lab => {
   btn.dataset.lab = lab;
   btn.addEventListener('click', () => selectLab(lab));
   labGrid.appendChild(btn);
+});
+
+caInput.addEventListener('input', () => {
+  const v = parseFloat(caInput.value.replace(',', '.').replace(/\s/g, ''));
+  state.caCondition = isNaN(v) ? null : v;
 });
 
 rgInput.addEventListener('input', () => {
@@ -521,6 +536,7 @@ async function selectLab(lab) {
   state.exceptions    = {};
 
   rgInput.value      = '';
+  caInput.value      = '';
   rgHint.textContent = '';
   rgHint.className   = 'rg-hint';
   rgSection.classList.add('visible');
