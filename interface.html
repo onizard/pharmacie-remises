@@ -476,7 +476,6 @@ const rsfSection = document.getElementById('rsfSection');
 const rgSection  = document.getElementById('rgSection');
 const rgInput    = document.getElementById('rgInput');
 const caInput    = document.getElementById('caInput');
-const rgHint     = document.getElementById('rgHint');
 const btn2Next   = document.getElementById('btn2Next');
 
 LABS.forEach(lab => {
@@ -537,8 +536,6 @@ async function selectLab(lab) {
 
   rgInput.value      = '';
   caInput.value      = '';
-  rgHint.textContent = '';
-  rgHint.className   = 'rg-hint';
   rgSection.classList.add('visible');
   rsfSection.classList.remove('visible');
   rsfLoading.classList.add('visible');
