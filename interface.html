@@ -110,7 +110,6 @@
     transition: all .3s; position: relative; overflow: hidden;
   }
   .dropzone:hover, .dropzone.dragover { border-color: var(--cyan); background: #001a24; box-shadow: inset 0 0 30px #00e5ff0a, var(--glow-c); }
-  .dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
   .dropzone-icon { font-size: 48px; margin-bottom: 16px; opacity: .5; filter: drop-shadow(0 0 8px var(--cyan)); }
   .dropzone-label { font-family: 'Orbitron', monospace; font-size: 13px; color: var(--cyan); letter-spacing: 2px; margin-bottom: 8px; }
   .dropzone-hint { font-size: 11px; color: var(--text-dim); }
@@ -305,8 +304,8 @@
       <div class="panel-title">◈ Mes achats génériques N-1</div>
       <div class="panel-sub">// Importation du fichier CSV — liste des médicaments achetés sur l'exercice précédent</div>
 
+      <input type="file" id="csvInput" accept=".csv,.txt" style="display:none" />
       <div class="dropzone" id="dropzone">
-        <input type="file" id="csvInput" accept=".csv,.txt" />
         <div class="dropzone-icon">⬡</div>
         <div class="dropzone-label">GLISSER-DÉPOSER LE FICHIER CSV</div>
         <div class="dropzone-hint">ou cliquer pour parcourir &nbsp;·&nbsp; formats acceptés : .csv .txt</div>
@@ -451,6 +450,7 @@ function handleFile(file) {
   reader.readAsText(file, 'utf-8');
 }
 
+dropzone.addEventListener('click', () => csvInput.click());
 csvInput.addEventListener('change', e => handleFile(e.target.files[0]));
 dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('dragover'); });
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
