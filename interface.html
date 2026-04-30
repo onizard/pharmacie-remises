@@ -735,10 +735,9 @@ function renderRSFTable(lab, rows) {
   rows.forEach((row, idx) => {
     const tr = document.createElement('tr');
 
-    // Col A — RSF
+    // Col A — RSF (toujours affiché en valeur positive)
     const tdRsf = document.createElement('td');
-    const sign  = row.rsf_pct < 0 ? '' : '+';
-    tdRsf.textContent = `${sign}${row.rsf_pct.toFixed(2)} %`;
+    tdRsf.textContent = `${Math.abs(row.rsf_pct).toFixed(2)} %`;
     tr.appendChild(tdRsf);
 
     // Col B — Remise 2
@@ -746,7 +745,7 @@ function renderRSFTable(lab, rows) {
     const inp2 = document.createElement('input');
     inp2.type        = 'text';
     inp2.className   = 'rsf-input';
-    inp2.placeholder = 'ex : -5.00';
+    inp2.placeholder = 'ex : 5.00';
     inp2.value       = row.remise2;
     inp2.addEventListener('input', e => {
       state.rsfValues[idx].remise2 = e.target.value;
@@ -760,7 +759,7 @@ function renderRSFTable(lab, rows) {
     const inp3 = document.createElement('input');
     inp3.type        = 'text';
     inp3.className   = 'rsf-input';
-    inp3.placeholder = 'ex : -2.50';
+    inp3.placeholder = 'ex : 2.50';
     inp3.value       = row.remise3;
     inp3.addEventListener('input', e => {
       state.rsfValues[idx].remise3 = e.target.value;
