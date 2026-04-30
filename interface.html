@@ -513,6 +513,7 @@ function autoFillRemises() {
 }
 
 async function selectLab(lab) {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   document.querySelectorAll('.lab-btn').forEach(b => b.classList.toggle('selected', b.dataset.lab === lab));
   state.selectedLab   = lab;
   state.remiseGlobale = null;
