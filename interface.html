@@ -486,18 +486,7 @@ rgInput.addEventListener('input', () => {
   checkPage2Complete();
 });
 
-function updateRgHint() {
-  const rg  = state.remiseGlobale;
-  const lab = state.selectedLab;
-  if (rg === null) { rgHint.textContent = ''; return; }
-  if (lab === 'Biogaran') {
-    rgHint.textContent = `Remise 2 → 40 %  ·  Remise 3 → ${(rg - 40).toFixed(2)} %`;
-    rgHint.className = 'rg-hint biogaran';
-  } else {
-    rgHint.textContent = `Remise 2 = remise globale − RSF`;
-    rgHint.className = 'rg-hint';
-  }
-}
+function updateRgHint() {}
 
 function autoFillRemises() {
   const rg  = state.remiseGlobale;
