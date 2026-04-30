@@ -1,32 +1,18 @@
-
-# Configuration
-config.py
-
-# Environnement virtuel
-env/
-venv/
-
-# Fichiers Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Catalogues téléchargés
-catalogues/
-
-# Base de données
-*.db
-
-# IDE
-.vscode/
-.idea/
-
-# Fichiers système
-.DS_Store
-*.swp
-*.swo
-
-# Autres
-*.log
+# Credentials
 .env
+
+# Données volumineuses / générées
+pdfs_remises/
+puht_astera.json
+remises_partenariat.xlsx
+/tmp/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Debug
+debug_login.py

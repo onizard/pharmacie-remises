@@ -1,0 +1,8 @@
+openpyxl==3.1.5
+pdfplumber==0.11.9
+playwright==1.58.0
+psycopg2-binary==2.9.12
+supabase==2.29.0
+supabase-auth==2.29.0
+supabase-functions==2.29.0
+rapidfuzz
