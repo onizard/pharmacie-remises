@@ -292,43 +292,14 @@
   </header>
 
   <div class="stepbar">
-    <div class="step active" id="step1-indicator"><span class="step-num">01</span><span>Achats N-1</span></div>
-    <div class="step" id="step2-indicator"><span class="step-num">02</span><span>Labo N°1</span></div>
-    <div class="step" id="step3-indicator"><span class="step-num">03</span><span>Labo N°2</span></div>
+    <div class="step active" id="step1-indicator"><span class="step-num">01</span><span>Labo N°1</span></div>
+    <div class="step" id="step2-indicator"><span class="step-num">02</span><span>Labo N°2</span></div>
+    <div class="step" id="step3-indicator"><span class="step-num">03</span><span>Achats N-1</span></div>
     <div class="step" id="step4-indicator"><span class="step-num">04</span><span>Résultats</span></div>
   </div>
 
-  <!-- ── PAGE 1 ── -->
+  <!-- ── PAGE 1 : Labo N°1 ── -->
   <div id="page1" class="page active">
-    <div class="panel">
-      <div class="panel-title">◈ Mes achats génériques N-1</div>
-      <div class="panel-sub">// Importation du fichier CSV — liste des médicaments achetés sur l'exercice précédent</div>
-
-      <input type="file" id="csvInput" accept=".csv,.txt" style="display:none" />
-      <div class="dropzone" id="dropzone">
-        <div class="dropzone-icon">⬡</div>
-        <div class="dropzone-label">GLISSER-DÉPOSER LE FICHIER CSV</div>
-        <div class="dropzone-hint">ou cliquer pour parcourir &nbsp;·&nbsp; formats acceptés : .csv .txt</div>
-      </div>
-
-      <div class="file-status" id="fileStatus">
-        <span id="fileStatusText">—</span>
-      </div>
-
-      <div style="margin-top:24px;">
-        <div class="term-line"><span class="prompt">INFO:</span><span class="val">Le fichier doit contenir au minimum une colonne CIP13 et une colonne quantité</span></div>
-        <div class="term-line"><span class="prompt">INFO:</span><span class="val">Encodage UTF-8 ou Latin-1 — séparateur ; ou ,</span></div>
-      </div>
-
-      <div class="btn-row">
-        <div></div>
-        <button class="btn btn-primary" id="btn1Next" disabled onclick="goTo(2)">SUIVANT &nbsp;›</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── PAGE 2 ── -->
-  <div id="page2" class="page">
     <div class="panel">
       <div class="panel-title">◈ Choix du laboratoire N°1</div>
       <div class="panel-sub">// Sélectionner le laboratoire prioritaire — les remises négociées seront appliquées à ses références</div>
@@ -379,25 +350,54 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goTo(1)">‹ &nbsp;RETOUR</button>
-        <button class="btn btn-primary" id="btn2Next" disabled onclick="goTo(3)">SUIVANT &nbsp;›</button>
+        <div></div>
+        <button class="btn btn-primary" id="btn2Next" disabled onclick="goTo(2)">SUIVANT &nbsp;›</button>
       </div>
     </div>
   </div>
 
-  <!-- ── PAGE 3 (placeholder) ── -->
-  <div id="page3" class="page">
+  <!-- ── PAGE 2 : Labo N°2 (placeholder) ── -->
+  <div id="page2" class="page">
     <div class="panel">
       <div class="panel-title">◈ Choix du laboratoire N°2</div>
       <div class="panel-sub">// Bientôt disponible</div>
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goTo(2)">‹ &nbsp;RETOUR</button>
-        <button class="btn btn-primary" onclick="goTo(4)">SUIVANT &nbsp;›</button>
+        <button class="btn btn-secondary" onclick="goTo(1)">‹ &nbsp;RETOUR</button>
+        <button class="btn btn-primary" onclick="goTo(3)">SUIVANT &nbsp;›</button>
       </div>
     </div>
   </div>
 
-  <!-- ── PAGE 4 (placeholder) ── -->
+  <!-- ── PAGE 3 : Achats N-1 ── -->
+  <div id="page3" class="page">
+    <div class="panel">
+      <div class="panel-title">◈ Mes achats génériques N-1</div>
+      <div class="panel-sub">// Importation du fichier CSV — liste des médicaments achetés sur l'exercice précédent</div>
+
+      <input type="file" id="csvInput" accept=".csv,.txt" style="display:none" />
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon">⬡</div>
+        <div class="dropzone-label">GLISSER-DÉPOSER LE FICHIER CSV</div>
+        <div class="dropzone-hint">ou cliquer pour parcourir &nbsp;·&nbsp; formats acceptés : .csv .txt</div>
+      </div>
+
+      <div class="file-status" id="fileStatus">
+        <span id="fileStatusText">—</span>
+      </div>
+
+      <div style="margin-top:24px;">
+        <div class="term-line"><span class="prompt">INFO:</span><span class="val">Le fichier doit contenir au minimum une colonne CIP13 et une colonne quantité</span></div>
+        <div class="term-line"><span class="prompt">INFO:</span><span class="val">Encodage UTF-8 ou Latin-1 — séparateur ; ou ,</span></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goTo(2)">‹ &nbsp;RETOUR</button>
+        <button class="btn btn-primary" id="btn1Next" disabled onclick="goTo(4)">SUIVANT &nbsp;›</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAGE 4 : Résultats (placeholder) ── -->
   <div id="page4" class="page">
     <div class="panel">
       <div class="panel-title">◈ Résultats</div>
