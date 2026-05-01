@@ -86,7 +86,8 @@
   .step-num { font-family: 'Orbitron', monospace; font-size: 18px; font-weight: 700; min-width: 28px; }
   .step.active { border-color: var(--cyan); color: var(--cyan); background: #001a22; box-shadow: inset 0 0 20px #00e5ff11, var(--glow-c); }
   .step.active .step-num { text-shadow: var(--glow-c); }
-  .step.done { border-color: var(--green); color: var(--green); background: #001a0f; }
+  .step.done { border-color: var(--green); color: var(--green); background: #001a0f; cursor: pointer; }
+  .step.done:hover { background: #002a1a; box-shadow: inset 0 0 16px #00ff8811; }
   .step.done .step-num::before { content: '✓ '; font-size: 14px; }
 
   /* ── Panel ── */
@@ -478,6 +479,10 @@ function goTo(n) {
   });
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+document.querySelectorAll('.step').forEach((s, i) => {
+  s.addEventListener('click', () => { if (s.classList.contains('done')) goTo(i + 1); });
+});
 
 // ── Page CSV ──────────────────────────────────────────────────────────────────
 const dropzone   = document.getElementById('dropzone');
