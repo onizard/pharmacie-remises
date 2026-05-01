@@ -309,6 +309,7 @@
 
       <!-- Remise globale (visible après clic labo) -->
       <div class="rg-section" id="rgSection">
+        <div class="lab-tag" style="margin-bottom:12px;align-self:flex-start">CONDITIONS</div>
         <div style="display:flex;flex-direction:column;gap:12px;width:100%">
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
             <div class="rg-label">REMISE GLOBALE CIBLE</div>
@@ -331,7 +332,7 @@
       <!-- Tableau RSF -->
       <div class="rsf-section" id="rsfSection">
         <div class="rsf-header">
-          <div class="lab-tag" id="rsfLabTag">—</div>
+          <div class="lab-tag">TABLEAU DES REMISES</div>
           <div class="rsf-info" id="rsfInfo">— lignes de remise détectées</div>
         </div>
         <div class="rsf-table-wrap">
@@ -366,6 +367,7 @@
       <div class="lab-grid" id="labGrid2"></div>
 
       <div class="rg-section" id="rgSection2">
+        <div class="lab-tag" style="margin-bottom:12px;align-self:flex-start">CONDITIONS</div>
         <div style="display:flex;flex-direction:column;gap:12px;width:100%">
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
             <div class="rg-label">REMISE GLOBALE CIBLE</div>
@@ -387,7 +389,7 @@
 
       <div class="rsf-section" id="rsfSection2">
         <div class="rsf-header">
-          <div class="lab-tag" id="rsfLabTag2">—</div>
+          <div class="lab-tag">TABLEAU DES REMISES</div>
           <div class="rsf-info" id="rsfInfo2">— lignes de remise détectées</div>
         </div>
         <div class="rsf-table-wrap">
@@ -521,7 +523,6 @@ function initLabPage(conf) {
     caInp:   document.getElementById(conf.caInpId),
     loading: document.getElementById(conf.loadingId),
     section: document.getElementById(conf.sectionId),
-    labTag:  document.getElementById(conf.labTagId),
     info:    document.getElementById(conf.infoId),
     tbody:   document.getElementById(conf.tbodyId),
     excls:   document.getElementById(conf.exclsId),
@@ -581,7 +582,6 @@ function initLabPage(conf) {
   }
 
   function renderTable(lab, rows) {
-    el.labTag.textContent = lab.toUpperCase();
     el.info.textContent   = `${rows.length} palier${rows.length > 1 ? 's' : ''} de remise détecté${rows.length > 1 ? 's' : ''}`;
     el.tbody.closest('table').classList.toggle('show-r3', lab === 'Biogaran');
     el.tbody.innerHTML = '';
@@ -776,14 +776,14 @@ function renderChips(chipsWrap, exc) {
 initLabPage({
   labs: LABS, s: state.lab1,
   gridId: 'labGrid',   rgSecId: 'rgSection',   rgInpId: 'rgInput',   caInpId: 'caInput',
-  loadingId: 'rsfLoading',  sectionId: 'rsfSection',  labTagId: 'rsfLabTag',  infoId: 'rsfInfo',
+  loadingId: 'rsfLoading',  sectionId: 'rsfSection',  infoId: 'rsfInfo',
   tbodyId: 'rsfTableBody',  exclsId: 'exclusionBlocks',  btnNextId: 'btn2Next',
 });
 
 initLabPage({
   labs: LABS2, s: state.lab2,
   gridId: 'labGrid2',  rgSecId: 'rgSection2',  rgInpId: 'rgInput2',  caInpId: 'caInput2',
-  loadingId: 'rsfLoading2', sectionId: 'rsfSection2', labTagId: 'rsfLabTag2', infoId: 'rsfInfo2',
+  loadingId: 'rsfLoading2', sectionId: 'rsfSection2', infoId: 'rsfInfo2',
   tbodyId: 'rsfTableBody2', exclsId: 'exclusionBlocks2', btnNextId: 'btnLab2Next',
 });
 </script>
