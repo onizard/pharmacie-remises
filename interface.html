@@ -132,6 +132,9 @@
   .lab-btn.selected::before { content: '◈ '; font-size: 8px; }
 
   /* ── Remise globale ── */
+  .rg-title { display: none; margin-bottom: 8px; }
+  .rg-title.visible { display: inline-block; }
+
   .rg-section {
     display: none; align-items: center; flex-wrap: wrap; gap: 14px;
     margin-bottom: 24px; padding: 14px 20px;
@@ -308,8 +311,8 @@
       <div class="lab-grid" id="labGrid"></div>
 
       <!-- Remise globale (visible après clic labo) -->
+      <div class="lab-tag rg-title" id="conditionsTitle">CONDITIONS</div>
       <div class="rg-section" id="rgSection">
-        <div class="lab-tag" style="margin-bottom:12px;align-self:flex-start">CONDITIONS</div>
         <div style="display:flex;flex-direction:column;gap:12px;width:100%">
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
             <div class="rg-label">REMISE GLOBALE CIBLE</div>
@@ -366,8 +369,8 @@
 
       <div class="lab-grid" id="labGrid2"></div>
 
+      <div class="lab-tag rg-title" id="conditionsTitle2">CONDITIONS</div>
       <div class="rg-section" id="rgSection2">
-        <div class="lab-tag" style="margin-bottom:12px;align-self:flex-start">CONDITIONS</div>
         <div style="display:flex;flex-direction:column;gap:12px;width:100%">
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
             <div class="rg-label">REMISE GLOBALE CIBLE</div>
@@ -518,6 +521,7 @@ function initLabPage(conf) {
   const s  = conf.s;
   const el = {
     grid:    document.getElementById(conf.gridId),
+    title:   document.getElementById(conf.titleId),
     rgSec:   document.getElementById(conf.rgSecId),
     rgInp:   document.getElementById(conf.rgInpId),
     caInp:   document.getElementById(conf.caInpId),
@@ -568,6 +572,7 @@ function initLabPage(conf) {
     el.grid.querySelectorAll('.lab-btn').forEach(b => b.classList.toggle('selected', b.dataset.lab === lab));
     s.selectedLab = lab; s.remiseGlobale = null; s.caCondition = null; s.rsfValues = []; s.exceptions = {};
     el.rgInp.value = ''; el.caInp.value = '';
+    el.title.classList.add('visible');
     el.rgSec.classList.add('visible');
     el.section.classList.remove('visible');
     el.loading.classList.add('visible');
@@ -775,14 +780,14 @@ function renderChips(chipsWrap, exc) {
 // ── Initialisation des deux pages labo ────────────────────────────────────────
 initLabPage({
   labs: LABS, s: state.lab1,
-  gridId: 'labGrid',   rgSecId: 'rgSection',   rgInpId: 'rgInput',   caInpId: 'caInput',
+  gridId: 'labGrid',   titleId: 'conditionsTitle',  rgSecId: 'rgSection',   rgInpId: 'rgInput',   caInpId: 'caInput',
   loadingId: 'rsfLoading',  sectionId: 'rsfSection',  infoId: 'rsfInfo',
   tbodyId: 'rsfTableBody',  exclsId: 'exclusionBlocks',  btnNextId: 'btn2Next',
 });
 
 initLabPage({
   labs: LABS2, s: state.lab2,
-  gridId: 'labGrid2',  rgSecId: 'rgSection2',  rgInpId: 'rgInput2',  caInpId: 'caInput2',
+  gridId: 'labGrid2',  titleId: 'conditionsTitle2', rgSecId: 'rgSection2',  rgInpId: 'rgInput2',  caInpId: 'caInput2',
   loadingId: 'rsfLoading2', sectionId: 'rsfSection2', infoId: 'rsfInfo2',
   tbodyId: 'rsfTableBody2', exclsId: 'exclusionBlocks2', btnNextId: 'btnLab2Next',
 });
