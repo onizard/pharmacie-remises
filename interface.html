@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PHARMA-SYS // ANALYSE REMISES GÉNÉRIQUES</title>
+<title>ANALYSEUR DE REMISE</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
 
@@ -23,6 +23,7 @@
     --border:   #1a3048;
     --glow-c:   0 0 8px #00e5ff, 0 0 20px #00e5ff44;
     --glow-a:   0 0 8px #ffab00, 0 0 20px #ffab0044;
+    --glow-g:   0 0 8px #00ff88, 0 0 20px #00ff8844;
   }
 
   html, body {
@@ -67,13 +68,28 @@
     margin-bottom: 32px; padding-bottom: 16px;
     border-bottom: 1px solid var(--border);
   }
-  .logo { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 20px; color: var(--cyan); text-shadow: var(--glow-c); letter-spacing: 3px; }
+  .logo { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 36px; color: var(--cyan); text-shadow: var(--glow-c); letter-spacing: 6px; }
   .logo span { color: var(--amber); }
   .header-sub { font-size: 11px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; }
-  .header-right { margin-left: auto; font-size: 11px; color: var(--text-dim); }
+  .header-right { margin-left: auto; font-size: 11px; color: var(--text-dim); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+
+  /* ── PDA toggle ── */
+  .pda-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .pda-toggle-label { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); transition: color .2s; }
+  .pda-switch { position: relative; width: 36px; height: 18px; flex-shrink: 0; }
+  .pda-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .pda-slider { position: absolute; inset: 0; background: var(--bg2); border: 1px solid var(--border); transition: all .2s; }
+  .pda-slider::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--text-dim); transition: all .2s; }
+  .pda-switch input:checked + .pda-slider { background: #001a0f; border-color: var(--green); }
+  .pda-switch input:checked + .pda-slider::after { background: var(--green); transform: translateX(18px); box-shadow: 0 0 6px #00ff8888; }
+  .pda-toggle:hover .pda-toggle-label { color: var(--text); }
+  .btn-reset { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; padding: 7px 18px; cursor: pointer; background: #0a0008; border: 1px solid var(--red); color: var(--text-dim); position: relative; overflow: hidden; user-select: none; transition: color .2s, border-color .2s; white-space: nowrap; }
+  .btn-reset::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 0; background: var(--red); opacity: .15; }
+  .btn-reset.holding { color: var(--red); border-color: var(--red); }
+  .btn-reset.holding::before { width: 100%; transition: width 3s linear; }
 
   /* ── Step bar ── */
-  .stepbar { display: flex; align-items: center; margin-bottom: 32px; }
+  .stepbar { display: flex; align-items: stretch; margin-bottom: 32px; flex-wrap: wrap; gap: 0; }
   .step {
     display: flex; align-items: center; gap: 10px;
     padding: 10px 20px; border: 1px solid var(--border);
@@ -89,6 +105,40 @@
   .step.done { border-color: var(--green); color: var(--green); background: #001a0f; cursor: pointer; }
   .step.done:hover { background: #002a1a; box-shadow: inset 0 0 16px #00ff8811; }
   .step.done .step-num::before { content: '✓ '; font-size: 14px; }
+  .step.filled { cursor: pointer; }
+  .step.filled:hover { background: #0c1420; border-color: var(--cyan-dim); }
+
+  /* ── Step add button ── */
+  .step-add {
+    display: flex; align-items: center; justify-content: center;
+    padding: 10px 16px; border: 1px dashed var(--cyan-dim);
+    background: var(--panel); color: var(--text-dim);
+    cursor: pointer; position: relative;
+    font-family: 'Orbitron', monospace; font-size: 18px; font-weight: 700;
+    transition: all .2s; flex-shrink: 0;
+  }
+  .step-add::after { content: '›'; position: absolute; right: -12px; font-size: 22px; color: var(--border); z-index: 2; line-height: 1; }
+  .step-add:not(.disabled):hover { border-color: var(--cyan); color: var(--cyan); box-shadow: var(--glow-c); }
+  .step-add .tooltip {
+    display: none; position: absolute; top: calc(100% + 8px); left: 50%;
+    transform: translateX(-50%); white-space: nowrap;
+    background: var(--panel); border: 1px solid var(--cyan-dim);
+    color: var(--text); font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 1px; padding: 5px 10px; z-index: 100;
+  }
+  .step-add:not(.disabled):hover .tooltip { display: block; }
+  .step-add.disabled { opacity: .35; cursor: not-allowed; }
+
+  .step-close {
+    position: absolute; top: 0; right: 0;
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-family: 'Share Tech Mono', monospace;
+    color: var(--text-dim); background: var(--bg2);
+    border-left: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: all .15s; line-height: 1; z-index: 3;
+  }
+  .step-close:hover { color: var(--red); background: #1a0510; border-color: var(--red); }
 
   /* ── Panel ── */
   .panel {
@@ -108,12 +158,22 @@
   .dropzone {
     border: 2px dashed var(--cyan-dim); background: #000d14;
     padding: 48px 32px; text-align: center; cursor: pointer;
-    transition: all .3s; position: relative; overflow: hidden;
+    transition: all .3s; position: relative;
   }
   .dropzone:hover, .dropzone.dragover { border-color: var(--cyan); background: #001a24; box-shadow: inset 0 0 30px #00e5ff0a, var(--glow-c); }
   .dropzone-icon { font-size: 48px; margin-bottom: 16px; opacity: .5; filter: drop-shadow(0 0 8px var(--cyan)); }
   .dropzone-label { font-family: 'Orbitron', monospace; font-size: 13px; color: var(--cyan); letter-spacing: 2px; margin-bottom: 8px; }
   .dropzone-hint { font-size: 11px; color: var(--text-dim); }
+
+  .dropzone-default { display: flex; flex-direction: column; align-items: center; }
+  .dropzone.loaded { border-color: var(--green); background: #001a0f; cursor: pointer; }
+  .dropzone.loaded:hover { background: #002a1a; box-shadow: inset 0 0 30px #00ff880a, var(--glow-g); }
+  .dropzone.loaded .dropzone-default { display: none; }
+  .dropzone-success { display: none; flex-direction: column; align-items: center; gap: 14px; }
+  .dropzone.loaded .dropzone-success { display: flex; animation: checkPop .4s cubic-bezier(.175,.885,.32,1.275) forwards; }
+  @keyframes checkPop { 0% { opacity:0; transform:scale(.5); } 70% { transform:scale(1.08); } 100% { opacity:1; transform:scale(1); } }
+  .dropzone-ok-label { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--green); letter-spacing: 4px; text-shadow: var(--glow-g); }
+  .dropzone-ok-filename { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
 
   .file-status { display: none; margin-top: 16px; padding: 12px 16px; border: 1px solid var(--green); background: #001a0f; color: var(--green); font-size: 12px; letter-spacing: 1px; align-items: center; gap: 10px; }
   .file-status.visible { display: flex; }
@@ -131,10 +191,46 @@
   .lab-btn.selected { border-color: var(--amber); color: var(--amber); background: #1a0e00; box-shadow: var(--glow-a); text-shadow: var(--glow-a); }
   .lab-btn.selected::before { content: '◈ '; font-size: 8px; }
 
-  /* ── Remise globale ── */
-  .rg-title { display: none; margin-bottom: 8px; }
-  .rg-title.visible { display: inline-block; }
+  /* ── Condition tabs ── */
+  .cond-tabs {
+    display: none; align-items: flex-end; gap: 2px;
+    border-bottom: 1px solid var(--cyan-dim);
+    margin-bottom: 20px;
+  }
+  .cond-tabs.visible { display: flex; }
+  .cond-tab {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; margin-bottom: -1px;
+    font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    border: 1px solid var(--border); border-bottom: none;
+    background: var(--bg2); color: var(--text-dim);
+    cursor: pointer; transition: all .2s;
+  }
+  .cond-tab.active {
+    border-color: var(--cyan-dim); background: var(--panel);
+    color: var(--cyan); box-shadow: inset 0 2px 0 var(--cyan);
+  }
+  .cond-tab:hover:not(.active) { background: #0d1520; color: var(--text); border-color: var(--cyan-dim); }
+  .cond-tab-add {
+    display: flex; align-items: center; justify-content: center;
+    padding: 6px 13px; margin-bottom: -1px;
+    font-family: 'Orbitron', monospace; font-size: 17px; font-weight: 700;
+    border: 1px dashed var(--border); border-bottom: none;
+    background: transparent; color: var(--text-dim);
+    cursor: pointer; transition: all .2s;
+  }
+  .cond-tab-add:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+  .cond-tab-close {
+    font-size: 11px; color: var(--text-dim);
+    cursor: pointer; transition: color .15s; line-height: 1;
+  }
+  .cond-tab-close:hover { color: var(--red); }
 
+  .cond-panel { display: none; }
+  .cond-panel.active { display: block; }
+
+  /* ── Remise globale ── */
   .rg-section {
     display: none; align-items: center; flex-wrap: wrap; gap: 14px;
     margin-bottom: 24px; padding: 14px 20px;
@@ -144,8 +240,6 @@
   .rg-section.visible { display: flex; }
   .rg-label { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; color: var(--cyan); letter-spacing: 2px; white-space: nowrap; }
   .rg-unit  { font-family: 'Orbitron', monospace; font-size: 13px; color: var(--cyan); font-weight: 700; }
-  .rg-hint  { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
-  .rg-hint.biogaran { color: var(--amber); }
 
   /* ── RSF table ── */
   .rsf-section { display: none; margin-top: 8px; animation: fadeIn .4s ease; }
@@ -186,7 +280,6 @@
   .rsf-input::placeholder { color: var(--text-dim); font-size: 11px; }
   .rsf-input.auto-c { border-color: var(--cyan-dim); color: var(--cyan); }
   .rsf-input.auto-a { border-color: #6b4700; color: var(--amber); }
-  .rsf-input[readonly] { opacity: .65; cursor: default; }
 
   /* ── Exclusion checkbox ── */
   .excl-check {
@@ -201,8 +294,20 @@
 
   /* ── Exclusion blocks ── */
   .exclusion-blocks { margin-top: 16px; }
+  .rsf-only-sec { margin-top: 20px; border-top: 1px solid #0d1520; padding-top: 16px; }
+  .rsf-only-header { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+  .rsf-only-radios { display: flex; gap: 14px; }
+  .rsf-only-radio-lbl { display: flex; align-items: center; gap: 6px; font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; cursor: pointer; color: var(--text-dim); transition: color .15s; }
+  .rsf-only-radio-lbl input[type=radio] { accent-color: var(--cyan); cursor: pointer; }
+  .rsf-only-radio-lbl:has(input:checked) { color: var(--cyan); text-shadow: var(--glow-c); }
+  .switch-warn { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--amber); padding: 6px 0; min-height: 18px; opacity: 0; transition: opacity .2s; letter-spacing: 1px; }
+  .switch-warn.visible { opacity: 1; }
+  .lab-btn.switching { border-color: var(--amber) !important; color: var(--amber) !important; position: relative; overflow: hidden; }
+  .lab-btn.switching::after { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 100%; background: var(--amber); opacity: .15; transform-origin: left; animation: holdFill 2s linear forwards; }
+  @keyframes holdFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  .r3-toggle { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; padding: 4px 10px; cursor: pointer; background: transparent; border: 1px solid var(--border); color: var(--text-dim); transition: all .15s; white-space: nowrap; }
+  .r3-toggle:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: var(--glow-c); }
   .excl-block { margin-top: 10px; border: 1px solid #3d0015; background: #0a0008; padding: 18px 20px; animation: fadeIn .3s ease; }
-
   .excl-block-header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
   .excl-rsf-tag { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; color: var(--red); padding: 3px 10px; border: 1px solid var(--red); background: #1a0510; white-space: nowrap; }
   .excl-block-text { font-size: 12px; color: var(--text); }
@@ -268,6 +373,8 @@
   .btn-secondary { border-color: var(--border); color: var(--text-dim); }
   .btn-secondary:hover { border-color: var(--text-dim); color: var(--text); }
   .btn:disabled { opacity: .3; cursor: not-allowed; }
+  .btn-launch { border-color: var(--green); color: var(--green); }
+  .btn-launch:hover:not(:disabled) { background: var(--green); color: var(--bg); box-shadow: 0 0 8px #00ff88, 0 0 20px #00ff8844; }
 
   .cursor { display: inline-block; width: 8px; height: 14px; background: var(--cyan); animation: blink 1s step-end infinite; vertical-align: middle; margin-left: 4px; }
   @keyframes blink { 50% { opacity: 0; } }
@@ -280,6 +387,31 @@
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); }
   ::-webkit-scrollbar-thumb:hover { background: var(--cyan-dim); }
+
+  .sim-loading { text-align:center; padding: 40px; color: var(--text-dim); font-family: 'Share Tech Mono', monospace; }
+  .sim-section { margin-bottom: 28px; }
+  .sim-title { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--cyan); letter-spacing: 3px; text-shadow: var(--glow-c); margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .sim-kpi-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .sim-kpi { flex: 1; min-width: 160px; background: var(--bg2); border: 1px solid var(--border); padding: 14px 16px; }
+  .sim-kpi-label { font-size: 10px; font-family: 'Orbitron', monospace; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 6px; }
+  .sim-kpi-value { font-size: 20px; font-family: 'Share Tech Mono', monospace; color: var(--cyan); }
+  .sim-kpi-value.green { color: var(--green); }
+  .sim-kpi-value.amber { color: var(--amber); }
+  .sim-kpi-value.red   { color: var(--red); }
+  .sim-lab-table { width: 100%; border-collapse: collapse; font-family: 'Share Tech Mono', monospace; font-size: 12px; margin-bottom: 10px; }
+  .sim-lab-table th { background: #0a0f1a; color: var(--text-dim); font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 2px; padding: 8px 10px; border: 1px solid var(--border); text-align: left; }
+  .sim-lab-table td { padding: 8px 10px; border: 1px solid var(--border); color: var(--text); }
+  .sim-lab-table tr.lab-ok td { border-left: 3px solid var(--green); }
+  .sim-lab-table tr.lab-nok td { border-left: 3px solid var(--red); }
+  .sim-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+  .sim-compare-col { background: var(--bg2); border: 1px solid var(--border); padding: 16px; }
+  .sim-compare-col.best { border-color: var(--green); }
+  .sim-compare-title { font-family: 'Orbitron', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 10px; }
+  .sim-compare-col.best .sim-compare-title { color: var(--green); text-shadow: var(--glow-g); }
+  .sim-dl-btn { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; padding: 8px 18px; cursor: pointer; background: #001a0f; border: 1px solid var(--green); color: var(--green); margin: 4px; transition: all .2s; }
+  .sim-dl-btn:hover { background: #002a1a; box-shadow: var(--glow-g); }
+  .sim-warn { color: var(--amber); font-family: 'Share Tech Mono', monospace; font-size: 12px; padding: 10px; border: 1px solid var(--amber); margin-bottom: 12px; }
+
 </style>
 </head>
 <body>
@@ -287,148 +419,68 @@
 
   <header class="site-header">
     <div>
-      <div class="logo">PHARMA<span>SYS</span></div>
-      <div class="header-sub">// Analyse remises génériques</div>
+      <div class="logo">ANALYSEUR DE REMISE</div>
     </div>
     <div class="header-right">
       <div class="term-line"><span class="prompt">SYS:</span><span class="val">PRÊT</span><span class="cursor"></span></div>
+      <button id="btnReset" class="btn-reset" title="Maintenir 3 secondes pour réinitialiser">RESET</button>
     </div>
   </header>
 
-  <div class="stepbar">
-    <div class="step active" id="step1-indicator"><span class="step-num">01</span><span>Labo N°1</span></div>
-    <div class="step" id="step2-indicator"><span class="step-num">02</span><span>Labo N°2</span></div>
-    <div class="step" id="step3-indicator"><span class="step-num">03</span><span>Achats N-1</span></div>
-    <div class="step" id="step4-indicator"><span class="step-num">04</span><span>Résultats</span></div>
-  </div>
+  <div class="stepbar" id="stepbar"></div>
 
-  <!-- ── PAGE 1 : Labo N°1 ── -->
-  <div id="page1" class="page active">
-    <div class="panel">
-      <div class="panel-title">◈ Choix du laboratoire N°1</div>
-      <div class="panel-sub">// Sélectionner le laboratoire prioritaire — les remises négociées seront appliquées à ses références</div>
-
-      <div class="lab-grid" id="labGrid"></div>
-
-      <!-- Remise globale (visible après clic labo) -->
-      <div class="lab-tag rg-title" id="conditionsTitle">CONDITIONS</div>
-      <div class="rg-section" id="rgSection">
-        <div style="display:flex;flex-direction:column;gap:12px;width:100%">
-          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-            <div class="rg-label">REMISE GLOBALE CIBLE</div>
-            <input type="text" id="rgInput" class="rsf-input" style="width:130px" placeholder="ex : 35.00" />
-            <span class="rg-unit">%</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-            <div class="rg-label">CONDITION CA POTENTIEL BRUT HT</div>
-            <input type="text" id="caInput" class="rsf-input" style="width:160px" placeholder="ex : 50000.00" />
-            <span class="rg-unit" style="font-size:11px;color:var(--text-dim)">€</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="loading" id="rsfLoading">
-        <div class="spinner"></div>
-        <span>CHARGEMENT DES DONNÉES RSF...</span>
-      </div>
-
-      <!-- Tableau RSF -->
-      <div class="rsf-section" id="rsfSection">
-        <div class="rsf-header">
-          <div class="lab-tag">TABLEAU DES REMISES</div>
-          <div class="rsf-info" id="rsfInfo">— lignes de remise détectées</div>
-        </div>
-        <div class="rsf-table-wrap">
-          <table class="rsf-table">
-            <thead>
-              <tr>
-                <th>RSF&nbsp;%</th>
-                <th>Remise 2&nbsp;(%)</th>
-                <th class="col-r3">Remise 3&nbsp;(%)</th>
-                <th>Exclusion</th>
-              </tr>
-            </thead>
-            <tbody id="rsfTableBody"></tbody>
-          </table>
-        </div>
-        <div id="exclusionBlocks" class="exclusion-blocks"></div>
-      </div>
-
-      <div class="btn-row">
-        <div></div>
-        <button class="btn btn-primary" id="btn2Next" disabled onclick="goTo(2)">SUIVANT &nbsp;›</button>
-      </div>
+  <div id="initLoader" style="display:none;padding:60px;text-align:center;font-family:'Orbitron',monospace;font-size:13px;letter-spacing:4px;color:var(--cyan-dim)">
+    <div style="display:inline-flex;align-items:center;gap:14px">
+      <div class="spinner"></div>INITIALISATION...
     </div>
   </div>
 
-  <!-- ── PAGE 2 : Labo N°2 ── -->
-  <div id="page2" class="page">
-    <div class="panel">
-      <div class="panel-title">◈ Choix du laboratoire N°2</div>
-      <div class="panel-sub">// Sélectionner le deuxième laboratoire — les remises négociées seront appliquées à ses références</div>
+  <!-- Lab pages injected by JS before this point -->
 
-      <div class="lab-grid" id="labGrid2"></div>
-
-      <div class="lab-tag rg-title" id="conditionsTitle2">CONDITIONS</div>
-      <div class="rg-section" id="rgSection2">
-        <div style="display:flex;flex-direction:column;gap:12px;width:100%">
-          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-            <div class="rg-label">REMISE GLOBALE CIBLE</div>
-            <input type="text" id="rgInput2" class="rsf-input" style="width:130px" placeholder="ex : 35.00" />
-            <span class="rg-unit">%</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-            <div class="rg-label">CONDITION CA POTENTIEL BRUT HT</div>
-            <input type="text" id="caInput2" class="rsf-input" style="width:160px" placeholder="ex : 50000.00" />
-            <span class="rg-unit" style="font-size:11px;color:var(--text-dim)">€</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="loading" id="rsfLoading2">
-        <div class="spinner"></div>
-        <span>CHARGEMENT DES DONNÉES RSF...</span>
-      </div>
-
-      <div class="rsf-section" id="rsfSection2">
-        <div class="rsf-header">
-          <div class="lab-tag">TABLEAU DES REMISES</div>
-          <div class="rsf-info" id="rsfInfo2">— lignes de remise détectées</div>
-        </div>
-        <div class="rsf-table-wrap">
-          <table class="rsf-table">
-            <thead>
-              <tr>
-                <th>RSF&nbsp;%</th>
-                <th>Remise 2&nbsp;(%)</th>
-                <th class="col-r3">Remise 3&nbsp;(%)</th>
-                <th>Exclusion</th>
-              </tr>
-            </thead>
-            <tbody id="rsfTableBody2"></tbody>
-          </table>
-        </div>
-        <div id="exclusionBlocks2" class="exclusion-blocks"></div>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goTo(1)">‹ &nbsp;RETOUR</button>
-        <button class="btn btn-primary" id="btnLab2Next" disabled onclick="goTo(3)">SUIVANT &nbsp;›</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── PAGE 3 : Achats N-1 ── -->
-  <div id="page3" class="page">
+  <!-- ── PAGE CSV : Achats N-1 ── -->
+  <div id="page-csv" class="page">
     <div class="panel">
       <div class="panel-title">◈ Mes achats génériques N-1</div>
       <div class="panel-sub">// Importation du fichier CSV — liste des médicaments achetés sur l'exercice précédent</div>
 
       <input type="file" id="csvInput" accept=".csv,.txt" style="display:none" />
       <div class="dropzone" id="dropzone">
-        <div class="dropzone-icon">⬡</div>
-        <div class="dropzone-label">GLISSER-DÉPOSER LE FICHIER CSV</div>
-        <div class="dropzone-hint">ou cliquer pour parcourir &nbsp;·&nbsp; formats acceptés : .csv .txt</div>
+        <div class="dropzone-default">
+          <div class="dropzone-icon">⬡</div>
+          <div class="dropzone-label">GLISSER-DÉPOSER LE FICHIER CSV</div>
+          <div class="dropzone-hint">ou cliquer pour parcourir &nbsp;·&nbsp; formats acceptés : .csv .txt</div>
+        </div>
+        <div class="dropzone-success">
+          <svg viewBox="0 0 180 120" width="180" height="120" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated;display:block;overflow:visible">
+            <defs>
+              <filter id="pxglow" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="5" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <g fill="#00ff88" filter="url(#pxglow)">
+              <rect x="140" y="0"   width="20" height="20"/>
+              <rect x="160" y="0"   width="20" height="20"/>
+              <rect x="120" y="20"  width="20" height="20"/>
+              <rect x="140" y="20"  width="20" height="20"/>
+              <rect x="0"   y="40"  width="20" height="20"/>
+              <rect x="100" y="40"  width="20" height="20"/>
+              <rect x="120" y="40"  width="20" height="20"/>
+              <rect x="0"   y="60"  width="20" height="20"/>
+              <rect x="20"  y="60"  width="20" height="20"/>
+              <rect x="80"  y="60"  width="20" height="20"/>
+              <rect x="100" y="60"  width="20" height="20"/>
+              <rect x="20"  y="80"  width="20" height="20"/>
+              <rect x="40"  y="80"  width="20" height="20"/>
+              <rect x="60"  y="80"  width="20" height="20"/>
+              <rect x="80"  y="80"  width="20" height="20"/>
+              <rect x="40"  y="100" width="20" height="20"/>
+              <rect x="60"  y="100" width="20" height="20"/>
+            </g>
+          </svg>
+          <div class="dropzone-ok-label">FICHIER VALIDÉ</div>
+          <div id="dropzone-filename" class="dropzone-ok-filename">—</div>
+        </div>
       </div>
 
       <div class="file-status" id="fileStatus">
@@ -441,19 +493,20 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goTo(2)">‹ &nbsp;RETOUR</button>
-        <button class="btn btn-primary" id="btn1Next" disabled onclick="goTo(4)">SUIVANT &nbsp;›</button>
+        <button class="btn btn-secondary" id="btnCsvBack">‹ &nbsp;RETOUR</button>
+        <button class="btn btn-launch" id="btn1Next" disabled>LANCER LA SIMULATION &nbsp;›</button>
       </div>
     </div>
   </div>
 
-  <!-- ── PAGE 4 : Résultats (placeholder) ── -->
-  <div id="page4" class="page">
+  <!-- ── PAGE RÉSULTATS ── -->
+  <div id="page-results" class="page">
     <div class="panel">
-      <div class="panel-title">◈ Résultats</div>
-      <div class="panel-sub">// Bientôt disponible</div>
+      <div class="panel-title">◈ Résultats de simulation</div>
+      <div class="panel-sub">// Analyse en cours — les résultats apparaîtront ici</div>
+      <div id="simResults" style="margin-top:16px;"></div>
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goTo(3)">‹ &nbsp;RETOUR</button>
+        <button class="btn btn-secondary" onclick="goTo('csv')">‹ &nbsp;RETOUR</button>
       </div>
     </div>
   </div>
@@ -461,191 +514,798 @@
 </div>
 
 <script>
-const SUPA_URL = 'https://fmterazwesiwpwjpkyqi.supabase.co';
-const SUPA_KEY = 'sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w';
+const SUPA_URL   = 'https://fmterazwesiwpwjpkyqi.supabase.co';
+const SUPA_KEY   = 'sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w';
 
-const LABS  = ['Arrow','Biogaran','Viatris','EG','Sandoz','Teva','Zentiva','Cristers','Zydus','Pfizer'];
-const LABS2 = LABS.filter(l => l !== 'Biogaran');
+const LABS_ALL = ['Arrow','Biogaran','Viatris','EG','Sandoz','Teva','Zentiva','Cristers','Zydus','Pfizer'];
+let   LABS_SORTED = [...LABS_ALL];
+
+// ── State ──────────────────────────────────────────────────────────────────────
+function mkCondState(uid) {
+  return { uid, remiseGlobale: null, caCondition: null, rsfValues: [], exceptions: {}, rsfOnly: { enabled: false, libelles: [] }, showR3: false };
+}
+
+const BIOGARAN_DEFAULT_EXCL = new Set([-2.5, -5, -7]);
+function mkRsfValues(lab, paliers) {
+  return paliers.map(v => {
+    const excluded = lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v));
+    return { rsf_pct: v, remise2: excluded ? '0' : '', remise3: '', excluded };
+  });
+}
+
+function mkLabState(uid) {
+  return {
+    uid,
+    selectedLab:  null,
+    rsfPaliers:   [],
+    conditions:   [mkCondState('c0')],
+    activeCondIdx: 0,
+    _refreshGrid: null,
+  };
+}
 
 let state = {
-  csvFile: null, csvRows: 0,
-  lab1: { selectedLab: null, remiseGlobale: null, caCondition: null, rsfValues: [], exceptions: {} },
-  lab2: { selectedLab: null, remiseGlobale: null, caCondition: null, rsfValues: [], exceptions: {} },
+  csvFile: null, csvRows: 0, csvData: null,
+  includePDA: false,
+  labPages: [mkLabState('lp0'), mkLabState('lp1')],
+  currentPageId: 'lp0',
 };
 
-// ── Navigation ────────────────────────────────────────────────────────────────
-function goTo(n) {
+function syncPdaToggles() {
+  document.querySelectorAll('.pda-check').forEach(cb => { cb.checked = state.includePDA; });
+}
+
+// ── Persistence ────────────────────────────────────────────────────────────────
+const LS_KEY = 'org_state_v1';
+
+function serializeState() {
+  return {
+    v: 1,
+    includePDA: state.includePDA,
+    currentPageId: state.currentPageId,
+    labPages: state.labPages.map(lp => ({
+      uid: lp.uid,
+      selectedLab: lp.selectedLab,
+      activeCondIdx: lp.activeCondIdx,
+      conditions: lp.conditions.map(c => ({
+        uid: c.uid,
+        remiseGlobale: c.remiseGlobale,
+        caCondition: c.caCondition,
+        rsfValues: c.rsfValues.map(r => ({
+          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded,
+        })),
+        exceptions: c.exceptions,
+        rsfOnly: c.rsfOnly,
+        showR3: c.showR3,
+      })),
+    })),
+  };
+}
+
+let _saveTimer;
+function saveState() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(serializeState())); } catch(e) {}
+  }, 400);
+}
+
+function loadSavedState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    return (d && d.v === 1) ? d : null;
+  } catch(e) { return null; }
+}
+
+// ── Lab counts & sort ──────────────────────────────────────────────────────────
+async function fetchAndSortLabs() {
+  try {
+    const counts = {};
+    await Promise.all(LABS_ALL.map(async lab => {
+      const url = `${SUPA_URL}/rest/v1/references_pharmacie?labo=eq.${encodeURIComponent(lab)}&select=labo&limit=1`;
+      const res = await fetch(url, {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Prefer': 'count=exact' }
+      });
+      const range = res.headers.get('Content-Range');
+      counts[lab] = range ? (parseInt(range.split('/')[1]) || 0) : 0;
+    }));
+    LABS_SORTED = [...LABS_ALL].sort((a, b) => (counts[b] || 0) - (counts[a] || 0));
+  } catch(err) {
+    console.error('Erreur tri labos:', err);
+  }
+}
+
+// ── Lab availability ───────────────────────────────────────────────────────────
+function getAvailableLabs(labIdx) {
+  const usedByAll = new Set(state.labPages.map(lp => lp.selectedLab).filter(Boolean));
+  return LABS_SORTED.filter(l => !usedByAll.has(l));
+}
+
+// ── Page order ─────────────────────────────────────────────────────────────────
+function getPageOrder() {
+  return [...state.labPages.map(lp => lp.uid), 'csv', 'results'];
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────────
+function goTo(pageId) {
+  window.scrollTo(0, 0);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page' + n).classList.add('active');
-  document.querySelectorAll('.step').forEach((s, i) => {
-    s.classList.remove('active', 'done');
-    if (i + 1 < n)        s.classList.add('done');
-    else if (i + 1 === n) s.classList.add('active');
+  const pg = document.getElementById('page-' + pageId);
+  if (pg) pg.classList.add('active');
+  state.currentPageId = pageId;
+  renderStepBar();
+}
+
+// ── Step bar ───────────────────────────────────────────────────────────────────
+function renderStepBar() {
+  const bar = document.getElementById('stepbar');
+  bar.innerHTML = '';
+  const order = getPageOrder();
+  const curIdx = order.indexOf(state.currentPageId);
+
+  state.labPages.forEach((lp, i) => {
+    const step = document.createElement('div');
+    step.className = 'step';
+    if (i < curIdx)        step.classList.add('done');
+    else if (i === curIdx) step.classList.add('active');
+
+    const numSpan = document.createElement('span');
+    numSpan.className = 'step-num';
+    numSpan.textContent = String(i + 1).padStart(2, '0');
+
+    const lblWrap = document.createElement('span');
+    lblWrap.style.cssText = 'display:flex;flex-direction:column;gap:1px';
+    if (lp.selectedLab) {
+      const lblName = document.createElement('span');
+      lblName.style.cssText = "font-family:'Orbitron',monospace;font-weight:700;font-size:11px;letter-spacing:2px;color:var(--amber);text-shadow:var(--glow-a)";
+      lblName.textContent = lp.selectedLab.toUpperCase();
+      lblWrap.appendChild(lblName);
+    } else {
+      const lblSub = document.createElement('span');
+      lblSub.style.cssText = 'font-size:9px;letter-spacing:1px;opacity:.6';
+      lblSub.textContent = `Labo N°${i + 1}`;
+      lblWrap.appendChild(lblSub);
+    }
+    step.appendChild(numSpan);
+    step.appendChild(lblWrap);
+
+    if (i >= 2) {
+      const close = document.createElement('span');
+      close.className = 'step-close';
+      close.textContent = '×';
+      close.title = 'Supprimer ce labo';
+      close.addEventListener('click', e => { e.stopPropagation(); removeLabPage(lp.uid); });
+      step.appendChild(close);
+    }
+
+    const curPageReady = !!state.labPages[curIdx]?.selectedLab;
+    if (lp.selectedLab || (i === curIdx + 1 && curPageReady)) {
+      if (!step.classList.contains('active')) step.classList.add('filled');
+      step.addEventListener('click', () => goTo(lp.uid));
+    }
+
+    bar.appendChild(step);
   });
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  const nextIdx = state.labPages.length;
+  const lastLp  = state.labPages[nextIdx - 1];
+  const canAdd  = lastLp && lastLp.selectedLab !== null && getAvailableLabs(nextIdx).length > 0;
+
+  const addBtn = document.createElement('div');
+  addBtn.className = 'step-add' + (canAdd ? '' : ' disabled');
+  addBtn.innerHTML = `+<span class="tooltip">Ajouter un labo</span>`;
+  if (canAdd) addBtn.addEventListener('click', addLabPage);
+  bar.appendChild(addBtn);
+
+  const csvIdx = order.indexOf('csv');
+  const csvStep = document.createElement('div');
+  csvStep.className = 'step';
+  if (csvIdx < curIdx)        csvStep.classList.add('done');
+  else if (csvIdx === curIdx) csvStep.classList.add('active');
+  csvStep.innerHTML = `<span class="step-num">${String(csvIdx + 1).padStart(2, '0')}</span><span>Achats N-1</span>`;
+  const lastLabReady = !!state.labPages[curIdx]?.selectedLab;
+  if (csvStep.classList.contains('done') || (csvIdx === curIdx + 1 && lastLabReady))
+    csvStep.addEventListener('click', () => goTo('csv'));
+  bar.appendChild(csvStep);
+
+  const resIdx = order.indexOf('results');
+  const resStep = document.createElement('div');
+  resStep.className = 'step';
+  if (resIdx < curIdx)        resStep.classList.add('done');
+  else if (resIdx === curIdx) resStep.classList.add('active');
+  resStep.innerHTML = `<span class="step-num">${String(resIdx + 1).padStart(2, '0')}</span><span>Résultats</span>`;
+  const csvReady = state.csvRows > 0;
+  if (resStep.classList.contains('done') || (resIdx === curIdx + 1 && csvReady))
+    resStep.addEventListener('click', () => goTo('results'));
+  bar.appendChild(resStep);
 }
 
-document.querySelectorAll('.step').forEach((s, i) => {
-  s.addEventListener('click', () => { if (s.classList.contains('done')) goTo(i + 1); });
-});
-
-// ── Page CSV ──────────────────────────────────────────────────────────────────
-const dropzone   = document.getElementById('dropzone');
-const csvInput   = document.getElementById('csvInput');
-const fileStatus = document.getElementById('fileStatus');
-const btn1Next   = document.getElementById('btn1Next');
-
-function handleFile(file) {
-  if (!file) return;
-  state.csvFile = file;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
-    state.csvRows = Math.max(0, lines.length - 1);
-    document.getElementById('fileStatusText').textContent =
-      `FICHIER : ${file.name}  —  ${state.csvRows.toLocaleString('fr')} lignes détectées`;
-    fileStatus.classList.add('visible');
-    btn1Next.disabled = false;
-  };
-  reader.readAsText(file, 'utf-8');
+// ── Refresh lab grids ──────────────────────────────────────────────────────────
+function refreshAllLabButtons(fromIdx) {
+  state.labPages.forEach((lp, i) => {
+    if (i >= fromIdx && lp._refreshGrid) lp._refreshGrid();
+  });
 }
 
-dropzone.addEventListener('click', () => csvInput.click());
-csvInput.addEventListener('change', e => handleFile(e.target.files[0]));
-dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('dragover'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
+// ── Refresh panel titles ───────────────────────────────────────────────────────
+function refreshLabTitles() {
+  state.labPages.forEach((lp, i) => {
+    const pg = document.getElementById('page-' + lp.uid);
+    if (pg) {
+      const t = pg.querySelector('.panel-title');
+      if (t) t.textContent = `◈ Conditions du laboratoire`;
+    }
+  });
+}
 
-// ── Lab page factory ──────────────────────────────────────────────────────────
+// ── Create lab page DOM ────────────────────────────────────────────────────────
+function createLabPageDom(labIdx, lp) {
+  const uid = lp.uid;
+  const div = document.createElement('div');
+  div.id = 'page-' + uid;
+  div.className = 'page';
+  div.innerHTML = `
+    <div class="panel">
+      <div class="panel-title">◈ Conditions du laboratoire</div>
+      <div class="panel-sub">// Sélectionner le laboratoire — les remises négociées seront appliquées à ses références</div>
+      <div class="lab-grid" id="labGrid-${uid}"></div>
+      <div class="switch-warn" id="switchWarn-${uid}"></div>
+      <div class="cond-tabs" id="condTabs-${uid}"></div>
+      <div id="condPanels-${uid}"></div>
+      <div class="loading" id="loading-${uid}">
+        <div class="spinner"></div>
+        <span>CHARGEMENT DES DONNÉES RSF...</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btnBack-${uid}">‹ &nbsp;RETOUR</button>
+        <button class="btn btn-primary" id="btnNext-${uid}" disabled>SUIVANT &nbsp;›</button>
+      </div>
+    </div>
+  `;
+
+  const csvPage = document.getElementById('page-csv');
+  csvPage.parentNode.insertBefore(div, csvPage);
+
+  div.querySelector('#btnBack-' + uid).addEventListener('click', () => {
+    const order = getPageOrder();
+    const idx = order.indexOf(uid);
+    if (idx > 0) goTo(order[idx - 1]);
+  });
+
+  div.querySelector('#btnNext-' + uid).addEventListener('click', () => {
+    const order = getPageOrder();
+    const idx = order.indexOf(uid);
+    if (idx < order.length - 1) goTo(order[idx + 1]);
+  });
+
+  initLabPage({
+    s:             lp,
+    labsFn:        () => getAvailableLabs(state.labPages.indexOf(lp)),
+    onLabSelected: () => {
+      refreshAllLabButtons(0);
+      renderStepBar();
+    },
+    gridId:     'labGrid-'    + uid,
+    condTabsId: 'condTabs-'   + uid,
+    condPanelsId: 'condPanels-' + uid,
+    loadingId:  'loading-'    + uid,
+    btnNextId:  'btnNext-'    + uid,
+  });
+}
+
+// ── Add lab page ───────────────────────────────────────────────────────────────
+function addLabPage() {
+  const uid = 'lp' + Date.now();
+  const lp  = mkLabState(uid);
+  state.labPages.push(lp);
+  createLabPageDom(state.labPages.length - 1, lp);
+  renderStepBar();
+  goTo(uid);
+  saveState();
+}
+
+// ── Remove lab page ────────────────────────────────────────────────────────────
+function removeLabPage(uid) {
+  const idx = state.labPages.findIndex(lp => lp.uid === uid);
+  if (idx < 2) return;
+
+  const wasActive = state.currentPageId === uid;
+  state.labPages.splice(idx, 1);
+
+  const pg = document.getElementById('page-' + uid);
+  if (pg) pg.remove();
+
+  refreshLabTitles();
+  refreshAllLabButtons(idx);
+
+  if (wasActive) {
+    const order = getPageOrder();
+    goTo(order[Math.max(0, idx - 1)]);
+  } else {
+    renderStepBar();
+  }
+  saveState();
+}
+
+// ── Lab page factory ───────────────────────────────────────────────────────────
 function initLabPage(conf) {
-  const s  = conf.s;
-  const el = {
-    grid:    document.getElementById(conf.gridId),
-    title:   document.getElementById(conf.titleId),
-    rgSec:   document.getElementById(conf.rgSecId),
-    rgInp:   document.getElementById(conf.rgInpId),
-    caInp:   document.getElementById(conf.caInpId),
-    loading: document.getElementById(conf.loadingId),
-    section: document.getElementById(conf.sectionId),
-    info:    document.getElementById(conf.infoId),
-    tbody:   document.getElementById(conf.tbodyId),
-    excls:   document.getElementById(conf.exclsId),
-    btnNext: document.getElementById(conf.btnNextId),
+  const s   = conf.s;
+  const uid = s.uid;
+  const el  = {
+    grid:       document.getElementById(conf.gridId),
+    condTabs:   document.getElementById(conf.condTabsId),
+    condPanels: document.getElementById(conf.condPanelsId),
+    loading:    document.getElementById(conf.loadingId),
+    btnNext:    document.getElementById(conf.btnNextId),
   };
 
-  conf.labs.forEach(lab => {
-    const btn = document.createElement('button');
-    btn.className = 'lab-btn'; btn.textContent = lab; btn.dataset.lab = lab;
-    btn.addEventListener('click', () => selectLab(lab));
-    el.grid.appendChild(btn);
-  });
+  // ── Lab grid ────────────────────────────────────────────────────────────────
+  function buildGrid() {
+    const labs = conf.labsFn();
+    el.grid.innerHTML = '';
+    labs.forEach(lab => {
+      const btn = document.createElement('button');
+      btn.className = 'lab-btn'; btn.textContent = lab; btn.dataset.lab = lab;
+      let holdTimer;
+      const warnEl = document.getElementById('switchWarn-' + uid);
+      btn.addEventListener('mousedown', () => {
+        if (!s.selectedLab) { selectLab(lab); return; }
+        if (warnEl) { warnEl.textContent = `Remplacer ${s.selectedLab} ? Données réinitialisées. Maintenez 2 sec.`; warnEl.classList.add('visible'); }
+        btn.classList.add('switching');
+        holdTimer = setTimeout(() => {
+          btn.classList.remove('switching');
+          if (warnEl) warnEl.classList.remove('visible');
+          selectLab(lab);
+        }, 2000);
+      });
+      const cancelHold = () => { clearTimeout(holdTimer); btn.classList.remove('switching'); if (warnEl) warnEl.classList.remove('visible'); };
+      btn.addEventListener('mouseup', cancelHold);
+      btn.addEventListener('mouseleave', cancelHold);
+      el.grid.appendChild(btn);
+    });
+    // Reset if selected lab was taken by another page
+    const myIdx = state.labPages.indexOf(s);
+    const stolenByOther = s.selectedLab &&
+      state.labPages.some((lp, i) => i !== myIdx && lp.selectedLab === s.selectedLab);
+    if (stolenByOther) {
+      s.selectedLab = null; s.rsfPaliers = [];
+      s.conditions = [mkCondState('c0')]; s.activeCondIdx = 0;
+      el.condPanels.innerHTML = '';
+      el.condTabs.classList.remove('visible');
+      el.btnNext.disabled = true;
+    }
+  }
 
-  el.rgInp.addEventListener('input', () => {
-    const v = parseFloat(el.rgInp.value.replace(',', '.'));
-    s.remiseGlobale = isNaN(v) ? null : v;
-    autoFill();
+  s._refreshGrid = buildGrid;
+  buildGrid();
+
+  // ── Condition tab bar ────────────────────────────────────────────────────────
+  function renderCondTabs() {
+    el.condTabs.innerHTML = '';
+    s.conditions.forEach((cond, i) => {
+      const tab = document.createElement('div');
+      tab.className = 'cond-tab' + (i === s.activeCondIdx ? ' active' : '');
+      const label = document.createElement('span');
+      label.textContent = `PALIER ${i + 1}`;
+      tab.appendChild(label);
+      if (i > 0) {
+        const x = document.createElement('span');
+        x.className = 'cond-tab-close'; x.textContent = '×';
+        x.addEventListener('click', e => { e.stopPropagation(); removeCondition(cond.uid); });
+        tab.appendChild(x);
+      }
+      tab.addEventListener('click', () => activateCondition(i));
+      el.condTabs.appendChild(tab);
+    });
+    if (s.conditions.length < 4) {
+      const addBtn = document.createElement('div');
+      addBtn.className = 'cond-tab-add'; addBtn.textContent = '+';
+      addBtn.addEventListener('click', addCondition);
+      el.condTabs.appendChild(addBtn);
+    }
+  }
+
+  function activateCondition(idx) {
+    s.activeCondIdx = idx;
+    el.condPanels.querySelectorAll('.cond-panel').forEach((p, i) => {
+      p.classList.toggle('active', i === idx);
+    });
+    renderCondTabs();
+  }
+
+  function addCondition() {
+    if (s.conditions.length >= 4) return;
+    const cond = mkCondState('c' + Date.now());
+    cond.rsfValues = mkRsfValues(s.selectedLab, s.rsfPaliers);
+    s.conditions.push(cond);
+    const panel = buildCondPanel(cond);
+    el.condPanels.appendChild(panel);
+    wireCondition(cond);
+    if (s.rsfPaliers.length > 0) {
+      renderCondTable(cond);
+      document.getElementById(`rgSec-${uid}-${cond.uid}`).classList.add('visible');
+    }
+    activateCondition(s.conditions.length - 1);
+    saveState();
+  }
+
+  function removeCondition(condUid) {
+    const idx = s.conditions.findIndex(c => c.uid === condUid);
+    if (idx <= 0) return;
+    s.conditions.splice(idx, 1);
+    const panel = document.getElementById(`condPanel-${uid}-${condUid}`);
+    if (panel) panel.remove();
+    if (s.activeCondIdx >= s.conditions.length) s.activeCondIdx = s.conditions.length - 1;
+    activateCondition(s.activeCondIdx);
     checkDone();
-  });
+    saveState();
+  }
 
-  el.caInp.addEventListener('input', () => {
-    const v = parseFloat(el.caInp.value.replace(',', '.').replace(/\s/g, ''));
-    s.caCondition = isNaN(v) ? null : v;
-  });
+  // ── Condition panel DOM builder ──────────────────────────────────────────────
+  function buildCondPanel(cond) {
+    const div = document.createElement('div');
+    div.id = `condPanel-${uid}-${cond.uid}`;
+    div.className = 'cond-panel';
+    div.innerHTML = `
+      <div class="rg-section" id="rgSec-${uid}-${cond.uid}">
+        <div style="display:flex;flex-direction:column;gap:12px;width:100%">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <div class="rg-label">REMISE GLOBALE CIBLE</div>
+            <input type="text" id="rgInp-${uid}-${cond.uid}" class="rsf-input" style="width:130px" placeholder="ex : 35.00" />
+            <span class="rg-unit">%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <div class="rg-label">C.A ANNUEL DEMANDÉ (BRUT)</div>
+            <input type="text" id="caInp-${uid}-${cond.uid}" class="rsf-input" style="width:160px" placeholder="ex : 50000.00" />
+            <span class="rg-unit" style="font-size:11px;color:var(--text-dim)">€</span>
+          </div>
+        </div>
+      </div>
+      <div class="rsf-section" id="rsfSec-${uid}-${cond.uid}">
+        <div class="rsf-header">
+          <div class="lab-tag">TABLEAU DES REMISES</div>
+          <div class="rsf-info" id="rsfInfo-${uid}-${cond.uid}">—</div>
+          <button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="display:none"></button>
+          <label class="pda-toggle" style="margin-left:auto" title="Inclure ou exclure les références PDA">
+            <span class="pda-toggle-label">Inclure PDA</span>
+            <div class="pda-switch">
+              <input type="checkbox" id="pdaChk-${uid}-${cond.uid}" class="pda-check" />
+              <div class="pda-slider"></div>
+            </div>
+          </label>
+        </div>
+        <div class="rsf-table-wrap">
+          <table class="rsf-table" id="rsfTable-${uid}-${cond.uid}">
+            <thead>
+              <tr>
+                <th>RSF&nbsp;%</th>
+                <th>Remise 2&nbsp;(%)</th>
+                <th class="col-r3">Remise 3&nbsp;(%)</th>
+                <th>Exclusion</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-${uid}-${cond.uid}"></tbody>
+          </table>
+        </div>
+        <div id="excls-${uid}-${cond.uid}" class="exclusion-blocks"></div>
+        <div id="rsfOnlySec-${uid}-${cond.uid}" class="rsf-only-sec"></div>
+      </div>
+    `;
+    return div;
+  }
 
-  function autoFill() {
-    const rg = s.remiseGlobale, lab = s.selectedLab;
+  // ── Wire condition inputs ────────────────────────────────────────────────────
+  function wireCondition(cond) {
+    const rgInp = document.getElementById(`rgInp-${uid}-${cond.uid}`);
+    const caInp = document.getElementById(`caInp-${uid}-${cond.uid}`);
+    rgInp.value = cond.remiseGlobale !== null ? cond.remiseGlobale : '';
+    caInp.value = cond.caCondition  !== null ? cond.caCondition  : '';
+    rgInp.addEventListener('input', () => {
+      const v = parseFloat(rgInp.value.replace(',', '.'));
+      cond.remiseGlobale = isNaN(v) ? null : v;
+      autoFillCond(cond);
+      checkDone();
+    });
+    caInp.addEventListener('input', () => {
+      const v = parseFloat(caInp.value.replace(',', '.').replace(/\s/g, ''));
+      cond.caCondition = isNaN(v) ? null : v;
+    });
+    wireRsfOnly(cond);
+    const pdaChk = document.getElementById(`pdaChk-${uid}-${cond.uid}`);
+    if (pdaChk) {
+      pdaChk.checked = state.includePDA;
+      pdaChk.addEventListener('change', function() {
+        state.includePDA = this.checked;
+        syncPdaToggles();
+        state.labPages.forEach(lp => { if (lp._reloadRSF) lp._reloadRSF(); });
+        saveState();
+      });
+    }
+  }
+
+  function wireRsfOnly(cond) {
+    const sec = document.getElementById(`rsfOnlySec-${uid}-${cond.uid}`);
+    if (!sec) return;
+    sec.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'rsf-only-header';
+
+    const lbl = document.createElement('div');
+    lbl.className = 'rg-label'; lbl.textContent = 'RÉFÉRENCES EN RSF UNIQUEMENT';
+
+    const radios = document.createElement('div');
+    radios.className = 'rsf-only-radios';
+    ['NON', 'OUI'].forEach(val => {
+      const label = document.createElement('label');
+      label.className = 'rsf-only-radio-lbl';
+      const radio = document.createElement('input');
+      radio.type = 'radio'; radio.name = `rsfOnly-${uid}-${cond.uid}`; radio.value = val;
+      radio.checked = val === 'OUI' ? cond.rsfOnly.enabled : !cond.rsfOnly.enabled;
+      label.appendChild(radio); label.appendChild(document.createTextNode(' ' + val));
+      radios.appendChild(label);
+    });
+    header.appendChild(lbl); header.appendChild(radios);
+    sec.appendChild(header);
+
+    const searchArea = document.createElement('div');
+    searchArea.style.display = cond.rsfOnly.enabled ? 'block' : 'none';
+
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'libelle-search-wrap';
+    const icon = document.createElement('span');
+    icon.className = 'libelle-search-icon'; icon.textContent = '🔍';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.className = 'libelle-input'; inp.placeholder = 'Rechercher un libellé ou un CIP13…';
+    const dropdown = document.createElement('div');
+    dropdown.className = 'libelle-dropdown';
+    searchWrap.appendChild(icon); searchWrap.appendChild(inp); searchWrap.appendChild(dropdown);
+    searchArea.appendChild(searchWrap);
+
+    const chipsWrap = document.createElement('div');
+    chipsWrap.className = 'chips-wrap';
+    renderChips(chipsWrap, cond.rsfOnly);
+    searchArea.appendChild(chipsWrap);
+    sec.appendChild(searchArea);
+
+    radios.querySelectorAll('input[type=radio]').forEach(r => {
+      r.addEventListener('change', () => {
+        cond.rsfOnly.enabled = r.value === 'OUI';
+        searchArea.style.display = cond.rsfOnly.enabled ? 'block' : 'none';
+        saveState();
+      });
+    });
+
+    let debounce, focusIdx = -1;
+    inp.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doSearch(inp.value, dropdown, cond.rsfOnly, chipsWrap, inp), 300); });
+    inp.addEventListener('keydown', e => {
+      const opts = dropdown.querySelectorAll('.libelle-option');
+      if (!opts.length) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); focusIdx = Math.min(focusIdx + 1, opts.length - 1); opts.forEach((o, i) => o.classList.toggle('focused', i === focusIdx)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); focusIdx = Math.max(focusIdx - 1, 0); opts.forEach((o, i) => o.classList.toggle('focused', i === focusIdx)); }
+      else if (e.key === 'Enter') { e.preventDefault(); const t = dropdown.querySelector('.libelle-option.focused') || opts[0]; if (t) { if (t.dataset.multicipCips) { doMultiCipAdd(t.dataset.multicipCips.split(','), cond.rsfOnly, chipsWrap, inp, dropdown); } else { pickLibelle(t.dataset.text, cond.rsfOnly, chipsWrap); inp.value = ''; dropdown.classList.remove('visible'); } focusIdx = -1; } }
+      else if (e.key === 'Escape') { dropdown.classList.remove('visible'); focusIdx = -1; }
+    });
+    document.addEventListener('click', e => { if (!searchWrap.contains(e.target)) { dropdown.classList.remove('visible'); focusIdx = -1; } });
+  }
+
+  // ── Auto-fill remise 2 / 3 ───────────────────────────────────────────────────
+  function autoFillCond(cond) {
+    const rg = cond.remiseGlobale, lab = s.selectedLab;
     if (rg === null) return;
-    s.rsfValues.forEach((row, idx) => {
-      const abs = Math.abs(row.rsf_pct);
-      if (lab === 'Biogaran') { row.remise2 = Math.max(0, 40 - abs).toFixed(2); row.remise3 = (rg - 40).toFixed(2); }
-      else                    { row.remise2 = Math.max(0, rg - abs).toFixed(2); }
-      const tr = el.tbody.querySelectorAll('tr')[idx];
+    const tbody = document.getElementById(`tbody-${uid}-${cond.uid}`);
+    if (!tbody) return;
+    cond.rsfValues.forEach((row, idx) => {
+      const tr = tbody.querySelectorAll('tr')[idx];
       if (!tr) return;
       const i2 = tr.querySelector('.inp-r2'), i3 = tr.querySelector('.inp-r3');
-      if (i2) { i2.value = row.remise2; i2.classList.add('auto-c'); }
+      const abs = Math.abs(row.rsf_pct);
+      if (row.excluded) {
+        row.remise2 = '0';
+        if (i2) { i2.value = '0'; i2.classList.add('auto-c'); }
+      } else {
+        if (lab === 'Biogaran') { row.remise2 = Math.max(0, 40 - abs).toFixed(2); }
+        else                    { row.remise2 = Math.max(0, rg - abs).toFixed(2); }
+        if (i2) { i2.value = row.remise2; i2.classList.add('auto-c'); }
+      }
+      if (lab === 'Biogaran') { row.remise3 = (rg - 40).toFixed(2); }
       if (i3 && lab === 'Biogaran') { i3.value = row.remise3; i3.classList.add('auto-a'); }
     });
   }
 
-  async function selectLab(lab) {
-    window.scrollTo(0, 0);
-    el.grid.querySelectorAll('.lab-btn').forEach(b => b.classList.toggle('selected', b.dataset.lab === lab));
-    s.selectedLab = lab; s.remiseGlobale = null; s.caCondition = null; s.rsfValues = []; s.exceptions = {};
-    el.rgInp.value = ''; el.caInp.value = '';
-    el.title.classList.add('visible');
-    el.rgSec.classList.add('visible');
-    el.section.classList.remove('visible');
-    el.loading.classList.add('visible');
-    el.excls.innerHTML = '';
-    el.btnNext.disabled = true;
-    try {
-      const rsf = await fetchRSF(lab);
-      s.rsfValues = rsf.map(v => ({ rsf_pct: v, remise2: '', remise3: '', excluded: false }));
-      renderTable(lab, s.rsfValues);
-    } catch(err) { console.error(err); }
-    finally { el.loading.classList.remove('visible'); }
-  }
+  // ── Render table for one condition ───────────────────────────────────────────
+  function renderCondTable(cond) {
+    const lab     = s.selectedLab;
+    const tbody   = document.getElementById(`tbody-${uid}-${cond.uid}`);
+    const rsfSec  = document.getElementById(`rsfSec-${uid}-${cond.uid}`);
+    const rsfInfo = document.getElementById(`rsfInfo-${uid}-${cond.uid}`);
+    const exclsEl = document.getElementById(`excls-${uid}-${cond.uid}`);
+    const table   = document.getElementById(`rsfTable-${uid}-${cond.uid}`);
 
-  function renderTable(lab, rows) {
-    el.info.textContent   = `${rows.length} palier${rows.length > 1 ? 's' : ''} de remise détecté${rows.length > 1 ? 's' : ''}`;
-    el.tbody.closest('table').classList.toggle('show-r3', lab === 'Biogaran');
-    el.tbody.innerHTML = '';
+    rsfInfo.textContent = `${cond.rsfValues.length} groupe${cond.rsfValues.length > 1 ? 's' : ''} de remise détecté${cond.rsfValues.length > 1 ? 's' : ''}`;
+    table.classList.toggle('show-r3', lab === 'Biogaran');
+    const r3Btn = document.getElementById(`r3Btn-${uid}-${cond.uid}`);
+    if (r3Btn) {
+      if (lab === 'Biogaran') { r3Btn.style.display = 'none'; }
+      else {
+        r3Btn.style.display = 'inline-block';
+        r3Btn.textContent = cond.showR3 ? '− REMISE 3' : '+ REMISE 3';
+        table.classList.toggle('show-r3', cond.showR3);
+        if (!r3Btn.dataset.wired) {
+          r3Btn.dataset.wired = '1';
+          r3Btn.addEventListener('click', () => {
+            cond.showR3 = !cond.showR3;
+            table.classList.toggle('show-r3', cond.showR3);
+            r3Btn.textContent = cond.showR3 ? '− REMISE 3' : '+ REMISE 3';
+            saveState();
+          });
+        }
+      }
+    }
+    tbody.innerHTML = '';
 
-    rows.forEach((row, idx) => {
+    cond.rsfValues.forEach((row, idx) => {
       const tr = document.createElement('tr');
+      if (row.excluded) tr.classList.add('excluded');
 
       const tdRsf = document.createElement('td');
       tdRsf.textContent = `${Math.abs(row.rsf_pct).toFixed(2)} %`;
       tr.appendChild(tdRsf);
 
       const inp2 = document.createElement('input');
-      inp2.type = 'text'; inp2.className = 'rsf-input inp-r2'; inp2.placeholder = 'ex : 5.00'; inp2.value = row.remise2;
-      inp2.addEventListener('input', e => { s.rsfValues[idx].remise2 = e.target.value; inp2.classList.remove('auto-c'); checkDone(); });
+      inp2.type = 'text'; inp2.className = 'rsf-input inp-r2';
+      inp2.placeholder = 'ex : 5.00'; inp2.value = row.remise2;
+      if (row.remise2) inp2.classList.add('auto-c');
+      if (row.excluded) inp2.classList.add('excl-r2');
+      inp2.addEventListener('input', e => { cond.rsfValues[idx].remise2 = e.target.value; inp2.classList.remove('auto-c'); checkDone(); });
       const td2 = document.createElement('td'); td2.appendChild(inp2); tr.appendChild(td2);
 
       const inp3 = document.createElement('input');
-      inp3.type = 'text'; inp3.className = 'rsf-input inp-r3'; inp3.placeholder = 'ex : 2.50'; inp3.value = row.remise3;
-      inp3.readOnly = true;
+      inp3.type = 'text'; inp3.className = 'rsf-input inp-r3';
+      inp3.placeholder = 'ex : 2.50'; inp3.value = row.remise3;
+      if (row.remise3) inp3.classList.add('auto-a');
+      inp3.addEventListener('input', e => { cond.rsfValues[idx].remise3 = e.target.value; inp3.classList.remove('auto-a'); });
       const td3 = document.createElement('td'); td3.className = 'col-r3'; td3.appendChild(inp3); tr.appendChild(td3);
 
       const cb = document.createElement('input');
       cb.type = 'checkbox'; cb.className = 'excl-check'; cb.checked = row.excluded;
       cb.addEventListener('change', () => {
-        s.rsfValues[idx].excluded = cb.checked;
+        cond.rsfValues[idx].excluded = cb.checked;
         tr.classList.toggle('excluded', cb.checked);
         inp2.classList.toggle('excl-r2', cb.checked);
-        renderExcls();
+        if (cb.checked) { cond.rsfValues[idx].remise2 = '0'; inp2.value = '0'; }
+        else { autoFillCond(cond); }
+        renderCondExcls(cond, exclsEl);
+        saveState();
       });
       const td4 = document.createElement('td'); td4.appendChild(cb); tr.appendChild(td4);
 
-      el.tbody.appendChild(tr);
+      tbody.appendChild(tr);
     });
 
-    el.section.classList.add('visible');
+    renderCondExcls(cond, exclsEl);
+    rsfSec.classList.add('visible');
     checkDone();
   }
 
-  function renderExcls() {
-    const excluded = s.rsfValues.filter(r => r.excluded);
+  function renderCondExcls(cond, exclsEl) {
+    const excluded = cond.rsfValues.filter(r => r.excluded);
     const live = new Set(excluded.map(r => String(r.rsf_pct)));
-    Object.keys(s.exceptions).forEach(k => { if (!live.has(k)) delete s.exceptions[k]; });
-    el.excls.innerHTML = '';
+    Object.keys(cond.exceptions).forEach(k => { if (!live.has(k)) delete cond.exceptions[k]; });
+    exclsEl.innerHTML = '';
     excluded.forEach(row => {
       const key = String(row.rsf_pct);
-      if (!s.exceptions[key]) s.exceptions[key] = { open: false, libelles: [], remiseCible: '' };
-      el.excls.appendChild(buildExclBlock(row.rsf_pct, s.exceptions[key]));
+      if (!cond.exceptions[key]) cond.exceptions[key] = { open: false, libelles: [], remiseCible: '' };
+      exclsEl.appendChild(buildExclBlock(row.rsf_pct, cond.exceptions[key]));
     });
   }
 
+  // ── Select lab ───────────────────────────────────────────────────────────────
+  async function selectLab(lab) {
+    window.scrollTo(0, 0);
+    s.selectedLab = lab;
+    buildGrid();
+    renderStepBar();
+    refreshAllLabButtons(0);
+    s.rsfPaliers  = [];
+    s.conditions  = [mkCondState('c0')];
+    s.activeCondIdx = 0;
+    el.condPanels.innerHTML = '';
+    el.condTabs.classList.remove('visible');
+    el.loading.classList.add('visible');
+    el.btnNext.disabled = true;
+
+    try {
+      const paliers = await fetchRSF(lab);
+      s.rsfPaliers = paliers;
+      s.conditions[0].rsfValues = mkRsfValues(lab, paliers);
+
+      const panel = buildCondPanel(s.conditions[0]);
+      panel.classList.add('active');
+      el.condPanels.appendChild(panel);
+      wireCondition(s.conditions[0]);
+      document.getElementById(`rgSec-${uid}-${s.conditions[0].uid}`).classList.add('visible');
+      renderCondTable(s.conditions[0]);
+
+      el.condTabs.classList.add('visible');
+      renderCondTabs();
+    } catch(err) { console.error(err); }
+    finally { el.loading.classList.remove('visible'); }
+
+    if (conf.onLabSelected) conf.onLabSelected();
+    saveState();
+  }
+
+  s._reloadRSF = async function() {
+    if (!s.selectedLab) return;
+    el.loading.classList.add('visible');
+    try {
+      const paliers = await fetchRSF(s.selectedLab);
+      s.rsfPaliers = paliers;
+      s.conditions.forEach(cond => {
+        cond.rsfValues = mkRsfValues(s.selectedLab, paliers);
+        renderCondTable(cond);
+        if (cond.remiseGlobale !== null) autoFillCond(cond);
+      });
+    } catch(err) { console.error(err); }
+    finally { el.loading.classList.remove('visible'); }
+  };
+
+  s._restoreFromSave = async function(savedLabData) {
+    const lab = savedLabData.selectedLab;
+    if (!lab) return;
+    s.selectedLab = lab;
+    buildGrid();
+    s.rsfPaliers = [];
+    s.conditions = [];
+    s.activeCondIdx = savedLabData.activeCondIdx || 0;
+    el.condPanels.innerHTML = '';
+    el.condTabs.classList.remove('visible');
+    el.loading.classList.add('visible');
+    el.btnNext.disabled = true;
+    try {
+      const paliers = await fetchRSF(lab);
+      s.rsfPaliers = paliers;
+      (savedLabData.conditions || []).forEach((sc, idx) => {
+        const cond = mkCondState(sc.uid);
+        cond.remiseGlobale = sc.remiseGlobale;
+        cond.caCondition   = sc.caCondition;
+        cond.exceptions    = sc.exceptions || {};
+        cond.rsfOnly       = sc.rsfOnly || { enabled: false, libelles: [] };
+        cond.showR3 = sc.showR3 || false;
+        cond.rsfValues = paliers.map(v => {
+          const sv = sc.rsfValues.find(r => String(r.rsf_pct) === String(v));
+          return sv
+            ? { rsf_pct: v, remise2: sv.excluded && !sv.remise2 ? '0' : sv.remise2, remise3: sv.remise3, excluded: sv.excluded }
+            : { rsf_pct: v, remise2: '', remise3: '', excluded: lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v)) };
+        });
+        s.conditions.push(cond);
+        const panel = buildCondPanel(cond);
+        if (idx === s.activeCondIdx) panel.classList.add('active');
+        el.condPanels.appendChild(panel);
+        wireCondition(cond);
+        document.getElementById(`rgSec-${uid}-${cond.uid}`).classList.add('visible');
+        renderCondTable(cond);
+      });
+      el.condTabs.classList.add('visible');
+      renderCondTabs();
+    } catch(err) { console.error(err); }
+    finally { el.loading.classList.remove('visible'); }
+    if (conf.onLabSelected) conf.onLabSelected();
+  };
+
   function checkDone() {
-    el.btnNext.disabled = !s.selectedLab || s.rsfValues.length === 0;
+    el.btnNext.disabled = !s.selectedLab || s.rsfPaliers.length === 0;
   }
 }
 
-// ── Fonctions partagées ───────────────────────────────────────────────────────
+// ── Shared functions ───────────────────────────────────────────────────────────
 async function fetchRSF(lab) {
+  const pdaFilter = state.includePDA ? '' : '&libelle=not.ilike.*PDA*';
   const url = `${SUPA_URL}/rest/v1/references_pharmacie`
-    + `?select=rsf_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null&order=rsf_pct.asc&limit=2000`;
+    + `?select=rsf_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null${pdaFilter}&order=rsf_pct.asc&limit=2000`;
   const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -669,7 +1329,6 @@ function buildExclBlock(rsf_pct, exc) {
 
   const btnRow = document.createElement('div');
   btnRow.className = 'excl-oui-non';
-
   const section = document.createElement('div');
   section.className = 'exception-section' + (exc.open ? ' visible' : '');
 
@@ -698,7 +1357,7 @@ function buildExceptionContent(exc) {
   const icon = document.createElement('span');
   icon.className = 'libelle-search-icon'; icon.textContent = '🔍';
   const inp = document.createElement('input');
-  inp.type = 'text'; inp.className = 'libelle-input'; inp.placeholder = 'Rechercher un libellé…';
+  inp.type = 'text'; inp.className = 'libelle-input'; inp.placeholder = 'Rechercher un libellé ou un CIP13…';
   const dropdown = document.createElement('div');
   dropdown.className = 'libelle-dropdown';
   searchWrap.appendChild(icon); searchWrap.appendChild(inp); searchWrap.appendChild(dropdown);
@@ -727,41 +1386,96 @@ function buildExceptionContent(exc) {
   inp.addEventListener('keydown', e => {
     const opts = dropdown.querySelectorAll('.libelle-option');
     if (!opts.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); focusIdx = Math.min(focusIdx + 1, opts.length - 1); opts.forEach((o, i) => o.classList.toggle('focused', i === focusIdx)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); focusIdx = Math.max(focusIdx - 1, 0); opts.forEach((o, i) => o.classList.toggle('focused', i === focusIdx)); }
-    else if (e.key === 'Enter') { e.preventDefault(); const t = dropdown.querySelector('.libelle-option.focused') || opts[0]; if (t) { pickLibelle(t.dataset.text, exc, chipsWrap); inp.value = ''; dropdown.classList.remove('visible'); focusIdx = -1; } }
+    if (e.key === 'ArrowDown')  { e.preventDefault(); focusIdx = Math.min(focusIdx + 1, opts.length - 1); opts.forEach((o, i) => o.classList.toggle('focused', i === focusIdx)); }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); focusIdx = Math.max(focusIdx - 1, 0); opts.forEach((o, i) => o.classList.toggle('focused', i === focusIdx)); }
+    else if (e.key === 'Enter')  { e.preventDefault(); const t = dropdown.querySelector('.libelle-option.focused') || opts[0]; if (t) { if (t.dataset.multicipCips) { doMultiCipAdd(t.dataset.multicipCips.split(','), exc, chipsWrap, inp, dropdown); } else { pickLibelle(t.dataset.text, exc, chipsWrap); inp.value = ''; dropdown.classList.remove('visible'); } focusIdx = -1; } }
     else if (e.key === 'Escape') { dropdown.classList.remove('visible'); focusIdx = -1; }
   });
   document.addEventListener('click', e => { if (!searchWrap.contains(e.target)) { dropdown.classList.remove('visible'); focusIdx = -1; } });
   return wrap;
 }
 
+function isMultiCipInput(term) {
+  const parts = term.trim().split(/\s+/).filter(Boolean);
+  return parts.length > 1 && parts.every(p => /^\d{5,}$/.test(p));
+}
+
 async function doSearch(term, dropdown, exc, chipsWrap, inp) {
   term = term.trim();
   if (term.length < 2) { dropdown.classList.remove('visible'); dropdown.innerHTML = ''; return; }
-  const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle&libelle=ilike.*${encodeURIComponent(term)}*&order=libelle.asc&limit=100`;
+
+  // Multi-CIP mode: plusieurs codes numériques séparés par des espaces
+  const parts = term.split(/\s+/).filter(Boolean);
+  if (isMultiCipInput(term)) {
+    dropdown.innerHTML = '';
+    const opt = document.createElement('div');
+    opt.className = 'libelle-option';
+    opt.dataset.multicipCips = parts.join(',');
+    const span = document.createElement('span');
+    span.textContent = `Ajouter ${parts.length} référence${parts.length > 1 ? 's' : ''} CIP`;
+    span.style.cssText = 'font-style:italic;color:var(--cyan)';
+    opt.appendChild(span);
+    opt.addEventListener('mousedown', e => { e.preventDefault(); doMultiCipAdd(parts, exc, chipsWrap, inp, dropdown); });
+    dropdown.appendChild(opt);
+    dropdown.classList.add('visible');
+    return;
+  }
+
+  const t = encodeURIComponent(term);
+  const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)&order=libelle.asc&limit=100`;
   try {
     const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
     if (!res.ok) return;
     const data = await res.json();
     const already = new Set(exc.libelles.map(l => l.text));
-    const uniq    = [...new Set(data.map(r => r.libelle))].filter(l => !already.has(l)).slice(0, 8);
+    const seen = new Set();
+    const uniq = [];
+    for (const r of data) {
+      if (!seen.has(r.libelle) && !already.has(r.libelle)) { seen.add(r.libelle); uniq.push(r); }
+      if (uniq.length >= 8) break;
+    }
     dropdown.innerHTML = '';
     if (!uniq.length) { dropdown.classList.remove('visible'); return; }
-    uniq.forEach(lib => {
+    uniq.forEach(row => {
       const opt = document.createElement('div');
-      opt.className = 'libelle-option'; opt.textContent = lib; opt.dataset.text = lib;
-      opt.addEventListener('mousedown', e => { e.preventDefault(); pickLibelle(lib, exc, chipsWrap); inp.value = ''; dropdown.classList.remove('visible'); });
+      opt.className = 'libelle-option'; opt.dataset.text = row.libelle;
+      const nameSpan = document.createElement('span'); nameSpan.textContent = row.libelle;
+      const cipSpan = document.createElement('span');
+      cipSpan.style.cssText = 'float:right;opacity:.45;font-size:10px;letter-spacing:1px;font-family:monospace';
+      cipSpan.textContent = row.cip13;
+      opt.appendChild(nameSpan); opt.appendChild(cipSpan);
+      opt.addEventListener('mousedown', e => { e.preventDefault(); pickLibelle(row.libelle, exc, chipsWrap); inp.value = ''; dropdown.classList.remove('visible'); });
       dropdown.appendChild(opt);
     });
     dropdown.classList.add('visible');
   } catch(err) { console.error(err); }
 }
 
+async function doMultiCipAdd(cips, exc, chipsWrap, inp, dropdown) {
+  try {
+    const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&cip13=in.(${cips.join(',')})&limit=500`;
+    const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
+    if (!res.ok) return;
+    const data = await res.json();
+    const already = new Set(exc.libelles.map(l => l.text));
+    const seen = new Set();
+    data.forEach(r => {
+      if (!seen.has(r.libelle) && !already.has(r.libelle)) {
+        seen.add(r.libelle);
+        exc.libelles.push({ id: Date.now() + Math.random(), text: r.libelle });
+      }
+    });
+    renderChips(chipsWrap, exc);
+    saveState();
+  } catch(err) { console.error(err); }
+  inp.value = ''; dropdown.classList.remove('visible');
+}
+
 function pickLibelle(text, exc, chipsWrap) {
   if (exc.libelles.some(l => l.text === text)) return;
   exc.libelles.push({ id: Date.now() + Math.random(), text });
   renderChips(chipsWrap, exc);
+  saveState();
 }
 
 function renderChips(chipsWrap, exc) {
@@ -771,26 +1485,425 @@ function renderChips(chipsWrap, exc) {
     chip.className = 'chip';
     const lbl = document.createElement('span'); lbl.textContent = lib.text;
     const btn = document.createElement('button'); btn.className = 'chip-remove'; btn.textContent = '✕'; btn.title = 'Supprimer';
-    btn.addEventListener('click', () => { exc.libelles = exc.libelles.filter(l => l.id !== lib.id); renderChips(chipsWrap, exc); });
+    btn.addEventListener('click', () => { exc.libelles = exc.libelles.filter(l => l.id !== lib.id); renderChips(chipsWrap, exc); saveState(); });
     chip.appendChild(lbl); chip.appendChild(btn);
     chipsWrap.appendChild(chip);
   });
 }
 
-// ── Initialisation des deux pages labo ────────────────────────────────────────
-initLabPage({
-  labs: LABS, s: state.lab1,
-  gridId: 'labGrid',   titleId: 'conditionsTitle',  rgSecId: 'rgSection',   rgInpId: 'rgInput',   caInpId: 'caInput',
-  loadingId: 'rsfLoading',  sectionId: 'rsfSection',  infoId: 'rsfInfo',
-  tbodyId: 'rsfTableBody',  exclsId: 'exclusionBlocks',  btnNextId: 'btn2Next',
-});
 
-initLabPage({
-  labs: LABS2, s: state.lab2,
-  gridId: 'labGrid2',  titleId: 'conditionsTitle2', rgSecId: 'rgSection2',  rgInpId: 'rgInput2',  caInpId: 'caInput2',
-  loadingId: 'rsfLoading2', sectionId: 'rsfSection2', infoId: 'rsfInfo2',
-  tbodyId: 'rsfTableBody2', exclsId: 'exclusionBlocks2', btnNextId: 'btnLab2Next',
+// ── Simulation ─────────────────────────────────────────────────────────────────
+async function launchSimulation() {
+  goTo('results');
+  const container = document.getElementById('simResults');
+  container.innerHTML = '<div class="sim-loading">⟳ ANALYSE EN COURS...</div>';
+
+  try {
+    // 1. Parse CSV
+    const csvData = state.csvData;
+    if (!csvData || !csvData.length) {
+      const diag = state._csvDiag
+        ? `<div style="margin-top:10px;font-size:10px;opacity:.6;letter-spacing:.5px">${state._csvDiag}</div>`
+        : '';
+      container.innerHTML = `<div class="sim-warn">⚠ Colonnes CIP et/ou quantité non reconnues dans le fichier CSV.${diag}</div>`;
+      return;
+    }
+
+    // 2. Fetch reference data from Supabase (batch by 200)
+    const allCips = [...new Set(csvData.map(r => r.cip13))];
+    const CHUNK = 200;
+    const refRows = [];
+    for (let i = 0; i < allCips.length; i += CHUNK) {
+      const chunk = allCips.slice(i, i + CHUNK);
+      const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct&cip13=in.(${chunk.join(',')})&limit=1000`;
+      const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
+      if (res.ok) refRows.push(...await res.json());
+    }
+
+    // refMap: cip13 -> ref (keep first match per cip, prefer refs from our labs)
+    const refMap = new Map();
+    const ourLabs = new Set(state.labPages.map(lp => lp.selectedLab).filter(Boolean));
+    refRows.forEach(r => {
+      const existing = refMap.get(r.cip13);
+      if (!existing || (!ourLabs.has(existing.labo) && ourLabs.has(r.labo))) refMap.set(r.cip13, r);
+    });
+    // Also build libelle -> list of refs map (all labs, for optimization)
+    const libelleMap = new Map();
+    refRows.forEach(r => {
+      if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
+      libelleMap.get(r.libelle).push(r);
+    });
+
+    // 3. CIP sans correspondance dans la base
+    const unmatchedRows = csvData.filter(row => !refMap.has(row.cip13));
+
+    // Helper: get effective remise for a ref from a labPage
+    // Retourne la remise totale (RSF + remise2 + remise3) si le marché est atteint,
+    // ou le RSF seul sinon. marketMet=undefined → toujours RSF+additionnelle.
+    function getRemise(ref, lp, marketMet = true) {
+      const cond = lp.conditions[lp.activeCondIdx] || lp.conditions[0];
+      const baseRSF = Math.abs(parseFloat(ref.rsf_pct) || 0);
+      if (!cond) return baseRSF;
+      // Molécule en rsfOnly → RSF uniquement même si marché atteint
+      if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
+      const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
+      if (!rsfRow) return baseRSF;
+      if (rsfRow.excluded) {
+        // Exclusion : exception molécule ciblée si marché atteint, sinon RSF seul
+        if (marketMet) {
+          const exc = cond.exceptions[String(rsfRow.rsf_pct)];
+          if (exc && exc.libelles.some(l => l.text === ref.libelle)) return parseFloat(exc.remiseCible) || 0;
+        }
+        return baseRSF;
+      }
+      if (!marketMet) return baseRSF;
+      return baseRSF + (parseFloat(rsfRow.remise2) || 0) + (parseFloat(rsfRow.remise3) || 0);
+    }
+
+    // 4. Total CA from CSV (fixed — same regardless of scenario)
+    const totalCA = csvData.reduce((sum, row) => {
+      const ref = refMap.get(row.cip13);
+      return sum + row.qty * (row.puhtCSV || ref?.puht || 0);
+    }, 0);
+
+    // 5. Calculate discount scenario given assignment (cip13 -> ref from a specific lab)
+    function calcScenario(assignment) {
+      const labResults = [];
+      let totalDiscount = 0;
+      state.labPages.forEach(lp => {
+        if (!lp.selectedLab) return;
+        const cond = lp.conditions[lp.activeCondIdx] || lp.conditions[0];
+        const caThreshold = cond?.caCondition || 0;
+        let ca = 0, discount = 0;
+        const refs = [];
+        csvData.forEach(row => {
+          const assignedRef = assignment.get(row.cip13);
+          if (!assignedRef || assignedRef.labo !== lp.selectedLab) return;
+          const price = row.puhtCSV || assignedRef.puht || 0;
+          ca += row.qty * price;
+          refs.push({ ...row, ref: assignedRef, price });
+        });
+        const met = caThreshold === 0 || ca >= caThreshold;
+        // RSF toujours acquis ; remise2+remise3 seulement si seuil CA atteint
+        refs.forEach(r => {
+          discount += r.qty * r.price * getRemise(r.ref, lp, met) / 100;
+        });
+        totalDiscount += discount;
+        labResults.push({ name: lp.selectedLab, ca, caThreshold, met, discount, refs });
+      });
+      return { totalDiscount, labResults };
+    }
+
+    // 6. Current assignment: each cip13 goes to its "natural" lab from Supabase
+    const currentAssignment = new Map();
+    csvData.forEach(row => {
+      const ref = refMap.get(row.cip13);
+      if (ref) currentAssignment.set(row.cip13, ref);
+    });
+    const current = calcScenario(currentAssignment);
+
+    // 7. Optimized assignment: for each molecule, find best lab from our conditions
+    const optimizedAssignment = new Map(currentAssignment);
+    // Build: libelle -> [{ labo, ref }] from our labs only
+    csvData.forEach(row => {
+      const ref = refMap.get(row.cip13);
+      if (!ref) return;
+      const alternatives = (libelleMap.get(ref.libelle) || []).filter(r => ourLabs.has(r.labo));
+      if (alternatives.length <= 1) return;
+      // Find alt with best effective price after discount
+      let bestRef = null, bestNetPrice = Infinity;
+      alternatives.forEach(altRef => {
+        const lp = state.labPages.find(l => l.selectedLab === altRef.labo);
+        if (!lp) return;
+        const price = row.puhtCSV || altRef.puht || 0;
+        const remise = getRemise(altRef, lp);
+        const netPrice = price * (1 - remise / 100);
+        if (netPrice < bestNetPrice) { bestNetPrice = netPrice; bestRef = altRef; }
+      });
+      if (bestRef) optimizedAssignment.set(row.cip13, bestRef);
+    });
+    const optimized = calcScenario(optimizedAssignment);
+    const gain = optimized.totalDiscount - current.totalDiscount;
+
+    // 8. Build CSV per lab for optimized scenario
+    function buildLabCSV(labName, assignment) {
+      const rows = ['CIP13;Libellé;Labo;Qté;PU HT;RSF %;Remise 2%;Remise 3%;Remise €'];
+      const labResult = optimized.labResults.find(l => l.name === labName);
+      const met = labResult ? labResult.met : true;
+      csvData.forEach(row => {
+        const ref = assignment.get(row.cip13);
+        if (!ref || ref.labo !== labName) return;
+        const lp = state.labPages.find(l => l.selectedLab === labName);
+        const price = row.puhtCSV || ref.puht || 0;
+        const remise = lp ? getRemise(ref, lp, met) : 0;
+        const cond = lp?.conditions[lp.activeCondIdx] || lp?.conditions[0];
+        const rsfRow = cond?.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
+        const r2 = rsfRow ? (parseFloat(rsfRow.remise2) || 0) : 0;
+        const r3 = rsfRow ? (parseFloat(rsfRow.remise3) || 0) : 0;
+        const disc = row.qty * price * remise / 100;
+        rows.push(`${row.cip13};"${ref.libelle}";${ref.labo};${row.qty};${price.toFixed(2)};${Math.abs(ref.rsf_pct)}%;${r2}%;${r3}%;${disc.toFixed(2)}`);
+      });
+      return rows.join('\n');
+    }
+
+    function downloadCSV(content, filename) {
+      const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    // 9. Render results
+    const fmt = n => n.toLocaleString('fr', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const fmtE = n => n.toLocaleString('fr', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+
+    let html = '';
+
+    // KPIs
+    html += `<div class="sim-section">
+      <div class="sim-title">◈ RÉSUMÉ</div>
+      <div class="sim-kpi-row">
+        <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL N-1</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">REMISE ACTUELLE</div><div class="sim-kpi-value">${fmtE(current.totalDiscount)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">REMISE OPTIMISÉE</div><div class="sim-kpi-value green">${fmtE(optimized.totalDiscount)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">GAIN POTENTIEL</div><div class="sim-kpi-value ${gain > 0 ? 'green' : 'red'}">${gain >= 0 ? '+' : ''}${fmtE(gain)}</div></div>
+      </div>
+    </div>`;
+
+    // Comparison
+    html += `<div class="sim-section">
+      <div class="sim-title">◈ COMPARAISON SCÉNARIOS</div>
+      <div class="sim-compare">
+        <div class="sim-compare-col">
+          <div class="sim-compare-title">▸ SCÉNARIO ACTUEL</div>
+          <table class="sim-lab-table"><thead><tr><th>Laboratoire</th><th>CA réel</th><th>CA cible</th><th>Seuil</th><th>Remise</th></tr></thead><tbody>`;
+    current.labResults.forEach(l => {
+      html += `<tr class="${l.met ? 'lab-ok' : 'lab-nok'}">
+        <td>${l.name}</td><td>${fmtE(l.ca)}</td><td>${l.caThreshold ? fmtE(l.caThreshold) : '—'}</td>
+        <td style="color:${l.met ? 'var(--green)' : 'var(--red)'}">${l.met ? '✓' : '✗'}</td>
+        <td>${fmtE(l.discount)}</td></tr>`;
+    });
+    html += `</tbody></table></div>
+        <div class="sim-compare-col best">
+          <div class="sim-compare-title">◆ SCÉNARIO OPTIMISÉ</div>
+          <table class="sim-lab-table"><thead><tr><th>Laboratoire</th><th>CA optimisé</th><th>CA cible</th><th>Seuil</th><th>Remise</th></tr></thead><tbody>`;
+    optimized.labResults.forEach(l => {
+      html += `<tr class="${l.met ? 'lab-ok' : 'lab-nok'}">
+        <td>${l.name}</td><td>${fmtE(l.ca)}</td><td>${l.caThreshold ? fmtE(l.caThreshold) : '—'}</td>
+        <td style="color:${l.met ? 'var(--green)' : 'var(--red)'}">${l.met ? '✓' : '✗'}</td>
+        <td>${fmtE(l.discount)}</td></tr>`;
+    });
+    html += `</tbody></table></div></div></div>`;
+
+    // Download buttons
+    html += `<div class="sim-section"><div class="sim-title">◈ TÉLÉCHARGER LES RÉFÉRENCES OPTIMISÉES PAR LABO</div><div>`;
+    state.labPages.forEach(lp => {
+      if (!lp.selectedLab) return;
+      html += `<button class="sim-dl-btn" data-lab="${lp.selectedLab}">↓ ${lp.selectedLab}</button>`;
+    });
+    html += `</div></div>`;
+
+    // CIP sans correspondance
+    if (unmatchedRows.length > 0) {
+      html += `<div class="sim-section">
+        <div class="sim-title">◈ RÉFÉRENCES NON IDENTIFIÉES</div>
+        <div class="sim-warn" style="margin-bottom:12px">
+          ⚠ ${unmatchedRows.length} code${unmatchedRows.length > 1 ? 's' : ''} CIP présent${unmatchedRows.length > 1 ? 's' : ''} dans votre fichier n'ont aucune correspondance dans la base de référence.
+        </div>
+        <button class="sim-dl-btn" id="btnDlUnmatched">↓ TÉLÉCHARGER LA LISTE (${unmatchedRows.length} CIP)</button>
+      </div>`;
+    }
+
+    container.innerHTML = html;
+
+    // Wire download buttons — labs
+    container.querySelectorAll('.sim-dl-btn[data-lab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lab = btn.dataset.lab;
+        downloadCSV(buildLabCSV(lab, optimizedAssignment), `optimise_${lab.toLowerCase()}.csv`);
+      });
+    });
+
+    // Wire download button — unmatched CIPs
+    const btnDlUnmatched = container.querySelector('#btnDlUnmatched');
+    if (btnDlUnmatched) {
+      btnDlUnmatched.addEventListener('click', () => {
+        const lines = ['CIP13;Quantité'];
+        unmatchedRows.forEach(r => lines.push(`${r.cip13};${r.qty}`));
+        downloadCSV(lines.join('\n'), 'cip_sans_correspondance.csv');
+      });
+    }
+
+  } catch(err) {
+    console.error(err);
+    container.innerHTML = `<div class="sim-warn">⚠ Erreur lors de l'analyse : ${err.message}</div>`;
+  }
+}
+
+// ── CSV page ───────────────────────────────────────────────────────────────────
+const dropzone   = document.getElementById('dropzone');
+const csvInput   = document.getElementById('csvInput');
+const fileStatus = document.getElementById('fileStatus');
+const btn1Next   = document.getElementById('btn1Next');
+
+function handleFile(file) {
+  if (!file) return;
+  state.csvFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    state.csvRows = Math.max(0, lines.length - 1);
+    document.getElementById('fileStatusText').textContent =
+      `FICHIER : ${file.name}  —  ${state.csvRows.toLocaleString('fr')} lignes détectées`;
+    fileStatus.classList.add('visible');
+    btn1Next.disabled = false;
+    state.csvData = parseCSV(text);
+    dropzone.classList.add('loaded');
+    const fnLabel = document.getElementById('dropzone-filename');
+    if (fnLabel) fnLabel.textContent = `${file.name}  —  ${state.csvRows.toLocaleString('fr')} lignes`;
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 1) { state._csvDiag = 'Fichier vide.'; return []; }
+
+  const sep = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
+  const parseCell = c => c.trim().replace(/^"|"$/g, '');
+  const norm = h => h.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[\s"'_\-]+/g, '');
+
+  // ── Essai 1 : détection par en-têtes ──────────────────────────────────────
+  const hdrs = lines[0].split(sep).map(c => norm(parseCell(c)));
+  let cipCol  = hdrs.findIndex(h => /cip|ean13/.test(h));
+  let qtyCol  = hdrs.findIndex(h => /^(qte|qty|qt|quant|nbre?|nb|nombre)/.test(h));
+  let puhtCol = hdrs.findIndex(h => /puht|prixht|prixunit|prixu|pu$/.test(h));
+  let dataStart = 1;
+
+  // ── Essai 2 : détection par contenu (fichier sans en-tête ou en-tête non reconnu) ─
+  if (cipCol === -1 || qtyCol === -1) {
+    dataStart = 0;
+    cipCol = -1; qtyCol = -1; puhtCol = -1;
+
+    const sample = lines.slice(0, Math.min(10, lines.length))
+      .map(l => l.split(sep).map(parseCell));
+    const colCount = Math.max(...sample.map(r => r.length));
+
+    for (let col = 0; col < colCount; col++) {
+      const vals    = sample.map(r => (r[col] || '').replace(/\s/g, ''));
+      const cipHits = vals.filter(v => /^\d{7,13}$/.test(v)).length;
+      const numVals = vals.map(v => parseFloat(v.replace(',', '.')));
+      const allPos  = numVals.every(v => !isNaN(v) && v > 0);
+      const hasDec  = vals.some(v => /[.,]\d/.test(v));
+
+      if (cipCol === -1 && cipHits >= vals.length * 0.7) {
+        cipCol = col;
+      } else if (allPos && col !== cipCol) {
+        if (!hasDec && qtyCol  === -1) qtyCol  = col;
+        else if (hasDec && puhtCol === -1) puhtCol = col;
+      }
+    }
+
+    // dernier recours : toute colonne numérique non-CIP devient quantité
+    if (qtyCol === -1 && cipCol !== -1) {
+      const sample2 = lines.slice(0, Math.min(10, lines.length))
+        .map(l => l.split(sep).map(parseCell));
+      for (let col = 0; col < colCount; col++) {
+        if (col === cipCol || col === puhtCol) continue;
+        const numVals = sample2.map(r => parseFloat((r[col] || '').replace(',', '.')));
+        if (numVals.every(v => !isNaN(v) && v > 0)) { qtyCol = col; break; }
+      }
+    }
+  }
+
+  state._csvDiag = `sep:"${sep}" | colonnes brutes: [${hdrs.join(' | ')}] | cip=col${cipCol} qté=col${qtyCol} puht=col${puhtCol} (données depuis ligne ${dataStart + 1})`;
+  if (cipCol === -1 || qtyCol === -1) return [];
+
+  const rows = [];
+  for (let i = dataStart; i < lines.length; i++) {
+    const cells = lines[i].split(sep).map(parseCell);
+    const cip = (cells[cipCol] || '').replace(/\D/g, '');
+    const qty = parseFloat((cells[qtyCol] || '0').replace(',', '.'));
+    const puhtCSV = puhtCol !== -1 ? parseFloat((cells[puhtCol] || '').replace(',', '.')) : null;
+    if (cip.length >= 7 && qty > 0) rows.push({ cip13: cip, qty, puhtCSV: isNaN(puhtCSV) ? null : puhtCSV });
+  }
+  return rows;
+}
+
+dropzone.addEventListener('click', () => csvInput.click());
+csvInput.addEventListener('change', e => handleFile(e.target.files[0]));
+dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
+
+document.getElementById('btnCsvBack').addEventListener('click', () => {
+  const order = getPageOrder();
+  goTo(order[order.indexOf('csv') - 1]);
 });
+btn1Next.addEventListener('click', launchSimulation);
+
+document.addEventListener('input', saveState);
+
+// ── Reset button ───────────────────────────────────────────────────────────────
+(function() {
+  const btn = document.getElementById('btnReset');
+  let timer;
+  function start(e) {
+    if (e.type === 'touchstart') e.preventDefault();
+    btn.classList.add('holding');
+    // force reflow so transition starts fresh
+    void btn.offsetWidth;
+    timer = setTimeout(() => {
+      btn.classList.remove('holding');
+      try { localStorage.removeItem(LS_KEY); } catch(e) {}
+      location.reload();
+    }, 3000);
+  }
+  function cancel() { clearTimeout(timer); btn.classList.remove('holding'); }
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('mouseup', cancel);
+  btn.addEventListener('mouseleave', cancel);
+  btn.addEventListener('touchstart', start, { passive: false });
+  btn.addEventListener('touchend', cancel);
+})();
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+(async () => {
+  const loader = document.getElementById('initLoader');
+  loader.style.display = 'block';
+
+  const saved = loadSavedState();
+  if (saved) {
+    state.includePDA = !!saved.includePDA;
+    // pdaToggles synced after DOM build
+    const savedPages = saved.labPages || [];
+    if (savedPages.length >= 2) {
+      state.labPages = savedPages.map(sp => mkLabState(sp.uid));
+    }
+  }
+
+  await fetchAndSortLabs();
+  loader.style.display = 'none';
+
+  state.labPages.forEach((lp, i) => createLabPageDom(i, lp));
+  syncPdaToggles();
+  renderStepBar();
+
+  if (saved && saved.labPages) {
+    for (const sp of saved.labPages) {
+      const lp = state.labPages.find(l => l.uid === sp.uid);
+      if (lp && sp.selectedLab && lp._restoreFromSave) {
+        await lp._restoreFromSave(sp);
+      }
+    }
+    const validIds = new Set([...state.labPages.map(l => l.uid), 'csv']);
+    goTo(validIds.has(saved.currentPageId) ? saved.currentPageId : state.labPages[0].uid);
+  } else {
+    goTo('lp0');
+  }
+})();
 </script>
 </body>
 </html>

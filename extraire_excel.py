@@ -27,12 +27,12 @@ PUHT_FILE  = Path("puht_astera.json")   # généré par scraper_puht.py
 
 # ── Abréviations de labos à supprimer ────────────────────────────────────────
 ABREV_LABOS = sorted([
-    "ARROW", "ARR", "ARL",
+    "ARROW", "ARRW", "ARR", "ARL",
     "BIOGARAN", "BIO", "BGR",
     "VIATRIS", "VIA", "MYL", "MYP",
     "PFIZER", "PFI",
     "SANDOZ", "SDZ", "SAN",
-    "ZENTIVA", "ZEN",
+    "ZENTIVA", "ZENT", "ZEN",
     "TEVA", "TEV",
     "CRISTERS", "CRI",
     "ZYDUS", "ZYD",
@@ -46,7 +46,7 @@ ABREV_LABOS = sorted([
 UNITES_DOSE = r'(?:MG/ML|MG|MCG|µG|UG|NG|G/ML|ML|UI/ML|MUI|MMOL|MOL|PC|%|G(?![A-Z]))'
 
 # ── Formes pharmaceutiques ────────────────────────────────────────────────────
-FORMES = r'(?:CPR|GELU|GELU|CAPS|COMP|AMP|SOL|PDR|CRE|GEL|POM|SUP|SPA|INJ|PERF|DISP|BUV|GTT|SACH|VERN|VERNIS|SPRAY|NAS|OPH|EAR|CPS|SEC|ORO|LP|LA|LI)'
+FORMES = r'(?:SERING|STYLO|CPR|GELU|CAPS|COMP|AMP|SOL|PDR|CRE|GEL|POM|SUP|SPA|INJ|PERF|DISP|BUV|GTT|SACH|VERN|VERNIS|SPRAY|NAS|OPH|EAR|CPS|SEC|ORO|LP|LA|LI)'
 
 # ── Extraction brute ──────────────────────────────────────────────────────────
 
@@ -227,7 +227,7 @@ def normaliser_bt(libelle: str) -> str:
     # AM → AMP (ampoule tronquée dans certains PDFs : 1AM → 1AMP)
     libelle = re.sub(r'\b(\d+)AM\b', r'\1AMP', libelle, flags=re.IGNORECASE)
 
-    FORMES_LIST = ['GELU', 'CAPS', 'COMP', 'SUPP', 'SACH', 'VERN', 'VERNIS',
+    FORMES_LIST = ['SERING', 'STYLO', 'GELU', 'CAPS', 'COMP', 'SUPP', 'SACH', 'VERN', 'VERNIS',
                    'SPRAY', 'PERF', 'DISP', 'CPR', 'AMP', 'SOL', 'PDR',
                    'CRE', 'GEL', 'POM', 'SUP', 'SPA', 'INJ', 'BUV', 'GTT']
     FORMES_RE = '|'.join(FORMES_LIST)

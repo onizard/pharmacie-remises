@@ -42,17 +42,17 @@ def sync():
     conn.autocommit = True
     cur = conn.cursor()
 
-    # Références
-    wb = openpyxl.load_workbook("remises_partenariat.xlsx")
+    # Références (v10 structure: labo, type, cip13, libelle, puht, rsf, punet)
+    wb = openpyxl.load_workbook("remises_partenariat_v10.xlsx")
     rows = []
     for row in wb.active.iter_rows(min_row=2, values_only=True):
-        labo, cip13, libelle, puht, rsf, punet = row
-        rows.append((cip13, labo, libelle, puht, rsf, punet))
+        labo, type_val, cip13, libelle, puht, rsf, punet = row
+        rows.append((cip13, labo, type_val, libelle, puht, rsf, punet))
 
     cur.execute("TRUNCATE references_pharmacie;")
     psycopg2.extras.execute_values(
         cur,
-        """INSERT INTO references_pharmacie (cip13, labo, libelle, puht, rsf_pct, punet)
+        """INSERT INTO references_pharmacie (cip13, labo, type, libelle, puht, rsf_pct, punet)
            VALUES %s""",
         rows, page_size=500
     )
