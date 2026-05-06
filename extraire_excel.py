@@ -589,9 +589,9 @@ def ecrire_lignes(ws, rows, headers, start_row=2):
         for col, key in enumerate(headers, 1):
             val  = row.get(key)
             cell = ws.cell(row=r_idx, column=col, value=val)
-            center = key in ("CIP13", "RSF %", "Labo", "PU HT", "PU NET")
+            center = key in ("CIP13", "RSF %", "RSF First %", "Labo", "PU HT", "PU NET")
             style_data(cell, alt, center)
-            if key == "RSF %":
+            if key in ("RSF %", "RSF First %"):
                 cell.number_format = '0.00"%"'
             elif key == "CIP13":
                 cell.number_format = "@"
@@ -605,7 +605,8 @@ def appliquer_largeurs(ws):
     ws.column_dimensions["C"].width = 52   # Libellé
     ws.column_dimensions["D"].width = 12   # PU HT
     ws.column_dimensions["E"].width = 12   # RSF %
-    ws.column_dimensions["F"].width = 12   # PU NET
+    ws.column_dimensions["F"].width = 14   # RSF First %
+    ws.column_dimensions["G"].width = 12   # PU NET
     ws.freeze_panes = "A2"
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -634,6 +635,16 @@ def main():
         rows = extraire_pdf(pdf_path)
         print(f"       {len(rows)} références extraites")
         all_rows.extend(rows)
+
+    # 1b. Viatris First : les RSF de ce labo deviennent la colonne "RSF First %"
+    #     sur les lignes Viatris standard correspondantes ; les lignes Viatris First
+    #     elles-mêmes sont retirées du tableau (pas de doublon de labo).
+    rsf_first_map = {r['CIP13']: r['RSF %'] for r in all_rows if r['Labo'] == 'Viatris First'}
+    all_rows = [r for r in all_rows if r['Labo'] != 'Viatris First']
+    if rsf_first_map:
+        print(f"\n  📌  {len(rsf_first_map)} CIP(s) Viatris First → colonne RSF First %")
+    for row in all_rows:
+        row['RSF First %'] = rsf_first_map.get(row['CIP13'])
 
     print(f"\n🔧  Parsing et normalisation structurée...", flush=True)
 
@@ -714,8 +725,8 @@ def main():
     # 5. Construction Excel — onglet unique "Tous les labos"
     print("📊  Création du fichier Excel...")
     wb = Workbook()
-    # Ordre : Labo | CIP13 | Libellé | PU HT | RSF % | PU NET
-    headers = ["Labo", "CIP13", "Libellé", "PU HT", "RSF %", "PU NET"]
+    # Ordre : Labo | CIP13 | Libellé | PU HT | RSF % | RSF First % | PU NET
+    headers = ["Labo", "CIP13", "Libellé", "PU HT", "RSF %", "RSF First %", "PU NET"]
 
     ws = wb.active
     ws.title = "Tous les labos"
@@ -724,7 +735,7 @@ def main():
     ws.row_dimensions[1].height = 20
     ecrire_lignes(ws, all_rows, headers)
     appliquer_largeurs(ws)
-    ws.auto_filter.ref = f"A1:F{len(all_rows)+1}"
+    ws.auto_filter.ref = f"A1:G{len(all_rows)+1}"
 
     wb.save(OUTPUT)
     print(f"\n✅  {len(all_rows)} références au total")

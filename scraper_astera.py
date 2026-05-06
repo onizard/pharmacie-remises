@@ -1,6 +1,6 @@
 """
-Scraper Astera Pro - Téléchargement automatique de tous les PDFs
-Répertoire : https://pro.astera.coop/DNL/PTN/
+Scraper Astera Pro (nouveau portail agora.cerp.fr) - Téléchargement automatique des PDFs
+Répertoire : https://agora.cerp.fr/mes-achats/offres-generiques
 
 Dépendances :
     pip install playwright
@@ -41,37 +41,38 @@ load_env()
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-LOGIN_URL   = "https://pro.astera.coop/PUB/USR101.aspx?ReturnUrl=%2fUSR%2fUSR106.aspx"
-PARTENARIAT_URL = "https://pro.astera.coop/USR/USR131.aspx"
-BASE_URL    = "https://pro.astera.coop"
+LOGIN_URL  = "https://pro.astera.coop/"   # redirige vers OIDC login2-web.astera.coop
+BASE_URL   = "https://agora.cerp.fr"
+OFFRES_URL = "https://agora.cerp.fr/mes-achats/offres-generiques"
 
-USERNAME    = os.environ.get("ASTERA_USER", "")
-PASSWORD    = os.environ.get("ASTERA_PASSWORD", "")
-OUTPUT_DIR  = Path("pdfs_remises")
+USERNAME  = os.environ.get("ASTERA_USER", "")
+PASSWORD  = os.environ.get("ASTERA_PASSWORD", "")
+OUTPUT_DIR = Path("pdfs_remises")
 
-# ── Liste de secours ──────────────────────────────────────────────────────────
-
-FALLBACK_URLS = [
-    "https://pro.astera.coop/DNL/PTN/GE13%20-%20Zydus%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/GE01%20-%20Arrow%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/GE02%20-%20Biogaran%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/GE12%20-%20Cristers%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/EG%20LABO%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/GE04%20-%20Viatris%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/GE05%20-%20Pfizer%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/GE06%20-%20Sandoz%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/GE08%20-%20Zentiva%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/GE07%20-%20Teva%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/P510%20-%20CORREVIO%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-    "https://pro.astera.coop/DNL/PTN/P656%20-%20ABACUS%20-%20Liste%20des%20CIP%20d_offres%20Partenariat%20ciblees.pdf",
-]
+# Mapping code → nom labo (utilisé pour nommer les fichiers)
+LABO_CODES = {
+    "GE01": "Arrow",
+    "GE02": "Biogaran",
+    "GE03": "EG Labo",
+    "GE04": "Viatris",
+    "GE05": "Pfizer",
+    "GE06": "Sandoz",
+    "GE07": "Teva",
+    "GE08": "Zentiva",
+    "GE12": "Cristers",
+    "GE13": "Zydus",
+    "P510": "Correvio",
+    "P656": "Abacus",
+    "EE04": "Viatris First",
+    "P167": "Wegovy",
+    "ZZ":   "Biogaran Depositaire",
+}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def url_to_filename(url: str) -> str:
-    name = unquote(url.split("/")[-1])
-    name = re.sub(r'[<>:"/\\|?*]', "_", name)
-    return name
+def code_to_filename(code: str) -> str:
+    labo = LABO_CODES.get(code, code)
+    return f"{code} - {labo} - Liste des CIP d_offres Partenariat ciblees.pdf"
 
 def dismiss_cookies(page):
     try:
@@ -92,6 +93,7 @@ def download_pdf_via_cookies(context, url: str, dest: Path) -> bool:
             "Cookie": cookie_str,
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
             "Referer": BASE_URL,
+            "Accept": "application/pdf,*/*",
         })
         with urllib.request.urlopen(req, timeout=30) as resp:
             content_type = resp.headers.get("Content-Type", "")
@@ -121,58 +123,73 @@ def main():
         context = browser.new_context()
         page    = context.new_page()
 
-        # ── 1. Connexion ──────────────────────────────────────────────────────
+        # ── 1. Connexion (OIDC via login2-web.astera.coop) ────────────────────
         print("🔐  Connexion à Astera Pro…")
-        page.goto(LOGIN_URL)
-        page.wait_for_load_state("networkidle")
+        page.goto(LOGIN_URL, wait_until="networkidle")
         dismiss_cookies(page)
 
-        page.locator("#ctl00_ctl00_main_m_logLogin_UserName").fill(USERNAME)
-        page.locator("#ctl00_ctl00_main_m_logLogin_Password").fill(PASSWORD)
-        page.locator("#ctl00_ctl00_main_m_logLogin_btnLogin").click()
+        page.locator("#Username").fill(USERNAME)
+        page.locator("#password").fill(PASSWORD)
+        page.get_by_text("Se connecter").click()
         page.wait_for_load_state("networkidle")
 
-        error_visible = page.locator(".failureNotification, .loginError, [id*='Failure']").is_visible()
-        if error_visible:
-            print("❌  Échec de la connexion. Vérifie tes identifiants dans le fichier .env")
+        if "agora.cerp.fr" not in page.url and "login" in page.url:
+            print(f"❌  Échec de la connexion (URL: {page.url}). Vérifie tes identifiants dans le fichier .env")
             browser.close()
             return
 
         print(f"✅  Connecté ! (URL: {page.url})\n")
 
-        
-        print(f"🔍  Scan de la page partenariat : {PARTENARIAT_URL}\n")
-        page.goto(PARTENARIAT_URL)
-        page.wait_for_load_state("networkidle")
+        # ── 2. Scan de la page des offres génériques ──────────────────────────
+        print(f"🔍  Scan de la page : {OFFRES_URL}\n")
+        page.goto(OFFRES_URL, wait_until="networkidle")
 
-        anchors = page.query_selector_all("a[href$='.pdf'], a[href$='.PDF']")
-        pdf_urls = []
+        # Cherche les codes d'offres dans les liens PDF ou les attributs data-
+        pdf_entries = []  # liste de (code, url)
+
+        # Stratégie A : liens directs vers /api/generic-offers/{code}/pdf
+        api_pattern = re.compile(r'/api/generic-offers/([^/]+)/pdf', re.IGNORECASE)
+        anchors = page.query_selector_all("a[href*='generic-offers'], a[href$='.pdf'], a[href$='.PDF']")
         for anchor in anchors:
             href = anchor.get_attribute("href") or ""
-            if href.startswith("http"):
-                pdf_urls.append(href)
-            elif href.startswith("/"):
-                pdf_urls.append(BASE_URL + href)
-            else:
-                pdf_urls.append(urljoin(PARTENARIAT_URL, href))
+            m = api_pattern.search(href)
+            if m:
+                code = m.group(1)
+                url = urljoin(BASE_URL, href) if not href.startswith("http") else href
+                pdf_entries.append((code, url))
+            elif href.lower().endswith(".pdf"):
+                url = urljoin(BASE_URL, href) if not href.startswith("http") else href
+                code = url.split("/")[-1].replace(".pdf", "").replace(".PDF", "")
+                pdf_entries.append((code, url))
 
-        pdf_urls = list(dict.fromkeys(pdf_urls))
+        # Stratégie B : construire les URLs depuis LABO_CODES si rien trouvé
+        if not pdf_entries:
+            print("⚠️  Aucun PDF détecté automatiquement → construction depuis la liste connue.\n")
+            pdf_entries = [
+                (code, f"{BASE_URL}/api/generic-offers/{code}/pdf")
+                for code in LABO_CODES
+            ]
 
-        if not pdf_urls:
-            print("⚠️  Aucun PDF détecté automatiquement → utilisation de la liste connue.\n")
-            pdf_urls = FALLBACK_URLS
+        # Dédoublonnage
+        seen = set()
+        unique_entries = []
+        for code, url in pdf_entries:
+            if url not in seen:
+                seen.add(url)
+                unique_entries.append((code, url))
+        pdf_entries = unique_entries
 
-        print(f"📦  {len(pdf_urls)} PDF(s) détecté(s).\n")
+        print(f"📦  {len(pdf_entries)} PDF(s) détecté(s).\n")
 
         # ── 3. Téléchargement via cookies de session ──────────────────────────
         print("⬇️  Téléchargement en cours…\n")
         success = 0
 
-        for i, url in enumerate(pdf_urls, 1):
-            filename = url_to_filename(url)
+        for i, (code, url) in enumerate(pdf_entries, 1):
+            filename = code_to_filename(code)
             dest     = OUTPUT_DIR / filename
 
-            print(f"[{i}/{len(pdf_urls)}] {filename}")
+            print(f"[{i}/{len(pdf_entries)}] {filename}")
 
             if dest.exists():
                 print(f"  ⏭️  Déjà téléchargé, ignoré.")
@@ -187,9 +204,7 @@ def main():
 
         browser.close()
 
-    import subprocess
-    subprocess.run(["find", str(OUTPUT_DIR), "-name", "*.pdf", "!", "-name", "*CIP*", "-delete"])
-    print(f"\n🎉  Terminé : {success}/{len(pdf_urls)} PDF(s) téléchargés dans « {OUTPUT_DIR.resolve()} »")
+    print(f"\n🎉  Terminé : {success}/{len(pdf_entries)} PDF(s) téléchargés dans « {OUTPUT_DIR.resolve()} »")
 
 
 if __name__ == "__main__":

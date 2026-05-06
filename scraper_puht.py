@@ -32,7 +32,7 @@ def load_env():
 
 load_env()
 
-LOGIN_URL = "https://pro.astera.coop/PUB/USR101.aspx?ReturnUrl=%2fUSR%2fUSR106.aspx"
+LOGIN_URL = "https://pro.astera.coop/"
 USERNAME  = os.environ.get("ASTERA_USER", "")
 PASSWORD  = os.environ.get("ASTERA_PASSWORD", "")
 OUTPUT         = Path("puht_astera.json")
@@ -121,15 +121,23 @@ def aller_a_page(page, target: int) -> bool:
             return False
     return False
 
+def est_page_login(page) -> bool:
+    """Retourne True si la page actuelle est une page de login."""
+    url = page.url
+    return any(x in url.lower() for x in ["login", "usr101", "signin", "connect"])
+
 def scraper_url(page, url: str) -> dict:
     resultats = {}
     pn = url.split("pn=")[1]
 
-    page.goto(url)
-    page.wait_for_load_state("networkidle")
+    page.goto(url, timeout=60000)
+    page.wait_for_load_state("networkidle", timeout=60000)
+
+    if est_page_login(page):
+        raise RuntimeError(f"Redirigé vers login ({page.url}) — session expirée")
 
     # Total et nombre de pages
-    pg_text  = page.locator(".paginationTotalRecords").first.inner_text()
+    pg_text  = page.locator(".paginationTotalRecords").first.inner_text(timeout=30000)
     m        = re.search(r'sur\s+un\s+total\s+de\s+([\d\s]+)', pg_text)
     total    = int(re.sub(r"\s", "", m.group(1))) if m else PER_PAGE
     nb_pages = math.ceil(total / PER_PAGE)
@@ -174,8 +182,10 @@ def scraper_cips(page, cips: list[dict]) -> dict:
 
         try:
             # Navigue vers la page de recherche et lance la recherche
-            page.goto(SEARCH_BASE)
-            page.wait_for_load_state("networkidle")
+            page.goto(SEARCH_BASE, timeout=60000)
+            page.wait_for_load_state("networkidle", timeout=60000)
+            if est_page_login(page):
+                raise RuntimeError(f"Redirigé vers login ({page.url})")
             page.locator(SEARCH_INPUT).fill(cip)
             page.locator(SEARCH_BUTTON).click()
             page.wait_for_load_state("networkidle")
@@ -230,16 +240,28 @@ def main():
                 page.wait_for_load_state("networkidle")
         except Exception:
             pass
-        page.locator("#ctl00_ctl00_main_m_logLogin_UserName").fill(USERNAME)
-        page.locator("#ctl00_ctl00_main_m_logLogin_Password").fill(PASSWORD)
-        page.locator("#ctl00_ctl00_main_m_logLogin_btnLogin").click()
+        page.locator("#Username").fill(USERNAME)
+        page.locator("#password").fill(PASSWORD)
+        page.get_by_text("Se connecter").click()
         page.wait_for_load_state("networkidle")
 
-        if "login" in page.url.lower() or "usr101" in page.url.lower():
+        if "agora.cerp.fr" not in page.url and "login" in page.url:
             print("❌  Échec de la connexion.")
             browser.close()
             return
         print(f"✅  Connecté ({page.url})\n")
+
+        # ── Établir la session sur pro.astera.coop ─────────────────────────────
+        # Après login OIDC → agora.cerp.fr, il faut naviguer sur pro.astera.coop
+        # pour que le SSO y établisse aussi la session.
+        print("🔑  Établissement de la session sur pro.astera.coop…")
+        page.goto("https://pro.astera.coop/", timeout=60000)
+        page.wait_for_load_state("networkidle", timeout=60000)
+        if est_page_login(page):
+            # Le SSO devrait se déclencher automatiquement ; attendre un peu
+            page.wait_for_url("**/pro.astera.coop/**", timeout=30000)
+            page.wait_for_load_state("networkidle", timeout=30000)
+        print(f"   → {page.url}")
 
         for url in PAGES:
             try:
