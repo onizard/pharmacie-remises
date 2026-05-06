@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ANALYSEUR DE REMISE</title>
+<title>BREAK PHARMA - comparateur de générique</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
 
@@ -57,9 +57,9 @@
   #app {
     position: relative;
     z-index: 1;
-    max-width: 1000px;
+    max-width: 1600px;
     margin: 0 auto;
-    padding: 30px 20px 60px;
+    padding: 30px 40px 60px;
   }
 
   /* ── Header ── */
@@ -388,7 +388,10 @@
   ::-webkit-scrollbar-thumb { background: var(--border); }
   ::-webkit-scrollbar-thumb:hover { background: var(--cyan-dim); }
 
-  .sim-loading { text-align:center; padding: 40px; color: var(--text-dim); font-family: 'Share Tech Mono', monospace; }
+  .sim-loading { padding: 0; background: var(--bg); border: 1px solid var(--border); overflow: hidden; }
+  #brickCanvas { display: block; width: 100%; image-rendering: pixelated; cursor: none; }
+  .brick-status { font-family: 'Orbitron', monospace; font-size: 10px; color: var(--text-dim); letter-spacing: 4px; text-align: center; padding: 10px 0 14px; animation: blink 1.2s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
   .sim-section { margin-bottom: 28px; }
   .sim-title { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--cyan); letter-spacing: 3px; text-shadow: var(--glow-c); margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
   .sim-kpi-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
@@ -403,7 +406,9 @@
   .sim-lab-table td { padding: 8px 10px; border: 1px solid var(--border); color: var(--text); }
   .sim-lab-table tr.lab-ok td { border-left: 3px solid var(--green); }
   .sim-lab-table tr.lab-nok td { border-left: 3px solid var(--red); }
-  .sim-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+  .sim-lab-table tr.lab-neutral td { border-left: 3px solid var(--border); color: var(--text-dim); }
+  .sim-compare { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+  .sim-compare-labs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 18px; }
   .sim-compare-col { background: var(--bg2); border: 1px solid var(--border); padding: 16px; }
   .sim-compare-col.best { border-color: var(--green); }
   .sim-compare-title { font-family: 'Orbitron', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 10px; }
@@ -411,8 +416,26 @@
   .sim-dl-btn { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; padding: 8px 18px; cursor: pointer; background: #001a0f; border: 1px solid var(--green); color: var(--green); margin: 4px; transition: all .2s; }
   .sim-dl-btn:hover { background: #002a1a; box-shadow: var(--glow-g); }
   .sim-warn { color: var(--amber); font-family: 'Share Tech Mono', monospace; font-size: 12px; padding: 10px; border: 1px solid var(--amber); margin-bottom: 12px; }
+  /* Winner banner */
+  .sim-winner { position: relative; overflow: hidden; background: linear-gradient(135deg, #001a0f 0%, #050d20 60%, #0a0008 100%); border: 2px solid var(--green); box-shadow: 0 0 32px #00ff8833, 0 0 80px #00ff8811; padding: 32px 24px 24px; margin-bottom: 28px; text-align: center; }
+  .sim-fireworks { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; transition: opacity 1s; }
+  .sim-winner-crown { font-size: 36px; line-height: 1; margin-bottom: 6px; filter: drop-shadow(0 0 10px #ffab00); }
+  .sim-winner-title { font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 900; color: var(--green); text-shadow: var(--glow-g); letter-spacing: 6px; margin-bottom: 4px; }
+  .sim-winner-sub { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: 3px; margin-bottom: 12px; }
+  .sim-winner-gain { font-family: 'Orbitron', monospace; font-size: 32px; font-weight: 900; color: var(--amber); text-shadow: var(--glow-a); letter-spacing: 4px; margin-bottom: 20px; }
+  .sim-winner .sim-lab-table { position: relative; z-index: 1; text-align: left; }
+  /* Scenario header */
+  .sim-scenario-header { display: flex; align-items: center; justify-content: space-between; font-family: 'Orbitron', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: 3px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+  /* Inline download button */
+  .sim-dl-inline { font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 1px; padding: 4px 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--text-dim); transition: all .2s; flex-shrink: 0; }
+  .sim-dl-inline:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: var(--glow-c); }
+  /* Winner dl buttons */
+  .sim-winner-dl { position: absolute; top: 14px; right: 16px; z-index: 2; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+  /* Total row */
+  .sim-lab-table tr.sim-total-row td { background: #0a0f1a; font-weight: 700; color: var(--cyan); border-top: 2px solid var(--border); font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 1px; }
 
 </style>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -423,7 +446,12 @@
     </div>
     <div class="header-right">
       <div class="term-line"><span class="prompt">SYS:</span><span class="val">PRÊT</span><span class="cursor"></span></div>
-      <button id="btnReset" class="btn-reset" title="Maintenir 3 secondes pour réinitialiser">RESET</button>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-family:'Orbitron',monospace;font-size:10px;font-weight:700;color:var(--amber);letter-spacing:2px;white-space:nowrap">GERS</span>
+        <input type="text" id="gersGlobal" class="rsf-input" style="width:120px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="CA générique annuel estimé de la pharmacie — RSF First s'active si CA labo ≥ 90 %" />
+        <span style="font-size:10px;color:var(--text-dim)">€</span>
+        <button id="btnReset" class="btn-reset" title="Maintenir 3 secondes pour réinitialiser">RESET</button>
+      </div>
     </div>
   </header>
 
@@ -443,12 +471,12 @@
       <div class="panel-title">◈ Mes achats génériques N-1</div>
       <div class="panel-sub">// Importation du fichier CSV — liste des médicaments achetés sur l'exercice précédent</div>
 
-      <input type="file" id="csvInput" accept=".csv,.txt" style="display:none" />
+      <input type="file" id="csvInput" accept=".csv,.txt,.xlsx,.pdf" style="display:none" />
       <div class="dropzone" id="dropzone">
         <div class="dropzone-default">
           <div class="dropzone-icon">⬡</div>
-          <div class="dropzone-label">GLISSER-DÉPOSER LE FICHIER CSV</div>
-          <div class="dropzone-hint">ou cliquer pour parcourir &nbsp;·&nbsp; formats acceptés : .csv .txt</div>
+          <div class="dropzone-label">GLISSER-DÉPOSER LE FICHIER</div>
+          <div class="dropzone-hint">ou cliquer pour parcourir &nbsp;·&nbsp; formats acceptés : .csv .xlsx .txt .pdf</div>
         </div>
         <div class="dropzone-success">
           <svg viewBox="0 0 180 120" width="180" height="120" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated;display:block;overflow:visible">
@@ -538,6 +566,7 @@ function mkLabState(uid) {
     uid,
     selectedLab:  null,
     rsfPaliers:   [],
+    rsfFirstMap:  new Map(),
     conditions:   [mkCondState('c0')],
     activeCondIdx: 0,
     _refreshGrid: null,
@@ -547,6 +576,7 @@ function mkLabState(uid) {
 let state = {
   csvFile: null, csvRows: 0, csvData: null,
   includePDA: false,
+  gers: null,
   labPages: [mkLabState('lp0'), mkLabState('lp1')],
   currentPageId: 'lp0',
 };
@@ -562,6 +592,7 @@ function serializeState() {
   return {
     v: 1,
     includePDA: state.includePDA,
+    gers: state.gers,
     currentPageId: state.currentPageId,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
@@ -1011,6 +1042,8 @@ function initLabPage(conf) {
     caInp.addEventListener('input', () => {
       const v = parseFloat(caInp.value.replace(',', '.').replace(/\s/g, ''));
       cond.caCondition = isNaN(v) ? null : v;
+      if (cond.remiseGlobale !== null) autoFillCond(cond);
+      renderCondTable(cond);
     });
     wireRsfOnly(cond);
     const pdaChk = document.getElementById(`pdaChk-${uid}-${cond.uid}`);
@@ -1097,11 +1130,14 @@ function initLabPage(conf) {
     if (rg === null) return;
     const tbody = document.getElementById(`tbody-${uid}-${cond.uid}`);
     if (!tbody) return;
+    const firstMet = state.gers != null && cond.caCondition != null &&
+                     cond.caCondition >= 0.9 * state.gers;
     cond.rsfValues.forEach((row, idx) => {
       const tr = tbody.querySelectorAll('tr')[idx];
       if (!tr) return;
       const i2 = tr.querySelector('.inp-r2'), i3 = tr.querySelector('.inp-r3');
-      const abs = Math.abs(row.rsf_pct);
+      const firstRsf = firstMet ? s.rsfFirstMap.get(row.rsf_pct) : undefined;
+      const abs = firstRsf != null ? Math.abs(firstRsf) : Math.abs(row.rsf_pct);
       if (row.excluded) {
         row.remise2 = '0';
         if (i2) { i2.value = '0'; i2.classList.add('auto-c'); }
@@ -1144,6 +1180,8 @@ function initLabPage(conf) {
         }
       }
     }
+    const firstMetDisplay = state.gers != null && cond.caCondition != null &&
+                            cond.caCondition >= 0.9 * state.gers;
     tbody.innerHTML = '';
 
     cond.rsfValues.forEach((row, idx) => {
@@ -1151,7 +1189,12 @@ function initLabPage(conf) {
       if (row.excluded) tr.classList.add('excluded');
 
       const tdRsf = document.createElement('td');
-      tdRsf.textContent = `${Math.abs(row.rsf_pct).toFixed(2)} %`;
+      const firstRsf = firstMetDisplay ? s.rsfFirstMap.get(row.rsf_pct) : undefined;
+      if (firstRsf != null) {
+        tdRsf.innerHTML = `<span style="color:var(--amber);font-weight:700">${Math.abs(firstRsf).toFixed(2)} %</span>`;
+      } else {
+        tdRsf.textContent = `${Math.abs(row.rsf_pct).toFixed(2)} %`;
+      }
       tr.appendChild(tdRsf);
 
       const inp2 = document.createElement('input');
@@ -1218,8 +1261,9 @@ function initLabPage(conf) {
     el.btnNext.disabled = true;
 
     try {
-      const paliers = await fetchRSF(lab);
+      const { paliers, firstMap } = await fetchRSF(lab);
       s.rsfPaliers = paliers;
+      s.rsfFirstMap = firstMap;
       s.conditions[0].rsfValues = mkRsfValues(lab, paliers);
 
       const panel = buildCondPanel(s.conditions[0]);
@@ -1242,8 +1286,9 @@ function initLabPage(conf) {
     if (!s.selectedLab) return;
     el.loading.classList.add('visible');
     try {
-      const paliers = await fetchRSF(s.selectedLab);
+      const { paliers, firstMap } = await fetchRSF(s.selectedLab);
       s.rsfPaliers = paliers;
+      s.rsfFirstMap = firstMap;
       s.conditions.forEach(cond => {
         cond.rsfValues = mkRsfValues(s.selectedLab, paliers);
         renderCondTable(cond);
@@ -1266,8 +1311,9 @@ function initLabPage(conf) {
     el.loading.classList.add('visible');
     el.btnNext.disabled = true;
     try {
-      const paliers = await fetchRSF(lab);
+      const { paliers, firstMap } = await fetchRSF(lab);
       s.rsfPaliers = paliers;
+      s.rsfFirstMap = firstMap;
       (savedLabData.conditions || []).forEach((sc, idx) => {
         const cond = mkCondState(sc.uid);
         cond.remiseGlobale = sc.remiseGlobale;
@@ -1296,6 +1342,14 @@ function initLabPage(conf) {
     if (conf.onLabSelected) conf.onLabSelected();
   };
 
+  s._reRenderCondTables = function() {
+    s.conditions.forEach(cond => {
+      if (!document.getElementById(`tbody-${uid}-${cond.uid}`)) return;
+      if (cond.remiseGlobale !== null) autoFillCond(cond);
+      renderCondTable(cond);
+    });
+  };
+
   function checkDone() {
     el.btnNext.disabled = !s.selectedLab || s.rsfPaliers.length === 0;
   }
@@ -1305,11 +1359,14 @@ function initLabPage(conf) {
 async function fetchRSF(lab) {
   const pdaFilter = state.includePDA ? '' : '&libelle=not.ilike.*PDA*';
   const url = `${SUPA_URL}/rest/v1/references_pharmacie`
-    + `?select=rsf_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null${pdaFilter}&order=rsf_pct.asc&limit=2000`;
+    + `?select=rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null${pdaFilter}&order=rsf_pct.asc&limit=2000`;
   const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return [...new Set(data.map(r => r.rsf_pct))].sort((a, b) => a - b);
+  const paliers = [...new Set(data.map(r => r.rsf_pct))].sort((a, b) => a - b);
+  const firstMap = new Map();
+  data.forEach(r => { if (r.rsf_first_pct != null) firstMap.set(r.rsf_pct, r.rsf_first_pct); });
+  return { paliers, firstMap };
 }
 
 function buildExclBlock(rsf_pct, exc) {
@@ -1492,11 +1549,286 @@ function renderChips(chipsWrap, exc) {
 }
 
 
+// ── Breakout loader animation ──────────────────────────────────────────────────
+function startBrickGame() {
+  const canvas = document.getElementById('brickCanvas');
+  if (!canvas) return;
+
+  // ── Dimensions ────────────────────────────────────────────────────────────
+  const W = canvas.parentElement.clientWidth || 800;
+  const H = 340;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  // ── Palette rétro ─────────────────────────────────────────────────────────
+  const C = {
+    bg:      '#04060f',
+    border:  '#1a3048',
+    paddle:  '#00e5ff',
+    ball:    '#ffffff',
+    text:    '#00e5ff',
+    textDim: '#3d5a6b',
+    rows: [
+      '#ff3366', // rouge
+      '#ff6b35', // orange
+      '#ffab00', // amber
+      '#00ff88', // vert
+      '#00e5ff', // cyan
+      '#cc5de8', // violet
+    ],
+  };
+
+  const PX = 2; // pixel art upscale factor
+
+  // ── Bricks ────────────────────────────────────────────────────────────────
+  const COLS      = 12;
+  const ROWS      = 6;
+  const BRICK_W   = Math.floor((W - 40) / COLS);
+  const BRICK_H   = 14;
+  const BRICK_PAD = 3;
+  const BRICK_OY  = 48;
+
+  function makeBricks() {
+    const b = [];
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        b.push({
+          x:     20 + c * BRICK_W,
+          y:     BRICK_OY + r * (BRICK_H + BRICK_PAD),
+          w:     BRICK_W - BRICK_PAD,
+          h:     BRICK_H,
+          color: C.rows[r % C.rows.length],
+          alive: true,
+          pts:   (ROWS - r) * 10,
+        });
+    return b;
+  }
+
+  let bricks = makeBricks();
+  let score  = 0;
+  let lives  = 3;
+  let hiScore = 0;
+
+  // ── Paddle ────────────────────────────────────────────────────────────────
+  const PAD_W = Math.floor(W * 0.11);
+  const PAD_H = 8;
+  const PAD_Y = H - 30;
+  let padX    = (W - PAD_W) / 2;
+  let padVX   = 0;
+
+  // ── Ball ──────────────────────────────────────────────────────────────────
+  const BALL_S = 8;
+  const SPEED  = 4.2;
+  let bx, by, bdx, bdy, ballLaunched;
+
+  function resetBall() {
+    bx = padX + PAD_W / 2;
+    by = PAD_Y - BALL_S - 2;
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.9;
+    bdx = Math.cos(angle) * SPEED;
+    bdy = Math.sin(angle) * SPEED;
+    ballLaunched = false;
+    setTimeout(() => { ballLaunched = true; }, 600);
+  }
+  resetBall();
+
+  // ── AI paddle ─────────────────────────────────────────────────────────────
+  // Tracks ball with slight delay for realism
+  // ── Contrôle souris (prioritaire) / AI fallback ───────────────────────────
+  let mouseX = null;
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    mouseX = (e.clientX - rect.left) * scaleX;
+  });
+  canvas.addEventListener('mouseleave', () => { mouseX = null; });
+
+  let aiTarget = padX;
+  function updatePaddle() {
+    if (mouseX !== null) {
+      // Contrôle direct à la souris — paddle centré sur le curseur
+      padX = mouseX - PAD_W / 2;
+    } else {
+      // AI : prédit la position de la balle quand elle atteint la raquette
+      if (bdy > 0) {
+        let px = bx, py = by, pvx = bdx, pvy = bdy;
+        let steps = 0;
+        while (py < PAD_Y - BALL_S && steps < 200) {
+          px += pvx; py += pvy;
+          if (px <= 0 || px + BALL_S >= W) pvx = -pvx;
+          steps++;
+        }
+        aiTarget = px - PAD_W / 2 + BALL_S / 2;
+      }
+      const diff = aiTarget - padX;
+      padX += diff * 0.09;
+    }
+    padX = Math.max(0, Math.min(W - PAD_W, padX));
+  }
+
+  // ── Collision helpers ─────────────────────────────────────────────────────
+  function rectOverlap(ax, ay, aw, ah, bx2, by2, bw2, bh2) {
+    return ax < bx2 + bw2 && ax + aw > bx2 && ay < by2 + bh2 && ay + ah > by2;
+  }
+
+  // ── Pixel font (draw text using native font, retro style) ─────────────────
+  function drawHUD() {
+    ctx.font = `bold ${8 * PX}px 'Share Tech Mono', monospace`;
+    ctx.fillStyle = C.text;
+    ctx.textAlign = 'left';
+    ctx.fillText(`SCORE  ${String(score).padStart(6, '0')}`, 20, 28);
+    ctx.textAlign = 'center';
+    ctx.fillText('◆ BREAK-PHARMA ◆', W / 2, 28);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = C.textDim;
+    ctx.fillText(`HI  ${String(hiScore).padStart(6, '0')}`, W - 20, 28);
+    // Lives
+    for (let i = 0; i < lives; i++) {
+      ctx.fillStyle = C.paddle;
+      ctx.fillRect(W - 20 - (i + 1) * 14, H - 16, 10, 5);
+    }
+    // Scanlines (CRT effect)
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 2);
+  }
+
+  function drawBricks() {
+    bricks.forEach(b => {
+      if (!b.alive) return;
+      ctx.fillStyle = b.color;
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      // Highlight top edge
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(b.x, b.y, b.w, 2);
+      // Shadow bottom edge
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(b.x, b.y + b.h - 2, b.w, 2);
+    });
+  }
+
+  function drawPaddle() {
+    // Paddle body
+    ctx.fillStyle = C.paddle;
+    ctx.fillRect(padX, PAD_Y, PAD_W, PAD_H);
+    // Glossy top strip
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillRect(padX + 2, PAD_Y, PAD_W - 4, 2);
+    // Glow under paddle
+    const g = ctx.createLinearGradient(padX, PAD_Y, padX, PAD_Y + 18);
+    g.addColorStop(0, 'rgba(0,229,255,0.25)');
+    g.addColorStop(1, 'rgba(0,229,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(padX, PAD_Y + PAD_H, PAD_W, 18);
+  }
+
+  function drawBall() {
+    // Ball glow
+    const g = ctx.createRadialGradient(bx + BALL_S/2, by + BALL_S/2, 0, bx + BALL_S/2, by + BALL_S/2, BALL_S * 2);
+    g.addColorStop(0, 'rgba(255,255,255,0.4)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(bx - BALL_S, by - BALL_S, BALL_S * 3, BALL_S * 3);
+    // Ball body (pixel square)
+    ctx.fillStyle = C.ball;
+    ctx.fillRect(Math.round(bx), Math.round(by), BALL_S, BALL_S);
+  }
+
+  let frame = 0;
+
+  function tick() {
+    if (!document.getElementById('brickCanvas')) return; // arrêt si remplacé
+
+    // Clear
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Border walls (pixel style)
+    ctx.fillStyle = C.border;
+    ctx.fillRect(0, 35, W, 2);
+    ctx.fillRect(0, 35, 2, H);
+    ctx.fillRect(W - 2, 35, 2, H);
+
+    updatePaddle();
+
+    if (ballLaunched) {
+      bx += bdx;
+      by += bdy;
+
+      // Wall collisions
+      if (bx <= 2)          { bx = 2;          bdx =  Math.abs(bdx); }
+      if (bx + BALL_S >= W - 2) { bx = W - 2 - BALL_S; bdx = -Math.abs(bdx); }
+      if (by <= 37)         { by = 37;          bdy =  Math.abs(bdy); }
+
+      // Paddle collision
+      if (rectOverlap(bx, by, BALL_S, BALL_S, padX, PAD_Y, PAD_W, PAD_H) && bdy > 0) {
+        bdy = -Math.abs(bdy);
+        // Angle based on hit position
+        const rel = (bx + BALL_S / 2 - padX) / PAD_W; // 0..1
+        bdx = (rel - 0.5) * SPEED * 2;
+        // Keep total speed constant
+        const spd = Math.hypot(bdx, bdy);
+        bdx = bdx / spd * SPEED;
+        bdy = bdy / spd * SPEED;
+      }
+
+      // Brick collisions
+      let destroyed = 0;
+      for (const b of bricks) {
+        if (!b.alive) continue;
+        if (rectOverlap(bx, by, BALL_S, BALL_S, b.x, b.y, b.w, b.h)) {
+          b.alive = false;
+          score += b.pts;
+          if (score > hiScore) hiScore = score;
+          destroyed++;
+          // Determine bounce direction
+          const overlapL = bx + BALL_S - b.x;
+          const overlapR = b.x + b.w - bx;
+          const overlapT = by + BALL_S - b.y;
+          const overlapB = b.y + b.h - by;
+          const minH = Math.min(overlapL, overlapR);
+          const minV = Math.min(overlapT, overlapB);
+          if (minH < minV) bdx = -bdx; else bdy = -bdy;
+          break;
+        }
+      }
+
+      // All bricks cleared → new wave
+      if (bricks.every(b => !b.alive)) {
+        bricks = makeBricks();
+        resetBall();
+      }
+
+      // Ball lost
+      if (by > H) {
+        lives = Math.max(0, lives - 1);
+        if (lives === 0) { lives = 3; score = 0; bricks = makeBricks(); }
+        resetBall();
+      }
+    }
+
+    drawBricks();
+    drawPaddle();
+    drawBall();
+    drawHUD();
+
+    frame++;
+    requestAnimationFrame(tick);
+  }
+
+  tick();
+}
+
 // ── Simulation ─────────────────────────────────────────────────────────────────
 async function launchSimulation() {
   goTo('results');
   const container = document.getElementById('simResults');
-  container.innerHTML = '<div class="sim-loading">⟳ ANALYSE EN COURS...</div>';
+  container.innerHTML = `<div class="sim-loading" id="brickLoader">
+    <canvas id="brickCanvas"></canvas>
+    <div class="brick-status">◈ ANALYSE EN COURS ◈</div>
+  </div>`;
+  startBrickGame();
 
   try {
     // 1. Parse CSV
@@ -1515,7 +1847,7 @@ async function launchSimulation() {
     const refRows = [];
     for (let i = 0; i < allCips.length; i += CHUNK) {
       const chunk = allCips.slice(i, i + CHUNK);
-      const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct&cip13=in.(${chunk.join(',')})&limit=1000`;
+      const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&cip13=in.(${chunk.join(',')})&limit=1000`;
       const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
       if (res.ok) refRows.push(...await res.json());
     }
@@ -1534,114 +1866,243 @@ async function launchSimulation() {
       libelleMap.get(r.libelle).push(r);
     });
 
-    // 3. CIP sans correspondance dans la base
+    // Second fetch: selected labs may have different CIPs for same molecules (not in CSV).
+    // Query by libellé + selected lab to find all their equivalents.
+    if (ourLabs.size > 0) {
+      const allLibelles = [...new Set(refRows.map(r => r.libelle))];
+      const LIB_CHUNK = 50;
+      for (const lab of ourLabs) {
+        for (let i = 0; i < allLibelles.length; i += LIB_CHUNK) {
+          const chunk = allLibelles.slice(i, i + LIB_CHUNK);
+          const libStr = chunk.map(l => `"${l.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
+          const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&libelle=in.(${libStr})&limit=2000`;
+          const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
+          if (res.ok) {
+            const rows = await res.json();
+            rows.forEach(r => {
+              if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
+              if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
+                libelleMap.get(r.libelle).push(r);
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Natural ref map (no lab preference) + current lab CA breakdown
+    const naturalRefMap = new Map();
+    refRows.forEach(r => { if (!naturalRefMap.has(r.cip13)) naturalRefMap.set(r.cip13, r); });
+    const currentLabCA = new Map();
+    csvData.forEach(row => {
+      const ref = naturalRefMap.get(row.cip13);
+      if (!ref) return;
+      currentLabCA.set(ref.labo, (currentLabCA.get(ref.labo) || 0) + row.qty * (ref.puht || 0));
+    });
+    const currentLabList = [...currentLabCA.entries()].sort((a, b) => b[1] - a[1]);
+
+    // CIP sans correspondance dans la base
     const unmatchedRows = csvData.filter(row => !refMap.has(row.cip13));
 
-    // Helper: get effective remise for a ref from a labPage
-    // Retourne la remise totale (RSF + remise2 + remise3) si le marché est atteint,
-    // ou le RSF seul sinon. marketMet=undefined → toujours RSF+additionnelle.
-    function getRemise(ref, lp, marketMet = true) {
-      const cond = lp.conditions[lp.activeCondIdx] || lp.conditions[0];
-      const baseRSF = Math.abs(parseFloat(ref.rsf_pct) || 0);
+    // Renvoie le meilleur palier (condition) atteignable pour un CA donné.
+    // forceMarketMet=true → prend le palier avec le seuil le plus élevé sans vérifier le CA.
+    function getBestCond(lp, ca, forceMarketMet = false) {
+      if (!lp?.conditions?.length) return null;
+      const candidates = forceMarketMet
+        ? lp.conditions
+        : lp.conditions.filter(c => !c.caCondition || ca >= c.caCondition);
+      if (!candidates.length) return null;
+      return candidates.reduce((best, c) =>
+        (c.caCondition || 0) > (best?.caCondition || 0) ? c : best
+      );
+    }
+
+    // Helper: remise effective pour une ref, avec une condition déjà résolue.
+    // Passer cond=null signifie "aucun palier atteint" → RSF uniquement.
+    function getRemise(ref, cond, firstMet = false) {
+      const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
+      const baseRSF = Math.abs(parseFloat(baseRSFPct) || 0);
       if (!cond) return baseRSF;
-      // Molécule en rsfOnly → RSF uniquement même si marché atteint
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
       if (!rsfRow) return baseRSF;
       if (rsfRow.excluded) {
-        // Exclusion : exception molécule ciblée si marché atteint, sinon RSF seul
-        if (marketMet) {
-          const exc = cond.exceptions[String(rsfRow.rsf_pct)];
-          if (exc && exc.libelles.some(l => l.text === ref.libelle)) return parseFloat(exc.remiseCible) || 0;
-        }
+        const exc = cond.exceptions[String(rsfRow.rsf_pct)];
+        if (exc && exc.libelles.some(l => l.text === ref.libelle)) return parseFloat(exc.remiseCible) || 0;
         return baseRSF;
       }
-      if (!marketMet) return baseRSF;
       return baseRSF + (parseFloat(rsfRow.remise2) || 0) + (parseFloat(rsfRow.remise3) || 0);
     }
 
-    // 4. Total CA from CSV (fixed — same regardless of scenario)
-    const totalCA = csvData.reduce((sum, row) => {
-      const ref = refMap.get(row.cip13);
-      return sum + row.qty * (row.puhtCSV || ref?.puht || 0);
-    }, 0);
-
-    // 5. Calculate discount scenario given assignment (cip13 -> ref from a specific lab)
-    function calcScenario(assignment) {
-      const labResults = [];
-      let totalDiscount = 0;
-      state.labPages.forEach(lp => {
-        if (!lp.selectedLab) return;
-        const cond = lp.conditions[lp.activeCondIdx] || lp.conditions[0];
-        const caThreshold = cond?.caCondition || 0;
-        let ca = 0, discount = 0;
-        const refs = [];
-        csvData.forEach(row => {
-          const assignedRef = assignment.get(row.cip13);
-          if (!assignedRef || assignedRef.labo !== lp.selectedLab) return;
-          const price = row.puhtCSV || assignedRef.puht || 0;
-          ca += row.qty * price;
-          refs.push({ ...row, ref: assignedRef, price });
-        });
-        const met = caThreshold === 0 || ca >= caThreshold;
-        // RSF toujours acquis ; remise2+remise3 seulement si seuil CA atteint
-        refs.forEach(r => {
-          discount += r.qty * r.price * getRemise(r.ref, lp, met) / 100;
-        });
-        totalDiscount += discount;
-        labResults.push({ name: lp.selectedLab, ca, caThreshold, met, discount, refs });
-      });
-      return { totalDiscount, labResults };
+    // 4. Helper: RSF de base sans conditions négociées
+    function getRSFBase(ref, firstMet = false) {
+      const pct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
+      return Math.abs(parseFloat(pct) || 0);
     }
 
-    // 6. Current assignment: each cip13 goes to its "natural" lab from Supabase
-    const currentAssignment = new Map();
-    csvData.forEach(row => {
-      const ref = refMap.get(row.cip13);
-      if (ref) currentAssignment.set(row.cip13, ref);
-    });
-    const current = calcScenario(currentAssignment);
-
-    // 7. Optimized assignment: for each molecule, find best lab from our conditions
-    const optimizedAssignment = new Map(currentAssignment);
-    // Build: libelle -> [{ labo, ref }] from our labs only
-    csvData.forEach(row => {
-      const ref = refMap.get(row.cip13);
-      if (!ref) return;
-      const alternatives = (libelleMap.get(ref.libelle) || []).filter(r => ourLabs.has(r.labo));
-      if (alternatives.length <= 1) return;
-      // Find alt with best effective price after discount
-      let bestRef = null, bestNetPrice = Infinity;
-      alternatives.forEach(altRef => {
-        const lp = state.labPages.find(l => l.selectedLab === altRef.labo);
-        if (!lp) return;
-        const price = row.puhtCSV || altRef.puht || 0;
-        const remise = getRemise(altRef, lp);
-        const netPrice = price * (1 - remise / 100);
-        if (netPrice < bestNetPrice) { bestNetPrice = netPrice; bestRef = altRef; }
-      });
-      if (bestRef) optimizedAssignment.set(row.cip13, bestRef);
-    });
-    const optimized = calcScenario(optimizedAssignment);
-    const gain = optimized.totalDiscount - current.totalDiscount;
-
-    // 8. Build CSV per lab for optimized scenario
-    function buildLabCSV(labName, assignment) {
-      const rows = ['CIP13;Libellé;Labo;Qté;PU HT;RSF %;Remise 2%;Remise 3%;Remise €'];
-      const labResult = optimized.labResults.find(l => l.name === labName);
-      const met = labResult ? labResult.met : true;
+    // 5. calcScenario: CA + remise par labo pour un assignment donné
+    //    rsfOnly=true  → RSF uniquement (scénario actuel)
+    //    forceMarketMet=true → marché toujours atteint (optimisé 1)
+    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false } = {}) {
+      const labMap = new Map();
+      // Phase 1 : CA par labo
       csvData.forEach(row => {
         const ref = assignment.get(row.cip13);
-        if (!ref || ref.labo !== labName) return;
-        const lp = state.labPages.find(l => l.selectedLab === labName);
-        const price = row.puhtCSV || ref.puht || 0;
-        const remise = lp ? getRemise(ref, lp, met) : 0;
-        const cond = lp?.conditions[lp.activeCondIdx] || lp?.conditions[0];
-        const rsfRow = cond?.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
-        const r2 = rsfRow ? (parseFloat(rsfRow.remise2) || 0) : 0;
-        const r3 = rsfRow ? (parseFloat(rsfRow.remise3) || 0) : 0;
-        const disc = row.qty * price * remise / 100;
-        rows.push(`${row.cip13};"${ref.libelle}";${ref.labo};${row.qty};${price.toFixed(2)};${Math.abs(ref.rsf_pct)}%;${r2}%;${r3}%;${disc.toFixed(2)}`);
+        if (!ref) return;
+        if (!labMap.has(ref.labo)) {
+          const lp = state.labPages.find(l => l.selectedLab === ref.labo);
+          labMap.set(ref.labo, { ca: 0, remise: 0, lp, isSelected: !!lp, rows: [] });
+        }
+        const e = labMap.get(ref.labo);
+        e.ca += row.qty * (ref.puht || 0);
+        e.rows.push({ row, ref, price: ref.puht || 0 });
+      });
+      // Phase 2 : remise par labo (après CA connu → meilleur palier atteignable)
+      labMap.forEach(e => {
+        const bestCond = rsfOnly ? null : getBestCond(e.lp, e.ca, forceMarketMet);
+        const firstMet = e.isSelected && !rsfOnly && state.gers != null &&
+                         bestCond?.caCondition != null && bestCond.caCondition >= 0.9 * state.gers;
+        e.bestCond = bestCond;
+        e.met = bestCond !== null || !e.isSelected;
+        e.caThreshold = bestCond?.caCondition || 0;
+        e.firstMet = firstMet;
+        e.rows.forEach(({ row, ref, price }) => {
+          const remisePct = (rsfOnly || !e.isSelected)
+            ? getRSFBase(ref, firstMet)
+            : getRemise(ref, bestCond, firstMet);
+          e.remise += row.qty * price * remisePct / 100;
+        });
+      });
+      const labResults = [...labMap.entries()].map(([name, e]) => ({
+        name, ca: e.ca, remise: e.remise,
+        pondere: e.ca > 0 ? e.remise / e.ca * 100 : 0,
+        caThreshold: e.caThreshold, met: e.met, firstMet: e.firstMet, isSelected: e.isSelected,
+      })).sort((a, b) => b.ca - a.ca);
+      return { labResults, totalRemise: labResults.reduce((s, l) => s + l.remise, 0) };
+    }
+
+    // 6a. Scénario actuel : CIP → premier match Supabase, RSF uniquement
+    const naturalAssignment = new Map();
+    csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
+    const actuel = calcScenario(naturalAssignment);
+    const totalCA = actuel.labResults.reduce((s, l) => s + l.ca, 0);
+
+    // 6c. Optimisé 2 : réalisation des marchés (seuils les plus serrés en priorité)
+    // Calcul du CA potentiel par labo avec seuil
+    const labPotential = new Map();
+    state.labPages.forEach(lp => {
+      if (!lp.selectedLab) return;
+      // Conditions avec seuil, triées du plus haut au plus bas
+      const condsWithThreshold = lp.conditions.filter(c => c.caCondition > 0)
+        .sort((a, b) => b.caCondition - a.caCondition);
+      if (!condsWithThreshold.length) return;
+      let potentialCA = 0;
+      csvData.forEach(row => {
+        const ref = naturalRefMap.get(row.cip13);
+        if (!ref) return;
+        const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === lp.selectedLab);
+        if (labRef) potentialCA += row.qty * (labRef.puht || 0);
+      });
+      // Meilleur palier atteignable (seuil le plus élevé que le CA potentiel couvre)
+      const bestAchievable = condsWithThreshold.find(c => potentialCA >= c.caCondition);
+      if (!bestAchievable) return;
+      labPotential.set(lp.selectedLab, { threshold: bestAchievable.caCondition, potentialCA });
+    });
+
+    const opt2Assignment = new Map(naturalAssignment);
+    const cipLocked = new Set();
+
+    // Remplir les marchés atteignables, du plus serré au plus aisé
+    [...labPotential.entries()]
+      .filter(([, v]) => v.potentialCA >= v.threshold)
+      .sort((a, b) => (a[1].potentialCA - a[1].threshold) - (b[1].potentialCA - b[1].threshold))
+      .forEach(([labName, { threshold }]) => {
+        let labCA = 0;
+        const toCommit = [];
+        csvData.forEach(row => {
+          if (labCA >= threshold || cipLocked.has(row.cip13)) return;
+          const ref = naturalRefMap.get(row.cip13);
+          if (!ref) return;
+          const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName);
+          if (!labRef) return;
+          toCommit.push({ row, labRef });
+          labCA += row.qty * (labRef.puht || 0);
+        });
+        if (labCA >= threshold) {
+          toCommit.forEach(({ row, labRef }) => { opt2Assignment.set(row.cip13, labRef); cipLocked.add(row.cip13); });
+        }
+      });
+
+    // CIPs non verrouillés : meilleur PU NET (comme opt1)
+    csvData.forEach(row => {
+      if (cipLocked.has(row.cip13)) return;
+      const ref = naturalRefMap.get(row.cip13);
+      if (!ref) return;
+      const alts = (libelleMap.get(ref.libelle) || []).filter(r => ourLabs.has(r.labo));
+      if (!alts.length) { opt2Assignment.set(row.cip13, ref); return; }
+      let bestRef = null, bestNet = Infinity;
+      alts.forEach(altRef => {
+        const lp = state.labPages.find(l => l.selectedLab === altRef.labo);
+        if (!lp) return;
+        const cond = getBestCond(lp, Infinity, true);
+        const firstMet = state.gers != null && cond?.caCondition != null && cond.caCondition >= 0.9 * state.gers;
+        const net = (altRef.puht || 0) * (1 - getRemise(altRef, cond, firstMet) / 100);
+        if (net < bestNet) { bestNet = net; bestRef = altRef; }
+      });
+      opt2Assignment.set(row.cip13, bestRef || ref);
+    });
+    const opt2 = calcScenario(opt2Assignment);
+    const gainOpt2 = opt2.totalRemise - actuel.totalRemise;
+
+    // 6d. Scénarios par laboratoire : focus maximal sur chaque labo sélectionné
+    const labScenarios = [];
+    state.labPages.forEach(lp => {
+      if (!lp.selectedLab) return;
+      const labName = lp.selectedLab;
+      const labAssignment = new Map(naturalAssignment);
+
+      // Étape 1 : tous les CIPs avec équivalent dans ce labo → ce labo
+      csvData.forEach(row => {
+        const ref = naturalRefMap.get(row.cip13);
+        if (!ref) return;
+        const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName);
+        if (labRef) labAssignment.set(row.cip13, labRef);
+      });
+
+      // Étape 2 : CIPs sans équivalent dans ce labo → meilleur autre labo sélectionné (RSF)
+      csvData.forEach(row => {
+        const ref = naturalRefMap.get(row.cip13);
+        if (!ref) return;
+        const alts = libelleMap.get(ref.libelle) || [];
+        if (alts.some(a => a.labo === labName)) return;
+        const otherAlts = alts.filter(r => ourLabs.has(r.labo));
+        if (!otherAlts.length) return;
+        let bestRef = null, bestNet = Infinity;
+        otherAlts.forEach(altRef => {
+          const net = (altRef.puht || 0) * (1 - getRSFBase(altRef) / 100);
+          if (net < bestNet) { bestNet = net; bestRef = altRef; }
+        });
+        if (bestRef) labAssignment.set(row.cip13, bestRef);
+      });
+
+      labScenarios.push({ name: labName, scenario: calcScenario(labAssignment), assignment: labAssignment });
+    });
+
+    // 7. Export CSV scénario : CIP;Libellé;Labo;PU HT;Remise totale %;PU NET
+    // filterLab : si renseigné, n'exporte que les CIPs de ce laboratoire
+    function buildScenarioCSV(assignment, labResults, filterLab = null) {
+      const rows = ['CIP;Libellé;Labo;PU HT;Remise totale %;PU NET'];
+      csvData.forEach(row => {
+        const ref = assignment.get(row.cip13);
+        if (!ref) return;
+        if (filterLab && ref.labo !== filterLab) return;
+        const labResult = labResults.find(l => l.name === ref.labo);
+        const firstMet = labResult?.firstMet || false;
+        const lp = state.labPages.find(l => l.selectedLab === ref.labo);
+        const price = ref.puht || 0;
+        const cond = lp ? getBestCond(lp, labResult?.ca || 0) : null;
+        const remise = lp ? getRemise(ref, cond, firstMet) : getRSFBase(ref, firstMet);
+        const punet = price * (1 - remise / 100);
+        rows.push(`${row.cip13};"${ref.libelle}";${ref.labo};${price.toFixed(4).replace('.',',')};"${remise.toFixed(2).replace('.',',')} %";${punet.toFixed(4).replace('.',',')}`);
       });
       return rows.join('\n');
     }
@@ -1653,85 +2114,166 @@ async function launchSimulation() {
     }
 
     // 9. Render results
-    const fmt = n => n.toLocaleString('fr', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     const fmtE = n => n.toLocaleString('fr', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    const fmtP = n => n.toFixed(2) + ' %';
+
+    const hdrsBase   = ['Laboratoire', 'CA BRUT', 'REMISE €', 'POND. %'];
+    const hdrsMarket = ['Laboratoire', 'CA BRUT', 'CA CIBLE', 'SEUIL', 'REMISE €', 'POND. %'];
+
+    // One row of a scenario table
+    const mkLabRow = (l, withMarket = false, withGainCol = false) => {
+      const cls = !l.isSelected ? 'lab-neutral' : withMarket ? (l.met ? 'lab-ok' : 'lab-nok') : 'lab-ok';
+      const marketCells = withMarket && l.isSelected
+        ? `<td>${l.caThreshold ? fmtE(l.caThreshold) : '—'}</td><td style="color:${l.met?'var(--green)':'var(--red)'}">${l.met?'✓':'✗'}</td>`
+        : withMarket ? `<td>—</td><td>—</td>` : '';
+      const gainCol = withGainCol ? '<td></td>' : '';
+      return `<tr class="${cls}"><td>${l.name}</td><td>${fmtE(l.ca)}</td>${marketCells}<td>${fmtE(l.remise)}</td><td>${fmtP(l.pondere)}</td>${gainCol}</tr>`;
+    };
+
+    // Total row with gain at far right
+    const mkTotalRow = (results, withMarket, gain) => {
+      const tCA = results.reduce((s, l) => s + l.ca, 0);
+      const tR  = results.reduce((s, l) => s + l.remise, 0);
+      const tP  = tCA > 0 ? tR / tCA * 100 : 0;
+      const mPad = withMarket ? '<td>—</td><td>—</td>' : '';
+      const gainTd = gain != null
+        ? `<td style="text-align:right;font-weight:700;color:${gain>=0?'var(--green)':'var(--red)'}">GAIN : ${gain>=0?'+':''}${fmtE(gain)}</td>`
+        : '';
+      return `<tr class="sim-total-row"><td>TOTAL</td><td>${fmtE(tCA)}</td>${mPad}<td>${fmtE(tR)}</td><td>${fmtP(tP)}</td>${gainTd}</tr>`;
+    };
+
+    // Full scenario table
+    const mkScenarioTable = (results, withMarket, gain) => {
+      const hdrs = withMarket ? hdrsMarket : hdrsBase;
+      const gainHdr = gain != null ? '<th style="text-align:right">GAIN VS ACTUEL</th>' : '';
+      return `<table class="sim-lab-table">
+        <thead><tr>${hdrs.map(h=>`<th>${h}</th>`).join('')}${gainHdr}</tr></thead>
+        <tbody>
+          ${results.map(l => mkLabRow(l, withMarket, gain != null)).join('')}
+          ${mkTotalRow(results, withMarket, gain)}
+        </tbody>
+      </table>`;
+    };
+
+    // Store assignments for CSV download
+    const scenarioStore = new Map();
+    // Optimisé : un fichier par labo + un fichier tout
+    opt2.labResults.filter(l => l.isSelected).forEach(l =>
+      scenarioStore.set(`opt2_${l.name}`, { assignment: opt2Assignment, labResults: opt2.labResults, filterLab: l.name }));
+    scenarioStore.set('opt2_all', { assignment: opt2Assignment, labResults: opt2.labResults });
+    scenarioStore.set('actuel',   { assignment: naturalAssignment, labResults: actuel.labResults });
+    labScenarios.forEach(({ name, scenario, assignment }) =>
+      scenarioStore.set(`lab_${name}`, { assignment, labResults: scenario.labResults }));
+
+    // Sort lab scenarios by gain desc
+    const sortedLabScenarios = [...labScenarios].sort((a, b) =>
+      (b.scenario.totalRemise - actuel.totalRemise) - (a.scenario.totalRemise - actuel.totalRemise));
+
+    const dlBtn = (key, label = '↓ CSV') => `<button class="sim-dl-inline" data-key="${key}">${label}</button>`;
+
+    // Boutons de téléchargement du scénario optimisé : un par labo sélectionné + tout
+    const opt2DlBtns = opt2.labResults.filter(l => l.isSelected)
+      .map(l => dlBtn(`opt2_${l.name}`, `↓ ${l.name}`)).join('')
+      + dlBtn('opt2_all', '↓ TOUT');
 
     let html = '';
 
-    // KPIs
+    // ── KPIs ──────────────────────────────────────────────────────────────────
     html += `<div class="sim-section">
       <div class="sim-title">◈ RÉSUMÉ</div>
       <div class="sim-kpi-row">
         <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL N-1</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
-        <div class="sim-kpi"><div class="sim-kpi-label">REMISE ACTUELLE</div><div class="sim-kpi-value">${fmtE(current.totalDiscount)}</div></div>
-        <div class="sim-kpi"><div class="sim-kpi-label">REMISE OPTIMISÉE</div><div class="sim-kpi-value green">${fmtE(optimized.totalDiscount)}</div></div>
-        <div class="sim-kpi"><div class="sim-kpi-label">GAIN POTENTIEL</div><div class="sim-kpi-value ${gain > 0 ? 'green' : 'red'}">${gain >= 0 ? '+' : ''}${fmtE(gain)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">REMISE ACTUELLE</div><div class="sim-kpi-value">${fmtE(actuel.totalRemise)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">GAIN OPTIMISÉ</div><div class="sim-kpi-value ${gainOpt2>0?'green':'red'}">${gainOpt2>=0?'+':''}${fmtE(gainOpt2)}</div></div>
       </div>
     </div>`;
 
-    // Comparison
-    html += `<div class="sim-section">
-      <div class="sim-title">◈ COMPARAISON SCÉNARIOS</div>
-      <div class="sim-compare">
-        <div class="sim-compare-col">
-          <div class="sim-compare-title">▸ SCÉNARIO ACTUEL</div>
-          <table class="sim-lab-table"><thead><tr><th>Laboratoire</th><th>CA réel</th><th>CA cible</th><th>Seuil</th><th>Remise</th></tr></thead><tbody>`;
-    current.labResults.forEach(l => {
-      html += `<tr class="${l.met ? 'lab-ok' : 'lab-nok'}">
-        <td>${l.name}</td><td>${fmtE(l.ca)}</td><td>${l.caThreshold ? fmtE(l.caThreshold) : '—'}</td>
-        <td style="color:${l.met ? 'var(--green)' : 'var(--red)'}">${l.met ? '✓' : '✗'}</td>
-        <td>${fmtE(l.discount)}</td></tr>`;
-    });
-    html += `</tbody></table></div>
-        <div class="sim-compare-col best">
-          <div class="sim-compare-title">◆ SCÉNARIO OPTIMISÉ</div>
-          <table class="sim-lab-table"><thead><tr><th>Laboratoire</th><th>CA optimisé</th><th>CA cible</th><th>Seuil</th><th>Remise</th></tr></thead><tbody>`;
-    optimized.labResults.forEach(l => {
-      html += `<tr class="${l.met ? 'lab-ok' : 'lab-nok'}">
-        <td>${l.name}</td><td>${fmtE(l.ca)}</td><td>${l.caThreshold ? fmtE(l.caThreshold) : '—'}</td>
-        <td style="color:${l.met ? 'var(--green)' : 'var(--red)'}">${l.met ? '✓' : '✗'}</td>
-        <td>${fmtE(l.discount)}</td></tr>`;
-    });
-    html += `</tbody></table></div></div></div>`;
+    // ── WINNER : Optimisé 2 (toujours 1er) ────────────────────────────────────
+    html += `<div class="sim-winner" id="simWinner">
+      <canvas class="sim-fireworks" id="simFireworks"></canvas>
+      <div class="sim-winner-dl">${opt2DlBtns}</div>
+      <div class="sim-winner-crown">★</div>
+      <div class="sim-winner-title">SCÉNARIO OPTIMISÉ</div>
+      <div class="sim-winner-sub">RÉALISATION DES MARCHÉS — GAIN MAXIMAL</div>
+      <div class="sim-winner-gain">${gainOpt2>=0?'+':''}${fmtE(gainOpt2)}</div>
+      ${mkScenarioTable(opt2.labResults, true, null)}
+    </div>`;
 
-    // Download buttons
-    html += `<div class="sim-section"><div class="sim-title">◈ TÉLÉCHARGER LES RÉFÉRENCES OPTIMISÉES PAR LABO</div><div>`;
-    state.labPages.forEach(lp => {
-      if (!lp.selectedLab) return;
-      html += `<button class="sim-dl-btn" data-lab="${lp.selectedLab}">↓ ${lp.selectedLab}</button>`;
-    });
-    html += `</div></div>`;
-
-    // CIP sans correspondance
-    if (unmatchedRows.length > 0) {
+    // ── Scénarios par labo triés par gain décroissant ──────────────────────────
+    sortedLabScenarios.forEach(({ name, scenario }) => {
+      const gain = scenario.totalRemise - actuel.totalRemise;
       html += `<div class="sim-section">
-        <div class="sim-title">◈ RÉFÉRENCES NON IDENTIFIÉES</div>
-        <div class="sim-warn" style="margin-bottom:12px">
-          ⚠ ${unmatchedRows.length} code${unmatchedRows.length > 1 ? 's' : ''} CIP présent${unmatchedRows.length > 1 ? 's' : ''} dans votre fichier n'ont aucune correspondance dans la base de référence.
+        <div class="sim-scenario-header">
+          <span>▸ SCÉNARIO ${name.toUpperCase()}</span>
+          ${dlBtn(`lab_${name}`)}
         </div>
-        <button class="sim-dl-btn" id="btnDlUnmatched">↓ TÉLÉCHARGER LA LISTE (${unmatchedRows.length} CIP)</button>
+        ${mkScenarioTable(scenario.labResults, true, gain)}
       </div>`;
-    }
+    });
+
+    // ── Scénario Actuel (toujours dernier) ─────────────────────────────────────
+    html += `<div class="sim-section">
+      <div class="sim-scenario-header">
+        <span>▸ SCÉNARIO ACTUEL</span>
+        ${dlBtn('actuel')}
+      </div>
+      ${mkScenarioTable(actuel.labResults, false, null)}
+    </div>`;
 
     container.innerHTML = html;
 
-    // Wire download buttons — labs
-    container.querySelectorAll('.sim-dl-btn[data-lab]').forEach(btn => {
+    // Pixel-art fireworks on winner banner
+    (function startFireworks() {
+      const canvas = document.getElementById('simFireworks');
+      const winner = document.getElementById('simWinner');
+      if (!canvas || !winner) return;
+      canvas.width  = winner.offsetWidth  || 800;
+      canvas.height = winner.offsetHeight || 260;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      const PX = 5;
+      const COLORS = ['#00ff88','#ffab00','#00e5ff','#ff3366','#cc5de8','#ffd93d','#6bcb77','#4d96ff'];
+      const particles = [];
+      function burst(x, y) {
+        const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+        const count = 18 + Math.floor(Math.random() * 14);
+        for (let i = 0; i < count; i++) {
+          const angle = (Math.PI * 2 / count) * i + Math.random() * 0.3;
+          const speed = 1.5 + Math.random() * 3.5;
+          particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
+            color, life: 45 + Math.floor(Math.random()*20), maxLife: 65 });
+        }
+      }
+      let frame = 0;
+      function tick() {
+        if (!document.getElementById('simFireworks')) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (frame % 28 === 0) burst(60 + Math.random()*(canvas.width-120), 20 + Math.random()*(canvas.height-40));
+        for (let i = particles.length-1; i >= 0; i--) {
+          const p = particles[i];
+          p.x += p.vx; p.y += p.vy; p.vy += 0.09; p.life--;
+          if (p.life <= 0) { particles.splice(i,1); continue; }
+          ctx.globalAlpha = p.life / p.maxLife;
+          ctx.fillStyle = p.color;
+          ctx.fillRect(Math.round(p.x/PX)*PX, Math.round(p.y/PX)*PX, PX, PX);
+        }
+        ctx.globalAlpha = 1;
+        frame++;
+        if (frame < 360) requestAnimationFrame(tick);
+        else canvas.style.opacity = '0';
+      }
+      tick();
+    })();
+
+    // Wire inline download buttons
+    container.querySelectorAll('.sim-dl-inline').forEach(btn => {
       btn.addEventListener('click', () => {
-        const lab = btn.dataset.lab;
-        downloadCSV(buildLabCSV(lab, optimizedAssignment), `optimise_${lab.toLowerCase()}.csv`);
+        const s = scenarioStore.get(btn.dataset.key);
+        if (!s) return;
+        const fname = `scenario_${btn.dataset.key.replace(/^lab_/, '').replace(/^opt2_/, 'optimise_')}.csv`;
+        downloadCSV(buildScenarioCSV(s.assignment, s.labResults, s.filterLab || null), fname);
       });
     });
-
-    // Wire download button — unmatched CIPs
-    const btnDlUnmatched = container.querySelector('#btnDlUnmatched');
-    if (btnDlUnmatched) {
-      btnDlUnmatched.addEventListener('click', () => {
-        const lines = ['CIP13;Quantité'];
-        unmatchedRows.forEach(r => lines.push(`${r.cip13};${r.qty}`));
-        downloadCSV(lines.join('\n'), 'cip_sans_correspondance.csv');
-      });
-    }
 
   } catch(err) {
     console.error(err);
@@ -1745,24 +2287,71 @@ const csvInput   = document.getElementById('csvInput');
 const fileStatus = document.getElementById('fileStatus');
 const btn1Next   = document.getElementById('btn1Next');
 
+const PDF_SERVER = 'http://localhost:5050';
+
+function applyParsedRows(file, rows, warnings = []) {
+  state.csvData = rows;
+  state.csvRows = rows.length;
+  document.getElementById('fileStatusText').textContent =
+    `FICHIER : ${file.name}  —  ${rows.length.toLocaleString('fr')} références détectées`;
+  fileStatus.classList.add('visible');
+  btn1Next.disabled = false;
+  dropzone.classList.add('loaded');
+  const fnLabel = document.getElementById('dropzone-filename');
+  if (fnLabel) fnLabel.textContent = `${file.name}  —  ${rows.length.toLocaleString('fr')} références`;
+  if (warnings.length) console.info('[PDF achats]', warnings.join('\n'));
+}
+
 function handleFile(file) {
   if (!file) return;
   state.csvFile = file;
+  const isPDF  = /\.pdf$/i.test(file.name);
+  const isXlsx = /\.xlsx$/i.test(file.name);
+
+  if (isPDF) {
+    document.getElementById('fileStatusText').textContent = '⟳ Analyse du PDF en cours…';
+    fileStatus.classList.add('visible');
+    const fd = new FormData();
+    fd.append('file', file);
+    fetch(`${PDF_SERVER}/extract-achats`, { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          document.getElementById('fileStatusText').textContent = `⚠ ${data.error}`;
+          return;
+        }
+        // Adapter le format server → format interne {cip13, qty}
+        const rows = (data.rows || []).map(r => ({
+          cip13: r.cip13, qty: r.qty, puhtCSV: null
+        }));
+        if (!rows.length) {
+          document.getElementById('fileStatusText').textContent =
+            '⚠ Aucune référence CIP/quantité trouvée dans le PDF. Vérifiez le format.';
+          return;
+        }
+        applyParsedRows(file, rows, data.warnings || []);
+      })
+      .catch(() => {
+        document.getElementById('fileStatusText').textContent =
+          '⚠ Serveur PDF indisponible. Lancez lancer.py puis réessayez.';
+      });
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = e => {
-    const text = e.target.result;
-    const lines = text.split(/\r?\n/).filter(l => l.trim());
-    state.csvRows = Math.max(0, lines.length - 1);
-    document.getElementById('fileStatusText').textContent =
-      `FICHIER : ${file.name}  —  ${state.csvRows.toLocaleString('fr')} lignes détectées`;
-    fileStatus.classList.add('visible');
-    btn1Next.disabled = false;
-    state.csvData = parseCSV(text);
-    dropzone.classList.add('loaded');
-    const fnLabel = document.getElementById('dropzone-filename');
-    if (fnLabel) fnLabel.textContent = `${file.name}  —  ${state.csvRows.toLocaleString('fr')} lignes`;
+    let text;
+    if (isXlsx) {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      text = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);
+    } else {
+      text = e.target.result;
+    }
+    const rows = parseCSV(text);
+    applyParsedRows(file, rows);
   };
-  reader.readAsText(file, 'utf-8');
+  if (isXlsx) reader.readAsArrayBuffer(file);
+  else reader.readAsText(file, 'utf-8');
 }
 
 function parseCSV(text) {
@@ -1877,11 +2466,24 @@ document.addEventListener('input', saveState);
   const saved = loadSavedState();
   if (saved) {
     state.includePDA = !!saved.includePDA;
+    state.gers = saved.gers ?? null;
     // pdaToggles synced after DOM build
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 2) {
       state.labPages = savedPages.map(sp => mkLabState(sp.uid));
     }
+  }
+
+  // Wire champ GERS global
+  const gersGlobalInp = document.getElementById('gersGlobal');
+  if (gersGlobalInp) {
+    gersGlobalInp.value = state.gers !== null ? state.gers : '';
+    gersGlobalInp.addEventListener('input', () => {
+      const v = parseFloat(gersGlobalInp.value.replace(',', '.').replace(/\s/g, ''));
+      state.gers = isNaN(v) ? null : v;
+      state.labPages.forEach(lp => { if (lp._reRenderCondTables) lp._reRenderCondTables(); });
+      saveState();
+    });
   }
 
   await fetchAndSortLabs();
