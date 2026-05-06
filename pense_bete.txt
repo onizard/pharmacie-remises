@@ -1,0 +1,1 @@
+taper "maj rsf" pour lancer la recuperation des pdf et creation du tableau des equivalences
