@@ -455,10 +455,96 @@
   /* Total row */
   .sim-lab-table tr.sim-total-row td { background: #0a0f1a; font-weight: 700; color: var(--cyan); border-top: 2px solid var(--border); font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 1px; }
 
+  /* ── Login screen ────────────────────────────────────────────────────────── */
+  #authOverlay { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #authOverlay.hidden { display: none; }
+  .auth-logo { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 32px; color: var(--cyan); text-shadow: var(--glow-c); letter-spacing: 6px; margin-bottom: 6px; }
+  .auth-sub  { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: 3px; margin-bottom: 40px; }
+  .auth-box  { background: var(--bg2); border: 1px solid var(--border); padding: 36px 36px 28px; width: min(380px, 92vw); }
+  .auth-field { margin-bottom: 18px; }
+  .auth-field label { display: block; font-family: 'Orbitron', monospace; font-size: 9px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 7px; }
+  .auth-field input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 13px; padding: 10px 12px; outline: none; transition: border-color .2s; }
+  .auth-field input:focus { border-color: var(--cyan); }
+  .auth-err { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--red); min-height: 18px; margin-bottom: 14px; text-align: center; }
+  .auth-btn { width: 100%; font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; letter-spacing: 3px; padding: 12px; cursor: pointer; background: #001a22; border: 1px solid var(--cyan); color: var(--cyan); transition: all .2s; }
+  .auth-btn:hover { background: #002a38; box-shadow: var(--glow-c); }
+  @keyframes authShake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }
+  .auth-box.shake { animation: authShake .4s ease; }
+
 </style>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
+
+<!-- ── Écran de connexion ───────────────────────────────────────────────── -->
+<div id="authOverlay">
+  <div class="auth-logo">BREAK PHARMA</div>
+  <div class="auth-sub">◈ ACCÈS SÉCURISÉ ◈</div>
+  <div class="auth-box" id="authBox">
+    <div class="auth-field">
+      <label>IDENTIFIANT</label>
+      <input type="email" id="authLogin" placeholder="votre@email.com" autocomplete="username" />
+    </div>
+    <div class="auth-field">
+      <label>MOT DE PASSE</label>
+      <input type="password" id="authPwd" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <div class="auth-err" id="authErr"></div>
+    <button class="auth-btn" id="authBtn">SE CONNECTER →</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const LOGIN_H = '857dd9625d4613596d8198ed77d19c9382cf9bafb2c0341f6c882cb51829bf37';
+  const PWD_H   = '94018c43d67ff291d258fc26438cb6d16311d08a48ba54fec69e9f7cdf81c2bc';
+  const SESSION_KEY = 'bp_auth';
+
+  async function sha256(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  function unlock() {
+    document.getElementById('authOverlay').classList.add('hidden');
+  }
+
+  // Déjà connecté ?
+  if (sessionStorage.getItem(SESSION_KEY) === '1' || localStorage.getItem(SESSION_KEY) === '1') {
+    unlock();
+  }
+
+  document.getElementById('authBtn').addEventListener('click', async () => {
+    const login = document.getElementById('authLogin').value.trim().toLowerCase();
+    const pwd   = document.getElementById('authPwd').value;
+    const errEl = document.getElementById('authErr');
+    const box   = document.getElementById('authBox');
+    errEl.textContent = '';
+
+    const [lh, ph] = await Promise.all([sha256(login), sha256(pwd)]);
+
+    if (lh === LOGIN_H && ph === PWD_H) {
+      sessionStorage.setItem(SESSION_KEY, '1');
+      localStorage.setItem(SESSION_KEY, '1');
+      unlock();
+    } else {
+      errEl.textContent = '⚠ Identifiant ou mot de passe incorrect.';
+      box.classList.remove('shake');
+      void box.offsetWidth;
+      box.classList.add('shake');
+    }
+  });
+
+  // Connexion via touche Entrée
+  document.getElementById('authPwd').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('authBtn').click();
+  });
+  document.getElementById('authLogin').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('authPwd').focus();
+  });
+})();
+</script>
+
 <div id="app">
 
   <header class="site-header">
