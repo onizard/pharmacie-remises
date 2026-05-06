@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Fond sombre style casse-briques -->
+  <rect width="64" height="64" rx="8" fill="#1a1a2e"/>
+
+  <!--
+    Croix 3×3 : 5 briques seulement (center + 4 bras de 1)
+    Brique : 12×7 px, gap 3px
+    col 0 → x=11, col 1 → x=26, col 2 → x=41
+    row 0 → y=5,  row 1 → y=15, row 2 → y=25
+  -->
+
+  <!-- Haut (col 1, row 0) -->
+  <rect x="26" y="5"  width="12" height="7" rx="1.5" fill="#2ecc71" stroke="#27ae60" stroke-width="0.8"/>
+
+  <!-- Gauche (col 0, row 1) -->
+  <rect x="11" y="15" width="12" height="7" rx="1.5" fill="#2ecc71" stroke="#27ae60" stroke-width="0.8"/>
+
+  <!-- Centre (col 1, row 1) -->
+  <rect x="26" y="15" width="12" height="7" rx="1.5" fill="#27ae60" stroke="#1e8449" stroke-width="0.8"/>
+
+  <!-- Droite (col 2, row 1) -->
+  <rect x="41" y="15" width="12" height="7" rx="1.5" fill="#2ecc71" stroke="#27ae60" stroke-width="0.8"/>
+
+  <!-- Bas (col 1, row 2) -->
+  <rect x="26" y="25" width="12" height="7" rx="1.5" fill="#2ecc71" stroke="#27ae60" stroke-width="0.8"/>
+
+  <!-- Balle -->
+  <circle cx="50" cy="45" r="4" fill="#f1c40f" stroke="#f39c12" stroke-width="0.8"/>
+
+  <!-- Raquette -->
+  <rect x="20" y="57" width="24" height="4" rx="2" fill="#e74c3c" stroke="#c0392b" stroke-width="0.6"/>
+</svg>
