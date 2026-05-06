@@ -269,8 +269,8 @@
   table.rsf-table td:nth-child(4) { text-align: center; }
   table.rsf-table tbody tr.excluded { background: #0e0005; }
   table.rsf-table .rsf-input.excl-r2 { border-color: var(--red); color: var(--red); opacity: .45; }
-  table.rsf-table th.col-r3, table.rsf-table td.col-r3 { display: none; }
-  table.rsf-table.show-r3 th.col-r3, table.rsf-table.show-r3 td.col-r3 { display: table-cell; }
+  table.rsf-table td.col-r3 { visibility: hidden; }
+  table.rsf-table.show-r3 td.col-r3 { visibility: visible; }
 
   /* ── Inputs ── */
   .rsf-input {
@@ -1249,8 +1249,8 @@ function initLabPage(conf) {
             <thead>
               <tr>
                 <th>RSF&nbsp;% <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer RSF First" style="display:none;font-size:9px;padding:2px 7px;vertical-align:middle;margin-left:4px"></button></th>
-                <th><div style="display:flex;justify-content:space-between;align-items:center;gap:6px">Remise&nbsp;2&nbsp;(%) <button class="r3-toggle" id="r3ShowBtn-${uid}-${cond.uid}" title="Afficher la colonne Remise 3" style="font-size:9px;padding:2px 7px">+ REMISE 3</button></div></th>
-                <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Masquer la colonne Remise 3" style="font-size:9px;padding:2px 7px">− REMISE 3</button></th>
+                <th>Remise&nbsp;2&nbsp;(%)</th>
+                <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="font-size:9px;padding:2px 7px">+ REMISE 3</button></th>
                 <th>Exclusion</th>
               </tr>
             </thead>
@@ -1399,37 +1399,26 @@ function initLabPage(conf) {
 
     rsfInfo.textContent = `${cond.rsfValues.length} groupe${cond.rsfValues.length > 1 ? 's' : ''} de remise détecté${cond.rsfValues.length > 1 ? 's' : ''}`;
     table.classList.toggle('show-r3', lab === 'Biogaran');
-    const r3ShowBtn = document.getElementById(`r3ShowBtn-${uid}-${cond.uid}`);
-    const r3Btn     = document.getElementById(`r3Btn-${uid}-${cond.uid}`);
-    if (lab === 'Biogaran') {
-      if (r3ShowBtn) r3ShowBtn.style.display = 'none';
-      if (r3Btn) {
+    const r3Btn = document.getElementById(`r3Btn-${uid}-${cond.uid}`);
+    if (r3Btn) {
+      if (lab === 'Biogaran') {
         r3Btn.className = '';
         r3Btn.style.cssText = 'cursor:default;pointer-events:none;font-size:11px;color:var(--text-dim);background:none;border:none;padding:0;font-family:inherit;font-weight:700';
         r3Btn.textContent = 'Remise 3 (%)';
-      }
-    } else {
-      table.classList.toggle('show-r3', cond.showR3);
-      if (r3ShowBtn) {
-        r3ShowBtn.style.display = cond.showR3 ? 'none' : 'inline-block';
-        if (!r3ShowBtn.dataset.wired) {
-          r3ShowBtn.dataset.wired = '1';
-          r3ShowBtn.addEventListener('click', () => {
-            cond.showR3 = true;
-            table.classList.add('show-r3');
-            r3ShowBtn.style.display = 'none';
+      } else {
+        r3Btn.className = 'r3-toggle';
+        r3Btn.style.cssText = 'font-size:9px;padding:2px 7px';
+        r3Btn.textContent = cond.showR3 ? '− REMISE 3' : '+ REMISE 3';
+        table.classList.toggle('show-r3', cond.showR3);
+        if (!r3Btn.dataset.wired) {
+          r3Btn.dataset.wired = '1';
+          r3Btn.addEventListener('click', () => {
+            cond.showR3 = !cond.showR3;
+            table.classList.toggle('show-r3', cond.showR3);
+            r3Btn.textContent = cond.showR3 ? '− REMISE 3' : '+ REMISE 3';
             saveState();
           });
         }
-      }
-      if (r3Btn && !r3Btn.dataset.wired) {
-        r3Btn.dataset.wired = '1';
-        r3Btn.addEventListener('click', () => {
-          cond.showR3 = false;
-          table.classList.remove('show-r3');
-          if (r3ShowBtn) r3ShowBtn.style.display = 'inline-block';
-          saveState();
-        });
       }
     }
     const ffBtn = document.getElementById(`ffBtn-${uid}-${cond.uid}`);
