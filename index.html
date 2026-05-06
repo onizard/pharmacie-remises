@@ -269,8 +269,8 @@
   table.rsf-table td:nth-child(4) { text-align: center; }
   table.rsf-table tbody tr.excluded { background: #0e0005; }
   table.rsf-table .rsf-input.excl-r2 { border-color: var(--red); color: var(--red); opacity: .45; }
-  table.rsf-table th.col-r3, table.rsf-table td.col-r3 { display: none; }
-  table.rsf-table.show-r3 th.col-r3, table.rsf-table.show-r3 td.col-r3 { display: table-cell; }
+  table.rsf-table td.col-r3 { display: none; }
+  table.rsf-table.show-r3 td.col-r3 { display: table-cell; }
 
   /* ── Inputs ── */
   .rsf-input {
@@ -1236,8 +1236,6 @@ function initLabPage(conf) {
         <div class="rsf-header">
           <div class="lab-tag">TABLEAU DES REMISES</div>
           <div class="rsf-info" id="rsfInfo-${uid}-${cond.uid}">—</div>
-          <button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="display:none"></button>
-          <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer l'utilisation de la RSF First" style="display:none"></button>
           <label class="pda-toggle" style="margin-left:auto" title="Inclure ou exclure les références PDA">
             <span class="pda-toggle-label">Inclure PDA</span>
             <div class="pda-switch">
@@ -1250,9 +1248,9 @@ function initLabPage(conf) {
           <table class="rsf-table" id="rsfTable-${uid}-${cond.uid}">
             <thead>
               <tr>
-                <th>RSF&nbsp;%</th>
+                <th>RSF&nbsp;% <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer RSF First" style="display:none;font-size:9px;padding:2px 7px;vertical-align:middle;margin-left:4px"></button></th>
                 <th>Remise 2&nbsp;(%)</th>
-                <th class="col-r3">Remise 3&nbsp;(%)</th>
+                <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="font-size:9px;padding:2px 7px">+ REMISE 3</button></th>
                 <th>Exclusion</th>
               </tr>
             </thead>
@@ -1403,9 +1401,13 @@ function initLabPage(conf) {
     table.classList.toggle('show-r3', lab === 'Biogaran');
     const r3Btn = document.getElementById(`r3Btn-${uid}-${cond.uid}`);
     if (r3Btn) {
-      if (lab === 'Biogaran') { r3Btn.style.display = 'none'; }
-      else {
-        r3Btn.style.display = 'inline-block';
+      if (lab === 'Biogaran') {
+        r3Btn.className = '';
+        r3Btn.style.cssText = 'cursor:default;pointer-events:none;font-size:11px;color:var(--text-dim);background:none;border:none;padding:0;font-family:inherit;font-weight:700;';
+        r3Btn.textContent = 'Remise 3 (%)';
+      } else {
+        r3Btn.className = 'r3-toggle';
+        r3Btn.style.cssText = 'font-size:9px;padding:2px 7px';
         r3Btn.textContent = cond.showR3 ? '− REMISE 3' : '+ REMISE 3';
         table.classList.toggle('show-r3', cond.showR3);
         if (!r3Btn.dataset.wired) {
