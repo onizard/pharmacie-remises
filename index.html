@@ -787,7 +787,7 @@ let   LABS_SORTED = [...LABS_ALL];
 
 // ── State ──────────────────────────────────────────────────────────────────────
 function mkCondState(uid) {
-  return { uid, remiseGlobale: null, caCondition: null, rsfValues: [], exceptions: {}, rsfOnly: { enabled: false, libelles: [] }, showR3: false };
+  return { uid, remiseGlobale: null, caCondition: null, rsfValues: [], exceptions: {}, rsfOnly: { enabled: false, libelles: [] }, showR3: false, forceFirst: false };
 }
 
 const BIOGARAN_DEFAULT_EXCL = new Set([-2.5, -5, -7]);
@@ -845,6 +845,7 @@ function serializeState() {
         exceptions: c.exceptions,
         rsfOnly: c.rsfOnly,
         showR3: c.showR3,
+        forceFirst: c.forceFirst,
       })),
     })),
   };
@@ -1236,6 +1237,7 @@ function initLabPage(conf) {
           <div class="lab-tag">TABLEAU DES REMISES</div>
           <div class="rsf-info" id="rsfInfo-${uid}-${cond.uid}">—</div>
           <button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="display:none"></button>
+          <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer l'utilisation de la RSF First" style="display:none"></button>
           <label class="pda-toggle" style="margin-left:auto" title="Inclure ou exclure les références PDA">
             <span class="pda-toggle-label">Inclure PDA</span>
             <div class="pda-switch">
@@ -1367,8 +1369,8 @@ function initLabPage(conf) {
     if (rg === null) return;
     const tbody = document.getElementById(`tbody-${uid}-${cond.uid}`);
     if (!tbody) return;
-    const firstMet = state.gers != null && cond.caCondition != null &&
-                     cond.caCondition >= 0.9 * state.gers;
+    const firstMet = (state.gers != null && cond.caCondition != null &&
+                     cond.caCondition >= 0.9 * state.gers) || cond.forceFirst;
     cond.rsfValues.forEach((row, idx) => {
       const tr = tbody.querySelectorAll('tr')[idx];
       if (!tr) return;
@@ -1417,8 +1419,30 @@ function initLabPage(conf) {
         }
       }
     }
-    const firstMetDisplay = state.gers != null && cond.caCondition != null &&
-                            cond.caCondition >= 0.9 * state.gers;
+    const ffBtn = document.getElementById(`ffBtn-${uid}-${cond.uid}`);
+    if (ffBtn) {
+      const hasFirst = s.rsfFirstMap.size > 0;
+      ffBtn.style.display = hasFirst ? 'inline-block' : 'none';
+      ffBtn.textContent = cond.forceFirst ? '★ RSF FIRST' : '☆ RSF FIRST';
+      ffBtn.style.color  = cond.forceFirst ? 'var(--amber)' : '';
+      ffBtn.style.borderColor = cond.forceFirst ? 'var(--amber)' : '';
+      ffBtn.style.boxShadow   = cond.forceFirst ? 'var(--glow-a)' : '';
+      if (!ffBtn.dataset.wired) {
+        ffBtn.dataset.wired = '1';
+        ffBtn.addEventListener('click', () => {
+          cond.forceFirst = !cond.forceFirst;
+          ffBtn.textContent = cond.forceFirst ? '★ RSF FIRST' : '☆ RSF FIRST';
+          ffBtn.style.color  = cond.forceFirst ? 'var(--amber)' : '';
+          ffBtn.style.borderColor = cond.forceFirst ? 'var(--amber)' : '';
+          ffBtn.style.boxShadow   = cond.forceFirst ? 'var(--glow-a)' : '';
+          renderCondTable(cond);
+          autoFillCond(cond);
+          saveState();
+        });
+      }
+    }
+    const firstMetDisplay = (state.gers != null && cond.caCondition != null &&
+                             cond.caCondition >= 0.9 * state.gers) || cond.forceFirst;
     tbody.innerHTML = '';
 
     cond.rsfValues.forEach((row, idx) => {
@@ -1557,7 +1581,8 @@ function initLabPage(conf) {
         cond.caCondition   = sc.caCondition;
         cond.exceptions    = sc.exceptions || {};
         cond.rsfOnly       = sc.rsfOnly || { enabled: false, libelles: [] };
-        cond.showR3 = sc.showR3 || false;
+        cond.showR3    = sc.showR3    || false;
+        cond.forceFirst = sc.forceFirst || false;
         cond.rsfValues = paliers.map(v => {
           const sv = sc.rsfValues.find(r => String(r.rsf_pct) === String(v));
           return sv
