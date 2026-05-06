@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BREAK PHARMA - comparateur de générique</title>
+<title>BREAK-PHARMA</title>
 <link rel="icon" type="image/x-icon" href="favicon.ico">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="apple-touch-icon" href="favicon_180.png">
@@ -71,7 +71,7 @@
     margin-bottom: 32px; padding-bottom: 16px;
     border-bottom: 1px solid var(--border);
   }
-  .logo { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 36px; color: var(--cyan); text-shadow: var(--glow-c); letter-spacing: 6px; }
+  .logo { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 36px; color: var(--cyan); text-shadow: var(--glow-c); letter-spacing: 6px; text-decoration: underline; text-underline-offset: 4px; }
   .logo span { color: var(--amber); }
   .header-sub { font-size: 11px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; }
   .header-right { margin-left: auto; font-size: 11px; color: var(--text-dim); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
@@ -494,7 +494,7 @@
 
   <!-- Connexion -->
   <div class="auth-screen" id="sLogin">
-    <div class="auth-logo">BREAK PHARMA</div>
+    <div class="auth-logo">BREAK-PHARMA</div>
     <div class="auth-sub">◈ ACCÈS SÉCURISÉ ◈</div>
     <div class="auth-box" id="authBox">
       <div class="auth-field"><label>EMAIL</label>
@@ -512,7 +512,7 @@
 
   <!-- Créer un compte -->
   <div class="auth-screen hidden" id="sSU">
-    <div class="auth-logo">BREAK PHARMA</div>
+    <div class="auth-logo">BREAK-PHARMA</div>
     <div class="auth-sub">◈ CRÉER UN COMPTE ◈</div>
     <div class="auth-box">
       <div class="auth-field"><label>EMAIL</label>
@@ -532,7 +532,7 @@
 
   <!-- Mot de passe oublié -->
   <div class="auth-screen hidden" id="sFP">
-    <div class="auth-logo">BREAK PHARMA</div>
+    <div class="auth-logo">BREAK-PHARMA</div>
     <div class="auth-sub">◈ RÉINITIALISATION ◈</div>
     <div class="auth-box">
       <div class="auth-field"><label>VOTRE EMAIL</label>
@@ -548,7 +548,7 @@
 
   <!-- Nouveau mot de passe (après clic sur le lien email) -->
   <div class="auth-screen hidden" id="sRP">
-    <div class="auth-logo">BREAK PHARMA</div>
+    <div class="auth-logo">BREAK-PHARMA</div>
     <div class="auth-sub">◈ NOUVEAU MOT DE PASSE ◈</div>
     <div class="auth-box">
       <div class="auth-field"><label>NOUVEAU MOT DE PASSE</label>
@@ -677,7 +677,8 @@
 
   <header class="site-header">
     <div>
-      <div class="logo">BREAK PHARMA</div>
+      <div class="logo">BREAK-PHARMA</div>
+      <div class="header-sub">comparateur de génériques</div>
     </div>
     <div class="header-right">
       <div class="term-line"><span class="prompt">SYS:</span><span class="val">PRÊT</span><span class="cursor"></span></div>
@@ -1790,270 +1791,280 @@ function startBrickGame() {
   const canvas = document.getElementById('brickCanvas');
   if (!canvas) return;
 
-  // ── Dimensions ────────────────────────────────────────────────────────────
   const W = canvas.parentElement.clientWidth || 800;
   const H = 340;
   canvas.width  = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
 
-  // ── Palette rétro ─────────────────────────────────────────────────────────
-  const C = {
-    bg:      '#04060f',
-    border:  '#1a3048',
-    paddle:  '#00e5ff',
-    ball:    '#ffffff',
-    text:    '#00e5ff',
-    textDim: '#3d5a6b',
-    rows: [
-      '#ff3366', // rouge
-      '#ff6b35', // orange
-      '#ffab00', // amber
-      '#00ff88', // vert
-      '#00e5ff', // cyan
-      '#cc5de8', // violet
-    ],
+  // 5×7 pixel font — each letter is 7 rows of 5-bit masks (MSB = left column)
+  const FONT = {
+    A:[14,17,17,31,17,17,17], B:[30,17,17,30,17,17,30], C:[14,17,16,16,16,17,14],
+    D:[30,17,17,17,17,17,30], E:[31,16,16,30,16,16,31], F:[31,16,16,28,16,16,16],
+    G:[14,17,16,23,17,17,14], H:[17,17,17,31,17,17,17], I:[14,4,4,4,4,4,14],
+    J:[7,2,2,2,2,18,12],      K:[17,18,20,24,20,18,17], L:[16,16,16,16,16,16,31],
+    M:[17,27,21,17,17,17,17], N:[17,25,21,19,17,17,17], O:[14,17,17,17,17,17,14],
+    P:[30,17,17,30,16,16,16], Q:[14,17,17,17,21,18,13], R:[30,17,17,30,20,18,17],
+    S:[14,17,16,14,1,17,14],  T:[31,4,4,4,4,4,4],       U:[17,17,17,17,17,17,14],
+    V:[17,17,17,17,17,10,4],  W:[17,17,17,21,21,27,17], X:[17,17,10,4,10,17,17],
+    Y:[17,17,10,4,4,4,4],     Z:[31,1,2,4,8,16,31],
+    '-':[0,0,0,31,0,0,0],     ' ':[0,0,0,0,0,0,0],
   };
 
-  const PX = 2; // pixel art upscale factor
+  const COLORS  = ['#ff3366','#ff6b35','#ffab00','#00ff88','#00e5ff','#cc5de8'];
+  const C_BG     = '#04060f';
+  const C_BORDER = '#1a3048';
+  const C_PADDLE = '#00e5ff';
+  const C_BALL   = '#ffffff';
+  const C_TEXT   = '#00e5ff';
+  const C_DIM    = '#3d5a6b';
 
-  // ── Bricks ────────────────────────────────────────────────────────────────
-  const COLS      = 12;
-  const ROWS      = 6;
-  const BRICK_W   = Math.floor((W - 40) / COLS);
-  const BRICK_H   = 14;
-  const BRICK_PAD = 3;
-  const BRICK_OY  = 48;
+  // State
+  let levels = [], currentLevel = 0;
+  let score = 0, hiScore = 0, lives = 3;
+  let bricks = [], labName = '';
+  let gameReady = false;
 
-  function makeBricks() {
-    const b = [];
-    for (let r = 0; r < ROWS; r++)
-      for (let c = 0; c < COLS; c++)
-        b.push({
-          x:     20 + c * BRICK_W,
-          y:     BRICK_OY + r * (BRICK_H + BRICK_PAD),
-          w:     BRICK_W - BRICK_PAD,
-          h:     BRICK_H,
-          color: C.rows[r % C.rows.length],
-          alive: true,
-          pts:   (ROWS - r) * 10,
-        });
-    return b;
-  }
-
-  let bricks = makeBricks();
-  let score  = 0;
-  let lives  = 3;
-  let hiScore = 0;
-
-  // ── Paddle ────────────────────────────────────────────────────────────────
-  const PAD_W = Math.floor(W * 0.11);
+  // Paddle
+  const PAD_W = Math.floor(W * 0.12);
   const PAD_H = 8;
   const PAD_Y = H - 30;
-  let padX    = (W - PAD_W) / 2;
-  let padVX   = 0;
+  let padX = (W - PAD_W) / 2;
 
-  // ── Ball ──────────────────────────────────────────────────────────────────
-  const BALL_S = 8;
-  const SPEED  = 4.2;
-  let bx, by, bdx, bdy, ballLaunched;
+  // Ball
+  const BALL_S = 8, SPEED = 4.2;
+  let bx = 0, by = 0, bdx = 0, bdy = 0, ballLaunched = false;
 
   function resetBall() {
     bx = padX + PAD_W / 2;
     by = PAD_Y - BALL_S - 2;
-    const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.9;
-    bdx = Math.cos(angle) * SPEED;
-    bdy = Math.sin(angle) * SPEED;
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.9;
+    bdx = Math.cos(a) * SPEED; bdy = Math.sin(a) * SPEED;
     ballLaunched = false;
-    setTimeout(() => { ballLaunched = true; }, 600);
+    setTimeout(() => { if (document.getElementById('brickCanvas')) ballLaunched = true; }, 700);
   }
-  resetBall();
 
-  // ── AI paddle ─────────────────────────────────────────────────────────────
-  // Tracks ball with slight delay for realism
-  // ── Contrôle souris (prioritaire) / AI fallback ───────────────────────────
+  // Build pixel-art bricks spelling a lab name (2:1 brick ratio)
+  function buildBricks(name) {
+    labName = (name || 'LAB').toUpperCase().slice(0, 10);
+    const letters = labName.split('').map(c => FONT[c] || FONT[' ']);
+    const n = letters.length;
+    const PH = 2, PV = 2; // gap between brick pixels
+    // total pixel-art columns: n letters × 5 cols + (n-1) × 1 gap column
+    const totalCols = n * 5 + Math.max(0, n - 1);
+    // BW so all bricks fit within canvas; BH = BW/2 for 2:1 ratio
+    let BW = Math.floor((W - 60 - PH * (totalCols - 1)) / totalCols);
+    BW = Math.max(6, Math.min(30, BW));
+    const BH = Math.max(4, Math.round(BW / 2));
+    const totalW = totalCols * (BW + PH) - PH;
+    const startX = Math.floor((W - totalW) / 2);
+    const startY = 48;
+
+    const bs = [];
+    for (let li = 0; li < n; li++) {
+      const rows = letters[li];
+      const lx = startX + li * (5 * (BW + PH) + PH); // letter x offset
+      for (let row = 0; row < 7; row++) {
+        const bits = rows[row];
+        if (!bits) continue;
+        for (let col = 0; col < 5; col++) {
+          if (bits & (1 << (4 - col))) {
+            bs.push({
+              x: lx + col * (BW + PH), y: startY + row * (BH + PV),
+              w: BW, h: BH,
+              color: COLORS[row % COLORS.length],
+              alive: true, pts: (7 - row) * 10,
+            });
+          }
+        }
+      }
+    }
+    return bs;
+  }
+
+  // localStorage persistence
+  const SAVE_KEY = 'bp_game_v2';
+  function saveState() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        lvl: currentLevel, score, hi: hiScore, lives,
+        alive: bricks.map(b => b.alive ? 1 : 0),
+      }));
+    } catch(e) {}
+  }
+  function loadSave() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+      if (!s || s.lvl >= levels.length) return false;
+      currentLevel = s.lvl; score = s.score || 0; hiScore = s.hi || 0; lives = s.lives || 3;
+      bricks = buildBricks(levels[currentLevel]);
+      if (Array.isArray(s.alive) && s.alive.length === bricks.length)
+        s.alive.forEach((a, i) => { bricks[i].alive = !!a; });
+      return true;
+    } catch(e) { return false; }
+  }
+
+  function initLevel(lvl) {
+    currentLevel = ((lvl % levels.length) + levels.length) % levels.length;
+    bricks = buildBricks(levels[currentLevel]);
+    resetBall(); saveState();
+  }
+
+  // Fetch labs ordered by ascending reference count from Supabase
+  async function fetchLevels() {
+    try {
+      const res = await fetch(
+        SUPA_URL + '/rest/v1/references_pharmacie?select=labo&limit=10000',
+        { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` } }
+      );
+      if (!res.ok) throw 0;
+      const rows = await res.json();
+      const cnt = {};
+      rows.forEach(r => { if (r.labo) cnt[r.labo] = (cnt[r.labo] || 0) + 1; });
+      levels = Object.entries(cnt).sort((a, b) => a[1] - b[1]).map(([l]) => l.toUpperCase());
+      if (!levels.length) throw 0;
+    } catch(e) {
+      levels = ['TEVA','ARROW','BIOGARAN','SANDOZ','MYLAN','ZENTIVA'];
+    }
+  }
+
+  // Mouse / touch control
   let mouseX = null;
-
   canvas.addEventListener('mousemove', e => {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = W / rect.width;
-    mouseX = (e.clientX - rect.left) * scaleX;
+    const r = canvas.getBoundingClientRect();
+    mouseX = (e.clientX - r.left) * (W / r.width);
   });
   canvas.addEventListener('mouseleave', () => { mouseX = null; });
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    mouseX = (e.touches[0].clientX - r.left) * (W / r.width);
+  }, { passive: false });
 
+  // AI fallback paddle
   let aiTarget = padX;
   function updatePaddle() {
     if (mouseX !== null) {
-      // Contrôle direct à la souris — paddle centré sur le curseur
       padX = mouseX - PAD_W / 2;
     } else {
-      // AI : prédit la position de la balle quand elle atteint la raquette
       if (bdy > 0) {
-        let px = bx, py = by, pvx = bdx, pvy = bdy;
-        let steps = 0;
-        while (py < PAD_Y - BALL_S && steps < 200) {
-          px += pvx; py += pvy;
+        let px = bx, py = by, pvx = bdx, steps = 0;
+        while (py < PAD_Y - BALL_S && steps++ < 200) {
+          px += pvx; py += bdy;
           if (px <= 0 || px + BALL_S >= W) pvx = -pvx;
-          steps++;
         }
         aiTarget = px - PAD_W / 2 + BALL_S / 2;
       }
-      const diff = aiTarget - padX;
-      padX += diff * 0.09;
+      padX += (aiTarget - padX) * 0.09;
     }
     padX = Math.max(0, Math.min(W - PAD_W, padX));
   }
 
-  // ── Collision helpers ─────────────────────────────────────────────────────
-  function rectOverlap(ax, ay, aw, ah, bx2, by2, bw2, bh2) {
+  function overlaps(ax, ay, aw, ah, bx2, by2, bw2, bh2) {
     return ax < bx2 + bw2 && ax + aw > bx2 && ay < by2 + bh2 && ay + ah > by2;
   }
 
-  // ── Pixel font (draw text using native font, retro style) ─────────────────
-  function drawHUD() {
-    ctx.font = `bold ${8 * PX}px 'Share Tech Mono', monospace`;
-    ctx.fillStyle = C.text;
-    ctx.textAlign = 'left';
-    ctx.fillText(`SCORE  ${String(score).padStart(6, '0')}`, 20, 28);
-    ctx.textAlign = 'center';
-    ctx.fillText('◆ BREAK-PHARMA ◆', W / 2, 28);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = C.textDim;
-    ctx.fillText(`HI  ${String(hiScore).padStart(6, '0')}`, W - 20, 28);
-    // Lives
-    for (let i = 0; i < lives; i++) {
-      ctx.fillStyle = C.paddle;
-      ctx.fillRect(W - 20 - (i + 1) * 14, H - 16, 10, 5);
-    }
-    // Scanlines (CRT effect)
-    ctx.fillStyle = 'rgba(0,0,0,0.12)';
-    for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 2);
-  }
+  function draw() {
+    ctx.fillStyle = C_BG; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = C_BORDER;
+    ctx.fillRect(0, 35, W, 2); ctx.fillRect(0, 35, 2, H); ctx.fillRect(W - 2, 35, 2, H);
 
-  function drawBricks() {
+    // HUD
+    ctx.fillStyle = C_TEXT; ctx.font = `bold 16px 'Share Tech Mono', monospace`;
+    ctx.textAlign = 'left';  ctx.fillText(String(score).padStart(7, '0'), 20, 26);
+    ctx.fillStyle = C_DIM;   ctx.font = `bold 10px 'Orbitron', monospace`;
+    ctx.textAlign = 'center'; ctx.fillText(`LVL ${currentLevel + 1} · ${labName}`, W / 2, 26);
+    ctx.fillStyle = C_DIM;   ctx.font = `bold 16px 'Share Tech Mono', monospace`;
+    ctx.textAlign = 'right';  ctx.fillText(`HI ${String(hiScore).padStart(7, '0')}`, W - 20, 26);
+    for (let i = 0; i < lives; i++) {
+      ctx.fillStyle = C_PADDLE;
+      ctx.fillRect(W - 20 - (i + 1) * 14, H - 14, 10, 5);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    for (let sy = 0; sy < H; sy += 4) ctx.fillRect(0, sy, W, 2);
+
+    // Bricks
     bricks.forEach(b => {
       if (!b.alive) return;
-      ctx.fillStyle = b.color;
-      ctx.fillRect(b.x, b.y, b.w, b.h);
-      // Highlight top edge
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillRect(b.x, b.y, b.w, 2);
-      // Shadow bottom edge
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.fillRect(b.x, b.y + b.h - 2, b.w, 2);
+      ctx.fillStyle = b.color; ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(b.x, b.y, b.w, 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';        ctx.fillRect(b.x, b.y + b.h - 2, b.w, 2);
     });
+
+    // Paddle
+    ctx.fillStyle = C_PADDLE; ctx.fillRect(padX, PAD_Y, PAD_W, PAD_H);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fillRect(padX + 2, PAD_Y, PAD_W - 4, 2);
+    const pg = ctx.createLinearGradient(padX, PAD_Y, padX, PAD_Y + 18);
+    pg.addColorStop(0, 'rgba(0,229,255,0.25)'); pg.addColorStop(1, 'rgba(0,229,255,0)');
+    ctx.fillStyle = pg; ctx.fillRect(padX, PAD_Y + PAD_H, PAD_W, 18);
+
+    // Ball glow + body
+    const bg = ctx.createRadialGradient(bx + BALL_S/2, by + BALL_S/2, 0, bx + BALL_S/2, by + BALL_S/2, BALL_S * 2);
+    bg.addColorStop(0, 'rgba(255,255,255,0.4)'); bg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = bg; ctx.fillRect(bx - BALL_S, by - BALL_S, BALL_S * 3, BALL_S * 3);
+    ctx.fillStyle = C_BALL; ctx.fillRect(Math.round(bx), Math.round(by), BALL_S, BALL_S);
   }
 
-  function drawPaddle() {
-    // Paddle body
-    ctx.fillStyle = C.paddle;
-    ctx.fillRect(padX, PAD_Y, PAD_W, PAD_H);
-    // Glossy top strip
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.fillRect(padX + 2, PAD_Y, PAD_W - 4, 2);
-    // Glow under paddle
-    const g = ctx.createLinearGradient(padX, PAD_Y, padX, PAD_Y + 18);
-    g.addColorStop(0, 'rgba(0,229,255,0.25)');
-    g.addColorStop(1, 'rgba(0,229,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(padX, PAD_Y + PAD_H, PAD_W, 18);
-  }
-
-  function drawBall() {
-    // Ball glow
-    const g = ctx.createRadialGradient(bx + BALL_S/2, by + BALL_S/2, 0, bx + BALL_S/2, by + BALL_S/2, BALL_S * 2);
-    g.addColorStop(0, 'rgba(255,255,255,0.4)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(bx - BALL_S, by - BALL_S, BALL_S * 3, BALL_S * 3);
-    // Ball body (pixel square)
-    ctx.fillStyle = C.ball;
-    ctx.fillRect(Math.round(bx), Math.round(by), BALL_S, BALL_S);
-  }
-
-  let frame = 0;
-
+  let saveTimer = 0;
   function tick() {
-    if (!document.getElementById('brickCanvas')) return; // arrêt si remplacé
+    if (!document.getElementById('brickCanvas')) return;
 
-    // Clear
-    ctx.fillStyle = C.bg;
-    ctx.fillRect(0, 0, W, H);
-
-    // Border walls (pixel style)
-    ctx.fillStyle = C.border;
-    ctx.fillRect(0, 35, W, 2);
-    ctx.fillRect(0, 35, 2, H);
-    ctx.fillRect(W - 2, 35, 2, H);
+    if (!gameReady) {
+      ctx.fillStyle = C_BG; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = C_DIM; ctx.font = `13px 'Share Tech Mono', monospace`;
+      ctx.textAlign = 'center'; ctx.fillText('CHARGEMENT…', W / 2, H / 2);
+      requestAnimationFrame(tick); return;
+    }
 
     updatePaddle();
 
     if (ballLaunched) {
-      bx += bdx;
-      by += bdy;
+      bx += bdx; by += bdy;
+      if (bx <= 2)               { bx = 2;               bdx =  Math.abs(bdx); }
+      if (bx + BALL_S >= W - 2)  { bx = W - 2 - BALL_S;  bdx = -Math.abs(bdx); }
+      if (by <= 37)              { by = 37;               bdy =  Math.abs(bdy); }
 
-      // Wall collisions
-      if (bx <= 2)          { bx = 2;          bdx =  Math.abs(bdx); }
-      if (bx + BALL_S >= W - 2) { bx = W - 2 - BALL_S; bdx = -Math.abs(bdx); }
-      if (by <= 37)         { by = 37;          bdy =  Math.abs(bdy); }
-
-      // Paddle collision
-      if (rectOverlap(bx, by, BALL_S, BALL_S, padX, PAD_Y, PAD_W, PAD_H) && bdy > 0) {
+      if (overlaps(bx, by, BALL_S, BALL_S, padX, PAD_Y, PAD_W, PAD_H) && bdy > 0) {
         bdy = -Math.abs(bdy);
-        // Angle based on hit position
-        const rel = (bx + BALL_S / 2 - padX) / PAD_W; // 0..1
+        const rel = (bx + BALL_S / 2 - padX) / PAD_W;
         bdx = (rel - 0.5) * SPEED * 2;
-        // Keep total speed constant
         const spd = Math.hypot(bdx, bdy);
-        bdx = bdx / spd * SPEED;
-        bdy = bdy / spd * SPEED;
+        bdx = bdx / spd * SPEED; bdy = bdy / spd * SPEED;
       }
 
-      // Brick collisions
-      let destroyed = 0;
       for (const b of bricks) {
         if (!b.alive) continue;
-        if (rectOverlap(bx, by, BALL_S, BALL_S, b.x, b.y, b.w, b.h)) {
-          b.alive = false;
-          score += b.pts;
-          if (score > hiScore) hiScore = score;
-          destroyed++;
-          // Determine bounce direction
-          const overlapL = bx + BALL_S - b.x;
-          const overlapR = b.x + b.w - bx;
-          const overlapT = by + BALL_S - b.y;
-          const overlapB = b.y + b.h - by;
-          const minH = Math.min(overlapL, overlapR);
-          const minV = Math.min(overlapT, overlapB);
-          if (minH < minV) bdx = -bdx; else bdy = -bdy;
+        if (overlaps(bx, by, BALL_S, BALL_S, b.x, b.y, b.w, b.h)) {
+          b.alive = false; score += b.pts; if (score > hiScore) hiScore = score;
+          const ol = bx + BALL_S - b.x, or2 = b.x + b.w - bx;
+          const ot = by + BALL_S - b.y, ob  = b.y + b.h - by;
+          if (Math.min(ol, or2) < Math.min(ot, ob)) bdx = -bdx; else bdy = -bdy;
           break;
         }
       }
 
-      // All bricks cleared → new wave
-      if (bricks.every(b => !b.alive)) {
-        bricks = makeBricks();
-        resetBall();
-      }
+      if (bricks.every(b => !b.alive)) initLevel(currentLevel + 1);
 
-      // Ball lost
       if (by > H) {
         lives = Math.max(0, lives - 1);
-        if (lives === 0) { lives = 3; score = 0; bricks = makeBricks(); }
-        resetBall();
+        if (lives === 0) { lives = 3; score = 0; initLevel(currentLevel); }
+        else resetBall();
+        saveState();
       }
     }
 
-    drawBricks();
-    drawPaddle();
-    drawBall();
-    drawHUD();
-
-    frame++;
+    draw();
+    if (++saveTimer % 120 === 0) saveState();
     requestAnimationFrame(tick);
   }
 
-  tick();
+  // Boot: start render loop immediately, load levels async
+  requestAnimationFrame(tick);
+  (async () => {
+    await fetchLevels();
+    if (!loadSave()) initLevel(0); else resetBall();
+    gameReady = true;
+  })();
 }
 
 // ── Simulation ─────────────────────────────────────────────────────────────────
@@ -2872,7 +2883,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   font-family:'Orbitron','Share Tech Mono',monospace;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
 ">
-  <div style="color:#2ecc71;font-size:1.3rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;">BREAK PHARMA</div>
+  <div style="color:#2ecc71;font-size:1.3rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;">BREAK-PHARMA</div>
   <div style="color:#4ade80;font-size:.75rem;letter-spacing:.2em;opacity:.7;">Accès restreint</div>
   <input id="auth-input" type="password" placeholder="Mot de passe"
     autocomplete="current-password" spellcheck="false"
