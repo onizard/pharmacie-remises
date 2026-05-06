@@ -470,78 +470,198 @@
   .auth-btn:hover { background: #002a38; box-shadow: var(--glow-c); }
   @keyframes authShake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }
   .auth-box.shake { animation: authShake .4s ease; }
+  .auth-links { display: flex; justify-content: space-between; margin-top: 16px; }
+  .auth-link { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); cursor: pointer; transition: color .2s; text-decoration: none; }
+  .auth-link:hover { color: var(--cyan); }
+  .auth-link.center { text-align: center; width: 100%; }
+  .auth-ok { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--green); min-height: 18px; margin-bottom: 14px; text-align: center; }
+  .auth-screen { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  .auth-screen.hidden { display: none; }
+  .auth-logout { font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 2px; padding: 5px 12px; cursor: pointer; background: transparent; border: 1px solid var(--border); color: var(--text-dim); transition: all .2s; }
+  .auth-logout:hover { border-color: var(--red); color: var(--red); }
 
 </style>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
 <!-- ── Écran de connexion ───────────────────────────────────────────────── -->
 <div id="authOverlay">
-  <div class="auth-logo">BREAK PHARMA</div>
-  <div class="auth-sub">◈ ACCÈS SÉCURISÉ ◈</div>
-  <div class="auth-box" id="authBox">
-    <div class="auth-field">
-      <label>IDENTIFIANT</label>
-      <input type="email" id="authLogin" placeholder="votre@email.com" autocomplete="username" />
+
+  <!-- Connexion -->
+  <div class="auth-screen" id="sLogin">
+    <div class="auth-logo">BREAK PHARMA</div>
+    <div class="auth-sub">◈ ACCÈS SÉCURISÉ ◈</div>
+    <div class="auth-box" id="authBox">
+      <div class="auth-field"><label>EMAIL</label>
+        <input type="email" id="aLEmail" placeholder="votre@email.com" autocomplete="username"/></div>
+      <div class="auth-field"><label>MOT DE PASSE</label>
+        <input type="password" id="aLPwd" placeholder="••••••••" autocomplete="current-password"/></div>
+      <div class="auth-err" id="aLErr"></div>
+      <button class="auth-btn" id="aLBtn">SE CONNECTER →</button>
+      <div class="auth-links">
+        <span class="auth-link" id="toForgot">Mot de passe oublié ?</span>
+        <span class="auth-link" id="toSignup">Créer un compte</span>
+      </div>
     </div>
-    <div class="auth-field">
-      <label>MOT DE PASSE</label>
-      <input type="password" id="authPwd" placeholder="••••••••" autocomplete="current-password" />
-    </div>
-    <div class="auth-err" id="authErr"></div>
-    <button class="auth-btn" id="authBtn">SE CONNECTER →</button>
   </div>
+
+  <!-- Créer un compte -->
+  <div class="auth-screen hidden" id="sSU">
+    <div class="auth-logo">BREAK PHARMA</div>
+    <div class="auth-sub">◈ CRÉER UN COMPTE ◈</div>
+    <div class="auth-box">
+      <div class="auth-field"><label>EMAIL</label>
+        <input type="email" id="aSUEmail" placeholder="votre@email.com" autocomplete="username"/></div>
+      <div class="auth-field"><label>MOT DE PASSE</label>
+        <input type="password" id="aSUPwd" placeholder="••••••••" autocomplete="new-password"/></div>
+      <div class="auth-field"><label>CONFIRMER LE MOT DE PASSE</label>
+        <input type="password" id="aSUPwd2" placeholder="••••••••" autocomplete="new-password"/></div>
+      <div class="auth-err" id="aSUErr"></div>
+      <div class="auth-ok" id="aSUOk"></div>
+      <button class="auth-btn" id="aSUBtn">CRÉER MON COMPTE →</button>
+      <div class="auth-links">
+        <span class="auth-link center" id="toLoginSU">← Retour à la connexion</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mot de passe oublié -->
+  <div class="auth-screen hidden" id="sFP">
+    <div class="auth-logo">BREAK PHARMA</div>
+    <div class="auth-sub">◈ RÉINITIALISATION ◈</div>
+    <div class="auth-box">
+      <div class="auth-field"><label>VOTRE EMAIL</label>
+        <input type="email" id="aFPEmail" placeholder="votre@email.com"/></div>
+      <div class="auth-err" id="aFPErr"></div>
+      <div class="auth-ok" id="aFPOk"></div>
+      <button class="auth-btn" id="aFPBtn">ENVOYER LE LIEN →</button>
+      <div class="auth-links">
+        <span class="auth-link center" id="toLoginFP">← Retour à la connexion</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nouveau mot de passe (après clic sur le lien email) -->
+  <div class="auth-screen hidden" id="sRP">
+    <div class="auth-logo">BREAK PHARMA</div>
+    <div class="auth-sub">◈ NOUVEAU MOT DE PASSE ◈</div>
+    <div class="auth-box">
+      <div class="auth-field"><label>NOUVEAU MOT DE PASSE</label>
+        <input type="password" id="aRPPwd" placeholder="••••••••" autocomplete="new-password"/></div>
+      <div class="auth-field"><label>CONFIRMER</label>
+        <input type="password" id="aRPPwd2" placeholder="••••••••" autocomplete="new-password"/></div>
+      <div class="auth-err" id="aRPErr"></div>
+      <div class="auth-ok" id="aRPOk"></div>
+      <button class="auth-btn" id="aRPBtn">ENREGISTRER →</button>
+    </div>
+  </div>
+
 </div>
 
 <script>
 (function() {
-  const LOGIN_H = '857dd9625d4613596d8198ed77d19c9382cf9bafb2c0341f6c882cb51829bf37';
-  const PWD_H   = '94018c43d67ff291d258fc26438cb6d16311d08a48ba54fec69e9f7cdf81c2bc';
-  const SESSION_KEY = 'bp_auth';
+  const SUPA_URL = 'https://fmterazwesiwpwjpkyqi.supabase.co';
+  const SUPA_KEY = 'sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w';
+  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  window._sbClient = sb;
 
-  async function sha256(str) {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  const overlay = document.getElementById('authOverlay');
+  const authBox = document.getElementById('authBox');
+
+  function showScreen(id) {
+    ['sLogin','sSU','sFP','sRP'].forEach(s =>
+      document.getElementById(s).classList.toggle('hidden', s !== id));
   }
 
-  function unlock() {
-    document.getElementById('authOverlay').classList.add('hidden');
+  function shake(boxEl) {
+    if (!boxEl) boxEl = authBox;
+    boxEl.classList.remove('shake'); void boxEl.offsetWidth; boxEl.classList.add('shake');
   }
 
-  // Déjà connecté ?
-  if (sessionStorage.getItem(SESSION_KEY) === '1' || localStorage.getItem(SESSION_KEY) === '1') {
-    unlock();
-  }
+  function unlock() { overlay.classList.add('hidden'); }
+  function lock()   { overlay.classList.remove('hidden'); showScreen('sLogin'); }
 
-  document.getElementById('authBtn').addEventListener('click', async () => {
-    const login = document.getElementById('authLogin').value.trim().toLowerCase();
-    const pwd   = document.getElementById('authPwd').value;
-    const errEl = document.getElementById('authErr');
-    const box   = document.getElementById('authBox');
-    errEl.textContent = '';
+  // ── Vérifie session existante ────────────────────────────────────────────
+  sb.auth.getSession().then(({ data: { session } }) => {
+    if (session) unlock();
+  });
 
-    const [lh, ph] = await Promise.all([sha256(login), sha256(pwd)]);
-
-    if (lh === LOGIN_H && ph === PWD_H) {
-      sessionStorage.setItem(SESSION_KEY, '1');
-      localStorage.setItem(SESSION_KEY, '1');
+  // ── Détecte le lien de reset mot de passe dans l'URL ────────────────────
+  sb.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') showScreen('sRP');
+    if (event === 'SIGNED_IN' && !document.getElementById('sRP').classList.contains('hidden')) {
+      // already handled in sRP button
+    }
+    if (event === 'SIGNED_IN' && document.getElementById('sRP').classList.contains('hidden')) {
       unlock();
-    } else {
-      errEl.textContent = '⚠ Identifiant ou mot de passe incorrect.';
-      box.classList.remove('shake');
-      void box.offsetWidth;
-      box.classList.add('shake');
     }
   });
 
-  // Connexion via touche Entrée
-  document.getElementById('authPwd').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('authBtn').click();
+  // ── Connexion ────────────────────────────────────────────────────────────
+  async function doLogin() {
+    const email = document.getElementById('aLEmail').value.trim();
+    const pwd   = document.getElementById('aLPwd').value;
+    const err   = document.getElementById('aLErr');
+    err.textContent = '';
+    const { error } = await sb.auth.signInWithPassword({ email, password: pwd });
+    if (error) { err.textContent = '⚠ ' + (error.message === 'Invalid login credentials' ? 'Identifiant ou mot de passe incorrect.' : error.message); shake(authBox); }
+    else unlock();
+  }
+  document.getElementById('aLBtn').addEventListener('click', doLogin);
+  document.getElementById('aLPwd').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  document.getElementById('aLEmail').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('aLPwd').focus(); });
+
+  // ── Navigation ───────────────────────────────────────────────────────────
+  document.getElementById('toSignup').addEventListener('click',   () => showScreen('sSU'));
+  document.getElementById('toForgot').addEventListener('click',   () => showScreen('sFP'));
+  document.getElementById('toLoginSU').addEventListener('click',  () => showScreen('sLogin'));
+  document.getElementById('toLoginFP').addEventListener('click',  () => showScreen('sLogin'));
+
+  // ── Créer un compte ──────────────────────────────────────────────────────
+  document.getElementById('aSUBtn').addEventListener('click', async () => {
+    const email = document.getElementById('aSUEmail').value.trim();
+    const pwd   = document.getElementById('aSUPwd').value;
+    const pwd2  = document.getElementById('aSUPwd2').value;
+    const err   = document.getElementById('aSUErr');
+    const ok    = document.getElementById('aSUOk');
+    err.textContent = ''; ok.textContent = '';
+    if (pwd !== pwd2) { err.textContent = '⚠ Les mots de passe ne correspondent pas.'; return; }
+    if (pwd.length < 8) { err.textContent = '⚠ Le mot de passe doit faire au moins 8 caractères.'; return; }
+    const { error } = await sb.auth.signUp({ email, password: pwd });
+    if (error) { err.textContent = '⚠ ' + error.message; }
+    else { ok.textContent = '✓ Compte créé ! Vérifiez votre email pour confirmer.'; }
   });
-  document.getElementById('authLogin').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('authPwd').focus();
+
+  // ── Mot de passe oublié ──────────────────────────────────────────────────
+  document.getElementById('aFPBtn').addEventListener('click', async () => {
+    const email   = document.getElementById('aFPEmail').value.trim();
+    const err     = document.getElementById('aFPErr');
+    const ok      = document.getElementById('aFPOk');
+    err.textContent = ''; ok.textContent = '';
+    const redirectTo = window.location.origin + window.location.pathname;
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) { err.textContent = '⚠ ' + error.message; }
+    else { ok.textContent = '✓ Email envoyé ! Vérifiez votre boîte mail.'; }
   });
+
+  // ── Nouveau mot de passe ─────────────────────────────────────────────────
+  document.getElementById('aRPBtn').addEventListener('click', async () => {
+    const pwd  = document.getElementById('aRPPwd').value;
+    const pwd2 = document.getElementById('aRPPwd2').value;
+    const err  = document.getElementById('aRPErr');
+    const ok   = document.getElementById('aRPOk');
+    err.textContent = ''; ok.textContent = '';
+    if (pwd !== pwd2) { err.textContent = '⚠ Les mots de passe ne correspondent pas.'; return; }
+    if (pwd.length < 8) { err.textContent = '⚠ Minimum 8 caractères.'; return; }
+    const { error } = await sb.auth.updateUser({ password: pwd });
+    if (error) { err.textContent = '⚠ ' + error.message; }
+    else { ok.textContent = '✓ Mot de passe mis à jour !'; setTimeout(unlock, 1500); }
+  });
+
+  // ── Bouton déconnexion (câblé après chargement du DOM) ───────────────────
+  window._authLock = lock;
 })();
 </script>
 
@@ -558,6 +678,7 @@
         <input type="text" id="gersGlobal" class="rsf-input" style="width:120px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="Entre ton GERS" />
         <span style="font-size:10px;color:var(--text-dim)">€</span>
         <button id="btnReset" class="btn-reset" title="Maintenir 3 secondes pour réinitialiser">RESET</button>
+        <button class="auth-logout" id="btnLogout" title="Se déconnecter">⏻ DÉCO</button>
       </div>
     </div>
   </header>
@@ -2655,6 +2776,12 @@ document.getElementById('btnCsvBack').addEventListener('click', () => {
 btn1Next.addEventListener('click', launchSimulation);
 
 document.addEventListener('input', saveState);
+
+// ── Logout button ──────────────────────────────────────────────────────────────
+document.getElementById('btnLogout').addEventListener('click', async () => {
+  if (window._sbClient) await window._sbClient.auth.signOut();
+  if (window._authLock) window._authLock();
+});
 
 // ── Reset button ───────────────────────────────────────────────────────────────
 (function() {
