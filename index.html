@@ -2935,7 +2935,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   async function tryAuth(val) {
     const h = await sha256(val);
     if (h === HASH) {
-      sessionStorage.setItem(KEY, '1');
+      localStorage.setItem(KEY, '1');
       overlay.style.display = 'none';
     } else {
       err.textContent = 'Mot de passe incorrect';
@@ -2949,7 +2949,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   const input   = document.getElementById('auth-input');
   const err     = document.getElementById('auth-error');
 
-  if (!sessionStorage.getItem(KEY)) {
+  if (!localStorage.getItem(KEY)) {
     overlay.style.display = 'flex';
     setTimeout(() => input.focus(), 50);
   }
