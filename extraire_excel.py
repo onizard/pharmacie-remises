@@ -50,13 +50,19 @@ FORMES = r'(?:SERING|STYLO|CPR|GELU|CAPS|COMP|AMP|SOL|PDR|CRE|GEL|POM|SUP|SPA|IN
 
 # ── Extraction brute ──────────────────────────────────────────────────────────
 
+LABO_ALIASES = {
+    'EG LABO': 'EG',
+    'EG': 'EG',
+}
+
 def extraire_labo_fichier(nom_fichier: str) -> str:
     parts = nom_fichier.split(" - ")
     if len(parts) >= 2:
         labo = parts[1].strip()
         if any(x in labo for x in ["Liste", "CIP", "Partenariat"]):
             return re.sub(r'\bLABO\b', '', parts[0]).strip()
-        return labo
+        labo = re.sub(r'\s*\bLABO\b\s*', ' ', labo, flags=re.IGNORECASE).strip()
+        return LABO_ALIASES.get(labo.upper(), labo)
     return nom_fichier
 
 def nettoyer_taux(taux: str) -> float | None:
@@ -78,6 +84,83 @@ def nettoyer_prix(prix: str) -> float | None:
     except ValueError:
         return None
 
+RSF_PREFER  = [r'STANDARD', r'FACTUR', r'RSF', r'REM.*FACT', r'TAUX.*REM', r'REMISE.*\b1\b', r'REMISE']
+RSF_EXCLUDE = [r'RFA', r'PALIER', r'VOLUME', r'OBJECTIF', r'BONUS', r'CONDIT', r'ANNUEL', r'FIN\s*AN', r'PRIX', r'NET\s*REM']
+
+def _score_rsf(h: str) -> int:
+    h = h.upper()
+    for pat in RSF_EXCLUDE:
+        if re.search(pat, h): return -99
+    for i, pat in enumerate(RSF_PREFER):
+        if re.search(pat, h): return 10 - i
+    return 0
+
+def _is_pct(v: str) -> bool:
+    try:
+        f = abs(float(v.replace(',', '.').replace('%', '').strip()))
+        return 0 < f < 100
+    except Exception:
+        return False
+
+def _is_price(v: str) -> bool:
+    if not any(c in v for c in (',', '.', '€')): return False
+    try:
+        f = float(v.replace(',', '.').replace('€', '').strip())
+        return 0.1 < f < 5000
+    except Exception:
+        return False
+
+def detect_columns(table: list) -> dict:
+    if not table: return {}
+    hdr_idx = 0
+    for i, row in enumerate(table[:5]):
+        cells = [str(c or '').strip() for c in row if c]
+        if not any(re.fullmatch(r'\d{13}', c.replace(' ', '')) for c in cells):
+            hdr_idx = i; break
+    header    = [str(c or '').strip().upper() for c in table[hdr_idx]]
+    data_rows = [r for r in table[hdr_idx + 1:] if any(c for c in (r or []))]
+    roles = {'cip': -1, 'lib': -1, 'rsf': -1, 'puht': -1, 'punet': -1, 'data_start': hdr_idx + 1}
+    # Priorité à la colonne explicitement CIP13 (ex: "CIP/ACL 13") avant CIP7
+    for i, h in enumerate(header):
+        if re.search(r'13', h) and re.search(r'\bCIP|ACL|EAN\b', h):
+            roles['cip'] = i; break
+    if roles['cip'] == -1:
+        for i, h in enumerate(header):
+            if re.search(r'\bCIP|ACL|EAN\b', h):
+                roles['cip'] = i; break
+        if re.search(r'PU.?HT|P[FA]HT|PRIX.?HT|CATALOGUE|TARIF\s+BRUT', h) and roles['puht'] == -1:
+            roles['puht'] = i
+        if re.search(r'LIB|DESIG|ARTICLE|NOM|PRODUIT|DÉNOMINATION', h) and roles['lib'] == -1 and i != roles['cip']:
+            roles['lib'] = i
+    rsf_scores = [(i, _score_rsf(h)) for i, h in enumerate(header) if i not in (roles['cip'], roles['puht'], roles['lib'])]
+    rsf_scores = [(i, s) for i, s in rsf_scores if s > -50]
+    if rsf_scores:
+        best = max(rsf_scores, key=lambda x: x[1])
+        if best[1] >= 0: roles['rsf'] = best[0]
+    for i, h in enumerate(header):
+        if re.search(r'\bNET\b|\bREMISÉ\b|\bNET\s+REMIS', h) and i not in (roles['cip'], roles['lib'], roles['rsf'], roles['puht']):
+            roles['punet'] = i; break
+    if not data_rows: return roles
+    sample    = data_rows[:min(15, len(data_rows))]
+    col_count = max(len(r or []) for r in sample)
+    for col in range(col_count):
+        vals      = [str((r[col] if len(r) > col else None) or '').strip() for r in sample]
+        non_empty = [v for v in vals if v]
+        if not non_empty: continue
+        if roles['cip'] == -1:
+            if sum(1 for v in non_empty if re.fullmatch(r'\d{13}', v.replace(' ', ''))) >= len(non_empty) * 0.7:
+                roles['cip'] = col; continue
+        if roles['rsf'] == -1 and col not in (roles['cip'], roles['puht'], roles['punet'], roles['lib']):
+            if sum(1 for v in non_empty if _is_pct(v)) >= len(non_empty) * 0.7:
+                roles['rsf'] = col; continue
+        if roles['lib'] == -1 and col not in (roles['cip'], roles['rsf']):
+            if sum(len(v) for v in non_empty) / len(non_empty) > 12:
+                roles['lib'] = col; continue
+        if roles['puht'] == -1 and col not in (roles['cip'], roles['rsf'], roles['lib']):
+            if sum(1 for v in non_empty if _is_price(v)) >= len(non_empty) * 0.7:
+                roles['puht'] = col
+    return roles
+
 def extraire_pdf(pdf_path: Path) -> list[dict]:
     rows = []
     labo = extraire_labo_fichier(pdf_path.stem)
@@ -85,21 +168,25 @@ def extraire_pdf(pdf_path: Path) -> list[dict]:
         for page in pdf.pages:
             tables = page.extract_tables()
             for table in tables:
-                for row in table:
-                    if not row or len(row) < 4:
-                        continue
-                    cip13    = (row[1] or "").strip()
-                    libelle  = (row[2] or "").strip().upper()
-                    taux_str = (row[3] or "").strip()
-                    if cip13 == "CIP/ACL 13" or not cip13:
-                        continue
+                if not table or len(table) < 2:
+                    continue
+                cols = detect_columns(table)
+                if cols.get('cip', -1) == -1 or cols.get('lib', -1) == -1:
+                    continue
+                for row in table[cols.get('data_start', 1):]:
+                    if not row: continue
+                    def cell(idx):
+                        return str(row[idx] or '').strip() if idx != -1 and idx < len(row) else ''
+                    cip13    = cell(cols['cip']).replace(' ', '')
+                    libelle  = cell(cols['lib']).upper()
+                    taux_str = cell(cols['rsf'])
+                    puht_str = cell(cols['puht'])
                     if not re.fullmatch(r"\d{13}", cip13):
                         continue
-                    # 5ème colonne : parfois PU HT (WEGOVY), parfois prix net direct (ABACUS)
-                    puht_str = (row[4] if len(row) > 4 else "").strip() if row else ""
-                    taux_val = nettoyer_taux(taux_str)
-                    puht_val = nettoyer_prix(puht_str)
-                    # Pas de taux mais un prix en €  → prix net fourni directement par le labo
+                    if not libelle or libelle in ('LIBELLÉ', 'DÉSIGNATION', 'ARTICLE', ''):
+                        continue
+                    taux_val  = nettoyer_taux(taux_str)
+                    puht_val  = nettoyer_prix(puht_str)
                     punet_pdf = puht_val if (taux_val is None and puht_val is not None) else None
                     rows.append({
                         "Labo":         labo,

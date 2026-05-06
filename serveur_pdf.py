@@ -319,9 +319,14 @@ def detect_columns(table: list) -> dict:
     roles = {'cip': -1, 'lib': -1, 'rsf': -1, 'puht': -1, 'punet': -1, 'data_start': hdr_idx + 1}
 
     # ── Détection par en-têtes ────────────────────────────────────────────────
+    # Priorité à la colonne CIP13 (ex: "CIP/ACL 13") avant CIP7
     for i, h in enumerate(header):
-        if re.search(r'\bCIP|ACL|EAN\b', h) and roles['cip'] == -1:
-            roles['cip'] = i
+        if re.search(r'13', h) and re.search(r'\bCIP|ACL|EAN\b', h):
+            roles['cip'] = i; break
+    if roles['cip'] == -1:
+        for i, h in enumerate(header):
+            if re.search(r'\bCIP|ACL|EAN\b', h):
+                roles['cip'] = i; break
         if re.search(r'PU.?HT|P[FA]HT|PRIX.?HT|CATALOGUE|TARIF\s+BRUT', h) and roles['puht'] == -1:
             roles['puht'] = i
         if re.search(r'LIB|DESIG|ARTICLE|NOM|PRODUIT|DÉNOMINATION', h) and roles['lib'] == -1 and i != roles['cip']:

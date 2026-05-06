@@ -185,7 +185,12 @@ def main():
         print("⬇️  Téléchargement en cours…\n")
         success = 0
 
+        CODES_EXCLUS = {'RADIANTMAILING'}
+
         for i, (code, url) in enumerate(pdf_entries, 1):
+            if code.upper() in CODES_EXCLUS:
+                print(f"[{i}/{len(pdf_entries)}] {code} — ignoré (exclu)")
+                continue
             filename = code_to_filename(code)
             dest     = OUTPUT_DIR / filename
 
