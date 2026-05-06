@@ -2863,5 +2863,63 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   }
 })();
 </script>
+
+<!-- ── Protection par mot de passe ─────────────────────────────────────── -->
+<div id="auth-overlay" style="
+  display:none;
+  position:fixed;inset:0;z-index:99999;
+  background:#0d0d1a;
+  font-family:'Orbitron','Share Tech Mono',monospace;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+">
+  <div style="color:#2ecc71;font-size:1.3rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;">BREAK PHARMA</div>
+  <div style="color:#4ade80;font-size:.75rem;letter-spacing:.2em;opacity:.7;">Accès restreint</div>
+  <input id="auth-input" type="password" placeholder="Mot de passe"
+    autocomplete="current-password" spellcheck="false"
+    style="
+      background:#111827;border:1px solid #2ecc71;border-radius:6px;
+      color:#e2e8f0;padding:10px 16px;font-size:1rem;
+      font-family:inherit;letter-spacing:.1em;outline:none;width:240px;text-align:center;
+    ">
+  <div id="auth-error" style="color:#ef4444;font-size:.75rem;letter-spacing:.1em;min-height:1em;"></div>
+</div>
+
+<script>
+(function () {
+  const HASH = 'a9b6a05460873bd1f7377bb6eb9ef73d2be773512c0696b2d9ac3630e500f801';
+  const KEY  = 'bp_auth';
+
+  async function sha256(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  async function tryAuth(val) {
+    const h = await sha256(val);
+    if (h === HASH) {
+      sessionStorage.setItem(KEY, '1');
+      overlay.style.display = 'none';
+    } else {
+      err.textContent = 'Mot de passe incorrect';
+      input.value = '';
+      input.focus();
+      setTimeout(() => { err.textContent = ''; }, 2000);
+    }
+  }
+
+  const overlay = document.getElementById('auth-overlay');
+  const input   = document.getElementById('auth-input');
+  const err     = document.getElementById('auth-error');
+
+  if (!sessionStorage.getItem(KEY)) {
+    overlay.style.display = 'flex';
+    setTimeout(() => input.focus(), 50);
+  }
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && input.value.trim()) tryAuth(input.value.trim());
+  });
+})();
+</script>
 </body>
 </html>
