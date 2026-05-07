@@ -801,6 +801,25 @@
         <div class="term-line"><span class="prompt">INFO:</span><span class="val">Encodage UTF-8 ou Latin-1 — séparateur ; ou ,</span></div>
       </div>
 
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid rgba(0,229,255,.12)">
+        <div class="rg-label" style="font-size:10px;letter-spacing:2px;margin-bottom:14px">CHANGEMENT DE GÉNÉRIQUEUR N°1 EN COURS D'ANNÉE</div>
+        <div class="rsf-only-radios">
+          <label class="rsf-only-radio-lbl"><input type="radio" name="changementGen" id="changementGenNon" value="NON"> NON</label>
+          <label class="rsf-only-radio-lbl"><input type="radio" name="changementGen" id="changementGenOui" value="OUI"> OUI</label>
+        </div>
+        <div id="changementGenOptions" style="display:none;margin-top:16px;flex-wrap:wrap;gap:20px;align-items:flex-end">
+          <div>
+            <div class="rg-label" style="font-size:9px;margin-bottom:6px">NOUVEAU GÉNÉRIQUEUR N°1</div>
+            <select id="changementGenLab" class="rsf-input" style="width:200px;background:var(--bg-mid);color:var(--cyan);border-color:var(--border);cursor:pointer"><option value="">— Sélectionner —</option></select>
+          </div>
+          <div>
+            <div class="rg-label" style="font-size:9px;margin-bottom:6px">DATE DU CHANGEMENT</div>
+            <input type="date" id="changementGenDate" class="rsf-input" style="width:160px;color-scheme:dark" />
+          </div>
+          <div id="changementGenProrata" style="font-size:11px;color:var(--amber);font-family:'Share Tech Mono',monospace;padding-bottom:6px"></div>
+        </div>
+      </div>
+
       <div class="btn-row">
         <button class="btn btn-secondary" id="btnCsvBack">‹ &nbsp;RETOUR</button>
         <button class="btn btn-launch" id="btn1Next" disabled>LANCER LA SIMULATION &nbsp;›</button>
@@ -860,6 +879,7 @@ let state = {
   gers: null,
   labPages: [mkLabState('lp0'), mkLabState('lp1')],
   currentPageId: 'lp0',
+  changementGeneriqueur: { enabled: false, labo: null, date: '' },
 };
 
 function syncPdaToggles() {
@@ -875,6 +895,7 @@ function serializeState() {
     includePDA: state.includePDA,
     gers: state.gers,
     currentPageId: state.currentPageId,
+    changementGeneriqueur: state.changementGeneriqueur,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -2237,11 +2258,19 @@ async function launchSimulation() {
 
     // Renvoie le meilleur palier (condition) atteignable pour un CA donné.
     // forceMarketMet=true → prend le palier avec le seuil le plus élevé sans vérifier le CA.
+    function getProrata(labName) {
+      const cg = state.changementGeneriqueur;
+      if (!cg.enabled || cg.labo !== labName || !cg.date) return 1;
+      const month = new Date(cg.date + 'T12:00:00').getMonth() + 1;
+      return (13 - month) / 12;
+    }
+
     function getBestCond(lp, ca, forceMarketMet = false) {
       if (!lp?.conditions?.length) return null;
+      const pr = getProrata(lp.selectedLab);
       const candidates = forceMarketMet
         ? lp.conditions
-        : lp.conditions.filter(c => !c.caCondition || ca >= c.caCondition);
+        : lp.conditions.filter(c => !c.caCondition || ca >= pr * c.caCondition);
       if (!candidates.length) return null;
       return candidates.reduce((best, c) =>
         (c.caCondition || 0) > (best?.caCondition || 0) ? c : best
@@ -2295,7 +2324,7 @@ async function launchSimulation() {
                          bestCond?.caCondition != null && bestCond.caCondition >= 0.9 * state.gers;
         e.bestCond = bestCond;
         e.met = bestCond !== null || !e.isSelected;
-        e.caThreshold = bestCond?.caCondition || 0;
+        e.caThreshold = getProrata(e.lp?.selectedLab) * (bestCond?.caCondition || 0);
         e.firstMet = firstMet;
         e.rows.forEach(({ row, ref, price }) => {
           const remisePct = (rsfOnly || !e.isSelected)
@@ -2334,10 +2363,11 @@ async function launchSimulation() {
         const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === lp.selectedLab);
         if (labRef) potentialCA += row.qty * (labRef.puht || 0);
       });
-      // Meilleur palier atteignable (seuil le plus élevé que le CA potentiel couvre)
-      const bestAchievable = condsWithThreshold.find(c => potentialCA >= c.caCondition);
+      // Meilleur palier atteignable (seuil le plus élevé que le CA potentiel couvre), proratisé si changement en cours
+      const pr = getProrata(lp.selectedLab);
+      const bestAchievable = condsWithThreshold.find(c => potentialCA >= pr * c.caCondition);
       if (!bestAchievable) return;
-      labPotential.set(lp.selectedLab, { threshold: bestAchievable.caCondition, potentialCA });
+      labPotential.set(lp.selectedLab, { threshold: pr * bestAchievable.caCondition, potentialCA });
     });
 
     const opt2Assignment = new Map(naturalAssignment);
@@ -2934,6 +2964,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   if (saved) {
     state.includePDA = !!saved.includePDA;
     state.gers = saved.gers ?? null;
+    state.changementGeneriqueur = saved.changementGeneriqueur ?? { enabled: false, labo: null, date: '' };
     // pdaToggles synced after DOM build
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 2) {
@@ -2953,7 +2984,60 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
     });
   }
 
-  await fetchAndSortLabs();
+  // Wire changement génériqueur
+  const cgNon   = document.getElementById('changementGenNon');
+  const cgOui   = document.getElementById('changementGenOui');
+  const cgOpts  = document.getElementById('changementGenOptions');
+  const cgLab   = document.getElementById('changementGenLab');
+  const cgDate  = document.getElementById('changementGenDate');
+  const cgProrata = document.getElementById('changementGenProrata');
+
+  if (cgNon && cgOui) {
+    // Populate lab list
+    await fetchAndSortLabs();
+    LABS_SORTED.forEach(lab => {
+      const opt = document.createElement('option');
+      opt.value = lab; opt.textContent = lab;
+      cgLab.appendChild(opt);
+    });
+
+    const showCgOptions = () => { cgOpts.style.display = state.changementGeneriqueur.enabled ? 'flex' : 'none'; };
+    const updateProrata = () => {
+      const { enabled, labo, date } = state.changementGeneriqueur;
+      if (enabled && labo && date) {
+        const month = new Date(date + 'T12:00:00').getMonth() + 1;
+        const months = 13 - month;
+        const pct = (months / 12 * 100).toFixed(1);
+        cgProrata.textContent = `→ ${months}/12 du CA annuel (${pct}%)`;
+      } else {
+        cgProrata.textContent = '';
+      }
+    };
+
+    // Restore saved state
+    const cg = state.changementGeneriqueur;
+    (cg.enabled ? cgOui : cgNon).checked = true;
+    cgLab.value  = cg.labo  || '';
+    cgDate.value = cg.date  || '';
+    showCgOptions();
+    updateProrata();
+
+    [cgNon, cgOui].forEach(r => r.addEventListener('change', () => {
+      state.changementGeneriqueur.enabled = cgOui.checked;
+      showCgOptions(); updateProrata(); saveState();
+    }));
+    cgLab.addEventListener('change', () => {
+      state.changementGeneriqueur.labo = cgLab.value || null;
+      updateProrata(); saveState();
+    });
+    cgDate.addEventListener('change', () => {
+      state.changementGeneriqueur.date = cgDate.value;
+      updateProrata(); saveState();
+    });
+  } else {
+    await fetchAndSortLabs();
+  }
+
   loader.style.display = 'none';
 
   state.labPages.forEach((lp, i) => createLabPageDom(i, lp));
