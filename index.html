@@ -749,8 +749,8 @@
   <!-- ── PAGE CSV : Achats N-1 ── -->
   <div id="page-csv" class="page">
     <div class="panel">
-      <div class="panel-title">◈ Mes achats génériques N-1</div>
-      <div class="panel-sub">// Importation du fichier CSV — liste des médicaments achetés sur l'exercice précédent</div>
+      <div class="panel-title">◈ Mes ventes génériques N-1</div>
+      <div class="panel-sub">// Importation du fichier CSV — liste des médicaments vendus sur l'exercice précédent</div>
 
       <input type="file" id="csvInput" accept=".csv,.txt,.xlsx,.pdf" style="display:none" />
       <div class="dropzone" id="dropzone">
@@ -1034,7 +1034,7 @@ function renderStepBar() {
   csvStep.className = 'step';
   if (csvIdx < curIdx)        csvStep.classList.add('done');
   else if (csvIdx === curIdx) csvStep.classList.add('active');
-  csvStep.innerHTML = `<span class="step-num">${String(csvIdx + 1).padStart(2, '0')}</span><span>Achats N-1</span>`;
+  csvStep.innerHTML = `<span class="step-num">${String(csvIdx + 1).padStart(2, '0')}</span><span>Import fichier</span>`;
   const lastLabReady = !!state.labPages[curIdx]?.selectedLab;
   if (csvStep.classList.contains('done') || (csvIdx === curIdx + 1 && lastLabReady))
     csvStep.addEventListener('click', () => goTo('csv'));
