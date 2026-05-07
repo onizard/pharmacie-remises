@@ -2665,6 +2665,7 @@ function applyParsedRows(file, rows, warnings = []) {
   const fnLabel = document.getElementById('dropzone-filename');
   if (fnLabel) fnLabel.textContent = `${file.name}  —  ${rows.length.toLocaleString('fr')} références`;
   if (warnings.length) console.info('[PDF achats]', warnings.join('\n'));
+  saveState();
 }
 
 function colLetter(i) {
