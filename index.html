@@ -1798,7 +1798,7 @@ function buildExclBlock(rsf_pct, exc, labName = '') {
 
   btnRow.appendChild(btnOui); btnRow.appendChild(btnNon);
   block.appendChild(btnRow);
-  section.appendChild(buildExceptionContent(exc));
+  section.appendChild(buildExceptionContent(exc, rsf_pct, labName));
   block.appendChild(section);
   return block;
 }
@@ -1849,7 +1849,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   block.appendChild(remise2Row);
 
   let debounce, focusIdx = -1;
-  inp.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doSearch(inp.value, dropdown, exc, chipsWrap, inp), 300); });
+  inp.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doSearch(inp.value, dropdown, exc, chipsWrap, inp, rsf_pct, labName), 300); });
   inp.addEventListener('keydown', e => {
     const opts = dropdown.querySelectorAll('.libelle-option');
     if (!opts.length) return;
@@ -1862,7 +1862,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   return block;
 }
 
-function buildExceptionContent(exc) {
+function buildExceptionContent(exc, rsf_pct = null, labName = '') {
   const wrap = document.createElement('div');
 
   const searchWrap = document.createElement('div');
@@ -1895,7 +1895,7 @@ function buildExceptionContent(exc) {
   wrap.appendChild(remonterRow);
 
   let debounce, focusIdx = -1;
-  inp.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doSearch(inp.value, dropdown, exc, chipsWrap, inp), 300); });
+  inp.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doSearch(inp.value, dropdown, exc, chipsWrap, inp, rsf_pct, labName), 300); });
   inp.addEventListener('keydown', e => {
     const opts = dropdown.querySelectorAll('.libelle-option');
     if (!opts.length) return;
@@ -1913,7 +1913,7 @@ function isMultiCipInput(term) {
   return parts.length > 1 && parts.every(p => /^\d{5,}$/.test(p));
 }
 
-async function doSearch(term, dropdown, exc, chipsWrap, inp) {
+async function doSearch(term, dropdown, exc, chipsWrap, inp, rsf_pct = null, labName = '') {
   term = term.trim();
   if (term.length < 2) { dropdown.classList.remove('visible'); dropdown.innerHTML = ''; return; }
 
@@ -1935,7 +1935,10 @@ async function doSearch(term, dropdown, exc, chipsWrap, inp) {
   }
 
   const t = encodeURIComponent(term);
-  const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)&order=libelle.asc&limit=100`;
+  const rsfFilter = (rsf_pct !== null && labName)
+    ? `&rsf_pct=eq.${rsf_pct}&labo=eq.${encodeURIComponent(labName)}`
+    : '';
+  const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)${rsfFilter}&order=libelle.asc&limit=100`;
   try {
     const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
     if (!res.ok) return;
