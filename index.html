@@ -193,6 +193,8 @@
   .lab-btn:hover { border-color: var(--cyan-dim); color: var(--text); background: #0d1a28; }
   .lab-btn.selected { border-color: var(--amber); color: var(--amber); background: #1a0e00; box-shadow: var(--glow-a); text-shadow: var(--glow-a); }
   .lab-btn.selected::before { content: '◈ '; font-size: 8px; }
+  .lab-btn.viewing { border-color: #b06eff; color: #b06eff; background: #130c20; box-shadow: 0 0 10px rgba(176,110,255,.4); text-shadow: 0 0 8px rgba(176,110,255,.4); }
+  .lab-btn.viewing::before { content: '▶ '; font-size: 8px; }
 
   /* ── Period tabs ── */
   .period-tabs {
@@ -1101,12 +1103,14 @@ function renderLabGrid() {
   const grid = document.getElementById('labGridMain');
   if (!grid) return;
   grid.innerHTML = '';
+  const viewingUid = [...document.querySelectorAll('[id^="labcont-"]')].find(c => c.style.display !== 'none')?.id.replace('labcont-', '');
   LABS_SORTED.forEach(lab => {
     const btn = document.createElement('button');
     btn.className = 'lab-btn';
     btn.textContent = lab;
     const existing = state.labPages.find(lp => lp.selectedLab === lab && lp.periodId === state.activePeriodId);
     if (existing) btn.classList.add('selected');
+    if (existing && existing.uid === viewingUid) btn.classList.add('viewing');
     btn.addEventListener('click', () => {
       // Remove the currently visible lab if all its conditions are empty
       const visibleCont = [...document.querySelectorAll('[id^="labcont-"]')].find(c => c.style.display !== 'none');
@@ -1163,9 +1167,6 @@ function createLabContDom(lp) {
       <div class="loading" id="loading-${uid}">
         <div class="spinner"></div><span>CHARGEMENT DES DONNÉES RSF...</span>
       </div>
-      <div style="margin-top:12px">
-        <button class="btn btn-secondary" id="delLab-${uid}" style="font-size:10px;color:var(--red);border-color:var(--red)">✕ &nbsp;RETIRER CE LABO</button>
-      </div>
     </div>
   `;
   document.getElementById('labsContainer').appendChild(cont);
@@ -1176,7 +1177,6 @@ function createLabContDom(lp) {
     condPanelsId: 'condPanels-'  + uid,
     loadingId:    'loading-'     + uid,
   });
-  cont.querySelector('#delLab-' + uid).addEventListener('click', () => removeLabPage(uid));
 }
 
 // ── Remove lab ─────────────────────────────────────────────────────────────────
@@ -1204,8 +1204,8 @@ function renderPeriodTabs() {
     inp.className = 'period-tab-date';
     inp.value = p.date;
     inp.title = 'Date d\'entrée en vigueur (mois/année)';
-    inp.addEventListener('mousedown', e => { if (p.id !== state.activePeriodId) { e.preventDefault(); switchPeriod(p.id); } });
-    inp.addEventListener('change', e => { p.date = e.target.value; saveState(); renderPeriodTabs(); });
+    inp.addEventListener('click', e => e.stopPropagation());
+    inp.addEventListener('change', e => { p.date = e.target.value; saveState(); });
     tab.appendChild(inp);
     if (state.periods.length > 1) {
       const x = document.createElement('span');
@@ -1214,7 +1214,7 @@ function renderPeriodTabs() {
       x.addEventListener('click', e => { e.stopPropagation(); removePeriod(p.id); });
       tab.appendChild(x);
     }
-    tab.addEventListener('click', () => switchPeriod(p.id));
+    tab.addEventListener('click', () => { if (p.id !== state.activePeriodId) switchPeriod(p.id); });
     row.appendChild(tab);
   });
   const addBtn = document.createElement('button');
@@ -1376,7 +1376,6 @@ function initLabPage(conf) {
           </table>
         </div>
         <div id="excpts-${uid}-${cond.uid}" class="row-except-blocks"></div>
-        <div id="rsfOnlySec-${uid}-${cond.uid}" class="rsf-only-sec"></div>
       </div>
     `;
     return div;
@@ -1400,7 +1399,6 @@ function initLabPage(conf) {
       if (cond.remiseGlobale !== null) autoFillCond(cond);
       renderCondTable(cond);
     });
-    wireRsfOnly(cond);
     const pdaChk = document.getElementById(`pdaChk-${uid}-${cond.uid}`);
     if (pdaChk) {
       pdaChk.checked = state.includePDA;
@@ -3162,7 +3160,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
     }
     renderLabGrid();
     const firstConfigured = state.labPages.find(lp => lp.selectedLab && lp.periodId === state.activePeriodId);
-    if (firstConfigured) switchToLab(firstConfigured.uid);
+    if (firstConfigured) { switchToLab(firstConfigured.uid); renderLabGrid(); }
     // Restaure la dropzone après que le DOM est prêt
     if (saved.csvData && saved.csvData.length) {
       const fname = saved.csvFileName || 'Fichier restauré';
