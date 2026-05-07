@@ -2962,6 +2962,10 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 (function () {
   const HASH = 'a9b6a05460873bd1f7377bb6eb9ef73d2be773512c0696b2d9ac3630e500f801';
   const KEY  = 'bp_auth';
+  const MAX_AGE = 90 * 24 * 3600; // 90 jours
+
+  function setCookie()  { document.cookie = `${KEY}=1; path=/; max-age=${MAX_AGE}; SameSite=Strict`; }
+  function hasCookie()  { return document.cookie.split(';').some(c => c.trim().startsWith(`${KEY}=`)); }
 
   async function sha256(str) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -2971,7 +2975,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   async function tryAuth(val) {
     const h = await sha256(val);
     if (h === HASH) {
-      localStorage.setItem(KEY, '1');
+      setCookie();
       overlay.style.display = 'none';
     } else {
       err.textContent = 'Mot de passe incorrect';
@@ -2985,7 +2989,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   const input   = document.getElementById('auth-input');
   const err     = document.getElementById('auth-error');
 
-  if (!localStorage.getItem(KEY)) {
+  if (!hasCookie()) {
     overlay.style.display = 'flex';
     setTimeout(() => input.focus(), 50);
   } else {
