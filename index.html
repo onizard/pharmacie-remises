@@ -763,7 +763,18 @@
     </div>
   </div>
 
-  <!-- Lab pages injected by JS before this point -->
+  <!-- ── PAGE LABS : Conditions ── -->
+  <div id="page-labs" class="page">
+    <div class="panel">
+      <div class="panel-title">◈ Conditions du laboratoire</div>
+      <div class="panel-sub">// Sélectionner le laboratoire — puis entrer toutes ses conditions</div>
+      <div class="lab-grid" id="labGridMain"></div>
+      <div id="labsContainer"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnImporter" disabled>IMPORTER SES FICHIERS &nbsp;›</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── PAGE CSV : Achats N-1 ── -->
   <div id="page-csv" class="page">
@@ -941,8 +952,8 @@ let state = {
   csvFile: null, csvRows: 0, csvData: null,
   includePDA: false,
   gers: null,
-  labPages: [mkLabState('lp0'), mkLabState('lp1')],
-  currentPageId: 'lp0',
+  labPages: [],
+  currentPageId: 'labs',
   changementGeneriqueur: { enabled: false, labo: null, date: '' },
 };
 
@@ -1044,7 +1055,7 @@ function getAvailableLabs(labIdx) {
 
 // ── Page order ─────────────────────────────────────────────────────────────────
 function getPageOrder() {
-  return [...state.labPages.map(lp => lp.uid), 'csv', 'results'];
+  return ['labs', 'csv', 'results'];
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────────
@@ -1061,131 +1072,86 @@ function goTo(pageId) {
 // ── Step bar ───────────────────────────────────────────────────────────────────
 function renderStepBar() {
   document.getElementById('stepbar').innerHTML = '';
-  const labCount = state.labPages.length;
-  state.labPages.forEach((lp, i) => {
-    const isLast = i === labCount - 1;
-    const btnNext = document.getElementById(`btnNext-${lp.uid}`);
-    if (btnNext) btnNext.textContent = isLast ? 'IMPORTER SES FICHIERS ›' : 'SUIVANT ›';
-    const addBtn = document.getElementById(`addLab-${lp.uid}`);
-    if (addBtn) {
-      const canAdd = isLast && lp.selectedLab !== null && getAvailableLabs(labCount).length > 0;
-      addBtn.style.display = canAdd ? '' : 'none';
-    }
-    const delBtn = document.getElementById(`delLab-${lp.uid}`);
-    if (delBtn) delBtn.style.display = i >= 2 ? '' : 'none';
+  const btnImp = document.getElementById('btnImporter');
+  if (btnImp) btnImp.disabled = !state.labPages.some(lp => lp.selectedLab);
+}
+
+function renderLabGrid() {
+  const grid = document.getElementById('labGridMain');
+  if (!grid) return;
+  grid.innerHTML = '';
+  LABS_SORTED.forEach(lab => {
+    const btn = document.createElement('button');
+    btn.className = 'lab-btn';
+    btn.textContent = lab;
+    const existing = state.labPages.find(lp => lp.selectedLab === lab);
+    if (existing) btn.classList.add('selected');
+    btn.addEventListener('click', () => {
+      if (existing) {
+        switchToLab(existing.uid);
+      } else {
+        const uid = 'lp' + Date.now();
+        const lp = mkLabState(uid);
+        state.labPages.push(lp);
+        createLabContDom(lp);
+        lp._selectLab(lab);
+        switchToLab(uid);
+      }
+    });
+    grid.appendChild(btn);
   });
+}
+
+function switchToLab(uid) {
+  document.querySelectorAll('[id^="labcont-"]').forEach(c => c.style.display = 'none');
+  const cont = document.getElementById('labcont-' + uid);
+  if (cont) cont.style.display = '';
 }
 
 // ── Refresh lab grids ──────────────────────────────────────────────────────────
 function refreshAllLabButtons(fromIdx) {
-  state.labPages.forEach((lp, i) => {
-    if (i >= fromIdx && lp._refreshGrid) lp._refreshGrid();
-  });
+  renderLabGrid();
 }
 
-// ── Refresh panel titles ───────────────────────────────────────────────────────
-function refreshLabTitles() {
-  state.labPages.forEach((lp, i) => {
-    const pg = document.getElementById('page-' + lp.uid);
-    if (pg) {
-      const t = pg.querySelector('.panel-title');
-      if (t) t.textContent = `◈ Conditions du laboratoire`;
-    }
-  });
-}
-
-// ── Create lab page DOM ────────────────────────────────────────────────────────
-function createLabPageDom(labIdx, lp) {
+// ── Create lab condition container ────────────────────────────────────────────
+function createLabContDom(lp) {
   const uid = lp.uid;
-  const div = document.createElement('div');
-  div.id = 'page-' + uid;
-  div.className = 'page';
-  div.innerHTML = `
-    <div class="panel">
-      <div class="panel-title">◈ Conditions du laboratoire</div>
-      <div class="panel-sub">// Sélectionner le laboratoire — puis entrer toutes ses conditions</div>
-      <div class="lab-grid" id="labGrid-${uid}"></div>
+  const cont = document.createElement('div');
+  cont.id = 'labcont-' + uid;
+  cont.style.display = 'none';
+  cont.innerHTML = `
+    <div style="border-top:1px solid rgba(0,229,255,.12);margin-top:16px;padding-top:16px">
       <div class="switch-warn" id="switchWarn-${uid}"></div>
       <div class="cond-tabs" id="condTabs-${uid}"></div>
       <div id="condPanels-${uid}"></div>
       <div class="loading" id="loading-${uid}">
-        <div class="spinner"></div>
-        <span>CHARGEMENT DES DONNÉES RSF...</span>
+        <div class="spinner"></div><span>CHARGEMENT DES DONNÉES RSF...</span>
       </div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="btnBack-${uid}">‹ &nbsp;RETOUR</button>
-        <button class="btn btn-secondary" id="delLab-${uid}" style="display:none;color:var(--red);border-color:var(--red)">✕ &nbsp;RETIRER CE LABO</button>
-        <button class="btn btn-secondary" id="addLab-${uid}" style="display:none">+ &nbsp;LABO SUIVANT</button>
-        <button class="btn btn-primary" id="btnNext-${uid}" disabled>IMPORTER SES FICHIERS &nbsp;›</button>
+      <div style="margin-top:12px">
+        <button class="btn btn-secondary" id="delLab-${uid}" style="font-size:10px;color:var(--red);border-color:var(--red)">✕ &nbsp;RETIRER CE LABO</button>
       </div>
     </div>
   `;
-
-  const csvPage = document.getElementById('page-csv');
-  csvPage.parentNode.insertBefore(div, csvPage);
-
-  div.querySelector('#btnBack-' + uid).addEventListener('click', () => {
-    const order = getPageOrder();
-    const idx = order.indexOf(uid);
-    if (idx > 0) goTo(order[idx - 1]);
-  });
-
-  div.querySelector('#btnNext-' + uid).addEventListener('click', () => {
-    const order = getPageOrder();
-    const idx = order.indexOf(uid);
-    if (idx < order.length - 1) goTo(order[idx + 1]);
-  });
-
-  div.querySelector('#addLab-' + uid).addEventListener('click', addLabPage);
-
-  div.querySelector('#delLab-' + uid).addEventListener('click', () => removeLabPage(uid));
-
+  document.getElementById('labsContainer').appendChild(cont);
   initLabPage({
-    s:             lp,
-    labsFn:        () => getAvailableLabs(state.labPages.indexOf(lp)),
-    onLabSelected: () => {
-      refreshAllLabButtons(0);
-      renderStepBar();
-    },
-    gridId:     'labGrid-'    + uid,
-    condTabsId: 'condTabs-'   + uid,
-    condPanelsId: 'condPanels-' + uid,
-    loadingId:  'loading-'    + uid,
-    btnNextId:  'btnNext-'    + uid,
+    s:            lp,
+    onLabSelected: () => { renderLabGrid(); renderStepBar(); },
+    condTabsId:   'condTabs-'    + uid,
+    condPanelsId: 'condPanels-'  + uid,
+    loadingId:    'loading-'     + uid,
   });
+  cont.querySelector('#delLab-' + uid).addEventListener('click', () => removeLabPage(uid));
 }
 
-// ── Add lab page ───────────────────────────────────────────────────────────────
-function addLabPage() {
-  const uid = 'lp' + Date.now();
-  const lp  = mkLabState(uid);
-  state.labPages.push(lp);
-  createLabPageDom(state.labPages.length - 1, lp);
-  renderStepBar();
-  goTo(uid);
-  saveState();
-}
-
-// ── Remove lab page ────────────────────────────────────────────────────────────
+// ── Remove lab ─────────────────────────────────────────────────────────────────
 function removeLabPage(uid) {
   const idx = state.labPages.findIndex(lp => lp.uid === uid);
-  if (idx < 2) return;
-
-  const wasActive = state.currentPageId === uid;
+  if (idx < 0) return;
   state.labPages.splice(idx, 1);
-
-  const pg = document.getElementById('page-' + uid);
-  if (pg) pg.remove();
-
-  refreshLabTitles();
-  refreshAllLabButtons(idx);
-
-  if (wasActive) {
-    const order = getPageOrder();
-    goTo(order[Math.max(0, idx - 1)]);
-  } else {
-    renderStepBar();
-  }
+  const cont = document.getElementById('labcont-' + uid);
+  if (cont) cont.remove();
+  renderLabGrid();
+  renderStepBar();
   saveState();
 }
 
@@ -1194,52 +1160,10 @@ function initLabPage(conf) {
   const s   = conf.s;
   const uid = s.uid;
   const el  = {
-    grid:       document.getElementById(conf.gridId),
     condTabs:   document.getElementById(conf.condTabsId),
     condPanels: document.getElementById(conf.condPanelsId),
     loading:    document.getElementById(conf.loadingId),
-    btnNext:    document.getElementById(conf.btnNextId),
   };
-
-  // ── Lab grid ────────────────────────────────────────────────────────────────
-  function buildGrid() {
-    const labs = conf.labsFn();
-    el.grid.innerHTML = '';
-    labs.forEach(lab => {
-      const btn = document.createElement('button');
-      btn.className = 'lab-btn'; btn.textContent = lab; btn.dataset.lab = lab;
-      let holdTimer;
-      const warnEl = document.getElementById('switchWarn-' + uid);
-      btn.addEventListener('mousedown', () => {
-        if (!s.selectedLab) { selectLab(lab); return; }
-        if (warnEl) { warnEl.textContent = `Remplacer ${s.selectedLab} ? Données réinitialisées. Maintenez 2 sec.`; warnEl.classList.add('visible'); }
-        btn.classList.add('switching');
-        holdTimer = setTimeout(() => {
-          btn.classList.remove('switching');
-          if (warnEl) warnEl.classList.remove('visible');
-          selectLab(lab);
-        }, 2000);
-      });
-      const cancelHold = () => { clearTimeout(holdTimer); btn.classList.remove('switching'); if (warnEl) warnEl.classList.remove('visible'); };
-      btn.addEventListener('mouseup', cancelHold);
-      btn.addEventListener('mouseleave', cancelHold);
-      el.grid.appendChild(btn);
-    });
-    // Reset if selected lab was taken by another page
-    const myIdx = state.labPages.indexOf(s);
-    const stolenByOther = s.selectedLab &&
-      state.labPages.some((lp, i) => i !== myIdx && lp.selectedLab === s.selectedLab);
-    if (stolenByOther) {
-      s.selectedLab = null; s.rsfPaliers = [];
-      s.conditions = [mkCondState('c0')]; s.activeCondIdx = 0;
-      el.condPanels.innerHTML = '';
-      el.condTabs.classList.remove('visible');
-      el.btnNext.disabled = true;
-    }
-  }
-
-  s._refreshGrid = buildGrid;
-  buildGrid();
 
   // ── Condition tab bar ────────────────────────────────────────────────────────
   function renderCondTabs() {
@@ -1602,20 +1526,17 @@ function initLabPage(conf) {
     });
   }
 
+  s._selectLab = async function(lab) { await selectLab(lab); };
+
   // ── Select lab ───────────────────────────────────────────────────────────────
   async function selectLab(lab) {
-    window.scrollTo(0, 0);
     s.selectedLab = lab;
-    buildGrid();
-    renderStepBar();
-    refreshAllLabButtons(0);
     s.rsfPaliers  = [];
     s.conditions  = [mkCondState('c0')];
     s.activeCondIdx = 0;
     el.condPanels.innerHTML = '';
     el.condTabs.classList.remove('visible');
     el.loading.classList.add('visible');
-    el.btnNext.disabled = true;
 
     try {
       const { paliers, firstMap } = await fetchRSF(lab);
@@ -1660,14 +1581,12 @@ function initLabPage(conf) {
     const lab = savedLabData.selectedLab;
     if (!lab) return;
     s.selectedLab = lab;
-    buildGrid();
     s.rsfPaliers = [];
     s.conditions = [];
     s.activeCondIdx = savedLabData.activeCondIdx || 0;
     el.condPanels.innerHTML = '';
     el.condTabs.classList.remove('visible');
     el.loading.classList.add('visible');
-    el.btnNext.disabled = true;
     try {
       const { paliers, firstMap } = await fetchRSF(lab);
       s.rsfPaliers = paliers;
@@ -1712,7 +1631,7 @@ function initLabPage(conf) {
   };
 
   function checkDone() {
-    el.btnNext.disabled = !s.selectedLab || s.rsfPaliers.length === 0;
+    renderStepBar();
   }
 }
 
@@ -2952,10 +2871,7 @@ dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.class
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
 dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
 
-document.getElementById('btnCsvBack').addEventListener('click', () => {
-  const order = getPageOrder();
-  goTo(order[order.indexOf('csv') - 1]);
-});
+document.getElementById('btnCsvBack').addEventListener('click', () => goTo('labs'));
 btn1Next.addEventListener('click', launchSimulation);
 
 document.addEventListener('input', saveState);
@@ -2981,7 +2897,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       const resetState = {
         v: 1, gers: null, csvData: null, csvRows: 0, csvFileName: null,
         includePDA: false,
-        currentPageId: (cur.labPages || [])[0]?.uid || 'lp0',
+        currentPageId: 'labs',
         changementGeneriqueur: { enabled: false, labo: null, date: '' },
         labPages: (cur.labPages || []).map(lp => ({
           uid: lp.uid, selectedLab: lp.selectedLab, activeCondIdx: 0,
@@ -3047,7 +2963,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       state.csvRows = saved.csvRows || saved.csvData.length;
     }
     const savedPages = saved.labPages || [];
-    if (savedPages.length >= 2) {
+    if (savedPages.length >= 1) {
       state.labPages = savedPages.map(sp => mkLabState(sp.uid));
     }
   }
@@ -3120,9 +3036,12 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 
   loader.style.display = 'none';
 
-  state.labPages.forEach((lp, i) => createLabPageDom(i, lp));
+  state.labPages.forEach(lp => createLabContDom(lp));
+  renderLabGrid();
   syncPdaToggles();
   renderStepBar();
+
+  document.getElementById('btnImporter').addEventListener('click', () => goTo('csv'));
 
   if (saved && saved.labPages) {
     for (const sp of saved.labPages) {
@@ -3131,6 +3050,9 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
         await lp._restoreFromSave(sp);
       }
     }
+    renderLabGrid();
+    const firstConfigured = state.labPages.find(lp => lp.selectedLab);
+    if (firstConfigured) switchToLab(firstConfigured.uid);
     // Restaure la dropzone après que le DOM est prêt
     if (saved.csvData && saved.csvData.length) {
       const fname = saved.csvFileName || 'Fichier restauré';
@@ -3144,12 +3066,11 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       if (fst) fst.textContent = `FICHIER : ${fname}  —  ${state.csvRows.toLocaleString('fr')} références détectées`;
       btn1Next.disabled = false;
     }
-    const validIds = new Set([...state.labPages.map(l => l.uid), 'csv', 'results']);
-    const targetPage = validIds.has(saved.currentPageId) ? saved.currentPageId : state.labPages[0].uid;
+    const targetPage = ['csv', 'results'].includes(saved.currentPageId) ? saved.currentPageId : 'labs';
     goTo(targetPage);
     if (targetPage === 'results') launchSimulation();
   } else {
-    goTo('lp0');
+    goTo('labs');
   }
 })();
 </script>
