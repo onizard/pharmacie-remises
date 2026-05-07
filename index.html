@@ -1355,7 +1355,7 @@ function initLabPage(conf) {
             <thead>
               <tr>
                 <th>RSF&nbsp;% <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer RSF First" style="display:none;font-size:9px;padding:2px 7px;vertical-align:middle;margin-left:4px"></button></th>
-                <th>Remise&nbsp;2&nbsp;(%)</th>
+                <th id="thR2-${uid}-${cond.uid}">${s.selectedLab === 'Biogaran' ? 'RDP&nbsp;(%)' : 'Remise&nbsp;2&nbsp;(%)'}</th>
                 <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="font-size:9px;padding:2px 7px">+ REMISE 3</button></th>
                 <th style="color:var(--green)">Exception</th>
                 <th>Exclusion</th>
@@ -1513,18 +1513,19 @@ function initLabPage(conf) {
       if (lab === 'Biogaran') {
         r3Btn.className = '';
         r3Btn.style.cssText = 'cursor:default;pointer-events:none;font-size:11px;color:var(--text-dim);background:none;border:none;padding:0;font-family:inherit;font-weight:700';
-        r3Btn.textContent = 'Remise 3 (%)';
+        r3Btn.textContent = 'COOP (%)';
       } else {
+        const r3Name = lab === 'Biogaran' ? 'COOP' : 'REMISE 3';
         r3Btn.className = 'r3-toggle';
         r3Btn.style.cssText = 'font-size:9px;padding:2px 7px';
-        r3Btn.textContent = cond.showR3 ? '− REMISE 3' : '+ REMISE 3';
+        r3Btn.textContent = cond.showR3 ? `− ${r3Name}` : `+ ${r3Name}`;
         table.classList.toggle('show-r3', cond.showR3);
         if (!r3Btn.dataset.wired) {
           r3Btn.dataset.wired = '1';
           r3Btn.addEventListener('click', () => {
             cond.showR3 = !cond.showR3;
             table.classList.toggle('show-r3', cond.showR3);
-            r3Btn.textContent = cond.showR3 ? '− REMISE 3' : '+ REMISE 3';
+            r3Btn.textContent = cond.showR3 ? `− ${r3Name}` : `+ ${r3Name}`;
             saveState();
           });
         }
@@ -1620,7 +1621,7 @@ function initLabPage(conf) {
     excluded.forEach(row => {
       const key = String(row.rsf_pct);
       if (!cond.exceptions[key]) cond.exceptions[key] = { open: false, libelles: [], remiseCible: '' };
-      exclsEl.appendChild(buildExclBlock(row.rsf_pct, cond.exceptions[key]));
+      exclsEl.appendChild(buildExclBlock(row.rsf_pct, cond.exceptions[key], s.selectedLab));
     });
   }
 
@@ -1634,7 +1635,7 @@ function initLabPage(conf) {
     active.forEach(row => {
       const key = String(row.rsf_pct);
       if (!cond.remise2Except[key]) cond.remise2Except[key] = { libelles: [], remise2: '' };
-      excptsEl.appendChild(buildRowExceptBlock(row.rsf_pct, cond.remise2Except[key]));
+      excptsEl.appendChild(buildRowExceptBlock(row.rsf_pct, cond.remise2Except[key], s.selectedLab));
     });
   }
 
@@ -1764,7 +1765,7 @@ async function fetchRSF(lab) {
   return { paliers, firstMap };
 }
 
-function buildExclBlock(rsf_pct, exc) {
+function buildExclBlock(rsf_pct, exc, labName = '') {
   const block = document.createElement('div');
   block.className = 'excl-block';
 
@@ -1775,7 +1776,8 @@ function buildExclBlock(rsf_pct, exc) {
   tag.textContent = `RSF ${Math.abs(rsf_pct).toFixed(2)} %`;
   const txt = document.createElement('span');
   txt.className = 'excl-block-text';
-  txt.textContent = `La remise 2 de la catégorie RSF ${Math.abs(rsf_pct).toFixed(2)} % sera exclue — souhaitez-vous ajouter des exceptions ?`;
+  const r2label = labName === 'Biogaran' ? 'RDP' : 'remise 2';
+  txt.textContent = `La ${r2label} de la catégorie RSF ${Math.abs(rsf_pct).toFixed(2)} % sera exclue — souhaitez-vous ajouter des exceptions ?`;
   header.appendChild(tag); header.appendChild(txt);
   block.appendChild(header);
 
@@ -1801,7 +1803,7 @@ function buildExclBlock(rsf_pct, exc) {
   return block;
 }
 
-function buildRowExceptBlock(rsf_pct, exc) {
+function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   const block = document.createElement('div');
   block.className = 'row-except-block';
 
@@ -1812,7 +1814,8 @@ function buildRowExceptBlock(rsf_pct, exc) {
   tag.textContent = `RSF ${Math.abs(rsf_pct).toFixed(2)} %`;
   const txt = document.createElement('span');
   txt.className = 'excpt-block-text';
-  txt.textContent = `Références avec une remise 2 différente pour la catégorie RSF ${Math.abs(rsf_pct).toFixed(2)} %`;
+  const r2lbl = labName === 'Biogaran' ? 'RDP' : 'remise 2';
+  txt.textContent = `Références avec un ${r2lbl} différent pour la catégorie RSF ${Math.abs(rsf_pct).toFixed(2)} %`;
   header.appendChild(tag); header.appendChild(txt);
   block.appendChild(header);
 
@@ -1835,7 +1838,7 @@ function buildRowExceptBlock(rsf_pct, exc) {
   const remise2Row = document.createElement('div');
   remise2Row.className = 'excpt-remise2-row';
   const lbl = document.createElement('span');
-  lbl.className = 'excpt-remise2-label'; lbl.textContent = 'Remise 2 spécifique';
+  lbl.className = 'excpt-remise2-label'; lbl.textContent = labName === 'Biogaran' ? 'RDP spécifique' : 'Remise 2 spécifique';
   const remInp = document.createElement('input');
   remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '100px';
   remInp.placeholder = 'ex : 3.00'; remInp.value = exc.remise2;
