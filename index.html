@@ -1482,30 +1482,27 @@ function initLabPage(conf) {
         }
       }
     }
+    const condNaturallyMet = state.gers != null && cond.caCondition != null &&
+                              cond.caCondition >= 0.9 * state.gers;
+    const firstMetDisplay = condNaturallyMet || cond.forceFirst;
     const ffBtn = document.getElementById(`ffBtn-${uid}-${cond.uid}`);
     if (ffBtn) {
       const hasFirst = s.rsfFirstMap.size > 0;
       ffBtn.style.display = hasFirst ? 'inline-block' : 'none';
-      ffBtn.textContent = cond.forceFirst ? '★ RSF FIRST' : '☆ RSF FIRST';
-      ffBtn.style.color  = cond.forceFirst ? 'var(--amber)' : '';
-      ffBtn.style.borderColor = cond.forceFirst ? 'var(--amber)' : '';
-      ffBtn.style.boxShadow   = cond.forceFirst ? 'var(--glow-a)' : '';
+      ffBtn.textContent = firstMetDisplay ? '★ RSF FIRST' : '☆ RSF FIRST';
+      ffBtn.style.color  = firstMetDisplay ? 'var(--amber)' : '';
+      ffBtn.style.borderColor = firstMetDisplay ? 'var(--amber)' : '';
+      ffBtn.style.boxShadow   = firstMetDisplay ? 'var(--glow-a)' : '';
       if (!ffBtn.dataset.wired) {
         ffBtn.dataset.wired = '1';
         ffBtn.addEventListener('click', () => {
           cond.forceFirst = !cond.forceFirst;
-          ffBtn.textContent = cond.forceFirst ? '★ RSF FIRST' : '☆ RSF FIRST';
-          ffBtn.style.color  = cond.forceFirst ? 'var(--amber)' : '';
-          ffBtn.style.borderColor = cond.forceFirst ? 'var(--amber)' : '';
-          ffBtn.style.boxShadow   = cond.forceFirst ? 'var(--glow-a)' : '';
           renderCondTable(cond);
           autoFillCond(cond);
           saveState();
         });
       }
     }
-    const firstMetDisplay = (state.gers != null && cond.caCondition != null &&
-                             cond.caCondition >= 0.9 * state.gers) || cond.forceFirst;
     tbody.innerHTML = '';
 
     cond.rsfValues.forEach((row, idx) => {
