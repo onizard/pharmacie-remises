@@ -84,8 +84,8 @@ def nettoyer_prix(prix: str) -> float | None:
     except ValueError:
         return None
 
-RSF_PREFER  = [r'STANDARD', r'FACTUR', r'RSF', r'REM.*FACT', r'TAUX.*REM', r'REMISE.*\b1\b', r'REMISE']
-RSF_EXCLUDE = [r'RFA', r'PALIER', r'VOLUME', r'OBJECTIF', r'BONUS', r'CONDIT', r'ANNUEL', r'FIN\s*AN', r'PRIX', r'NET\s*REM']
+RSF_PREFER  = [r'\bTAUX\b', r'STANDARD', r'FACTUR', r'RSF', r'REM.*FACT', r'TAUX.*REM', r'REMISE.*\b1\b', r'REMISE']
+RSF_EXCLUDE = [r'\bCIP', r'\bACL\b', r'\bEAN\b', r'\bCODE\b', r'RFA', r'PALIER', r'VOLUME', r'OBJECTIF', r'BONUS', r'CONDIT', r'ANNUEL', r'FIN\s*AN', r'PRIX', r'NET\s*REM']
 
 def _score_rsf(h: str) -> int:
     h = h.upper()

@@ -264,8 +264,8 @@ def corriger_dci_typos(all_rows: list) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Patterns pour identifier la colonne RSF « standard / facture »
-RSF_PREFER  = [r'STANDARD', r'FACTUR', r'RSF', r'REM.*FACT', r'TAUX.*REM', r'REMISE.*\b1\b', r'REMISE']
-RSF_EXCLUDE = [r'RFA', r'PALIER', r'VOLUME', r'OBJECTIF', r'BONUS', r'CONDIT', r'ANNUEL', r'FIN\s*AN', r'PRIX', r'NET\s*REM']
+RSF_PREFER  = [r'\bTAUX\b', r'STANDARD', r'FACTUR', r'RSF', r'REM.*FACT', r'TAUX.*REM', r'REMISE.*\b1\b', r'REMISE']
+RSF_EXCLUDE = [r'\bCIP', r'\bACL\b', r'\bEAN\b', r'\bCODE\b', r'RFA', r'PALIER', r'VOLUME', r'OBJECTIF', r'BONUS', r'CONDIT', r'ANNUEL', r'FIN\s*AN', r'PRIX', r'NET\s*REM']
 
 
 def _score_rsf(header_text: str) -> int:
