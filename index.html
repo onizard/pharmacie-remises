@@ -1762,7 +1762,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   const txt = document.createElement('span');
   txt.className = 'excpt-block-text';
   const r2lbl = labName === 'Biogaran' ? 'RDP' : 'remise 2';
-  txt.textContent = `Références avec un ${r2lbl} différent pour la catégorie RSF ${Math.abs(rsf_pct).toFixed(2)} %`;
+  txt.textContent = `Références avec une ${r2lbl} différente pour la catégorie RSF ${Math.abs(rsf_pct).toFixed(2)} %`;
   header.appendChild(tag); header.appendChild(txt);
   block.appendChild(header);
 
