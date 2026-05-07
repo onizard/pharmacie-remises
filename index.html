@@ -990,6 +990,7 @@ function goTo(pageId) {
   if (pg) pg.classList.add('active');
   state.currentPageId = pageId;
   renderStepBar();
+  saveState();
 }
 
 // ── Step bar ───────────────────────────────────────────────────────────────────
@@ -2969,23 +2970,10 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
     state.includePDA = !!saved.includePDA;
     state.gers = saved.gers ?? null;
     state.changementGeneriqueur = saved.changementGeneriqueur ?? { enabled: false, labo: null, date: '' };
-    // Restaure le fichier importé
     if (saved.csvData && saved.csvData.length) {
       state.csvData = saved.csvData;
       state.csvRows = saved.csvRows || saved.csvData.length;
-      const fname = saved.csvFileName || 'Fichier restauré';
-      const fnLabel = document.getElementById('dropzone-filename');
-      if (fnLabel) fnLabel.textContent = `${fname}  —  ${state.csvRows.toLocaleString('fr')} références`;
-      const dz = document.getElementById('dropzone');
-      if (dz) dz.classList.add('loaded');
-      const fs = document.getElementById('fileStatus');
-      if (fs) fs.classList.add('visible');
-      const fst = document.getElementById('fileStatusText');
-      if (fst) fst.textContent = `FICHIER : ${fname}  —  ${state.csvRows.toLocaleString('fr')} références détectées`;
-      const b = document.getElementById('btn1Next');
-      if (b) b.disabled = false;
     }
-    // pdaToggles synced after DOM build
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 2) {
       state.labPages = savedPages.map(sp => mkLabState(sp.uid));
@@ -3071,7 +3059,20 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
         await lp._restoreFromSave(sp);
       }
     }
-    const validIds = new Set([...state.labPages.map(l => l.uid), 'csv']);
+    // Restaure la dropzone après que le DOM est prêt
+    if (saved.csvData && saved.csvData.length) {
+      const fname = saved.csvFileName || 'Fichier restauré';
+      const fnLabel = document.getElementById('dropzone-filename');
+      if (fnLabel) fnLabel.textContent = `${fname}  —  ${state.csvRows.toLocaleString('fr')} références`;
+      const dz = document.getElementById('dropzone');
+      if (dz) dz.classList.add('loaded');
+      const fs = document.getElementById('fileStatus');
+      if (fs) fs.classList.add('visible');
+      const fst = document.getElementById('fileStatusText');
+      if (fst) fst.textContent = `FICHIER : ${fname}  —  ${state.csvRows.toLocaleString('fr')} références détectées`;
+      btn1Next.disabled = false;
+    }
+    const validIds = new Set([...state.labPages.map(l => l.uid), 'csv', 'results']);
     goTo(validIds.has(saved.currentPageId) ? saved.currentPageId : state.labPages[0].uid);
   } else {
     goTo('lp0');
