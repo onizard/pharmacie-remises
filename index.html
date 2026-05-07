@@ -3035,9 +3035,31 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
     btn.classList.add('holding');
     // force reflow so transition starts fresh
     void btn.offsetWidth;
-    timer = setTimeout(() => {
+    timer = setTimeout(async () => {
       btn.classList.remove('holding');
-      try { localStorage.removeItem(LS_KEY); } catch(e) {}
+      const cur = serializeState();
+      const resetState = {
+        v: 1, gers: null, csvData: null, csvRows: 0, csvFileName: null,
+        includePDA: false,
+        currentPageId: (cur.labPages || [])[0]?.uid || 'lp0',
+        changementGeneriqueur: { enabled: false, labo: null, date: '' },
+        labPages: (cur.labPages || []).map(lp => ({
+          uid: lp.uid, selectedLab: lp.selectedLab, activeCondIdx: 0,
+          conditions: (lp.conditions || []).map(c => ({
+            uid: c.uid, remiseGlobale: null, caCondition: null,
+            rsfValues: (c.rsfValues || []).map(r => ({
+              rsf_pct: r.rsf_pct, excluded: r.excluded,
+              remise2: r.excluded ? '0' : '', remise3: '',
+              hasExcept: r.hasExcept,
+            })),
+            exceptions: {}, rsfOnly: { enabled: false, libelles: [] },
+            showR3: false, forceFirst: false,
+            remise2Except: c.remise2Except || {},
+          })),
+        })),
+      };
+      try { localStorage.setItem(LS_KEY, JSON.stringify(resetState)); } catch(e) {}
+      await saveCloudState(resetState);
       location.reload();
     }, 3000);
   }
