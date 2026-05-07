@@ -1622,17 +1622,7 @@ function initLabPage(conf) {
         tr.classList.remove('excluded');
         checkDone();
       });
-      const xBtn2 = document.createElement('button');
-      xBtn2.className = 'excl-check'; xBtn2.style.cssText = 'cursor:pointer;border-color:var(--red);background:#0e0005;box-shadow:0 0 8px #ff336644';
-      xBtn2.innerHTML = '<span style="color:var(--red);font-size:12px;font-weight:bold;line-height:1;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">✕</span>';
-      xBtn2.addEventListener('click', () => {
-        cond.rsfValues[idx].remise2 = '0'; cond.rsfValues[idx].excluded = true;
-        inp2.value = '0'; inp2.classList.add('excl-r2'); inp2.classList.remove('auto-c');
-        tr.classList.add('excluded');
-        saveState();
-      });
-      const td2 = document.createElement('td'); td2.style.cssText = 'display:flex;align-items:center;gap:4px';
-      td2.appendChild(inp2); td2.appendChild(xBtn2); tr.appendChild(td2);
+      const td2 = document.createElement('td'); td2.appendChild(inp2); tr.appendChild(td2);
 
       const inp3 = document.createElement('input');
       inp3.type = 'text'; inp3.className = 'rsf-input inp-r3';
