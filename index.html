@@ -483,6 +483,46 @@
   .auth-logout { font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 2px; padding: 5px 12px; cursor: pointer; background: transparent; border: 1px solid var(--border); color: var(--text-dim); transition: all .2s; }
   .auth-logout:hover { border-color: var(--red); color: var(--red); }
 
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    #app { padding: 20px 20px 40px; }
+    .logo { font-size: 26px; letter-spacing: 4px; }
+    .site-header { flex-wrap: wrap; gap: 12px; }
+    .header-right { margin-left: 0; width: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+    .stepbar { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+    .step { flex: none; min-width: 120px; padding: 8px 14px; font-size: 10px; }
+    .step-add { flex-shrink: 0; }
+    .panel { padding: 16px; }
+    .rsf-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .sim-kpis { flex-wrap: wrap; }
+    .sim-compare { flex-direction: column; }
+  }
+
+  @media (max-width: 600px) {
+    #app { padding: 12px 12px 40px; }
+    .logo { font-size: 20px; letter-spacing: 2px; }
+    .header-sub { display: none; }
+    .term-line { display: none; }
+    .site-header { margin-bottom: 16px; padding-bottom: 12px; }
+    .stepbar { margin-bottom: 16px; }
+    .step { min-width: 90px; padding: 8px 10px; font-size: 9px; gap: 6px; }
+    .step-num { font-size: 13px; min-width: 20px; }
+    .panel { padding: 12px; margin-bottom: 12px; }
+    .panel-title { font-size: 13px; letter-spacing: 2px; }
+    .rsf-input { font-size: 13px; padding: 6px 8px; }
+    .rg-row { flex-wrap: wrap; gap: 8px; }
+    table.rsf-table th, table.rsf-table td { padding: 8px 10px; font-size: 12px; }
+    .lab-btn { font-size: 10px; padding: 6px 10px; letter-spacing: 1px; }
+    .r3-toggle { font-size: 8px; padding: 2px 5px; }
+    .btn-reset { padding: 6px 12px; font-size: 9px; }
+    #gersGlobal { width: 90px !important; }
+    .sim-winner-title { font-size: 16px; letter-spacing: 3px; }
+    .sim-kpi { min-width: 120px; padding: 10px 12px; }
+    .sim-winner-dl { position: static; margin-top: 12px; justify-content: flex-start; max-width: 100%; }
+    .col-map-overlay { padding-top: 20px; padding-left: 10px; padding-right: 10px; }
+    #brickCanvas { width: 100% !important; }
+  }
+
 </style>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
