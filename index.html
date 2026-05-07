@@ -3073,7 +3073,9 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       btn1Next.disabled = false;
     }
     const validIds = new Set([...state.labPages.map(l => l.uid), 'csv', 'results']);
-    goTo(validIds.has(saved.currentPageId) ? saved.currentPageId : state.labPages[0].uid);
+    const targetPage = validIds.has(saved.currentPageId) ? saved.currentPageId : state.labPages[0].uid;
+    goTo(targetPage);
+    if (targetPage === 'results') launchSimulation();
   } else {
     goTo('lp0');
   }
