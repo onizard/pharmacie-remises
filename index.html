@@ -588,7 +588,11 @@
     boxEl.classList.remove('shake'); void boxEl.offsetWidth; boxEl.classList.add('shake');
   }
 
-  function unlock() { overlay.classList.add('hidden'); }
+  let _reloadAfterLogin = false;
+  function unlock() {
+    overlay.classList.add('hidden');
+    if (_reloadAfterLogin) { _reloadAfterLogin = false; location.reload(); }
+  }
   function lock()   { overlay.classList.remove('hidden'); showScreen('sLogin'); }
 
   // ── Vérifie session existante ────────────────────────────────────────────
@@ -615,7 +619,7 @@
     err.textContent = '';
     const { error } = await sb.auth.signInWithPassword({ email, password: pwd });
     if (error) { err.textContent = '⚠ ' + (error.message === 'Invalid login credentials' ? 'Identifiant ou mot de passe incorrect.' : error.message); shake(authBox); }
-    else unlock();
+    else { _reloadAfterLogin = true; unlock(); }
   }
   document.getElementById('aLBtn').addEventListener('click', doLogin);
   document.getElementById('aLPwd').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
@@ -851,11 +855,28 @@ function serializeState() {
   };
 }
 
-let _saveTimer;
+let _saveTimer, _cloudSaveTimer;
+
+async function saveCloudState(data) {
+  try {
+    const sb = window._sbClient;
+    if (!sb) return;
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    await sb.from('user_state').upsert(
+      { user_id: session.user.id, state_json: data },
+      { onConflict: 'user_id' }
+    );
+  } catch(e) {}
+}
+
 function saveState() {
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(serializeState())); } catch(e) {}
+    const data = serializeState();
+    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
+    clearTimeout(_cloudSaveTimer);
+    _cloudSaveTimer = setTimeout(() => saveCloudState(data), 3000);
   }, 400);
 }
 
@@ -2856,6 +2877,21 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 (async () => {
   const loader = document.getElementById('initLoader');
   loader.style.display = 'block';
+
+  // Charge l'état cloud si session Supabase active (priorité sur localStorage)
+  try {
+    const sb = window._sbClient;
+    if (sb) {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) {
+        const { data: cloud } = await sb.from('user_state')
+          .select('state_json').eq('user_id', session.user.id).maybeSingle();
+        if (cloud?.state_json) {
+          localStorage.setItem(LS_KEY, JSON.stringify(cloud.state_json));
+        }
+      }
+    }
+  } catch(e) {}
 
   const saved = loadSavedState();
   if (saved) {
