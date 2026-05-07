@@ -3059,7 +3059,8 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
         })),
       };
       try { localStorage.setItem(LS_KEY, JSON.stringify(resetState)); } catch(e) {}
-      await saveCloudState(resetState);
+      try { sessionStorage.setItem('bp_reset', '1'); } catch(e) {}
+      saveCloudState(resetState);
       location.reload();
     }, 3000);
   }
@@ -3077,19 +3078,24 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   loader.style.display = 'block';
 
   // Charge l'état cloud si session Supabase active (priorité sur localStorage)
-  try {
-    const sb = window._sbClient;
-    if (sb) {
-      const { data: { session } } = await sb.auth.getSession();
-      if (session) {
-        const { data: cloud } = await sb.from('user_state')
-          .select('state_json').eq('user_id', session.user.id).maybeSingle();
-        if (cloud?.state_json) {
-          localStorage.setItem(LS_KEY, JSON.stringify(cloud.state_json));
+  // Sauf si on vient d'un reset (sessionStorage flag) — on laisse le localStorage primer
+  const _isPostReset = sessionStorage.getItem('bp_reset') === '1';
+  sessionStorage.removeItem('bp_reset');
+  if (!_isPostReset) {
+    try {
+      const sb = window._sbClient;
+      if (sb) {
+        const { data: { session } } = await sb.auth.getSession();
+        if (session) {
+          const { data: cloud } = await sb.from('user_state')
+            .select('state_json').eq('user_id', session.user.id).maybeSingle();
+          if (cloud?.state_json) {
+            localStorage.setItem(LS_KEY, JSON.stringify(cloud.state_json));
+          }
         }
       }
-    }
-  } catch(e) {}
+    } catch(e) {}
+  }
 
   const saved = loadSavedState();
   if (saved) {
