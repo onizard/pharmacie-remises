@@ -194,6 +194,20 @@
   .lab-btn.selected { border-color: var(--amber); color: var(--amber); background: #1a0e00; box-shadow: var(--glow-a); text-shadow: var(--glow-a); }
   .lab-btn.selected::before { content: '◈ '; font-size: 8px; }
 
+  /* ── Period tabs ── */
+  .period-tabs {
+    display: flex; align-items: flex-end; gap: 2px;
+    border-bottom: 1px solid var(--cyan-dim);
+    margin-bottom: 16px;
+  }
+  .period-tab-date {
+    background: transparent; border: none; outline: none;
+    font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700;
+    letter-spacing: 1px; color: inherit;
+    width: 100px; cursor: pointer;
+  }
+  .period-tab-date::-webkit-calendar-picker-indicator { filter: invert(.5); cursor: pointer; }
+
   /* ── Condition tabs ── */
   .cond-tabs {
     display: none; align-items: flex-end; gap: 2px;
@@ -768,10 +782,11 @@
     <div class="panel">
       <div class="panel-title">◈ Conditions du laboratoire</div>
       <div class="panel-sub">// Sélectionner le laboratoire — puis entrer toutes ses conditions</div>
+      <div class="period-tabs" id="periodTabsRow"></div>
       <div class="lab-grid" id="labGridMain"></div>
       <div id="labsContainer"></div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="btnImporter" disabled>IMPORTER SES FICHIERS &nbsp;›</button>
+        <button class="btn btn-primary" id="btnImporter" disabled>IMPORTER MES FICHIERS &nbsp;›</button>
       </div>
     </div>
   </div>
@@ -936,9 +951,10 @@ function mkRsfValues(lab, paliers) {
   });
 }
 
-function mkLabState(uid) {
+function mkLabState(uid, periodId) {
   return {
     uid,
+    periodId: periodId || 'p0',
     selectedLab:  null,
     rsfPaliers:   [],
     rsfFirstMap:  new Map(),
@@ -954,6 +970,8 @@ let state = {
   gers: null,
   labPages: [],
   currentPageId: 'labs',
+  periods: [{ id: 'p0', date: '' }],
+  activePeriodId: 'p0',
   changementGeneriqueur: { enabled: false, labo: null, date: '' },
 };
 
@@ -974,8 +992,11 @@ function serializeState() {
     csvData:     state.csvData     || null,
     csvRows:     state.csvRows     || 0,
     csvFileName: state.csvFile?.name || null,
+    periods: state.periods,
+    activePeriodId: state.activePeriodId,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
+      periodId: lp.periodId || 'p0',
       selectedLab: lp.selectedLab,
       activeCondIdx: lp.activeCondIdx,
       conditions: lp.conditions.map(c => ({
@@ -1084,14 +1105,29 @@ function renderLabGrid() {
     const btn = document.createElement('button');
     btn.className = 'lab-btn';
     btn.textContent = lab;
-    const existing = state.labPages.find(lp => lp.selectedLab === lab);
+    const existing = state.labPages.find(lp => lp.selectedLab === lab && lp.periodId === state.activePeriodId);
     if (existing) btn.classList.add('selected');
     btn.addEventListener('click', () => {
-      if (existing) {
-        switchToLab(existing.uid);
+      // Remove the currently visible lab if all its conditions are empty
+      const visibleCont = [...document.querySelectorAll('[id^="labcont-"]')].find(c => c.style.display !== 'none');
+      if (visibleCont) {
+        const visibleUid = visibleCont.id.replace('labcont-', '');
+        const visibleLp = state.labPages.find(lp => lp.uid === visibleUid);
+        if (visibleLp && visibleLp.selectedLab !== lab) {
+          const isEmpty = visibleLp.conditions.every(c => c.remiseGlobale === null && c.caCondition === null);
+          if (isEmpty) {
+            state.labPages.splice(state.labPages.indexOf(visibleLp), 1);
+            visibleCont.remove();
+          }
+        }
+      }
+      const found = state.labPages.find(lp => lp.selectedLab === lab && lp.periodId === state.activePeriodId);
+      if (found) {
+        switchToLab(found.uid);
+        renderLabGrid();
       } else {
         const uid = 'lp' + Date.now();
-        const lp = mkLabState(uid);
+        const lp = mkLabState(uid, state.activePeriodId);
         state.labPages.push(lp);
         createLabContDom(lp);
         lp._selectLab(lab);
@@ -1150,6 +1186,73 @@ function removeLabPage(uid) {
   state.labPages.splice(idx, 1);
   const cont = document.getElementById('labcont-' + uid);
   if (cont) cont.remove();
+  renderLabGrid();
+  renderStepBar();
+  saveState();
+}
+
+// ── Period tabs ────────────────────────────────────────────────────────────────
+function renderPeriodTabs() {
+  const row = document.getElementById('periodTabsRow');
+  if (!row) return;
+  row.innerHTML = '';
+  state.periods.forEach(p => {
+    const tab = document.createElement('div');
+    tab.className = 'cond-tab' + (p.id === state.activePeriodId ? ' active' : '');
+    const inp = document.createElement('input');
+    inp.type = 'month';
+    inp.className = 'period-tab-date';
+    inp.value = p.date;
+    inp.title = 'Date d\'entrée en vigueur (mois/année)';
+    inp.addEventListener('mousedown', e => { if (p.id !== state.activePeriodId) { e.preventDefault(); switchPeriod(p.id); } });
+    inp.addEventListener('change', e => { p.date = e.target.value; saveState(); renderPeriodTabs(); });
+    tab.appendChild(inp);
+    if (state.periods.length > 1) {
+      const x = document.createElement('span');
+      x.className = 'cond-tab-close';
+      x.textContent = '×';
+      x.addEventListener('click', e => { e.stopPropagation(); removePeriod(p.id); });
+      tab.appendChild(x);
+    }
+    tab.addEventListener('click', () => switchPeriod(p.id));
+    row.appendChild(tab);
+  });
+  const addBtn = document.createElement('button');
+  addBtn.className = 'cond-tab-add';
+  addBtn.textContent = '+';
+  addBtn.addEventListener('click', addPeriod);
+  row.appendChild(addBtn);
+}
+
+function addPeriod() {
+  const id = 'p' + Date.now();
+  state.periods.push({ id, date: '' });
+  switchPeriod(id);
+}
+
+function removePeriod(id) {
+  if (state.periods.length <= 1) return;
+  const toRemove = state.labPages.filter(lp => lp.periodId === id);
+  toRemove.forEach(lp => {
+    const cont = document.getElementById('labcont-' + lp.uid);
+    if (cont) cont.remove();
+    state.labPages.splice(state.labPages.indexOf(lp), 1);
+  });
+  const idx = state.periods.findIndex(p => p.id === id);
+  state.periods.splice(idx, 1);
+  const newActive = state.activePeriodId === id
+    ? state.periods[Math.min(idx, state.periods.length - 1)].id
+    : state.activePeriodId;
+  switchPeriod(newActive);
+  saveState();
+}
+
+function switchPeriod(id) {
+  state.activePeriodId = id;
+  document.querySelectorAll('[id^="labcont-"]').forEach(c => c.style.display = 'none');
+  const firstInPeriod = state.labPages.find(lp => lp.periodId === id && lp.selectedLab);
+  if (firstInPeriod) switchToLab(firstInPeriod.uid);
+  renderPeriodTabs();
   renderLabGrid();
   renderStepBar();
   saveState();
@@ -2898,9 +3001,11 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
         v: 1, gers: null, csvData: null, csvRows: 0, csvFileName: null,
         includePDA: false,
         currentPageId: 'labs',
+        periods: cur.periods || [{ id: 'p0', date: '' }],
+        activePeriodId: cur.activePeriodId || 'p0',
         changementGeneriqueur: { enabled: false, labo: null, date: '' },
         labPages: (cur.labPages || []).map(lp => ({
-          uid: lp.uid, selectedLab: lp.selectedLab, activeCondIdx: 0,
+          uid: lp.uid, periodId: lp.periodId || 'p0', selectedLab: lp.selectedLab, activeCondIdx: 0,
           conditions: (lp.conditions || []).map(c => ({
             uid: c.uid, remiseGlobale: null, caCondition: null,
             rsfValues: (c.rsfValues || []).map(r => ({
@@ -2962,9 +3067,13 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       state.csvData = saved.csvData;
       state.csvRows = saved.csvRows || saved.csvData.length;
     }
+    if (saved.periods && saved.periods.length) {
+      state.periods = saved.periods;
+      state.activePeriodId = saved.activePeriodId || state.periods[0].id;
+    }
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 1) {
-      state.labPages = savedPages.map(sp => mkLabState(sp.uid));
+      state.labPages = savedPages.map(sp => mkLabState(sp.uid, sp.periodId || state.periods[0].id));
     }
   }
 
@@ -3037,6 +3146,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   loader.style.display = 'none';
 
   state.labPages.forEach(lp => createLabContDom(lp));
+  renderPeriodTabs();
   renderLabGrid();
   syncPdaToggles();
   renderStepBar();
@@ -3051,7 +3161,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       }
     }
     renderLabGrid();
-    const firstConfigured = state.labPages.find(lp => lp.selectedLab);
+    const firstConfigured = state.labPages.find(lp => lp.selectedLab && lp.periodId === state.activePeriodId);
     if (firstConfigured) switchToLab(firstConfigured.uid);
     // Restaure la dropzone après que le DOM est prêt
     if (saved.csvData && saved.csvData.length) {
