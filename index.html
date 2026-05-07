@@ -1358,14 +1358,12 @@ function initLabPage(conf) {
                 <th id="thR2-${uid}-${cond.uid}">${s.selectedLab === 'Biogaran' ? 'RDP&nbsp;(%)' : 'Remise&nbsp;2&nbsp;(%)'}</th>
                 <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="font-size:9px;padding:2px 7px">+ REMISE 3</button></th>
                 <th style="color:var(--green)">Exception</th>
-                <th>Exclusion</th>
               </tr>
             </thead>
             <tbody id="tbody-${uid}-${cond.uid}"></tbody>
           </table>
         </div>
         <div id="excpts-${uid}-${cond.uid}" class="row-except-blocks"></div>
-        <div id="excls-${uid}-${cond.uid}" class="exclusion-blocks"></div>
         <div id="rsfOnlySec-${uid}-${cond.uid}" class="rsf-only-sec"></div>
       </div>
     `;
@@ -1502,7 +1500,6 @@ function initLabPage(conf) {
     const tbody   = document.getElementById(`tbody-${uid}-${cond.uid}`);
     const rsfSec  = document.getElementById(`rsfSec-${uid}-${cond.uid}`);
     const rsfInfo = document.getElementById(`rsfInfo-${uid}-${cond.uid}`);
-    const exclsEl  = document.getElementById(`excls-${uid}-${cond.uid}`);
     const excptsEl = document.getElementById(`excpts-${uid}-${cond.uid}`);
     const table   = document.getElementById(`rsfTable-${uid}-${cond.uid}`);
 
@@ -1572,8 +1569,25 @@ function initLabPage(conf) {
       inp2.placeholder = 'ex : 5.00'; inp2.value = row.remise2;
       if (row.remise2) inp2.classList.add('auto-c');
       if (row.excluded) inp2.classList.add('excl-r2');
-      inp2.addEventListener('input', e => { cond.rsfValues[idx].remise2 = e.target.value; inp2.classList.remove('auto-c'); checkDone(); });
-      const td2 = document.createElement('td'); td2.appendChild(inp2); tr.appendChild(td2);
+      inp2.addEventListener('input', e => {
+        cond.rsfValues[idx].remise2 = e.target.value;
+        inp2.classList.remove('auto-c');
+        cond.rsfValues[idx].excluded = false;
+        inp2.classList.remove('excl-r2');
+        tr.classList.remove('excluded');
+        checkDone();
+      });
+      const xBtn2 = document.createElement('button');
+      xBtn2.className = 'excl-check'; xBtn2.style.cssText = 'cursor:pointer;border-color:var(--red);background:#0e0005;box-shadow:0 0 8px #ff336644';
+      xBtn2.innerHTML = '<span style="color:var(--red);font-size:12px;font-weight:bold;line-height:1;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">✕</span>';
+      xBtn2.addEventListener('click', () => {
+        cond.rsfValues[idx].remise2 = '0'; cond.rsfValues[idx].excluded = true;
+        inp2.value = '0'; inp2.classList.add('excl-r2'); inp2.classList.remove('auto-c');
+        tr.classList.add('excluded');
+        saveState();
+      });
+      const td2 = document.createElement('td'); td2.style.cssText = 'display:flex;align-items:center;gap:4px';
+      td2.appendChild(inp2); td2.appendChild(xBtn2); tr.appendChild(td2);
 
       const inp3 = document.createElement('input');
       inp3.type = 'text'; inp3.className = 'rsf-input inp-r3';
@@ -1591,38 +1605,12 @@ function initLabPage(conf) {
       });
       const tdExcpt = document.createElement('td'); tdExcpt.appendChild(cbExcpt); tr.appendChild(tdExcpt);
 
-      const cb = document.createElement('input');
-      cb.type = 'checkbox'; cb.className = 'excl-check'; cb.checked = row.excluded;
-      cb.addEventListener('change', () => {
-        cond.rsfValues[idx].excluded = cb.checked;
-        tr.classList.toggle('excluded', cb.checked);
-        inp2.classList.toggle('excl-r2', cb.checked);
-        if (cb.checked) { cond.rsfValues[idx].remise2 = '0'; inp2.value = '0'; }
-        else { autoFillCond(cond); }
-        renderCondExcls(cond, exclsEl);
-        saveState();
-      });
-      const td4 = document.createElement('td'); td4.appendChild(cb); tr.appendChild(td4);
-
       tbody.appendChild(tr);
     });
 
     renderRowExcepts(cond, excptsEl);
-    renderCondExcls(cond, exclsEl);
     rsfSec.classList.add('visible');
     checkDone();
-  }
-
-  function renderCondExcls(cond, exclsEl) {
-    const excluded = cond.rsfValues.filter(r => r.excluded);
-    const live = new Set(excluded.map(r => String(r.rsf_pct)));
-    Object.keys(cond.exceptions).forEach(k => { if (!live.has(k)) delete cond.exceptions[k]; });
-    exclsEl.innerHTML = '';
-    excluded.forEach(row => {
-      const key = String(row.rsf_pct);
-      if (!cond.exceptions[key]) cond.exceptions[key] = { open: false, libelles: [], remiseCible: '' };
-      exclsEl.appendChild(buildExclBlock(row.rsf_pct, cond.exceptions[key], s.selectedLab));
-    });
   }
 
   function renderRowExcepts(cond, excptsEl) {
@@ -1763,44 +1751,6 @@ async function fetchRSF(lab) {
   const firstMap = new Map();
   data.forEach(r => { if (r.rsf_first_pct != null) firstMap.set(r.rsf_pct, r.rsf_first_pct); });
   return { paliers, firstMap };
-}
-
-function buildExclBlock(rsf_pct, exc, labName = '') {
-  const block = document.createElement('div');
-  block.className = 'excl-block';
-
-  const header = document.createElement('div');
-  header.className = 'excl-block-header';
-  const tag = document.createElement('span');
-  tag.className = 'excl-rsf-tag';
-  tag.textContent = `RSF ${Math.abs(rsf_pct).toFixed(2)} %`;
-  const txt = document.createElement('span');
-  txt.className = 'excl-block-text';
-  const r2label = labName === 'Biogaran' ? 'RDP' : 'remise 2';
-  txt.textContent = `La ${r2label} de la catégorie RSF ${Math.abs(rsf_pct).toFixed(2)} % sera exclue — souhaitez-vous ajouter des exceptions ?`;
-  header.appendChild(tag); header.appendChild(txt);
-  block.appendChild(header);
-
-  const btnRow = document.createElement('div');
-  btnRow.className = 'excl-oui-non';
-  const section = document.createElement('div');
-  section.className = 'exception-section' + (exc.open ? ' visible' : '');
-
-  const btnOui = document.createElement('button');
-  btnOui.className   = 'btn-yn oui' + (exc.open ? ' active' : '');
-  btnOui.textContent = 'OUI';
-  btnOui.addEventListener('click', () => { exc.open = true; btnOui.classList.add('active'); btnNon.classList.remove('active'); section.classList.add('visible'); });
-
-  const btnNon = document.createElement('button');
-  btnNon.className   = 'btn-yn non' + (!exc.open ? ' active' : '');
-  btnNon.textContent = 'NON';
-  btnNon.addEventListener('click', () => { exc.open = false; btnNon.classList.add('active'); btnOui.classList.remove('active'); section.classList.remove('visible'); });
-
-  btnRow.appendChild(btnOui); btnRow.appendChild(btnNon);
-  block.appendChild(btnRow);
-  section.appendChild(buildExceptionContent(exc, rsf_pct, labName));
-  block.appendChild(section);
-  return block;
 }
 
 function buildRowExceptBlock(rsf_pct, exc, labName = '') {
@@ -2402,11 +2352,6 @@ async function launchSimulation() {
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
       if (!rsfRow) return baseRSF;
-      if (rsfRow.excluded) {
-        const exc = cond.exceptions[String(rsfRow.rsf_pct)];
-        if (exc && exc.libelles.some(l => l.text === ref.libelle)) return parseFloat(exc.remiseCible) || 0;
-        return baseRSF;
-      }
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
         if (exc && exc.libelles.some(l => l.text === ref.libelle)) {
