@@ -873,6 +873,51 @@ function mkCondState(uid) {
 }
 
 const BIOGARAN_DEFAULT_EXCL = new Set([-2.5, -5, -7]);
+
+const DEFAULT_LAB_EXCEPTS = {
+  'Biogaran': {
+    '-30': { remise2: '10', libelles: [
+      'ALFUZOSINE LP 10MG 30CPR','ATORVASTATINE 10MG 30CPR','ATORVASTATINE 10MG 90CPR',
+      'ATORVASTATINE 20MG 30CPR','ATORVASTATINE 20MG 90CPR','ATORVASTATINE 40MG 30CPR',
+      'ATORVASTATINE 40MG 90CPR','ATORVASTATINE 80MG 30CPR','ATORVASTATINE 80MG 90CPR',
+      'CLOPIDOGREL 75MG 30CPR','ESOMEPRAZOLE 20MG 14GELU',
+      'RIVAROXABAN 10MG 30CPR','RIVAROXABAN 15MG 28CPR','RIVAROXABAN 20MG 28CPR',
+    ]},
+    '-20': { remise2: '20', libelles: [
+      'ESOMEPRAZOLE 20MG 28GELU','ESOMEPRAZOLE 20MG 7GELU',
+      'ESOMEPRAZOLE 40MG 14GELU','ESOMEPRAZOLE 40MG 28GELU','KETOPROFENE LP 100MG 20CPR',
+    ]},
+  },
+  'Viatris': {
+    '-2.5': { remise2: '10', libelles: [
+      'ALPRAZOLAM 0.25MG 30CPR','AMLODIPINE 5MG 30GELU','AMLODIPINE 5MG 90GELU',
+      'BILASTINE 20MG 30CPR','CYAMEMAZINE 25MG 30CPR','GLYCEROL/VAS/PARA CRE 250G',
+      'IRBESARTAN H 300/12,5','IRBESARTAN H 300/25 90CPR','IRBESARTAN 300MG 90CPR',
+      'METFORMINE 1G 90CPR','MOMETASONE PULVD 50MCG','VILDAGLIP M 50/1000 60CPR',
+    ]},
+  },
+  'Zydus': {
+    '-2.5': { remise2: '37,5', libelles: [
+      'PARACETAMOL 1G 8CPR','PARACETAMOL 500MG 16CPR','PARACETAMOL 500MG 16GELU',
+    ]},
+  },
+};
+
+function applyDefaultExcepts(cond, lab) {
+  const defs = DEFAULT_LAB_EXCEPTS[lab];
+  if (!defs) return;
+  let id = 1;
+  Object.entries(defs).forEach(([key, def]) => {
+    if (cond.remise2Except[key] && cond.remise2Except[key].libelles.length) return;
+    cond.remise2Except[key] = {
+      remise2: def.remise2,
+      libelles: def.libelles.map(text => ({ id: id++, text })),
+    };
+    const row = cond.rsfValues.find(r => String(r.rsf_pct) === key);
+    if (row) row.hasExcept = true;
+  });
+}
+
 function mkRsfValues(lab, paliers) {
   return paliers.map(v => {
     const excluded = lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v));
@@ -1647,6 +1692,7 @@ function initLabPage(conf) {
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
       s.conditions[0].rsfValues = mkRsfValues(lab, paliers);
+      applyDefaultExcepts(s.conditions[0], lab);
 
       const panel = buildCondPanel(s.conditions[0]);
       panel.classList.add('active');
@@ -1711,6 +1757,7 @@ function initLabPage(conf) {
             ? { rsf_pct: v, remise2: sv.excluded && !sv.remise2 ? '0' : sv.remise2, remise3: sv.remise3, excluded: sv.excluded, hasExcept: sv.hasExcept || false }
             : { rsf_pct: v, remise2: '', remise3: '', excluded: lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v)), hasExcept: false };
         });
+        if (idx === 0) applyDefaultExcepts(cond, lab);
         s.conditions.push(cond);
         const panel = buildCondPanel(cond);
         if (idx === s.activeCondIdx) panel.classList.add('active');
