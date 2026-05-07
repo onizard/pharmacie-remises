@@ -755,7 +755,7 @@
     </div>
   </header>
 
-  <div class="stepbar" id="stepbar"></div>
+  <div id="stepbar" style="display:none"></div>
 
   <div id="initLoader" style="display:none;padding:60px;text-align:center;font-family:'Orbitron',monospace;font-size:13px;letter-spacing:4px;color:var(--cyan-dim)">
     <div style="display:inline-flex;align-items:center;gap:14px">
@@ -1060,86 +1060,20 @@ function goTo(pageId) {
 
 // ── Step bar ───────────────────────────────────────────────────────────────────
 function renderStepBar() {
-  const bar = document.getElementById('stepbar');
-  bar.innerHTML = '';
-  const order = getPageOrder();
-  const curIdx = order.indexOf(state.currentPageId);
-
+  document.getElementById('stepbar').innerHTML = '';
+  const labCount = state.labPages.length;
   state.labPages.forEach((lp, i) => {
-    const step = document.createElement('div');
-    step.className = 'step';
-    if (i < curIdx)        step.classList.add('done');
-    else if (i === curIdx) step.classList.add('active');
-
-    const numSpan = document.createElement('span');
-    numSpan.className = 'step-num';
-    numSpan.textContent = String(i + 1).padStart(2, '0');
-
-    const lblWrap = document.createElement('span');
-    lblWrap.style.cssText = 'display:flex;flex-direction:column;gap:1px';
-    if (lp.selectedLab) {
-      const lblName = document.createElement('span');
-      lblName.style.cssText = "font-family:'Orbitron',monospace;font-weight:700;font-size:11px;letter-spacing:2px;color:var(--amber);text-shadow:var(--glow-a)";
-      lblName.textContent = lp.selectedLab.toUpperCase();
-      lblWrap.appendChild(lblName);
-    } else {
-      const lblSub = document.createElement('span');
-      lblSub.style.cssText = 'font-size:9px;letter-spacing:1px;opacity:.6';
-      lblSub.textContent = `Labo N°${i + 1}`;
-      lblWrap.appendChild(lblSub);
+    const isLast = i === labCount - 1;
+    const btnNext = document.getElementById(`btnNext-${lp.uid}`);
+    if (btnNext) btnNext.textContent = isLast ? 'IMPORTER SES FICHIERS ›' : 'SUIVANT ›';
+    const addBtn = document.getElementById(`addLab-${lp.uid}`);
+    if (addBtn) {
+      const canAdd = isLast && lp.selectedLab !== null && getAvailableLabs(labCount).length > 0;
+      addBtn.style.display = canAdd ? '' : 'none';
     }
-    step.appendChild(numSpan);
-    step.appendChild(lblWrap);
-
-    if (i >= 2) {
-      const close = document.createElement('span');
-      close.className = 'step-close';
-      close.textContent = '×';
-      close.title = 'Supprimer ce labo';
-      close.addEventListener('click', e => { e.stopPropagation(); removeLabPage(lp.uid); });
-      step.appendChild(close);
-    }
-
-    const curPageReady = !!state.labPages[curIdx]?.selectedLab;
-    if (lp.selectedLab || (i === curIdx + 1 && curPageReady)) {
-      if (!step.classList.contains('active')) step.classList.add('filled');
-      step.addEventListener('click', () => goTo(lp.uid));
-    }
-
-    bar.appendChild(step);
+    const delBtn = document.getElementById(`delLab-${lp.uid}`);
+    if (delBtn) delBtn.style.display = i >= 2 ? '' : 'none';
   });
-
-  const nextIdx = state.labPages.length;
-  const lastLp  = state.labPages[nextIdx - 1];
-  const canAdd  = lastLp && lastLp.selectedLab !== null && getAvailableLabs(nextIdx).length > 0;
-
-  const addBtn = document.createElement('div');
-  addBtn.className = 'step-add' + (canAdd ? '' : ' disabled');
-  addBtn.innerHTML = `+<span class="tooltip">Ajouter un labo</span>`;
-  if (canAdd) addBtn.addEventListener('click', addLabPage);
-  bar.appendChild(addBtn);
-
-  const csvIdx = order.indexOf('csv');
-  const csvStep = document.createElement('div');
-  csvStep.className = 'step';
-  if (csvIdx < curIdx)        csvStep.classList.add('done');
-  else if (csvIdx === curIdx) csvStep.classList.add('active');
-  csvStep.innerHTML = `<span class="step-num">${String(csvIdx + 1).padStart(2, '0')}</span><span>Import fichier</span>`;
-  const lastLabReady = !!state.labPages[curIdx]?.selectedLab;
-  if (csvStep.classList.contains('done') || (csvIdx === curIdx + 1 && lastLabReady))
-    csvStep.addEventListener('click', () => goTo('csv'));
-  bar.appendChild(csvStep);
-
-  const resIdx = order.indexOf('results');
-  const resStep = document.createElement('div');
-  resStep.className = 'step';
-  if (resIdx < curIdx)        resStep.classList.add('done');
-  else if (resIdx === curIdx) resStep.classList.add('active');
-  resStep.innerHTML = `<span class="step-num">${String(resIdx + 1).padStart(2, '0')}</span><span>Résultats</span>`;
-  const csvReady = state.csvRows > 0;
-  if (resStep.classList.contains('done') || (resIdx === curIdx + 1 && csvReady))
-    resStep.addEventListener('click', () => goTo('results'));
-  bar.appendChild(resStep);
 }
 
 // ── Refresh lab grids ──────────────────────────────────────────────────────────
@@ -1180,7 +1114,9 @@ function createLabPageDom(labIdx, lp) {
       </div>
       <div class="btn-row">
         <button class="btn btn-secondary" id="btnBack-${uid}">‹ &nbsp;RETOUR</button>
-        <button class="btn btn-primary" id="btnNext-${uid}" disabled>SUIVANT &nbsp;›</button>
+        <button class="btn btn-secondary" id="delLab-${uid}" style="display:none;color:var(--red);border-color:var(--red)">✕ &nbsp;RETIRER CE LABO</button>
+        <button class="btn btn-secondary" id="addLab-${uid}" style="display:none">+ &nbsp;LABO SUIVANT</button>
+        <button class="btn btn-primary" id="btnNext-${uid}" disabled>IMPORTER SES FICHIERS &nbsp;›</button>
       </div>
     </div>
   `;
@@ -1199,6 +1135,10 @@ function createLabPageDom(labIdx, lp) {
     const idx = order.indexOf(uid);
     if (idx < order.length - 1) goTo(order[idx + 1]);
   });
+
+  div.querySelector('#addLab-' + uid).addEventListener('click', addLabPage);
+
+  div.querySelector('#delLab-' + uid).addEventListener('click', () => removeLabPage(uid));
 
   initLabPage({
     s:             lp,
