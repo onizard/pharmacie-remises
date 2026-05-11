@@ -29,6 +29,72 @@
     --glow-g:   0 0 8px #00ff88, 0 0 20px #00ff8844;
   }
 
+  /* ── Thème clair ── */
+  [data-theme="light"] {
+    --bg:       #f4f7fb;
+    --bg2:      #e8eef5;
+    --panel:    #ffffff;
+    --cyan:     #0066cc;
+    --cyan-dim: #5599cc;
+    --amber:    #b07000;
+    --green:    #007744;
+    --red:      #cc0033;
+    --text:     #1a2e45;
+    --text-dim: #5a7a90;
+    --border:   #b8cdd8;
+    --glow-c:   0 0 4px #0066cc44;
+    --glow-a:   0 0 4px #b0700044;
+    --glow-g:   0 0 4px #00774444;
+  }
+  [data-theme="light"] html,
+  [data-theme="light"] body { background: #f4f7fb; color: #1a2e45; }
+  [data-theme="light"] header { background: #fff; border-bottom-color: #b8cdd8; }
+  [data-theme="light"] .panel { background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+  [data-theme="light"] .panel::before,
+  [data-theme="light"] .panel::after { border-color: #0066cc; }
+  [data-theme="light"] .logo { color: #0066cc; text-shadow: none; }
+  [data-theme="light"] .logo span { color: #b07000; }
+  [data-theme="light"] .panel-title { color: #0066cc; text-shadow: none; }
+  [data-theme="light"] .btn { background: #e8eef5; color: #1a2e45; border-color: #b8cdd8; }
+  [data-theme="light"] .btn:hover { background: #d8e8f4; }
+  [data-theme="light"] .btn-primary { background: #0066cc; color: #fff; border-color: #0066cc; }
+  [data-theme="light"] .btn-primary:hover { background: #0052a3; }
+  [data-theme="light"] .btn-secondary { background: #e8eef5; color: #1a2e45; border-color: #b8cdd8; }
+  [data-theme="light"] .lab-btn { background: #f4f7fb; border-color: #b8cdd8; color: #5a7a90; }
+  [data-theme="light"] .lab-btn:hover { background: #e8eef5; color: #1a2e45; }
+  [data-theme="light"] .lab-btn.selected { background: #fff8e6; border-color: #b07000; color: #b07000; box-shadow: none; text-shadow: none; }
+  [data-theme="light"] .lab-btn.viewing  { background: #f0eaff; border-color: #7044aa; color: #7044aa; box-shadow: none; text-shadow: none; }
+  [data-theme="light"] .rsf-input { background: #fff; color: #1a2e45; border-color: #b8cdd8; }
+  [data-theme="light"] .rsf-input:focus { border-color: #0066cc; }
+  [data-theme="light"] .cond-tab { background: #e8eef5; border-color: #b8cdd8; color: #5a7a90; }
+  [data-theme="light"] .cond-tab.active { background: #fff; border-color: #0066cc; color: #0066cc; box-shadow: inset 0 2px 0 #0066cc; }
+  [data-theme="light"] .dropzone { background: #f8fbff; border-color: #5599cc; }
+  [data-theme="light"] .dropzone:hover,
+  [data-theme="light"] .dropzone.dragover { background: #eef5ff; border-color: #0066cc; box-shadow: none; }
+  [data-theme="light"] table.sim-lab-table { background: #fff; }
+  [data-theme="light"] table.sim-lab-table th { background: #e8eef5; color: #1a2e45; border-color: #b8cdd8; }
+  [data-theme="light"] table.sim-lab-table td { border-color: #dde6ef; color: #1a2e45; }
+  [data-theme="light"] .sim-total-row td { background: #e8eef5; }
+  [data-theme="light"] .sim-winner { background: linear-gradient(135deg,#f0fff8,#f8fffc,#f5f0ff); border-color: #007744; box-shadow: 0 0 20px rgba(0,119,68,.15); }
+  [data-theme="light"] .sim-winner-title { text-shadow: none; }
+  [data-theme="light"] .sim-winner-gain { color: #b07000; text-shadow: none; }
+  [data-theme="light"] .sim-kpi { background: #f4f7fb; border-color: #b8cdd8; }
+  [data-theme="light"] .libelle-input { background: #fff; color: #1a2e45; border-color: #b8cdd8; }
+  [data-theme="light"] .libelle-dropdown { background: #fff; border-color: #b8cdd8; }
+  [data-theme="light"] .libelle-option:hover,
+  [data-theme="light"] .libelle-option.focused { background: #e8eef5; }
+  [data-theme="light"] .chip { background: #e8eef5; color: #1a2e45; border-color: #b8cdd8; }
+  [data-theme="light"] .excpt-block { background: #f4f7fb; border-color: #b8cdd8; }
+  [data-theme="light"] .lab-tag { background: #e8eef5; color: #0066cc; border-color: #b8cdd8; }
+  [data-theme="light"] .switch-warn { color: #b07000; }
+  [data-theme="light"] .loading { background: rgba(244,247,251,.95); }
+  [data-theme="light"] .col-map-panel { background: #fff; border-color: #0066cc; box-shadow: 0 0 20px rgba(0,102,204,.1); }
+  [data-theme="light"] select { background: #fff; color: #1a2e45; border-color: #b8cdd8; }
+  [data-theme="light"] .btn-reset { background: #fff0f3; border-color: #cc0033; color: #cc0033; }
+  [data-theme="light"] .auth-logout { background: #e8eef5; color: #1a2e45; border-color: #b8cdd8; }
+  .btn-theme { font-size: 18px; background: none; border: 1px solid var(--border); color: var(--text-dim); padding: 4px 9px; cursor: pointer; transition: all .2s; line-height: 1; }
+  .btn-theme:hover { border-color: var(--cyan-dim); color: var(--text); }
+
   html, body {
     height: 100%;
     background: var(--bg);
@@ -751,6 +817,7 @@
         <span style="font-family:'Orbitron',monospace;font-size:10px;font-weight:700;color:var(--amber);letter-spacing:2px;white-space:nowrap">GERS</span>
         <input type="text" id="gersGlobal" class="rsf-input" style="width:120px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="Entre ton GERS" />
         <span style="font-size:10px;color:var(--text-dim)">€</span>
+        <button id="btnTheme" class="btn-theme" title="Thème clair / sombre">☀</button>
         <button id="btnReset" class="btn-reset" title="Maintenir 3 secondes pour réinitialiser">RESET</button>
         <button class="auth-logout" id="btnLogout" title="Se déconnecter">⏻ DÉCO</button>
       </div>
@@ -1452,6 +1519,7 @@ function initLabPage(conf) {
     }
     const condNaturallyMet = state.gers != null && cond.caCondition != null &&
                               cond.caCondition >= 0.9 * state.gers;
+    if (condNaturallyMet && !cond.forceFirst) { cond.forceFirst = true; }
     const firstMetDisplay = condNaturallyMet || cond.forceFirst;
     const ffBtn = document.getElementById(`ffBtn-${uid}-${cond.uid}`);
     if (ffBtn) {
@@ -2297,8 +2365,10 @@ async function launchSimulation() {
       // Phase 2 : remise par labo (après CA connu → meilleur palier atteignable)
       labMap.forEach(e => {
         const bestCond = rsfOnly ? null : getBestCond(e.lp, e.ca, forceMarketMet);
-        const firstMet = e.isSelected && !rsfOnly && state.gers != null &&
-                         bestCond?.caCondition != null && bestCond.caCondition >= 0.9 * state.gers;
+        const firstMet = e.isSelected && !rsfOnly && (
+          (state.gers != null && bestCond?.caCondition != null && bestCond.caCondition >= 0.9 * state.gers)
+          || (bestCond?.forceFirst ?? false)
+        );
         e.bestCond = bestCond;
         e.met = bestCond !== null || !e.isSelected;
         e.caThreshold = getProrata(e.lp?.selectedLab) * (bestCond?.caCondition || 0);
@@ -2315,14 +2385,16 @@ async function launchSimulation() {
         pondere: e.ca > 0 ? e.remise / e.ca * 100 : 0,
         caThreshold: e.caThreshold, met: e.met, firstMet: e.firstMet, isSelected: e.isSelected,
       })).sort((a, b) => b.ca - a.ca);
-      return { labResults, totalRemise: labResults.reduce((s, l) => s + l.remise, 0) };
+      const totalRemise = labResults.reduce((s, l) => s + l.remise, 0);
+      const totalCA     = labResults.reduce((s, l) => s + l.ca, 0);
+      return { labResults, totalRemise, totalCA, totalPaNet: totalCA - totalRemise };
     }
 
     // 6a. Scénario actuel : CIP → premier match Supabase, RSF uniquement
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
     const actuel = calcScenario(naturalAssignment);
-    const totalCA = actuel.labResults.reduce((s, l) => s + l.ca, 0);
+    const totalCA = actuel.totalCA;
 
     // 6c. Optimisé 2 : réalisation des marchés (seuils les plus serrés en priorité)
     // Calcul du CA potentiel par labo avec seuil
@@ -2390,7 +2462,6 @@ async function launchSimulation() {
       opt2Assignment.set(row.cip13, bestRef || ref);
     });
     const opt2 = calcScenario(opt2Assignment);
-    const gainOpt2 = opt2.totalRemise - actuel.totalRemise;
 
     // 6d. Scénarios par laboratoire : focus maximal sur chaque labo sélectionné
     const labScenarios = [];
@@ -2456,8 +2527,8 @@ async function launchSimulation() {
     const fmtE = n => n.toLocaleString('fr', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
     const fmtP = n => n.toFixed(2) + ' %';
 
-    const hdrsBase   = ['Laboratoire', 'QTÉ', 'CA BRUT', 'PA NET', 'REMISE €', 'POND. %'];
-    const hdrsMarket = ['Laboratoire', 'QTÉ', 'CA BRUT', 'CA CIBLE', 'SEUIL', 'PA NET', 'REMISE €', 'POND. %'];
+    const hdrsBase   = ['Laboratoire', 'QTÉ', 'CA BRUT', 'REMISE €', 'PA NET', 'POND. %'];
+    const hdrsMarket = ['Laboratoire', 'QTÉ', 'CA BRUT', 'CA CIBLE', 'SEUIL', 'REMISE €', 'PA NET', 'POND. %'];
 
     // One row of a scenario table
     const mkLabRow = (l, withMarket = false, withGainCol = false) => {
@@ -2467,7 +2538,7 @@ async function launchSimulation() {
         : withMarket ? `<td>—</td><td>—</td>` : '';
       const gainCol = withGainCol ? '<td></td>' : '';
       const paNet = l.ca - l.remise;
-      return `<tr class="${cls}"><td>${l.name}</td><td>${l.qty ?? 0}</td><td>${fmtE(l.ca)}</td>${marketCells}<td>${fmtE(paNet)}</td><td>${fmtE(l.remise)}</td><td>${fmtP(l.pondere)}</td>${gainCol}</tr>`;
+      return `<tr class="${cls}"><td>${l.name}</td><td>${l.qty ?? 0}</td><td>${fmtE(l.ca)}</td>${marketCells}<td>${fmtE(l.remise)}</td><td>${fmtE(paNet)}</td><td>${fmtP(l.pondere)}</td>${gainCol}</tr>`;
     };
 
     // Total row with gain at far right
@@ -2481,7 +2552,7 @@ async function launchSimulation() {
       const gainTd = gain != null
         ? `<td style="text-align:right;font-weight:700;color:${gain>=0?'var(--green)':'var(--red)'}">GAIN : ${gain>=0?'+':''}${fmtE(gain)}</td>`
         : '';
-      return `<tr class="sim-total-row"><td>TOTAL</td><td>${tQty}</td><td>${fmtE(tCA)}</td>${mPad}<td>${fmtE(tPaNet)}</td><td>${fmtE(tR)}</td><td>${fmtP(tP)}</td>${gainTd}</tr>`;
+      return `<tr class="sim-total-row"><td>TOTAL</td><td>${tQty}</td><td>${fmtE(tCA)}</td>${mPad}<td>${fmtE(tR)}</td><td>${fmtE(tPaNet)}</td><td>${fmtP(tP)}</td>${gainTd}</tr>`;
     };
 
     // Full scenario table
@@ -2507,16 +2578,24 @@ async function launchSimulation() {
     labScenarios.forEach(({ name, scenario, assignment }) =>
       scenarioStore.set(`lab_${name}`, { assignment, labResults: scenario.labResults }));
 
-    // Sort lab scenarios by gain desc
-    const sortedLabScenarios = [...labScenarios].sort((a, b) =>
-      (b.scenario.totalRemise - actuel.totalRemise) - (a.scenario.totalRemise - actuel.totalRemise));
-
     const dlBtn = (key, label = '↓ CSV') => `<button class="sim-dl-inline" data-key="${key}">${label}</button>`;
 
     // Boutons de téléchargement du scénario optimisé : un par labo sélectionné + tout
     const opt2DlBtns = opt2.labResults.filter(l => l.isSelected)
       .map(l => dlBtn(`opt2_${l.name}`, `↓ ${l.name}`)).join('')
       + dlBtn('opt2_all', '↓ TOUT');
+
+    // Build ranked list : winner = lowest totalPaNet
+    const allOptScenarios = [
+      { key: 'opt2', label: 'SCÉNARIO OPTIMISÉ', sub: 'RÉALISATION DES MARCHÉS', scenario: opt2, dlBtns: opt2DlBtns },
+      ...labScenarios.map(({ name, scenario }) => ({
+        key: `lab_${name}`, label: `SCÉNARIO ${name.toUpperCase()}`, sub: null,
+        scenario, dlBtns: dlBtn(`lab_${name}`),
+      })),
+    ];
+    allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
+    const [winnerEntry, ...otherScenarios] = allOptScenarios;
+    const winnerSaving = totalCA - winnerEntry.scenario.totalPaNet;
 
     let html = '';
 
@@ -2525,31 +2604,31 @@ async function launchSimulation() {
       <div class="sim-title">◈ RÉSUMÉ</div>
       <div class="sim-kpi-row">
         <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL N-1</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
-        <div class="sim-kpi"><div class="sim-kpi-label">REMISE ACTUELLE</div><div class="sim-kpi-value">${fmtE(actuel.totalRemise)}</div></div>
-        <div class="sim-kpi"><div class="sim-kpi-label">GAIN OPTIMISÉ</div><div class="sim-kpi-value ${gainOpt2>0?'green':'red'}">${gainOpt2>=0?'+':''}${fmtE(gainOpt2)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">PA NET ACTUEL</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
       </div>
     </div>`;
 
-    // ── WINNER : Optimisé 2 (toujours 1er) ────────────────────────────────────
+    // ── WINNER : scénario au PA NET le plus bas ────────────────────────────────
     html += `<div class="sim-winner" id="simWinner">
       <canvas class="sim-fireworks" id="simFireworks"></canvas>
-      <div class="sim-winner-dl">${opt2DlBtns}</div>
+      <div class="sim-winner-dl">${winnerEntry.dlBtns}</div>
       <div class="sim-winner-crown">★</div>
-      <div class="sim-winner-title">SCÉNARIO OPTIMISÉ</div>
-      <div class="sim-winner-sub">RÉALISATION DES MARCHÉS — GAIN MAXIMAL</div>
-      <div class="sim-winner-gain">${gainOpt2>=0?'+':''}${fmtE(gainOpt2)}</div>
-      ${mkScenarioTable(opt2.labResults, true, null)}
+      <div class="sim-winner-title">${winnerEntry.label}</div>
+      <div class="sim-winner-sub">GAIN LE PLUS ÉLEVÉ — PA NET LE PLUS BAS${winnerEntry.sub ? ' — ' + winnerEntry.sub : ''}</div>
+      <div class="sim-winner-gain">GAIN ${winnerSaving>=0?'+':''}${fmtE(winnerSaving)}</div>
+      ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
     </div>`;
 
-    // ── Scénarios par labo triés par gain décroissant ──────────────────────────
-    sortedLabScenarios.forEach(({ name, scenario }) => {
-      const gain = scenario.totalRemise - actuel.totalRemise;
+    // ── Autres scénarios triés par PA NET croissant ────────────────────────────
+    otherScenarios.forEach(({ key, label, scenario }) => {
+      const saving = totalCA - scenario.totalPaNet;
       html += `<div class="sim-section">
         <div class="sim-scenario-header">
-          <span>▸ SCÉNARIO ${name.toUpperCase()}</span>
-          ${dlBtn(`lab_${name}`)}
+          <span>▸ ${label}</span>
+          ${dlBtn(key)}
         </div>
-        ${mkScenarioTable(scenario.labResults, true, gain)}
+        ${mkScenarioTable(scenario.labResults, true, saving)}
       </div>`;
     });
 
@@ -2894,6 +2973,22 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   if (window._sbClient) await window._sbClient.auth.signOut();
   if (window._authLock) window._authLock();
 });
+
+// ── Theme toggle ───────────────────────────────────────────────────────────────
+(function() {
+  const btn = document.getElementById('btnTheme');
+  function applyTheme(t) {
+    document.documentElement.dataset.theme = t === 'light' ? 'light' : '';
+    btn.textContent = t === 'light' ? '☾' : '☀';
+  }
+  const saved = localStorage.getItem('bp_theme') || 'dark';
+  applyTheme(saved);
+  btn.addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    applyTheme(next);
+    localStorage.setItem('bp_theme', next);
+  });
+})();
 
 // ── Reset button ───────────────────────────────────────────────────────────────
 (function() {
