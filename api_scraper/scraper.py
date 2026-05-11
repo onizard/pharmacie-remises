@@ -105,7 +105,11 @@ def _fetch_invoices(sess: CurlSession, progress: Callable) -> list[dict]:
         if resp.status_code != 200:
             raise RuntimeError(f"API /invoices/ : HTTP {resp.status_code}")
 
-        data    = resp.json()
+        try:
+            data = resp.json()
+        except Exception:
+            snippet = resp.text[:120].replace("\n", " ")
+            raise RuntimeError(f"Identifiants DIGIPHARMACIE incorrects ou session expirée ({snippet})")
         results = data.get("results", data if isinstance(data, list) else [])
         if not results:
             break
