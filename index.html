@@ -189,6 +189,12 @@
   .pda-switch input:checked + .pda-slider::after { background: var(--green); transform: translateX(18px); box-shadow: 0 0 6px #00ff8888; }
   .pda-toggle:hover .pda-toggle-label { color: var(--text); }
 
+  /* ── Main tabs ── */
+  .main-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 32px; gap: 0; overflow-x: auto; }
+  .main-tab { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; letter-spacing: 2px; padding: 13px 22px; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--text-dim); cursor: pointer; white-space: nowrap; transition: color .2s, border-color .2s; }
+  .main-tab:hover { color: var(--cyan); }
+  .main-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+
   /* ── Step bar ── */
   .stepbar { display: flex; align-items: stretch; margin-bottom: 32px; flex-wrap: wrap; gap: 0; }
   .step {
@@ -976,6 +982,12 @@
     </div>
   </div>
 
+  <nav class="main-tabs" id="mainTabs">
+    <button class="main-tab" data-page="labs">CONDITIONS DES LABORATOIRES</button>
+    <button class="main-tab" data-page="comparateur">COMPARATEUR</button>
+    <button class="main-tab" data-page="verificateur">VÉRIFICATEUR DE REMISE</button>
+  </nav>
+
   <div id="stepbar" style="display:none"></div>
 
   <div id="initLoader" style="display:none;padding:60px;text-align:center;font-family:'Orbitron',monospace;font-size:13px;letter-spacing:4px;color:var(--cyan-dim)">
@@ -1087,6 +1099,14 @@
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="goTo('csv')">‹ &nbsp;RETOUR</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ── PAGE VÉRIFICATEUR ── -->
+  <div id="page-verificateur" class="page">
+    <div class="panel">
+      <div class="panel-title">◈ Vérificateur de remise</div>
+      <div class="panel-sub">// Fonctionnalité à venir</div>
     </div>
   </div>
 
@@ -1365,8 +1385,24 @@ function goTo(pageId) {
   if (pg) pg.classList.add('active');
   state.currentPageId = pageId;
   renderStepBar();
+  updateMainTabs();
   saveState();
 }
+
+function updateMainTabs() {
+  const activeTab = { labs: 'labs', csv: 'comparateur', results: 'comparateur', verificateur: 'verificateur' }[state.currentPageId] || 'labs';
+  document.querySelectorAll('.main-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.page === activeTab);
+  });
+}
+
+document.querySelectorAll('.main-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const page = btn.dataset.page;
+    if (page === 'comparateur') goTo(state.currentPageId === 'results' ? 'results' : 'csv');
+    else goTo(page);
+  });
+});
 
 // ── Step bar ───────────────────────────────────────────────────────────────────
 function renderStepBar() {
