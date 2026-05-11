@@ -3,15 +3,15 @@ get_connectors.py — Récupère les identifiants connecteurs de l'utilisateur d
 
 Le fichier .env doit contenir :
     BP_EMAIL=votre_email_break_pharma
-    BP_PASSWORD=votre_mot_de_passe_break_pharma
+    BP_PASSWORD=votre_mot_de_passe_break_pharma  (optionnel si SUPABASE_SERVICE_KEY présent)
 """
 import os
 import json
 import urllib.request
 from pathlib import Path
 
-SUPA_URL = "https://fmterazwesiwpwjpkyqi.supabase.co"
-SUPA_KEY = "sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w"
+SUPA_URL     = "https://fmterazwesiwpwjpkyqi.supabase.co"
+SUPA_KEY     = "sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w"
 
 
 def load_env(filepath=None):
@@ -27,10 +27,33 @@ def load_env(filepath=None):
         os.environ[key.strip()] = value
 
 
+def _fetch_user_id_by_email(email, service_key):
+    """Use the Supabase admin API to find a user's UUID by email."""
+    url = f"{SUPA_URL}/auth/v1/admin/users?page=1&per_page=1000"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "apikey":         service_key,
+            "Authorization":  f"Bearer {service_key}",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read())
+
+    users = data if isinstance(data, list) else data.get("users", [])
+    for u in users:
+        if u.get("email", "").lower() == email.lower():
+            return u["id"]
+    raise ValueError(f"Aucun utilisateur avec l'email {email!r} dans Supabase.")
+
+
 def get_connectors():
     """
-    Authentifie l'utilisateur sur Supabase avec BP_EMAIL / BP_PASSWORD,
-    récupère son user_state et retourne ses identifiants connecteurs.
+    Récupère le user_state Supabase et retourne les identifiants connecteurs.
+
+    Tente d'abord une auth par mot de passe (BP_PASSWORD).
+    Si elle échoue ou si BP_PASSWORD est absent, utilise SUPABASE_SERVICE_KEY
+    pour rechercher l'utilisateur directement via l'API admin.
 
     Retourne :
         {
@@ -40,39 +63,51 @@ def get_connectors():
     """
     load_env()
 
-    email    = os.environ.get("BP_EMAIL", "")
-    password = os.environ.get("BP_PASSWORD", "")
+    email       = os.environ.get("BP_EMAIL", "")
+    password    = os.environ.get("BP_PASSWORD", "")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
-    if not email or not password:
-        raise ValueError(
-            "BP_EMAIL et BP_PASSWORD doivent être définis dans le fichier .env\n"
-            "  (ce sont vos identifiants de connexion à break-pharma.fr)"
+    if not email:
+        raise ValueError("BP_EMAIL doit être défini dans le fichier .env")
+
+    token   = None
+    user_id = None
+
+    # ── 1a. Tentative d'auth par mot de passe ─────────────────────────────────
+    if password:
+        auth_url  = f"{SUPA_URL}/auth/v1/token?grant_type=password"
+        auth_body = json.dumps({"email": email, "password": password}).encode()
+        auth_req  = urllib.request.Request(
+            auth_url, data=auth_body,
+            headers={"apikey": SUPA_KEY, "Content-Type": "application/json"},
         )
+        try:
+            with urllib.request.urlopen(auth_req, timeout=15) as resp:
+                auth_data = json.loads(resp.read())
+            token   = auth_data["access_token"]
+            user_id = auth_data["user"]["id"]
+            print(f"  ✓  Authentifié en tant que {email}")
+        except urllib.request.HTTPError:
+            pass  # fall through to service-key path
 
-    # ── 1. Authentification Supabase ──────────────────────────────────────────
-    auth_url  = f"{SUPA_URL}/auth/v1/token?grant_type=password"
-    auth_body = json.dumps({"email": email, "password": password}).encode()
-    auth_req  = urllib.request.Request(
-        auth_url, data=auth_body,
-        headers={"apikey": SUPA_KEY, "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(auth_req, timeout=15) as resp:
-            auth_data = json.loads(resp.read())
-    except urllib.request.HTTPError as e:
-        body = e.read().decode(errors="ignore")
-        raise ValueError(f"Échec d'authentification Supabase : {e.code} — {body}")
-
-    token   = auth_data["access_token"]
-    user_id = auth_data["user"]["id"]
-    print(f"  ✓  Authentifié en tant que {email}")
+    # ── 1b. Fallback via clé de service ───────────────────────────────────────
+    if user_id is None:
+        if not service_key:
+            raise ValueError(
+                "Échec d'authentification Supabase.\n"
+                "Vérifie BP_PASSWORD dans .env, ou ajoute SUPABASE_SERVICE_KEY."
+            )
+        user_id = _fetch_user_id_by_email(email, service_key)
+        token   = service_key
+        print(f"  ✓  Utilisateur trouvé via clé de service ({email})")
 
     # ── 2. Récupération du state utilisateur ──────────────────────────────────
+    api_key   = service_key if (token == service_key) else SUPA_KEY
     state_url = (f"{SUPA_URL}/rest/v1/user_state"
                  f"?user_id=eq.{user_id}&select=state_json&limit=1")
     state_req = urllib.request.Request(
         state_url,
-        headers={"apikey": SUPA_KEY, "Authorization": f"Bearer {token}"},
+        headers={"apikey": api_key, "Authorization": f"Bearer {token}"},
     )
     with urllib.request.urlopen(state_req, timeout=15) as resp:
         rows = json.loads(resp.read())
