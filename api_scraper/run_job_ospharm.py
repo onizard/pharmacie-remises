@@ -102,7 +102,7 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
             raise RuntimeError(f"Timeout login OSPHARM: {e}")
 
         if "datastat.ospharm.org" not in page.url or "accounts" in page.url:
-            raise RuntimeError(f"Échec connexion OSPHARM (URL: {page.url})")
+            raise RuntimeError("Identifiants OSPHARM incorrects")
 
         progress("Connecté — navigation vers Toutes les ventes…")
         page.wait_for_load_state("networkidle", timeout=20_000)

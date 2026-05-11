@@ -78,7 +78,7 @@ def test_ospharm(creds: dict):
         browser.close()
 
     if not ok:
-        raise RuntimeError(f"Identifiants OSPHARM incorrects (URL finale : {url})")
+        raise RuntimeError("Identifiants OSPHARM incorrects")
 
 
 # ── Test DIGIPHARMACIE ─────────────────────────────────────────────────────────
