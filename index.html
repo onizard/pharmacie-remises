@@ -54,7 +54,7 @@
   [data-theme="light"] .panel { background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
   [data-theme="light"] .panel::before,
   [data-theme="light"] .panel::after { border-color: #0066cc; }
-  [data-theme="light"] .logo { color: #0066cc; text-shadow: none; }
+  [data-theme="light"] .logo { color: #0066cc; text-shadow: none; text-decoration: none; }
   [data-theme="light"] .logo span { color: #b07000; }
   [data-theme="light"] .panel-title { color: #0066cc; text-shadow: none; }
   [data-theme="light"] .btn { background: #e8eef5; color: #1a2e45; border-color: #b8cdd8; }
@@ -174,7 +174,7 @@
     margin-bottom: 32px; padding-bottom: 16px;
     border-bottom: 1px solid var(--border);
   }
-  .logo { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 36px; color: var(--cyan); text-shadow: var(--glow-c); letter-spacing: 6px; text-decoration: underline; text-underline-offset: 4px; }
+  .logo { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 36px; color: var(--cyan); text-shadow: var(--glow-c); letter-spacing: 6px; text-decoration: none; display: inline-block; }
   .logo span { color: var(--amber); }
   .header-sub { font-size: 13px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; }
   .header-right { margin-left: auto; font-size: 13px; color: var(--text-dim); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
@@ -356,7 +356,9 @@
   @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
   .rsf-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-  .lab-tag { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--amber); text-shadow: var(--glow-a); letter-spacing: 3px; padding: 4px 12px; border: 1px solid var(--amber); background: #1a0e00; }
+  .lab-tag { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--amber); text-shadow: var(--glow-a); letter-spacing: 3px; padding: 4px 12px; border: 1px solid var(--amber); background: #1a0e00; cursor: pointer; }
+  .lab-tag::after { content: ' ▶'; font-size: 9px; vertical-align: middle; margin-left: 4px; }
+  .lab-tag.rsf-open::after { content: ' ▼'; }
   .rsf-header .rsf-info { font-size: 13px; color: var(--text-dim); }
 
   .rsf-table-wrap { overflow-x: auto; border: 1px solid var(--border); }
@@ -846,7 +848,7 @@
 
   <header class="site-header">
     <div>
-      <div class="logo">BREAK-PHARMA</div>
+      <a href="https://break-pharma.fr" class="logo">BREAK-PHARMA</a>
       <div class="header-sub">comparateur de génériques</div>
     </div>
     <div class="header-right">
@@ -1052,6 +1054,8 @@ function mkLabState(uid) {
     rsfFirstMap:  new Map(),
     conditions:   [mkCondState('c0')],
     activeCondIdx: 0,
+    conditions2025: [mkCondState('c0_25')],
+    activeCondIdx2025: 0,
     _refreshGrid: null,
   };
 }
@@ -1087,6 +1091,20 @@ function serializeState() {
       selectedLab: lp.selectedLab,
       activeCondIdx: lp.activeCondIdx,
       conditions: lp.conditions.map(c => ({
+        uid: c.uid,
+        remiseGlobale: c.remiseGlobale,
+        caCondition: c.caCondition,
+        rsfValues: c.rsfValues.map(r => ({
+          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept,
+        })),
+        exceptions: c.exceptions,
+        remise2Except: c.remise2Except,
+        rsfOnly: c.rsfOnly,
+        showR3: c.showR3,
+        forceFirst: c.forceFirst,
+      })),
+      activeCondIdx2025: lp.activeCondIdx2025 || 0,
+      conditions2025: (lp.conditions2025 || []).map(c => ({
         uid: c.uid,
         remiseGlobale: c.remiseGlobale,
         caCondition: c.caCondition,
@@ -1249,6 +1267,10 @@ function createLabContDom(lp) {
       <div class="switch-warn" id="switchWarn-${uid}"></div>
       <div class="cond-tabs" id="condTabs-${uid}"></div>
       <div id="condPanels-${uid}"></div>
+      <div style="margin-top:20px">
+        <div class="cond-tabs" id="condTabs25-${uid}"></div>
+        <div id="condPanels25-${uid}"></div>
+      </div>
       <div class="loading" id="loading-${uid}">
         <div class="spinner"></div><span>CHARGEMENT DES DONNÉES RSF...</span>
       </div>
@@ -1257,9 +1279,29 @@ function createLabContDom(lp) {
   document.getElementById('labsContainer').appendChild(cont);
   initLabPage({
     s:            lp,
-    onLabSelected: () => { renderLabGrid(); renderStepBar(); },
+    year:         '2026',
+    onLabSelected: () => {
+      renderLabGrid();
+      renderStepBar();
+      if (lp._selectLab2025) lp._selectLab2025(lp.selectedLab);
+    },
     condTabsId:   'condTabs-'    + uid,
     condPanelsId: 'condPanels-'  + uid,
+    loadingId:    'loading-'     + uid,
+  });
+  initLabPage({
+    s:            lp,
+    year:         '2025',
+    condKey:      'conditions2025',
+    aciKey:       'activeCondIdx2025',
+    euid:         uid + '_25',
+    savedCondKey: 'conditions2025',
+    selectLabAs:  '_selectLab2025',
+    reloadRSFAs:  '_reloadRSF2025',
+    restoreAs:    '_restoreFromSave2025',
+    reRenderAs:   '_reRenderCondTables2025',
+    condTabsId:   'condTabs25-'  + uid,
+    condPanelsId: 'condPanels25-' + uid,
     loadingId:    'loading-'     + uid,
   });
 }
@@ -1279,7 +1321,12 @@ function removeLabPage(uid) {
 // ── Lab page factory ───────────────────────────────────────────────────────────
 function initLabPage(conf) {
   const s   = conf.s;
-  const uid = s.uid;
+  const condKey      = conf.condKey      || 'conditions';
+  const aciKey       = conf.aciKey       || 'activeCondIdx';
+  const euid         = conf.euid         || s.uid;
+  const year         = conf.year         || '2026';
+  const savedCondKey = conf.savedCondKey || condKey;
+  const uid = euid;
   const el  = {
     condTabs:   document.getElementById(conf.condTabsId),
     condPanels: document.getElementById(conf.condPanelsId),
@@ -1289,9 +1336,9 @@ function initLabPage(conf) {
   // ── Condition tab bar ────────────────────────────────────────────────────────
   function renderCondTabs() {
     el.condTabs.innerHTML = '';
-    s.conditions.forEach((cond, i) => {
+    s[condKey].forEach((cond, i) => {
       const tab = document.createElement('div');
-      tab.className = 'cond-tab' + (i === s.activeCondIdx ? ' active' : '');
+      tab.className = 'cond-tab' + (i === s[aciKey] ? ' active' : '');
       const label = document.createElement('span');
       label.textContent = `PALIER ${i + 1}`;
       tab.appendChild(label);
@@ -1304,7 +1351,7 @@ function initLabPage(conf) {
       tab.addEventListener('click', () => activateCondition(i));
       el.condTabs.appendChild(tab);
     });
-    if (s.conditions.length < 4) {
+    if (s[condKey].length < 4) {
       const addBtn = document.createElement('div');
       addBtn.className = 'cond-tab-add'; addBtn.textContent = '+';
       addBtn.addEventListener('click', addCondition);
@@ -1313,7 +1360,7 @@ function initLabPage(conf) {
   }
 
   function activateCondition(idx) {
-    s.activeCondIdx = idx;
+    s[aciKey] = idx;
     el.condPanels.querySelectorAll('.cond-panel').forEach((p, i) => {
       p.classList.toggle('active', i === idx);
     });
@@ -1321,10 +1368,10 @@ function initLabPage(conf) {
   }
 
   function addCondition() {
-    if (s.conditions.length >= 4) return;
+    if (s[condKey].length >= 4) return;
     const cond = mkCondState('c' + Date.now());
     cond.rsfValues = mkRsfValues(s.selectedLab, s.rsfPaliers);
-    s.conditions.push(cond);
+    s[condKey].push(cond);
     const panel = buildCondPanel(cond);
     el.condPanels.appendChild(panel);
     wireCondition(cond);
@@ -1332,18 +1379,18 @@ function initLabPage(conf) {
       renderCondTable(cond);
       document.getElementById(`rgSec-${uid}-${cond.uid}`).classList.add('visible');
     }
-    activateCondition(s.conditions.length - 1);
+    activateCondition(s[condKey].length - 1);
     saveState();
   }
 
   function removeCondition(condUid) {
-    const idx = s.conditions.findIndex(c => c.uid === condUid);
+    const idx = s[condKey].findIndex(c => c.uid === condUid);
     if (idx <= 0) return;
-    s.conditions.splice(idx, 1);
+    s[condKey].splice(idx, 1);
     const panel = document.getElementById(`condPanel-${uid}-${condUid}`);
     if (panel) panel.remove();
-    if (s.activeCondIdx >= s.conditions.length) s.activeCondIdx = s.conditions.length - 1;
-    activateCondition(s.activeCondIdx);
+    if (s[aciKey] >= s[condKey].length) s[aciKey] = s[condKey].length - 1;
+    activateCondition(s[aciKey]);
     checkDone();
     saveState();
   }
@@ -1370,7 +1417,7 @@ function initLabPage(conf) {
       </div>
       <div class="rsf-section" id="rsfSec-${uid}-${cond.uid}">
         <div class="rsf-header">
-          <div class="lab-tag">TABLEAU DES REMISES</div>
+          <div class="lab-tag" id="rsfToggle-${uid}-${cond.uid}">TABLEAU DES REMISES ${year}</div>
           <div class="rsf-info" id="rsfInfo-${uid}-${cond.uid}">—</div>
           <label class="pda-toggle" style="margin-left:auto" title="Inclure ou exclure les références PDA">
             <span class="pda-toggle-label">Inclure PDA</span>
@@ -1380,20 +1427,22 @@ function initLabPage(conf) {
             </div>
           </label>
         </div>
-        <div class="rsf-table-wrap">
-          <table class="rsf-table" id="rsfTable-${uid}-${cond.uid}">
-            <thead>
-              <tr>
-                <th>RSF&nbsp;% <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer RSF First" style="display:none;font-size:11px;padding:2px 7px;vertical-align:middle;margin-left:4px"></button></th>
-                <th id="thR2-${uid}-${cond.uid}">${s.selectedLab === 'Biogaran' ? 'RDP&nbsp;(%)' : 'Remise&nbsp;2&nbsp;(%)'}</th>
-                <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="font-size:11px;padding:2px 7px">+ REMISE 3</button></th>
-                <th style="color:var(--green)">Exception</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-${uid}-${cond.uid}"></tbody>
-          </table>
+        <div class="rsf-body" id="rsfBody-${uid}-${cond.uid}" style="display:none">
+          <div class="rsf-table-wrap">
+            <table class="rsf-table" id="rsfTable-${uid}-${cond.uid}">
+              <thead>
+                <tr>
+                  <th>RSF&nbsp;% <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer RSF First" style="display:none;font-size:11px;padding:2px 7px;vertical-align:middle;margin-left:4px"></button></th>
+                  <th id="thR2-${uid}-${cond.uid}">${s.selectedLab === 'Biogaran' ? 'RDP&nbsp;(%)' : 'Remise&nbsp;2&nbsp;(%)'}</th>
+                  <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="font-size:11px;padding:2px 7px">+ REMISE 3</button></th>
+                  <th style="color:var(--green)">Exception</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-${uid}-${cond.uid}"></tbody>
+            </table>
+          </div>
+          <div id="excpts-${uid}-${cond.uid}" class="row-except-blocks"></div>
         </div>
-        <div id="excpts-${uid}-${cond.uid}" class="row-except-blocks"></div>
       </div>
     `;
     return div;
@@ -1424,8 +1473,16 @@ function initLabPage(conf) {
       pdaChk.addEventListener('change', function() {
         state.includePDA = this.checked;
         syncPdaToggles();
-        state.labPages.forEach(lp => { if (lp._reloadRSF) lp._reloadRSF(); });
+        state.labPages.forEach(lp => { if (lp._reloadRSF) lp._reloadRSF(); if (lp._reloadRSF2025) lp._reloadRSF2025(); });
         saveState();
+      });
+    }
+    const rsfToggle = document.getElementById(`rsfToggle-${uid}-${cond.uid}`);
+    const rsfBody   = document.getElementById(`rsfBody-${uid}-${cond.uid}`);
+    if (rsfToggle && rsfBody) {
+      rsfToggle.addEventListener('click', () => {
+        const open = rsfToggle.classList.toggle('rsf-open');
+        rsfBody.style.display = open ? '' : 'none';
       });
     }
   }
@@ -1668,14 +1725,14 @@ function initLabPage(conf) {
     });
   }
 
-  s._selectLab = async function(lab) { await selectLab(lab); };
+  s[conf.selectLabAs || '_selectLab'] = async function(lab) { await selectLab(lab); };
 
   // ── Select lab ───────────────────────────────────────────────────────────────
   async function selectLab(lab) {
     s.selectedLab = lab;
     s.rsfPaliers  = [];
-    s.conditions  = [mkCondState('c0')];
-    s.activeCondIdx = 0;
+    s[condKey] = [mkCondState('c0')];
+    s[aciKey] = 0;
     el.condPanels.innerHTML = '';
     el.condTabs.classList.remove('visible');
     el.loading.classList.add('visible');
@@ -1684,15 +1741,15 @@ function initLabPage(conf) {
       const { paliers, firstMap } = await fetchRSF(lab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
-      s.conditions[0].rsfValues = mkRsfValues(lab, paliers);
-      applyDefaultExcepts(s.conditions[0], lab);
+      s[condKey][0].rsfValues = mkRsfValues(lab, paliers);
+      applyDefaultExcepts(s[condKey][0], lab);
 
-      const panel = buildCondPanel(s.conditions[0]);
+      const panel = buildCondPanel(s[condKey][0]);
       panel.classList.add('active');
       el.condPanels.appendChild(panel);
-      wireCondition(s.conditions[0]);
-      document.getElementById(`rgSec-${uid}-${s.conditions[0].uid}`).classList.add('visible');
-      renderCondTable(s.conditions[0]);
+      wireCondition(s[condKey][0]);
+      document.getElementById(`rgSec-${uid}-${s[condKey][0].uid}`).classList.add('visible');
+      renderCondTable(s[condKey][0]);
 
       el.condTabs.classList.add('visible');
       renderCondTabs();
@@ -1703,14 +1760,14 @@ function initLabPage(conf) {
     saveState();
   }
 
-  s._reloadRSF = async function() {
+  s[conf.reloadRSFAs || '_reloadRSF'] = async function() {
     if (!s.selectedLab) return;
     el.loading.classList.add('visible');
     try {
       const { paliers, firstMap } = await fetchRSF(s.selectedLab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
-      s.conditions.forEach(cond => {
+      s[condKey].forEach(cond => {
         cond.rsfValues = mkRsfValues(s.selectedLab, paliers);
         applyRsf25Default(cond);
         renderCondTable(cond);
@@ -1720,13 +1777,13 @@ function initLabPage(conf) {
     finally { el.loading.classList.remove('visible'); }
   };
 
-  s._restoreFromSave = async function(savedLabData) {
+  s[conf.restoreAs || '_restoreFromSave'] = async function(savedLabData) {
     const lab = savedLabData.selectedLab;
     if (!lab) return;
     s.selectedLab = lab;
     s.rsfPaliers = [];
-    s.conditions = [];
-    s.activeCondIdx = savedLabData.activeCondIdx || 0;
+    s[condKey] = [];
+    s[aciKey] = 0;
     el.condPanels.innerHTML = '';
     el.condTabs.classList.remove('visible');
     el.loading.classList.add('visible');
@@ -1734,7 +1791,7 @@ function initLabPage(conf) {
       const { paliers, firstMap } = await fetchRSF(lab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
-      (savedLabData.conditions || []).forEach((sc, idx) => {
+      (savedLabData[savedCondKey] || []).forEach((sc, idx) => {
         const cond = mkCondState(sc.uid);
         cond.remiseGlobale = sc.remiseGlobale;
         cond.caCondition   = sc.caCondition;
@@ -1750,9 +1807,9 @@ function initLabPage(conf) {
             : { rsf_pct: v, remise2: '', remise3: '', excluded: lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v)), hasExcept: false };
         });
         if (idx === 0) applyDefaultExcepts(cond, lab);
-        s.conditions.push(cond);
+        s[condKey].push(cond);
         const panel = buildCondPanel(cond);
-        if (idx === s.activeCondIdx) panel.classList.add('active');
+        if (idx === s[aciKey]) panel.classList.add('active');
         el.condPanels.appendChild(panel);
         wireCondition(cond);
         document.getElementById(`rgSec-${uid}-${cond.uid}`).classList.add('visible');
@@ -1765,8 +1822,8 @@ function initLabPage(conf) {
     if (conf.onLabSelected) conf.onLabSelected();
   };
 
-  s._reRenderCondTables = function() {
-    s.conditions.forEach(cond => {
+  s[conf.reRenderAs || '_reRenderCondTables'] = function() {
+    s[condKey].forEach(cond => {
       if (!document.getElementById(`tbody-${uid}-${cond.uid}`)) return;
       if (cond.remiseGlobale !== null) autoFillCond(cond);
       renderCondTable(cond);
@@ -3086,6 +3143,8 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
             showR3: false, forceFirst: false,
             remise2Except: c.remise2Except || {},
           })),
+          activeCondIdx2025: 0,
+          conditions2025: [],
         })),
       };
       try { localStorage.setItem(LS_KEY, JSON.stringify(resetState)); } catch(e) {}
@@ -3222,6 +3281,9 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       const lp = state.labPages.find(l => l.uid === sp.uid);
       if (lp && sp.selectedLab && lp._restoreFromSave) {
         await lp._restoreFromSave(sp);
+      }
+      if (lp && sp.selectedLab && lp._restoreFromSave2025) {
+        await lp._restoreFromSave2025(sp);
       }
     }
     renderLabGrid();
