@@ -1,0 +1,37 @@
+name: Scraper OSPHARM
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: 'Supabase user ID'
+        required: true
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet playwright
+          playwright install chromium --with-deps
+
+      - name: Run scraper OSPHARM
+        env:
+          USER_ID: ${{ inputs.user_id }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python api_scraper/run_job_ospharm.py

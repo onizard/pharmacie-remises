@@ -676,6 +676,10 @@
   .conn-check-big { font-size: 52px; color: var(--green); filter: drop-shadow(0 0 10px rgba(0,255,136,.45)); line-height: 1; }
   .conn-connected-name { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--green); }
   .conn-connected-user-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); }
+  .conn-job-status { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: .5px; margin-top: 2px; min-height: 16px; }
+  .conn-job-status.running { color: var(--amber); }
+  .conn-job-status.done    { color: var(--green); }
+  .conn-job-status.error   { color: var(--red); }
 
   /* ── Responsive ── */
   @media (max-width: 900px) {
@@ -963,6 +967,7 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-connected-user-label" id="ospConnUser"></div>
+            <div class="conn-job-status" id="ospJobStatus"></div>
           </div>
         </div>
         <!-- DIGIPHARMACIE -->
@@ -989,6 +994,7 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-connected-user-label" id="digiConnUser"></div>
+            <div class="conn-job-status" id="digiJobStatus"></div>
           </div>
         </div>
       </div>
@@ -2411,6 +2417,30 @@ async function launchVerificateur() {
   }
   const btnEl = document.getElementById('btnLaunchVerif');
   const msgEl = document.getElementById('verifMsg');
+
+  // Si les données sont déjà prêtes, afficher directement
+  try {
+    const st = await _verifSupaGet();
+    if (st.verif_job?.status === 'done' && (st.verif_job.invoices?.length || 0) > 0) {
+      renderVerificateurResults(st.verif_job.invoices);
+      document.getElementById('verifInitPanel').style.display   = 'none';
+      document.getElementById('verifResultsArea').style.display = '';
+      return;
+    }
+    if (st.verif_job?.status === 'running') {
+      // Job en cours depuis la connexion — juste suivre le statut
+      document.getElementById('verifInitPanel').style.display   = 'none';
+      document.getElementById('verifGameArea').style.display    = '';
+      document.getElementById('verifResultsArea').style.display = 'none';
+      const canvas = document.getElementById('verifCanvas');
+      canvas.width  = (canvas.parentElement.clientWidth || 800);
+      canvas.height = 340;
+      startBrickGame('verifCanvas');
+      _verifPollTimer = setTimeout(_pollVerificateur, 6000);
+      return;
+    }
+  } catch(_) {}
+
   btnEl.disabled = true;
   msgEl.textContent = '⏳ Lancement du job…';
 
@@ -3838,6 +3868,7 @@ function initConnecteurModal() {
     showView('osp',  c.ospharm.connected,      c.ospharm.user);
     showView('digi', c.digipharmacie.connected, c.digipharmacie.user);
     modal.classList.add('open');
+    refreshConnJobStatuses();
   }
 
   function closeModal() { modal.classList.remove('open'); }
@@ -3875,6 +3906,87 @@ function initConnecteurModal() {
     updateConnecteurBtn();
     saveState();
     showView(prefix, true, user);
+
+    // Déclenche le workflow en arrière-plan sans attendre
+    _triggerWorkflow(connKey);
+  }
+
+  async function _triggerWorkflow(connKey) {
+    if (!GH_TOKEN) return;
+    let userId = '';
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      userId = session?.user?.id || '';
+    } catch(_) {}
+    if (!userId) return;
+
+    const workflow = connKey === 'digipharmacie' ? 'scraper.yml' : 'scraper_ospharm.yml';
+    const jobKey   = connKey === 'digipharmacie' ? 'verif_job'   : 'ospharm_job';
+    const statusId = connKey === 'digipharmacie' ? 'digiJobStatus' : 'ospJobStatus';
+
+    // Marquer running dans Supabase
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      const { data: row } = await window._sbClient.from('user_state')
+        .select('state_json').eq('user_id', userId).maybeSingle();
+      const sj = row?.state_json || {};
+      sj[jobKey] = { status: 'running', message: 'Job en attente…', rows: [], total: 0, invoices: [], error: '' };
+      await window._sbClient.from('user_state').upsert({ user_id: userId, state_json: sj }, { onConflict: 'user_id' });
+    } catch(_) {}
+
+    _setJobStatusEl(statusId, 'running', '⏳ récupération en cours…');
+
+    try {
+      const resp = await fetch(
+        `https://api.github.com/repos/${GH_REPO}/actions/workflows/${workflow}/dispatches`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GH_TOKEN}`,
+            'Accept':        'application/vnd.github.v3+json',
+            'Content-Type':  'application/json',
+          },
+          body: JSON.stringify({ ref: 'master', inputs: { user_id: userId } }),
+        }
+      );
+      if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+    } catch(e) {
+      _setJobStatusEl(statusId, 'error', `❌ ${e.message}`);
+    }
+  }
+
+  function _setJobStatusEl(elId, cls, text) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.className = `conn-job-status ${cls}`;
+    el.textContent = text;
+  }
+
+  async function refreshConnJobStatuses() {
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) return;
+      const { data: row } = await window._sbClient.from('user_state')
+        .select('state_json').eq('user_id', session.user.id).maybeSingle();
+      const sj = row?.state_json || {};
+
+      const map = [
+        { jobKey: 'verif_job',   elId: 'digiJobStatus' },
+        { jobKey: 'ospharm_job', elId: 'ospJobStatus'  },
+      ];
+      map.forEach(({ jobKey, elId }) => {
+        const job = sj[jobKey];
+        if (!job) return;
+        if (job.status === 'done') {
+          const n = job.total || job.invoices?.length || job.rows?.length || 0;
+          _setJobStatusEl(elId, 'done', `✓ ${n.toLocaleString('fr-FR')} lignes prêtes`);
+        } else if (job.status === 'running') {
+          _setJobStatusEl(elId, 'running', `⏳ ${job.message || 'en cours…'}`);
+        } else if (job.status === 'error') {
+          _setJobStatusEl(elId, 'error', `❌ ${job.error || 'erreur'}`);
+        }
+      });
+    } catch(_) {}
   }
 
   document.getElementById('ospTest').addEventListener('click',  () => connectConn('ospharm', 'osp'));
