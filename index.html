@@ -805,7 +805,7 @@
     err.textContent = ''; ok.textContent = '';
     if (pwd !== pwd2) { err.textContent = '⚠ Les mots de passe ne correspondent pas.'; return; }
     if (pwd.length < 8) { err.textContent = '⚠ Le mot de passe doit faire au moins 8 caractères.'; return; }
-    const { error } = await sb.auth.signUp({ email, password: pwd });
+    const { error } = await sb.auth.signUp({ email, password: pwd, options: { emailRedirectTo: 'https://break-pharma.fr' } });
     if (error) { err.textContent = '⚠ ' + error.message; }
     else { ok.textContent = '✓ Compte créé ! Vérifiez votre email pour confirmer.'; }
   });
@@ -816,8 +816,7 @@
     const err     = document.getElementById('aFPErr');
     const ok      = document.getElementById('aFPOk');
     err.textContent = ''; ok.textContent = '';
-    const redirectTo = window.location.origin + window.location.pathname;
-    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: 'https://break-pharma.fr' });
     if (error) { err.textContent = '⚠ ' + error.message; }
     else { ok.textContent = '✓ Email envoyé ! Vérifiez votre boîte mail.'; }
   });
