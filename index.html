@@ -92,7 +92,6 @@
   [data-theme="light"] .loading { background: rgba(244,247,251,.95); }
   [data-theme="light"] .col-map-panel { background: #fff; border-color: #0066cc; box-shadow: 0 0 20px rgba(0,102,204,.1); }
   [data-theme="light"] select { background: #fff; color: #1a2e45; border-color: #b8cdd8; }
-  [data-theme="light"] .btn-reset { background: #fff0f3; border-color: #cc0033; color: #cc0033; }
   [data-theme="light"] .auth-logout { background: #e8eef5; color: #1a2e45; border-color: #b8cdd8; }
   [data-theme="light"] .pda-switch input:checked + .pda-slider { background: #d4f0e4; }
   [data-theme="light"] .step.active  { background: #e6f2ff; box-shadow: none; }
@@ -189,10 +188,6 @@
   .pda-switch input:checked + .pda-slider { background: #001a0f; border-color: var(--green); }
   .pda-switch input:checked + .pda-slider::after { background: var(--green); transform: translateX(18px); box-shadow: 0 0 6px #00ff8888; }
   .pda-toggle:hover .pda-toggle-label { color: var(--text); }
-  .btn-reset { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 2px; padding: 7px 18px; cursor: pointer; background: #0a0008; border: 1px solid var(--red); color: var(--text-dim); position: relative; overflow: hidden; user-select: none; transition: color .2s, border-color .2s; white-space: nowrap; }
-  .btn-reset::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 0; background: var(--red); opacity: .15; }
-  .btn-reset.holding { color: var(--red); border-color: var(--red); }
-  .btn-reset.holding::before { width: 100%; transition: width 3s linear; }
 
   /* ── Step bar ── */
   .stepbar { display: flex; align-items: stretch; margin-bottom: 32px; flex-wrap: wrap; gap: 0; }
@@ -693,7 +688,6 @@
     table.rsf-table th, table.rsf-table td { padding: 8px 10px; font-size: 12px; }
     .lab-btn { font-size: 12px; padding: 6px 10px; letter-spacing: 1px; }
     .r3-toggle { font-size: 10px; padding: 2px 5px; }
-    .btn-reset { padding: 6px 12px; font-size: 11px; }
     #gersGlobal { width: 90px !important; }
     .sim-winner-title { font-size: 16px; letter-spacing: 3px; }
     .sim-kpi { min-width: 120px; padding: 10px 12px; }
@@ -910,8 +904,7 @@
         <span style="font-size:12px;color:var(--text-dim)">€</span>
         <button id="btnConnecteur" class="btn-connecteur" title="Gérer les connecteurs OSPHARM / DIGIPHARMACIE">CONNECTEURS</button>
         <button id="btnTheme" class="btn-theme" title="Thème clair / sombre">☀</button>
-        <button id="btnReset" class="btn-reset" title="Maintenir 3 secondes pour réinitialiser">RESET</button>
-        <button class="auth-logout" id="btnLogout" title="Se déconnecter">⏻ DÉCO</button>
+<button class="auth-logout" id="btnLogout" title="Se déconnecter">⏻ DÉCO</button>
       </div>
     </div>
   </header>
@@ -3354,53 +3347,6 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   });
 })();
 
-// ── Reset button ───────────────────────────────────────────────────────────────
-(function() {
-  const btn = document.getElementById('btnReset');
-  let timer;
-  function start(e) {
-    if (e.type === 'touchstart') e.preventDefault();
-    btn.classList.add('holding');
-    // force reflow so transition starts fresh
-    void btn.offsetWidth;
-    timer = setTimeout(async () => {
-      btn.classList.remove('holding');
-      const cur = serializeState();
-      const resetState = {
-        v: 1, gers: null, csvData: null, csvRows: 0, csvFileName: null,
-        includePDA: false,
-        currentPageId: 'labs',
-        changementGeneriqueur: { enabled: false, labo: null, date: '' },
-        labPages: (cur.labPages || []).map(lp => ({
-          uid: lp.uid, selectedLab: lp.selectedLab, activeCondIdx: 0,
-          conditions: (lp.conditions || []).map(c => ({
-            uid: c.uid, remiseGlobale: null, caCondition: null,
-            rsfValues: (c.rsfValues || []).map(r => ({
-              rsf_pct: r.rsf_pct, excluded: r.excluded,
-              remise2: r.excluded ? '0' : '', remise3: '',
-              hasExcept: r.hasExcept,
-            })),
-            exceptions: {}, rsfOnly: { enabled: false, libelles: [] },
-            showR3: false, forceFirst: false,
-            remise2Except: c.remise2Except || {},
-          })),
-          activeCondIdx2025: 0,
-          conditions2025: [],
-        })),
-      };
-      try { localStorage.setItem(LS_KEY, JSON.stringify(resetState)); } catch(e) {}
-      try { sessionStorage.setItem('bp_reset', '1'); } catch(e) {}
-      saveCloudState(resetState);
-      location.reload();
-    }, 3000);
-  }
-  function cancel() { clearTimeout(timer); btn.classList.remove('holding'); }
-  btn.addEventListener('mousedown', start);
-  btn.addEventListener('mouseup', cancel);
-  btn.addEventListener('mouseleave', cancel);
-  btn.addEventListener('touchstart', start, { passive: false });
-  btn.addEventListener('touchend', cancel);
-})();
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 (async () => {
