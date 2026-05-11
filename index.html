@@ -702,6 +702,10 @@
     #brickCanvas { width: 100% !important; }
   }
 
+  /* ── Toast notification ── */
+  .bp-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--bg2); border: 1px solid var(--red); color: var(--red); font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: .8px; padding: 13px 22px; z-index: 99999; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 88vw; text-align: center; line-height: 1.5; }
+  .bp-toast.show { opacity: 1; }
+
 </style>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -1110,6 +1114,8 @@
     </div>
   </div>
 
+  <div class="bp-toast" id="bpToast"></div>
+
 </div>
 
 <script>
@@ -1396,9 +1402,43 @@ function updateMainTabs() {
   });
 }
 
+let _toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('bpToast');
+  if (!el) return;
+  clearTimeout(_toastTimer);
+  el.textContent = msg;
+  el.classList.add('show');
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+function labHasPalier(lp) {
+  const allConds = [...(lp.conditions || []), ...(lp.conditions2025 || [])];
+  return allConds.some(cond =>
+    (cond.rsfValues || []).some(r => !r.excluded && r.remise2 && r.remise2.trim() !== '' && r.remise2 !== '0')
+  );
+}
+
+function checkTabPrereqs() {
+  const c = state.connectors;
+  if (!c.ospharm.connected || !c.digipharmacie.connected) {
+    const missing = [!c.ospharm.connected && 'OSPHARM DATASTAT', !c.digipharmacie.connected && 'DIGIPHARMACIE'].filter(Boolean).join(' et ');
+    return `Connecteur(s) requis : ${missing}. Renseignez vos identifiants via le bouton CONNECTEURS.`;
+  }
+  const labsOk = state.labPages.filter(lp => lp.selectedLab && labHasPalier(lp)).length;
+  if (labsOk < 2) {
+    return `Renseignez au moins 1 palier de remise pour 2 laboratoires (${labsOk}/2 actuellement).`;
+  }
+  return null;
+}
+
 document.querySelectorAll('.main-tab').forEach(btn => {
   btn.addEventListener('click', () => {
     const page = btn.dataset.page;
+    if (page === 'comparateur' || page === 'verificateur') {
+      const err = checkTabPrereqs();
+      if (err) { showToast(err); return; }
+    }
     if (page === 'comparateur') goTo(state.currentPageId === 'results' ? 'results' : 'csv');
     else goTo(page);
   });
