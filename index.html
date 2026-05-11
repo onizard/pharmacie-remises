@@ -360,6 +360,9 @@
   .lab-tag::after { content: ' ▶'; font-size: 9px; vertical-align: middle; margin-left: 4px; }
   .lab-tag.rsf-open::after { content: ' ▼'; }
   .rsf-header .rsf-info { font-size: 13px; color: var(--text-dim); }
+  .cgv-dropzone { display:flex; align-items:center; gap:5px; padding:3px 10px; border:1px dashed var(--text-dim); cursor:pointer; font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim); transition:border-color .2s,color .2s; white-space:nowrap; user-select:none; }
+  .cgv-dropzone:hover, .cgv-dropzone.drag-over { border-color:var(--amber); color:var(--amber); }
+  .cgv-dropzone.cgv-loaded { border-color:var(--green); color:var(--green); }
   .year-label { font-family: 'Orbitron', monospace; font-size: 15px; font-weight: 900; color: var(--cyan); letter-spacing: 4px; margin-bottom: 10px; user-select: none; }
   .year-label-toggle { cursor: pointer; color: var(--amber); }
   .year-label-toggle:hover { text-shadow: var(--glow-a); }
@@ -1577,6 +1580,7 @@ function initLabPage(conf) {
         <div class="rsf-header">
           <div class="lab-tag" id="rsfToggle-${uid}-${cond.uid}">TABLEAU DES REMISES ${year}</div>
           <div class="rsf-info" id="rsfInfo-${uid}-${cond.uid}">—</div>
+          ${isAdmin ? `<div class="cgv-dropzone" id="cgvDrop-${uid}-${cond.uid}" title="Glisser un PDF de CGV ici ou cliquer pour sélectionner">📄 CGV<input type="file" accept=".pdf" id="cgvFile-${uid}-${cond.uid}" style="display:none"><span id="cgvLabel-${uid}-${cond.uid}"></span></div>` : ''}
           <label class="pda-toggle" style="margin-left:auto${isAdmin ? '' : ';display:none'}" title="Inclure ou exclure les références PDA">
             <span class="pda-toggle-label">Inclure PDA</span>
             <div class="pda-switch">
@@ -1642,6 +1646,35 @@ function initLabPage(conf) {
         const open = rsfToggle.classList.toggle('rsf-open');
         rsfBody.style.display = open ? '' : 'none';
       });
+    }
+    if (isAdmin) {
+      const cgvDrop  = document.getElementById(`cgvDrop-${uid}-${cond.uid}`);
+      const cgvFile  = document.getElementById(`cgvFile-${uid}-${cond.uid}`);
+      const cgvLabel = document.getElementById(`cgvLabel-${uid}-${cond.uid}`);
+      if (cgvDrop && cgvFile) {
+        const applyFile = file => {
+          if (!file || file.type !== 'application/pdf') return;
+          const reader = new FileReader();
+          reader.onload = e => {
+            cond.cgvPdf = { name: file.name, dataUrl: e.target.result };
+            cgvLabel.textContent = ' ' + file.name;
+            cgvDrop.classList.add('cgv-loaded');
+            cgvDrop.title = file.name;
+            saveState();
+          };
+          reader.readAsDataURL(file);
+        };
+        cgvDrop.addEventListener('click', () => cgvFile.click());
+        cgvFile.addEventListener('change', () => applyFile(cgvFile.files[0]));
+        cgvDrop.addEventListener('dragover', e => { e.preventDefault(); cgvDrop.classList.add('drag-over'); });
+        cgvDrop.addEventListener('dragleave', () => cgvDrop.classList.remove('drag-over'));
+        cgvDrop.addEventListener('drop', e => { e.preventDefault(); cgvDrop.classList.remove('drag-over'); applyFile(e.dataTransfer.files[0]); });
+        if (cond.cgvPdf?.name) {
+          cgvLabel.textContent = ' ' + cond.cgvPdf.name;
+          cgvDrop.classList.add('cgv-loaded');
+          cgvDrop.title = cond.cgvPdf.name;
+        }
+      }
     }
   }
 
@@ -1970,6 +2003,7 @@ function initLabPage(conf) {
         cond.showR3    = sc.showR3    || false;
         cond.forceFirst = sc.forceFirst || false;
         cond.remise2Except = sc.remise2Except || {};
+        if (sc.cgvPdf) cond.cgvPdf = sc.cgvPdf;
         cond.rsfValues = paliers.map(v => {
           const sv = sc.rsfValues.find(r => String(r.rsf_pct) === String(v));
           return sv
