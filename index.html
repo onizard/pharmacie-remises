@@ -1421,7 +1421,7 @@ function initLabPage(conf) {
       const label = document.createElement('span');
       label.textContent = `PALIER ${i + 1}`;
       tab.appendChild(label);
-      if (i > 0 && isAdmin) {
+      if (i > 0) {
         const x = document.createElement('span');
         x.className = 'cond-tab-close'; x.textContent = '×';
         x.addEventListener('click', e => { e.stopPropagation(); removeCondition(cond.uid); });
@@ -1430,7 +1430,7 @@ function initLabPage(conf) {
       tab.addEventListener('click', () => activateCondition(i));
       el.condTabs.appendChild(tab);
     });
-    if (s[condKey].length < 4 && isAdmin) {
+    if (s[condKey].length < 4) {
       const addBtn = document.createElement('div');
       addBtn.className = 'cond-tab-add'; addBtn.textContent = '+';
       addBtn.addEventListener('click', addCondition);
