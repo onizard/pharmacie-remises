@@ -1148,7 +1148,8 @@ const SUPA_URL    = 'https://fmterazwesiwpwjpkyqi.supabase.co';
 const SUPA_KEY    = 'sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w';
 const ADMIN_EMAIL = 'oliviernizard@gmail.com';
 const GH_REPO     = 'onizard/pharmacie-remises';
-const GH_TOKEN    = ''; // GitHub PAT (workflow scope) — à renseigner
+const ADMIN_UID   = '2e463bc5-a82f-4d03-aace-a33858996900';
+let   GH_TOKEN    = '';  // chargé depuis Supabase après login
 let   isAdmin     = false;
 
 const LABS_ALL = ['Arrow','Biogaran','Viatris','EG','Sandoz','Teva','Zentiva','Cristers','Zydus','Pfizer'];
@@ -3642,6 +3643,12 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       if (session) {
         isAdmin = (session.user.email === ADMIN_EMAIL);
         if (!isAdmin) await loadRsfDefaults();
+        // Charger le PAT GitHub depuis le state admin (pour le vérificateur)
+        try {
+          const { data: adminRow } = await sb.from('user_state')
+            .select('state_json').eq('user_id', ADMIN_UID).maybeSingle();
+          GH_TOKEN = adminRow?.state_json?.gh_actions_token || '';
+        } catch(_) {}
         if (!_isPostReset) {
           const { data: cloud } = await sb.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
