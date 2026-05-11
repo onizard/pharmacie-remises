@@ -1856,7 +1856,12 @@ function initLabPage(conf) {
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
       s[condKey].forEach(cond => {
-        cond.rsfValues = mkRsfValues(s.selectedLab, paliers);
+        const prev = {};
+        (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
+        cond.rsfValues = mkRsfValues(s.selectedLab, paliers).map(r => {
+          const p = prev[String(r.rsf_pct)];
+          return p ? { ...r, remise2: p.remise2, remise3: p.remise3, excluded: p.excluded, hasExcept: p.hasExcept } : r;
+        });
         applyRsf25Default(cond);
         renderCondTable(cond);
         if (cond.remiseGlobale !== null) autoFillCond(cond);
