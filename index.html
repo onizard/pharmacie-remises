@@ -2370,9 +2370,9 @@ async function launchSimulation() {
       return (13 - month) / 12;
     }
 
-    function getBestCond(lp, ca, forceMarketMet = false) {
+    function getBestCond(lp, ca, forceMarketMet = false, applyProrata = false) {
       if (!lp?.conditions?.length) return null;
-      const pr = getProrata(lp.selectedLab);
+      const pr = applyProrata ? getProrata(lp.selectedLab) : 1;
       const candidates = forceMarketMet
         ? lp.conditions
         : lp.conditions.filter(c => !c.caCondition || ca >= pr * c.caCondition);
@@ -2409,7 +2409,7 @@ async function launchSimulation() {
     // 5. calcScenario: CA + remise par labo pour un assignment donné
     //    rsfOnly=true  → RSF uniquement (scénario actuel)
     //    forceMarketMet=true → marché toujours atteint (optimisé 1)
-    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false } = {}) {
+    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false } = {}) {
       const labMap = new Map();
       // Phase 1 : CA par labo
       csvData.forEach(row => {
@@ -2426,14 +2426,14 @@ async function launchSimulation() {
       });
       // Phase 2 : remise par labo (après CA connu → meilleur palier atteignable)
       labMap.forEach(e => {
-        const bestCond = rsfOnly ? null : getBestCond(e.lp, e.ca, forceMarketMet);
+        const bestCond = rsfOnly ? null : getBestCond(e.lp, e.ca, forceMarketMet, applyProrata);
         const firstMet = e.isSelected && !rsfOnly && (
           (state.gers != null && bestCond?.caCondition != null && bestCond.caCondition >= 0.9 * state.gers)
           || (bestCond?.forceFirst ?? false)
         );
         e.bestCond = bestCond;
         e.met = bestCond !== null || !e.isSelected;
-        e.caThreshold = getProrata(e.lp?.selectedLab) * (bestCond?.caCondition || 0);
+        e.caThreshold = (applyProrata ? getProrata(e.lp?.selectedLab) : 1) * (bestCond?.caCondition || 0);
         e.firstMet = firstMet;
         e.rows.forEach(({ row, ref, price }) => {
           const remisePct = (rsfOnly || !e.isSelected)
@@ -2455,7 +2455,7 @@ async function launchSimulation() {
     // 6a. Scénario actuel : CIP → premier match Supabase, RSF uniquement
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
-    const actuel = calcScenario(naturalAssignment);
+    const actuel = calcScenario(naturalAssignment, { applyProrata: true });
     const totalCA = actuel.totalCA;
 
     // 6c. Optimisé 2 : réalisation des marchés (seuils les plus serrés en priorité)
@@ -2474,11 +2474,10 @@ async function launchSimulation() {
         const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === lp.selectedLab);
         if (labRef) potentialCA += row.qty * (labRef.puht || 0);
       });
-      // Meilleur palier atteignable (seuil le plus élevé que le CA potentiel couvre), proratisé si changement en cours
-      const pr = getProrata(lp.selectedLab);
-      const bestAchievable = condsWithThreshold.find(c => potentialCA >= pr * c.caCondition);
+      // Meilleur palier atteignable (seuil le plus élevé que le CA potentiel couvre)
+      const bestAchievable = condsWithThreshold.find(c => potentialCA >= c.caCondition);
       if (!bestAchievable) return;
-      labPotential.set(lp.selectedLab, { threshold: pr * bestAchievable.caCondition, potentialCA });
+      labPotential.set(lp.selectedLab, { threshold: bestAchievable.caCondition, potentialCA });
     });
 
     const opt2Assignment = new Map(naturalAssignment);
