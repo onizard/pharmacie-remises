@@ -655,8 +655,11 @@
   .conn-field { margin-bottom: 12px; }
   .conn-label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px; }
   .conn-input-wrap { display: flex; align-items: center; gap: 6px; }
-  .conn-input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 13px; padding: 6px 10px; outline: none; }
+  .conn-input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 13px; padding: 6px 10px; outline: none; transition: border-color .2s; }
   .conn-input:focus { border-color: var(--cyan-dim); }
+  .conn-input.error { border-color: var(--red); }
+  @keyframes conn-shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+  .conn-input.shake { animation: conn-shake .35s ease; }
   .conn-eye { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 15px; padding: 2px 4px; }
   .conn-eye:hover { color: var(--cyan); }
   .conn-status { font-size: 11px; margin-top: 8px; min-height: 14px; }
@@ -4050,9 +4053,15 @@ function initConnecteurModal() {
         return;
       }
       if (result?.status === 'fail') {
-        resultEl.textContent = `❌ ${result.message || 'Identifiants incorrects'}`;
+        const msg = result.message || 'Identifiants incorrects';
+        resultEl.innerHTML = `❌ ${msg}<br><span style="color:var(--text-dim)">Vérifiez vos identifiants et réessayez.</span>`;
         resultEl.className = 'conn-test-result error';
         btnEl.disabled = false;
+        // Vider le mot de passe et signaler visuellement les champs
+        const passEl = document.getElementById(prefix + 'Pass');
+        const userEl = document.getElementById(prefix + 'User');
+        if (passEl) { passEl.value = ''; passEl.classList.add('error', 'shake'); setTimeout(() => passEl.classList.remove('shake'), 400); }
+        if (userEl) { userEl.classList.add('error', 'shake'); setTimeout(() => userEl.classList.remove('shake'), 400); }
         return;
       }
     } catch(_) {}
@@ -4139,6 +4148,9 @@ function initConnecteurModal() {
 
   document.getElementById('ospTest').addEventListener('click',       () => connectConn('ospharm', 'osp'));
   document.getElementById('digiTest').addEventListener('click',      () => connectConn('digipharmacie', 'digi'));
+  ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
+  });
   document.getElementById('ospDisconnect').addEventListener('click',  () => disconnectConn('ospharm', 'osp'));
   document.getElementById('digiDisconnect').addEventListener('click', () => disconnectConn('digipharmacie', 'digi'));
 
