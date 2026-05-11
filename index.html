@@ -387,6 +387,8 @@
     transition: all .2s; outline: none;
   }
   .rsf-input:focus { border-color: var(--cyan); box-shadow: var(--glow-c); background: #001a24; color: var(--cyan); }
+  .rsf-input[readonly] { opacity: .65; cursor: default; }
+  .rsf-input[readonly]:focus { border-color: var(--border); box-shadow: none; background: #000d14; color: var(--text); }
   .rsf-input::placeholder { color: var(--text-dim); font-size: 13px; }
   .rsf-input.auto-c { border-color: var(--cyan-dim); color: var(--cyan); }
   .rsf-input.auto-a { border-color: #6b4700; color: var(--amber); }
@@ -981,8 +983,10 @@
 </div>
 
 <script>
-const SUPA_URL   = 'https://fmterazwesiwpwjpkyqi.supabase.co';
-const SUPA_KEY   = 'sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w';
+const SUPA_URL    = 'https://fmterazwesiwpwjpkyqi.supabase.co';
+const SUPA_KEY    = 'sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w';
+const ADMIN_EMAIL = 'oliviernizard@gmail.com';
+let   isAdmin     = false;
 
 const LABS_ALL = ['Arrow','Biogaran','Viatris','EG','Sandoz','Teva','Zentiva','Cristers','Zydus','Pfizer'];
 let   LABS_SORTED = [...LABS_ALL];
@@ -1342,7 +1346,7 @@ function initLabPage(conf) {
       const label = document.createElement('span');
       label.textContent = `PALIER ${i + 1}`;
       tab.appendChild(label);
-      if (i > 0) {
+      if (i > 0 && isAdmin) {
         const x = document.createElement('span');
         x.className = 'cond-tab-close'; x.textContent = '×';
         x.addEventListener('click', e => { e.stopPropagation(); removeCondition(cond.uid); });
@@ -1351,7 +1355,7 @@ function initLabPage(conf) {
       tab.addEventListener('click', () => activateCondition(i));
       el.condTabs.appendChild(tab);
     });
-    if (s[condKey].length < 4) {
+    if (s[condKey].length < 4 && isAdmin) {
       const addBtn = document.createElement('div');
       addBtn.className = 'cond-tab-add'; addBtn.textContent = '+';
       addBtn.addEventListener('click', addCondition);
@@ -1454,13 +1458,16 @@ function initLabPage(conf) {
     const caInp = document.getElementById(`caInp-${uid}-${cond.uid}`);
     rgInp.value = cond.remiseGlobale !== null ? cond.remiseGlobale : '';
     caInp.value = cond.caCondition  !== null ? cond.caCondition  : '';
+    if (!isAdmin) { rgInp.readOnly = true; caInp.readOnly = true; }
     rgInp.addEventListener('input', () => {
+      if (!isAdmin) return;
       const v = parseFloat(rgInp.value.replace(',', '.'));
       cond.remiseGlobale = isNaN(v) ? null : v;
       autoFillCond(cond);
       checkDone();
     });
     caInp.addEventListener('input', () => {
+      if (!isAdmin) return;
       const v = parseFloat(caInp.value.replace(',', '.').replace(/\s/g, ''));
       cond.caCondition = isNaN(v) ? null : v;
       applyRsf25Default(cond);
@@ -1506,6 +1513,7 @@ function initLabPage(conf) {
       const radio = document.createElement('input');
       radio.type = 'radio'; radio.name = `rsfOnly-${uid}-${cond.uid}`; radio.value = val;
       radio.checked = val === 'OUI' ? cond.rsfOnly.enabled : !cond.rsfOnly.enabled;
+      if (!isAdmin) radio.disabled = true;
       label.appendChild(radio); label.appendChild(document.createTextNode(' ' + val));
       radios.appendChild(label);
     });
@@ -1618,6 +1626,9 @@ function initLabPage(conf) {
         r3Btn.className = '';
         r3Btn.style.cssText = 'cursor:default;pointer-events:none;font-size:13px;color:var(--text-dim);background:none;border:none;padding:0;font-family:inherit;font-weight:700';
         r3Btn.textContent = 'COOP (%)';
+      } else if (!isAdmin) {
+        r3Btn.style.display = 'none';
+        table.classList.toggle('show-r3', cond.showR3);
       } else {
         const r3Name = lab === 'Biogaran' ? 'COOP' : 'REMISE 3';
         r3Btn.className = 'r3-toggle';
@@ -1642,7 +1653,7 @@ function initLabPage(conf) {
     const ffBtn = document.getElementById(`ffBtn-${uid}-${cond.uid}`);
     if (ffBtn) {
       const hasFirst = s.rsfFirstMap.size > 0;
-      ffBtn.style.display = hasFirst ? 'inline-block' : 'none';
+      ffBtn.style.display = (hasFirst && isAdmin) ? 'inline-block' : 'none';
       ffBtn.textContent = firstMetDisplay ? '★ RSF FIRST' : '☆ RSF FIRST';
       ffBtn.style.color  = firstMetDisplay ? 'var(--amber)' : '';
       ffBtn.style.borderColor = firstMetDisplay ? 'var(--amber)' : '';
@@ -1677,7 +1688,9 @@ function initLabPage(conf) {
       inp2.placeholder = 'ex : 5.00'; inp2.value = row.remise2;
       if (row.remise2) inp2.classList.add('auto-c');
       if (row.excluded) inp2.classList.add('excl-r2');
+      if (!isAdmin) inp2.readOnly = true;
       inp2.addEventListener('input', e => {
+        if (!isAdmin) return;
         cond.rsfValues[idx].remise2 = e.target.value;
         inp2.classList.remove('auto-c');
         cond.rsfValues[idx].excluded = false;
@@ -1691,12 +1704,15 @@ function initLabPage(conf) {
       inp3.type = 'text'; inp3.className = 'rsf-input inp-r3';
       inp3.placeholder = 'ex : 2.50'; inp3.value = row.remise3;
       if (row.remise3) inp3.classList.add('auto-a');
-      inp3.addEventListener('input', e => { cond.rsfValues[idx].remise3 = e.target.value; inp3.classList.remove('auto-a'); });
+      if (!isAdmin) inp3.readOnly = true;
+      inp3.addEventListener('input', e => { if (!isAdmin) return; cond.rsfValues[idx].remise3 = e.target.value; inp3.classList.remove('auto-a'); });
       const td3 = document.createElement('td'); td3.className = 'col-r3'; td3.appendChild(inp3); tr.appendChild(td3);
 
       const cbExcpt = document.createElement('input');
       cbExcpt.type = 'checkbox'; cbExcpt.className = 'excpt-check'; cbExcpt.checked = row.hasExcept;
+      if (!isAdmin) cbExcpt.disabled = true;
       cbExcpt.addEventListener('change', () => {
+        if (!isAdmin) return;
         cond.rsfValues[idx].hasExcept = cbExcpt.checked;
         renderRowExcepts(cond, excptsEl);
         saveState();
@@ -3170,12 +3186,13 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   // Sauf si on vient d'un reset (sessionStorage flag) — on laisse le localStorage primer
   const _isPostReset = sessionStorage.getItem('bp_reset') === '1';
   sessionStorage.removeItem('bp_reset');
-  if (!_isPostReset) {
-    try {
-      const sb = window._sbClient;
-      if (sb) {
-        const { data: { session } } = await sb.auth.getSession();
-        if (session) {
+  try {
+    const sb = window._sbClient;
+    if (sb) {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) {
+        isAdmin = (session.user.email === ADMIN_EMAIL);
+        if (!_isPostReset) {
           const { data: cloud } = await sb.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           if (cloud?.state_json) {
@@ -3183,8 +3200,8 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
           }
         }
       }
-    } catch(e) {}
-  }
+    }
+  } catch(e) {}
 
   const saved = loadSavedState();
   if (saved) {
