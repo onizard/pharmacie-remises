@@ -618,6 +618,35 @@
   .auth-logout { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; letter-spacing: 2px; padding: 5px 12px; cursor: pointer; background: transparent; border: 1px solid var(--border); color: var(--text-dim); transition: all .2s; }
   .auth-logout:hover { border-color: var(--red); color: var(--red); }
 
+  /* ── Connecteur button ── */
+  .btn-connecteur { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; letter-spacing: 2px; padding: 5px 12px; cursor: pointer; background: transparent; border: 1px solid var(--red); color: var(--red); transition: all .2s; white-space: nowrap; }
+  .btn-connecteur:hover { filter: brightness(1.3); }
+  .btn-connecteur.ok-1 { border-color: var(--amber); color: var(--amber); }
+  .btn-connecteur.ok-2 { border-color: var(--green); color: var(--green); }
+
+  /* ── Connecteur modal ── */
+  #connecteurModal { display: none; position: fixed; inset: 0; z-index: 9000; background: rgba(4,6,15,.85); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
+  #connecteurModal.open { display: flex; }
+  .conn-box { background: var(--bg2); border: 1px solid var(--border); padding: 32px; width: min(600px, 94vw); position: relative; }
+  .conn-title { font-family: 'Orbitron', monospace; font-size: 16px; font-weight: 900; color: var(--cyan); letter-spacing: 4px; margin-bottom: 24px; text-align: center; }
+  .conn-close { position: absolute; top: 14px; right: 18px; background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; line-height: 1; }
+  .conn-close:hover { color: var(--red); }
+  .conn-sites { display: flex; gap: 24px; flex-wrap: wrap; }
+  .conn-site { flex: 1; min-width: 220px; background: var(--panel); border: 1px solid var(--border); padding: 20px; }
+  .conn-site-title { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--amber); margin-bottom: 16px; }
+  .conn-field { margin-bottom: 12px; }
+  .conn-label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px; }
+  .conn-input-wrap { display: flex; align-items: center; gap: 6px; }
+  .conn-input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 13px; padding: 6px 10px; outline: none; }
+  .conn-input:focus { border-color: var(--cyan-dim); }
+  .conn-eye { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 15px; padding: 2px 4px; }
+  .conn-eye:hover { color: var(--cyan); }
+  .conn-status { font-size: 11px; margin-top: 8px; min-height: 14px; }
+  .conn-status.ok { color: var(--green); }
+  .conn-status.ko { color: var(--red); }
+  .conn-save { display: block; width: 100%; margin-top: 22px; font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; padding: 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); transition: all .2s; }
+  .conn-save:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
+
   /* ── Responsive ── */
   @media (max-width: 900px) {
     #app { padding: 20px 20px 40px; }
@@ -864,12 +893,56 @@
         <span style="font-family:'Orbitron',monospace;font-size:12px;font-weight:700;color:var(--amber);letter-spacing:2px;white-space:nowrap">GERS</span>
         <input type="text" id="gersGlobal" class="rsf-input" style="width:120px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="Entre ton GERS" />
         <span style="font-size:12px;color:var(--text-dim)">€</span>
+        <button id="btnConnecteur" class="btn-connecteur" title="Gérer les connecteurs OSPHARM / DIGIPHARMACIE">CONNECTEUR</button>
         <button id="btnTheme" class="btn-theme" title="Thème clair / sombre">☀</button>
         <button id="btnReset" class="btn-reset" title="Maintenir 3 secondes pour réinitialiser">RESET</button>
         <button class="auth-logout" id="btnLogout" title="Se déconnecter">⏻ DÉCO</button>
       </div>
     </div>
   </header>
+
+  <!-- ── Modale Connecteurs ──────────────────────────────────────────────── -->
+  <div id="connecteurModal">
+    <div class="conn-box">
+      <button class="conn-close" id="connClose">✕</button>
+      <div class="conn-title">CONNECTEURS</div>
+      <div class="conn-sites">
+        <!-- OSPHARM -->
+        <div class="conn-site">
+          <div class="conn-site-title">OSPHARM</div>
+          <div class="conn-field">
+            <div class="conn-label">Identifiant</div>
+            <input class="conn-input" id="ospUser" type="text" autocomplete="username" placeholder="Login" />
+          </div>
+          <div class="conn-field">
+            <div class="conn-label">Mot de passe</div>
+            <div class="conn-input-wrap">
+              <input class="conn-input" id="ospPass" type="password" autocomplete="current-password" placeholder="••••••••" />
+              <button class="conn-eye" data-target="ospPass" title="Afficher/masquer">👁</button>
+            </div>
+          </div>
+          <div class="conn-status" id="ospStatus"></div>
+        </div>
+        <!-- DIGIPHARMACIE -->
+        <div class="conn-site">
+          <div class="conn-site-title">DIGIPHARMACIE</div>
+          <div class="conn-field">
+            <div class="conn-label">Identifiant</div>
+            <input class="conn-input" id="digiUser" type="text" autocomplete="username" placeholder="Login" />
+          </div>
+          <div class="conn-field">
+            <div class="conn-label">Mot de passe</div>
+            <div class="conn-input-wrap">
+              <input class="conn-input" id="digiPass" type="password" autocomplete="current-password" placeholder="••••••••" />
+              <button class="conn-eye" data-target="digiPass" title="Afficher/masquer">👁</button>
+            </div>
+          </div>
+          <div class="conn-status" id="digiStatus"></div>
+        </div>
+      </div>
+      <button class="conn-save" id="connSave">SAUVEGARDER</button>
+    </div>
+  </div>
 
   <div id="stepbar" style="display:none"></div>
 
@@ -1075,6 +1148,7 @@ let state = {
   csvFile: null, csvRows: 0, csvData: null,
   includePDA: false,
   gers: null,
+  connectors: { ospharm: { user: '', pass: '' }, digipharmacie: { user: '', pass: '' } },
   labPages: [],
   currentPageId: 'labs',
   changementGeneriqueur: { enabled: false, labo: null, date: '' },
@@ -1092,6 +1166,7 @@ function serializeState() {
     v: 1,
     includePDA: state.includePDA,
     gers: state.gers,
+    connectors: state.connectors,
     currentPageId: state.currentPageId,
     changementGeneriqueur: state.changementGeneriqueur,
     csvData:     state.csvData     || null,
@@ -3289,6 +3364,10 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
     state.includePDA = !!saved.includePDA;
     state.gers = saved.gers ?? null;
     state.changementGeneriqueur = saved.changementGeneriqueur ?? { enabled: false, labo: null, date: '' };
+    if (saved.connectors) {
+      state.connectors.ospharm      = saved.connectors.ospharm      || { user: '', pass: '' };
+      state.connectors.digipharmacie = saved.connectors.digipharmacie || { user: '', pass: '' };
+    }
     if (saved.csvData && saved.csvData.length) {
       state.csvData = saved.csvData;
       state.csvRows = saved.csvRows || saved.csvData.length;
@@ -3407,7 +3486,86 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   } else {
     goTo('labs');
   }
+
+  initConnecteurModal();
 })();
+
+// ── Connecteur modal ────────────────────────────────────────────────────────────
+function connectorCount() {
+  const c = state.connectors;
+  return [c.ospharm, c.digipharmacie].filter(x => x.user && x.pass).length;
+}
+
+function updateConnecteurBtn() {
+  const btn = document.getElementById('btnConnecteur');
+  if (!btn) return;
+  const n = connectorCount();
+  btn.className = 'btn-connecteur' + (n === 2 ? ' ok-2' : n === 1 ? ' ok-1' : '');
+}
+
+function initConnecteurModal() {
+  updateConnecteurBtn();
+
+  const modal   = document.getElementById('connecteurModal');
+  const btnOpen = document.getElementById('btnConnecteur');
+  const btnClose = document.getElementById('connClose');
+  const btnSave  = document.getElementById('connSave');
+
+  function openModal() {
+    const c = state.connectors;
+    document.getElementById('ospUser').value  = c.ospharm.user;
+    document.getElementById('ospPass').value  = c.ospharm.pass;
+    document.getElementById('digiUser').value = c.digipharmacie.user;
+    document.getElementById('digiPass').value = c.digipharmacie.pass;
+    updateConnStatus('osp',  c.ospharm);
+    updateConnStatus('digi', c.digipharmacie);
+    modal.classList.add('open');
+  }
+
+  function closeModal() { modal.classList.remove('open'); }
+
+  function updateConnStatus(prefix, conn) {
+    const el = document.getElementById(prefix + 'Status');
+    if (!el) return;
+    if (conn.user && conn.pass) {
+      el.className = 'conn-status ok'; el.textContent = '✓ Identifiants enregistrés';
+    } else {
+      el.className = 'conn-status ko'; el.textContent = conn.user || conn.pass ? '⚠ Champs incomplets' : '';
+    }
+  }
+
+  btnOpen.addEventListener('click', openModal);
+  btnClose.addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+  document.querySelectorAll('.conn-eye').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const inp = document.getElementById(btn.dataset.target);
+      if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+    });
+  });
+
+  ['ospUser','ospPass'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      updateConnStatus('osp', { user: document.getElementById('ospUser').value, pass: document.getElementById('ospPass').value });
+    });
+  });
+  ['digiUser','digiPass'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      updateConnStatus('digi', { user: document.getElementById('digiUser').value, pass: document.getElementById('digiPass').value });
+    });
+  });
+
+  btnSave.addEventListener('click', () => {
+    state.connectors.ospharm       = { user: document.getElementById('ospUser').value.trim(),  pass: document.getElementById('ospPass').value };
+    state.connectors.digipharmacie = { user: document.getElementById('digiUser').value.trim(), pass: document.getElementById('digiPass').value };
+    updateConnStatus('osp',  state.connectors.ospharm);
+    updateConnStatus('digi', state.connectors.digipharmacie);
+    updateConnecteurBtn();
+    saveState();
+    setTimeout(closeModal, 600);
+  });
+}
 </script>
 
 <!-- ── Protection par mot de passe ─────────────────────────────────────── -->
