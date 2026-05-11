@@ -2407,7 +2407,7 @@ async function launchSimulation() {
     }
 
     // 5. calcScenario: CA + remise par labo pour un assignment donné
-    //    rsfOnly=true  → RSF uniquement (scénario actuel)
+    //    rsfOnly=true  → RSF uniquement (scénario N-1)
     //    forceMarketMet=true → marché toujours atteint (optimisé 1)
     function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false } = {}) {
       const labMap = new Map();
@@ -2452,7 +2452,7 @@ async function launchSimulation() {
       return { labResults, totalRemise, totalCA, totalPaNet: totalCA - totalRemise };
     }
 
-    // 6a. Scénario actuel : CIP → premier match Supabase, RSF uniquement
+    // 6a. Scénario N-1 : CIP → premier match Supabase, RSF uniquement
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
     const actuel = calcScenario(naturalAssignment, { applyProrata: true });
@@ -2670,7 +2670,7 @@ async function launchSimulation() {
       <div class="sim-title">◈ RÉSUMÉ</div>
       <div class="sim-kpi-row">
         <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL N-1</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
-        <div class="sim-kpi"><div class="sim-kpi-label">PA NET ACTUEL</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">PA NET N-1</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
       </div>
     </div>`;
@@ -2701,7 +2701,7 @@ async function launchSimulation() {
     // ── Scénario Actuel (toujours dernier) ─────────────────────────────────────
     html += `<div class="sim-section">
       <div class="sim-scenario-header">
-        <span>▸ SCÉNARIO ACTUEL</span>
+        <span>▸ SCÉNARIO N-1</span>
         ${dlBtn('actuel')}
       </div>
       ${mkScenarioTable(actuel.labResults, true, null)}
