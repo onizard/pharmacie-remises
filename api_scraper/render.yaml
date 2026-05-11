@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: break-pharma-scraper
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter          # 512 MB RAM — suffisant pour camoufox + pdfplumber
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8000"

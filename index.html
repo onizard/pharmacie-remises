@@ -529,8 +529,22 @@
   ::-webkit-scrollbar-thumb:hover { background: var(--cyan-dim); }
 
   .sim-loading { padding: 0; background: var(--bg); border: 1px solid var(--border); overflow: hidden; }
-  #brickCanvas { display: block; width: 100%; image-rendering: pixelated; cursor: none; }
+  #brickCanvas, #verifCanvas { display: block; width: 100%; image-rendering: pixelated; cursor: none; }
   .brick-status { font-family: 'Orbitron', monospace; font-size: 12px; color: var(--text-dim); letter-spacing: 4px; text-align: center; padding: 10px 0 14px; animation: blink 1.2s step-end infinite; }
+
+  /* ── Vérificateur ── */
+  .verif-launch-area { padding: 8px 0 24px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .verif-msg { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--text-dim); min-height: 18px; letter-spacing: .8px; }
+  .verif-table-wrap { overflow-x: auto; margin-top: 8px; }
+  .verif-table { width: 100%; border-collapse: collapse; font-family: 'Share Tech Mono', monospace; font-size: 12px; }
+  .verif-table th { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--cyan); border-bottom: 1px solid var(--border); padding: 8px 12px; text-align: left; white-space: nowrap; }
+  .verif-table td { padding: 6px 12px; border-bottom: 1px solid var(--border); color: var(--text); white-space: nowrap; }
+  .verif-table tr:hover td { background: var(--bg2); }
+  .verif-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .verif-table td.cip { color: var(--text-dim); }
+  .verif-table td.pa-net { color: var(--green); }
+  .verif-table td.remise { color: var(--amber); }
+  .verif-summary { font-family: 'Orbitron', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 16px; }
   @keyframes blink { 50% { opacity: 0; } }
   .sim-section { margin-bottom: 28px; }
   .sim-title { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--cyan); letter-spacing: 3px; text-shadow: var(--glow-c); margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
@@ -1108,10 +1122,21 @@
 
   <!-- ── PAGE VÉRIFICATEUR ── -->
   <div id="page-verificateur" class="page">
-    <div class="panel">
+    <div class="panel" id="verifInitPanel">
       <div class="panel-title">◈ Vérificateur de remise</div>
-      <div class="panel-sub">// Fonctionnalité à venir</div>
+      <div class="panel-sub">// Factures génériques 2025 — CIP · prix · remises · PA NET</div>
+      <div class="verif-launch-area">
+        <button class="btn btn-launch" id="btnLaunchVerif" onclick="launchVerificateur()">⬇ RÉCUPÉRER LES FACTURES 2025</button>
+        <div id="verifMsg" class="verif-msg"></div>
+      </div>
     </div>
+    <div id="verifGameArea" style="display:none">
+      <div class="sim-loading">
+        <canvas id="verifCanvas"></canvas>
+        <div class="brick-status" id="verifGameStatus">◈ RÉCUPÉRATION EN COURS ◈</div>
+      </div>
+    </div>
+    <div id="verifResultsArea" style="display:none"></div>
   </div>
 
   <div class="bp-toast" id="bpToast"></div>
@@ -1122,6 +1147,7 @@
 const SUPA_URL    = 'https://fmterazwesiwpwjpkyqi.supabase.co';
 const SUPA_KEY    = 'sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w';
 const ADMIN_EMAIL = 'oliviernizard@gmail.com';
+const SCRAPER_API = ''; // URL de l'API Render — à renseigner après déploiement
 let   isAdmin     = false;
 
 const LABS_ALL = ['Arrow','Biogaran','Viatris','EG','Sandoz','Teva','Zentiva','Cristers','Zydus','Pfizer'];
@@ -2362,9 +2388,131 @@ function renderChips(chipsWrap, exc) {
 }
 
 
+// ── Vérificateur de remise ─────────────────────────────────────────────────────
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+let _verifPollTimer = null;
+
+function resetVerificateur() {
+  clearTimeout(_verifPollTimer); _verifPollTimer = null;
+  document.getElementById('verifInitPanel').style.display = '';
+  document.getElementById('verifGameArea').style.display  = 'none';
+  document.getElementById('verifResultsArea').style.display = 'none';
+  document.getElementById('btnLaunchVerif').disabled = false;
+  document.getElementById('verifMsg').textContent = '';
+}
+
+async function launchVerificateur() {
+  if (!SCRAPER_API) {
+    showToast('API non encore déployée — revenez bientôt.');
+    return;
+  }
+  const btnEl = document.getElementById('btnLaunchVerif');
+  const msgEl = document.getElementById('verifMsg');
+  btnEl.disabled = true;
+  msgEl.textContent = '⏳ Connexion à DIGIPHARMACIE…';
+
+  let token = '';
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    token = session?.access_token || '';
+  } catch (_) {}
+
+  try {
+    const resp = await fetch(`${SCRAPER_API}/scrape`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const { job_id } = await resp.json();
+
+    document.getElementById('verifInitPanel').style.display   = 'none';
+    document.getElementById('verifGameArea').style.display    = '';
+    document.getElementById('verifResultsArea').style.display = 'none';
+
+    const canvas = document.getElementById('verifCanvas');
+    canvas.width  = (canvas.parentElement.clientWidth || 800);
+    canvas.height = 340;
+    startBrickGame('verifCanvas');
+
+    _pollVerificateur(job_id);
+  } catch (e) {
+    msgEl.textContent = `❌ ${e.message}`;
+    btnEl.disabled = false;
+  }
+}
+
+async function _pollVerificateur(jobId) {
+  try {
+    const resp = await fetch(`${SCRAPER_API}/status/${jobId}`);
+    const data = await resp.json();
+    if (data.status === 'done') {
+      document.getElementById('verifGameArea').style.display = 'none';
+      renderVerificateurResults(data.invoices || []);
+      document.getElementById('verifResultsArea').style.display = '';
+    } else if (data.status === 'error') {
+      showToast(`Erreur : ${data.error || 'inconnue'}`);
+      resetVerificateur();
+    } else {
+      const statusEl = document.getElementById('verifGameStatus');
+      if (statusEl && data.message) statusEl.textContent = `◈ ${data.message.toUpperCase()} ◈`;
+      _verifPollTimer = setTimeout(() => _pollVerificateur(jobId), 5000);
+    }
+  } catch (_) {
+    _verifPollTimer = setTimeout(() => _pollVerificateur(jobId), 6000);
+  }
+}
+
+function renderVerificateurResults(invoices) {
+  const wrap = document.getElementById('verifResultsArea');
+  if (!invoices.length) {
+    wrap.innerHTML = `<div class="sim-warn">⚠ Aucune facture générique 2025 trouvée.</div>
+      <div style="text-align:center;margin-top:20px">
+        <button class="btn btn-secondary" onclick="resetVerificateur()">← RETOUR</button>
+      </div>`;
+    return;
+  }
+
+  const totalPA    = invoices.reduce((s, r) => s + (parseFloat(r.pa_net) || 0), 0);
+  const nbFourn    = new Set(invoices.map(r => r.fournisseur)).size;
+
+  const rows = invoices.map(inv => {
+    const paBrut = parseFloat(inv.prix_brut)  || 0;
+    const remise = parseFloat(inv.remise_pct) || 0;
+    const paNet  = parseFloat(inv.pa_net)     || (remise ? paBrut * (1 - remise / 100) : paBrut);
+    return `<tr>
+      <td class="cip">${escH(inv.cip || '—')}</td>
+      <td>${escH(inv.libelle || inv.produit || '—')}</td>
+      <td>${escH(inv.fournisseur || '—')}</td>
+      <td>${escH(inv.date_facture || inv.billing_date || '—')}</td>
+      <td class="num">${paBrut.toFixed(2)} €</td>
+      <td class="num remise">${remise ? remise.toFixed(1) + ' %' : '—'}</td>
+      <td class="num pa-net">${paNet.toFixed(2)} €</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="panel">
+      <div class="panel-title">◈ Factures 2025</div>
+      <div class="verif-summary">${invoices.length} lignes · ${nbFourn} fournisseurs · PA NET total : ${totalPA.toLocaleString('fr-FR', {minimumFractionDigits:2})} €</div>
+      <div class="verif-table-wrap">
+        <table class="verif-table">
+          <thead><tr>
+            <th>CIP</th><th>PRODUIT</th><th>FOURNISSEUR</th><th>DATE</th>
+            <th>PRIX BRUT</th><th>REMISE</th><th>PA NET</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:20px">
+      <button class="btn btn-secondary" onclick="resetVerificateur()">← NOUVELLE RÉCUPÉRATION</button>
+    </div>`;
+}
+
 // ── Breakout loader animation ──────────────────────────────────────────────────
-function startBrickGame() {
-  const canvas = document.getElementById('brickCanvas');
+function startBrickGame(canvasId = 'brickCanvas') {
+  const canvas = document.getElementById(canvasId);
   if (!canvas) return;
 
   const W = canvas.parentElement.clientWidth || 800;
@@ -2583,7 +2731,7 @@ function startBrickGame() {
 
   let saveTimer = 0;
   function tick() {
-    if (!document.getElementById('brickCanvas')) return;
+    if (!document.getElementById(canvasId)) return;
 
     if (!gameReady) {
       ctx.fillStyle = C_BG; ctx.fillRect(0, 0, W, H);

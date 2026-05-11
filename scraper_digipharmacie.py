@@ -1,6 +1,12 @@
 """
-Scraper DIGIPHARMACIE — Téléchargement automatique des PDFs de factures
-URL : https://app.digipharmacie.fr/login
+Scraper DIGIPHARMACIE — Factures PDF des laboratoires génériques 2025
+
+Flux :
+  1. Login via camoufox (contourne Cloudflare Turnstile en ~8s)
+  2. Extraction des cookies de session
+  3. Appel paginé de l'API Django REST /invoices/ via curl_cffi
+  4. Filtrage côté client : billing_date 2025 + fournisseur générique
+  5. Téléchargement des PDFs (GCS signed URLs)
 
 Prérequis dans .env :
     BP_EMAIL=votre_email_break_pharma
@@ -13,42 +19,288 @@ Usage :
     python scraper_digipharmacie.py
 """
 
+import json
+import re
 import time
-import urllib.request
 from pathlib import Path
-from urllib.parse import urljoin
 from get_connectors import get_connectors
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+try:
+    from camoufox.sync_api import Camoufox
+except ImportError:
+    raise SystemExit(
+        "❌  camoufox non installé.\n"
+        "    pip install camoufox && python -m camoufox fetch"
+    )
 
-BASE_URL   = "https://app.digipharmacie.fr"
-LOGIN_URL  = "https://app.digipharmacie.fr/login"
-OUTPUT_DIR = Path("pdfs_factures")
+try:
+    from curl_cffi.requests import Session as CurlSession
+except ImportError:
+    raise SystemExit("❌  curl_cffi non installé.\n    pip install curl_cffi")
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Configuration ──────────────────────────────────────────────────────────────
 
-def download_pdf(context, url: str, dest: Path) -> bool:
-    try:
-        cookies    = context.cookies()
-        cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
-        req = urllib.request.Request(url, headers={
-            "Cookie":     cookie_str,
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
-            "Referer":    BASE_URL,
-            "Accept":     "application/pdf,*/*",
-        })
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = resp.read()
-            if len(data) > 500 and (data[:4] == b"%PDF" or "pdf" in resp.headers.get("Content-Type", "").lower()):
-                dest.write_bytes(data)
-                return True
-            print(f"  ⚠️  Réponse non-PDF ({len(data)} octets)")
-    except Exception as e:
-        print(f"  ❌  {e}")
-    return False
+BASE_URL    = "https://app.digipharmacie.fr"
+OUTPUT_DIR  = Path("pdf_factures_generiques")
+PAGE_SIZE   = 100
+YEAR_FILTER = "2025"
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# Mots-clés (minuscules) pour identifier les fournisseurs génériques.
+# Si le nom du fournisseur contient l'un de ces termes, la facture est retenue.
+LABOS_GENERIQUES = [
+    "cerp",
+    "mylan",
+    "viatris",
+    "biogaran",
+    "arrow",
+    "sandoz",
+    "teva",
+    "zentiva",
+    "cooperation pharmaceutique",
+    "cooperation pharma",
+    "alloga",
+    "cristers",
+    "eg labo",
+    " eg ",
+    "ranbaxy",
+    "ratiopharm",
+    "actavis",
+    "hexal",
+    "aurobindo",
+    "intas",
+    "sun pharma",
+    "pharmaki",
+    "strides",
+    "qualimed",
+    "almus",
+    "ibigen",
+    "substipharm",
+    "evolupharm",
+    "medipha",
+    "phlorogine",
+]
+
+
+def is_generic_provider(provider_name: str) -> bool:
+    name = (provider_name or "").lower()
+    return any(kw in name for kw in LABOS_GENERIQUES)
+
+
+# ── Login via camoufox ─────────────────────────────────────────────────────────
+
+def login_and_get_cookies(username: str, password: str) -> dict:
+    """
+    Ouvre app.digipharmacie.fr/login avec camoufox, remplit le formulaire,
+    attend que Cloudflare Turnstile se résolve automatiquement (~8s),
+    puis retourne les cookies de session sous forme de dict.
+    """
+    print("🦊  Démarrage de camoufox (contournement Cloudflare Turnstile)…")
+    cookies = {}
+
+    with Camoufox(headless=True, geoip=True) as browser:
+        page = browser.new_page()
+
+        print(f"  → Navigation vers {BASE_URL}/login/")
+        page.goto(f"{BASE_URL}/login/", timeout=60000)
+
+        # Attendre que le champ email soit disponible (Turnstile peut retarder)
+        try:
+            page.wait_for_selector("input[type='email']", timeout=40000)
+        except Exception:
+            page.screenshot(path="digi_login_debug.png")
+            raise RuntimeError(
+                "Impossible de trouver le formulaire de connexion.\n"
+                "Capture sauvegardée : digi_login_debug.png"
+            )
+
+        print("  → Remplissage du formulaire…")
+        page.locator("input[type='email']").first.fill(username)
+        page.locator("input[type='password']").first.fill(password)
+
+        # Le bouton est type='button' (pas type='submit') → Enter sur le champ password
+        page.locator("input[type='password']").first.press("Enter")
+
+        # Attendre la redirection post-login
+        try:
+            page.wait_for_url("**/dashboard**", timeout=20000)
+        except Exception:
+            try:
+                page.wait_for_function(
+                    "() => !window.location.pathname.includes('/login')",
+                    timeout=15000
+                )
+            except Exception:
+                pass
+
+        current_url = page.url
+        if "/login" in current_url:
+            page.screenshot(path="digi_login_debug.png")
+            raise RuntimeError(
+                f"Échec du login (toujours sur {current_url}).\n"
+                "Capture sauvegardée : digi_login_debug.png"
+            )
+
+        print(f"  ✓  Connecté ! (URL : {current_url})")
+
+        for c in page.context.cookies():
+            cookies[c["name"]] = c["value"]
+
+        page.close()
+
+    required = {"sessionid", "csrftoken"}
+    missing  = required - set(cookies)
+    if missing:
+        raise RuntimeError(f"Cookies manquants après login : {missing}")
+
+    print(f"  ✓  Cookies extraits : {sorted(cookies.keys())}")
+    return cookies
+
+
+# ── Session curl_cffi ──────────────────────────────────────────────────────────
+
+def make_session(cookies: dict) -> CurlSession:
+    sess = CurlSession(impersonate="chrome")
+    sess.cookies.update(cookies)
+    sess.headers.update({
+        "Referer":          f"{BASE_URL}/factures/",
+        "X-CSRFToken":      cookies.get("csrftoken", ""),
+        "Accept":           "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+    })
+    return sess
+
+
+# ── Récupération des factures ──────────────────────────────────────────────────
+
+def fetch_all_invoices_2025(sess: CurlSession) -> list[dict]:
+    """
+    Pagine /api/v1/invoices/ et retourne les factures dont billing_date
+    commence par YEAR_FILTER et dont le fournisseur est générique.
+    """
+    invoices   = []
+    page_num   = 1
+    total_seen = 0
+
+    print(f"\n📋  Récupération des factures (filtre : {YEAR_FILTER}, génériques)…")
+
+    while True:
+        url  = (
+            f"{BASE_URL}/api/v1/invoices/"
+            f"?ordering=-billing_date&page_size={PAGE_SIZE}&page={page_num}"
+        )
+        resp = sess.get(url, timeout=30)
+
+        if resp.status_code != 200:
+            print(f"  ❌  Erreur API page {page_num} : HTTP {resp.status_code}")
+            print(f"       {resp.text[:300]}")
+            break
+
+        data    = resp.json()
+        results = data.get("results", data if isinstance(data, list) else [])
+
+        if not results:
+            break
+
+        total_seen += len(results)
+        stop_early  = False
+
+        for inv in results:
+            billing_date = str(inv.get("billing_date", ""))
+            provider     = (
+                inv.get("provider_ref") or inv.get("provider_name") or ""
+            )
+
+            # Arrêt anticipé : résultats triés par date desc, on ne trouvera plus rien
+            if billing_date and billing_date[:4] < YEAR_FILTER:
+                print(f"  → Date {billing_date} < {YEAR_FILTER}, arrêt de la pagination.")
+                stop_early = True
+                break
+
+            if not billing_date.startswith(YEAR_FILTER):
+                continue
+
+            if is_generic_provider(provider):
+                invoices.append(inv)
+
+        count_str = data.get("count", "?")
+        print(
+            f"  page {page_num} — {total_seen}/{count_str} lues, "
+            f"{len(invoices)} génériques {YEAR_FILTER} retenues"
+        )
+
+        if stop_early or not data.get("next"):
+            break
+
+        page_num += 1
+        time.sleep(0.3)
+
+    return invoices
+
+
+# ── Téléchargement des PDFs ────────────────────────────────────────────────────
+
+def safe_filename(name: str) -> str:
+    return re.sub(r'[^\w\-_\. ]', '_', str(name)).strip()[:80]
+
+
+def download_pdfs(invoices: list[dict], sess: CurlSession) -> int:
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    total   = len(invoices)
+    success = 0
+    skip    = 0
+
+    print(f"\n⬇️   Téléchargement de {total} factures PDF…")
+
+    for i, inv in enumerate(invoices, 1):
+        file_url = inv.get("file") or inv.get("file_url") or ""
+
+        if not file_url:
+            print(f"  [{i}/{total}] ⚠  Pas d'URL PDF pour facture {inv.get('id', '?')}")
+            skip += 1
+            continue
+
+        billing_date = inv.get("billing_date", "inconnu")
+        provider     = safe_filename(
+            inv.get("provider_ref") or inv.get("provider_name") or "inconnu"
+        )
+        inv_id       = inv.get("id", i)
+        number       = inv.get("number") or inv.get("invoice_number") or ""
+        number_part  = f"_{safe_filename(number)}" if number else ""
+        filename     = f"{billing_date}_{provider}{number_part}_{inv_id}.pdf"
+        out_path     = OUTPUT_DIR / filename
+
+        if out_path.exists():
+            print(f"  [{i}/{total}] ⏭  Déjà présent : {filename}")
+            skip += 1
+            continue
+
+        try:
+            # GCS signed URLs sont accessibles directement (sans cookie d'auth Django)
+            dl_resp = sess.get(file_url, timeout=60)
+            if dl_resp.status_code == 200:
+                content = dl_resp.content
+                if len(content) > 500:
+                    out_path.write_bytes(content)
+                    size_kb = len(content) // 1024
+                    print(f"  [{i}/{total}] ✓  {filename} ({size_kb} ko)")
+                    success += 1
+                else:
+                    print(f"  [{i}/{total}] ⚠  Contenu trop court ({len(content)} octets) : {filename}")
+                    skip += 1
+            else:
+                print(f"  [{i}/{total}] ❌  HTTP {dl_resp.status_code} : {filename}")
+                skip += 1
+        except Exception as e:
+            print(f"  [{i}/{total}] ❌  {e}")
+            skip += 1
+
+        time.sleep(0.2)
+
+    print(f"\n📊  {success} téléchargés · {skip} ignorés/erreurs · {total} total")
+    return success
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
     print("🔑  Récupération des identifiants depuis break-pharma.fr…")
@@ -58,104 +310,51 @@ def main():
         print(f"❌  {e}")
         return
 
-    USERNAME = creds["digipharmacie"].get("user", "")
-    PASSWORD = creds["digipharmacie"].get("pass", "")
+    username = creds["digipharmacie"].get("user", "")
+    password = creds["digipharmacie"].get("pass", "")
 
-    if not USERNAME or not PASSWORD:
+    if not username or not password:
         print("❌  Identifiants DIGIPHARMACIE vides.")
         print("    Remplis-les dans break-pharma.fr → bouton CONNECTEUR → DIGIPHARMACIE.")
         return
 
-    OUTPUT_DIR.mkdir(exist_ok=True)
     print(f"📁  Dossier de sortie : {OUTPUT_DIR.resolve()}\n")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(accept_downloads=True)
-        page    = context.new_page()
+    # 1. Login via camoufox
+    try:
+        cookies = login_and_get_cookies(username, password)
+    except RuntimeError as e:
+        print(f"❌  {e}")
+        return
 
-        # ── 1. Connexion ──────────────────────────────────────────────────────
-        print("🔐  Connexion à DIGIPHARMACIE…")
-        page.goto(LOGIN_URL, wait_until="networkidle")
+    # 2. Session curl_cffi avec les cookies
+    sess = make_session(cookies)
 
-        try:
-            page.locator("input[type='email'], input[name='email'], input[name='username'], #email, #username").first.fill(USERNAME)
-            page.locator("input[type='password'], input[name='password'], #password").first.fill(PASSWORD)
-            page.locator("button[type='submit'], input[type='submit'], button:has-text('Connexion'), button:has-text('Se connecter'), button:has-text('Login')").first.click()
-            page.wait_for_load_state("networkidle", timeout=15000)
-        except PlaywrightTimeoutError:
-            print("⚠️  Timeout lors de la connexion.")
+    # 3. Factures génériques 2025
+    invoices = fetch_all_invoices_2025(sess)
 
-        if "login" in page.url.lower():
-            print(f"❌  Échec de la connexion (URL : {page.url})")
-            browser.close()
-            return
-
-        print(f"✅  Connecté ! (URL : {page.url})\n")
-
-        # ── 2. Téléchargement des factures PDF ────────────────────────────────
-        # ⚠️  Adapter la navigation selon la structure réelle du site
-        print("🔍  Recherche des factures PDF…\n")
-
-        downloaded = 0
-        seen       = set()
-
-        pdf_links = page.query_selector_all(
-            "a[href*='.pdf'], a[href*='facture'], a[href*='invoice'], "
-            "a[href*='download'], button:has-text('Télécharger'), "
-            "a:has-text('PDF'), a:has-text('Facture')"
+    if not invoices:
+        print(
+            f"\n⚠️  Aucune facture générique {YEAR_FILTER} trouvée.\n"
+            "   Vérifie la liste LABOS_GENERIQUES ou les identifiants DIGIPHARMACIE."
         )
+        return
 
-        if pdf_links:
-            print(f"📦  {len(pdf_links)} facture(s) détectée(s).\n")
-            for i, link in enumerate(pdf_links, 1):
-                try:
-                    href = link.get_attribute("href") or ""
-                    if not href:
-                        with context.expect_download(timeout=20000) as dl_info:
-                            link.click()
-                        download = dl_info.value
-                        filename = download.suggested_filename or f"facture_{i}.pdf"
-                        dest = OUTPUT_DIR / filename
-                        if str(dest) not in seen:
-                            download.save_as(dest)
-                            seen.add(str(dest))
-                            print(f"[{i}] ✅  {filename}")
-                            downloaded += 1
-                        continue
+    print(f"\n✅  {len(invoices)} factures génériques {YEAR_FILTER} identifiées.")
 
-                    url = urljoin(BASE_URL, href) if not href.startswith("http") else href
-                    if url in seen:
-                        continue
-                    seen.add(url)
+    # Aperçu des fournisseurs
+    providers: dict[str, int] = {}
+    for inv in invoices:
+        p = inv.get("provider_ref") or inv.get("provider_name") or "?"
+        providers[p] = providers.get(p, 0) + 1
 
-                    filename = url.split("/")[-1].split("?")[0] or f"facture_{i}.pdf"
-                    if not filename.lower().endswith(".pdf"):
-                        filename += ".pdf"
-                    dest = OUTPUT_DIR / filename
+    print("\nFournisseurs :")
+    for prov, cnt in sorted(providers.items(), key=lambda x: -x[1]):
+        print(f"  {cnt:4d}  {prov}")
 
-                    if dest.exists():
-                        print(f"[{i}] ⏭️  {filename} déjà téléchargé")
-                        downloaded += 1
-                        continue
-
-                    print(f"[{i}] {filename}")
-                    if download_pdf(context, url, dest):
-                        print(f"  ✅  Sauvegardé")
-                        downloaded += 1
-                    time.sleep(0.3)
-
-                except Exception as e:
-                    print(f"[{i}] ❌  {e}")
-        else:
-            print("⚠️  Aucune facture PDF détectée automatiquement.")
-            page.screenshot(path="digipharmacie_debug.png")
-            print("    → Capture sauvegardée : digipharmacie_debug.png")
-            print("    → Partage cette image pour adapter les sélecteurs.")
-
-        browser.close()
-
-    print(f"\n🎉  Terminé : {downloaded} PDF(s) dans « {OUTPUT_DIR.resolve()} »")
+    # 4. Téléchargement
+    download_pdfs(invoices, sess)
+    print(f"\n🎉  Terminé. PDFs dans : {OUTPUT_DIR.resolve()}")
 
 
 if __name__ == "__main__":
