@@ -1426,6 +1426,8 @@ document.querySelectorAll('.main-tab').forEach(btn => {
     if (page === 'comparateur' || page === 'verificateur') {
       const c = state.connectors;
       if (!c.ospharm.connected || !c.digipharmacie.connected) {
+        const missing = [!c.ospharm.connected && 'OSPHARM DATASTAT', !c.digipharmacie.connected && 'DIGIPHARMACIE'].filter(Boolean).join(' et ');
+        showToast(`Connecteur(s) requis : ${missing}`);
         document.getElementById('btnConnecteur').click();
         return;
       }
