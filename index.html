@@ -1050,8 +1050,10 @@ function applyDefaultExcepts(cond, lab) {
 function mkRsfValues(lab, paliers) {
   return paliers.map(v => {
     const excluded = lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v));
-    const r2 = (excluded || parseFloat(v) === -2.5) ? '0' : '';
-    return { rsf_pct: v, remise2: r2, remise3: '', excluded, hasExcept: false };
+    const defs = !isAdmin && window._rsfDefaults?.[lab]?.[String(v)];
+    const r2 = defs ? defs.remise2 : (excluded || parseFloat(v) === -2.5) ? '0' : '';
+    const r3 = defs ? defs.remise3 : '';
+    return { rsf_pct: v, remise2: r2, remise3: r3, excluded, hasExcept: false };
   });
 }
 
@@ -1142,7 +1144,62 @@ async function saveCloudState(data) {
       { user_id: session.user.id, state_json: data },
       { onConflict: 'user_id' }
     );
+    if (isAdmin) saveRsfDefaults();
   } catch(e) {}
+}
+
+async function saveRsfDefaults() {
+  const sb = window._sbClient;
+  if (!sb || !isAdmin) return;
+  const rows = [];
+  state.labPages.forEach(lp => {
+    if (!lp.selectedLab) return;
+    const seen = {};
+    [...(lp.conditions || []), ...(lp.conditions2025 || [])].forEach(cond => {
+      (cond.rsfValues || []).forEach(r => {
+        const key = String(r.rsf_pct);
+        if (!seen[key] && (r.remise2 || r.remise3)) {
+          seen[key] = { remise2: r.remise2 || '', remise3: r.remise3 || '' };
+        }
+      });
+    });
+    Object.entries(seen).forEach(([rsf_pct, vals]) => {
+      rows.push({ lab: lp.selectedLab, rsf_pct, ...vals });
+    });
+  });
+  if (!rows.length) return;
+  try { await sb.from('rsf_defaults').upsert(rows, { onConflict: 'lab,rsf_pct' }); } catch(e) {}
+}
+
+async function loadRsfDefaults() {
+  const sb = window._sbClient;
+  if (!sb) return;
+  try {
+    const { data } = await sb.from('rsf_defaults').select('lab,rsf_pct,remise2,remise3');
+    if (!data?.length) return;
+    window._rsfDefaults = {};
+    data.forEach(r => {
+      if (!window._rsfDefaults[r.lab]) window._rsfDefaults[r.lab] = {};
+      window._rsfDefaults[r.lab][String(r.rsf_pct)] = { remise2: r.remise2, remise3: r.remise3 };
+    });
+  } catch(e) {}
+}
+
+function applyRsfDefaults() {
+  if (isAdmin || !window._rsfDefaults) return;
+  state.labPages.forEach(lp => {
+    if (!lp.selectedLab) return;
+    const defs = window._rsfDefaults[lp.selectedLab];
+    if (!defs) return;
+    [...(lp.conditions || []), ...(lp.conditions2025 || [])].forEach(cond => {
+      (cond.rsfValues || []).forEach(r => {
+        const d = defs[String(r.rsf_pct)];
+        if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; }
+      });
+    });
+    if (lp._reRenderCondTables) lp._reRenderCondTables();
+    if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();
+  });
 }
 
 function saveState() {
@@ -3212,6 +3269,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       const { data: { session } } = await sb.auth.getSession();
       if (session) {
         isAdmin = (session.user.email === ADMIN_EMAIL);
+        if (!isAdmin) await loadRsfDefaults();
         if (!_isPostReset) {
           const { data: cloud } = await sb.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
@@ -3323,6 +3381,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
         await lp._restoreFromSave2025(sp);
       }
     }
+    applyRsfDefaults();
     renderLabGrid();
     const firstConfigured = state.labPages.find(lp => lp.selectedLab);
     if (firstConfigured) { switchToLab(firstConfigured.uid); renderLabGrid(); }
