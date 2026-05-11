@@ -1,0 +1,110 @@
+"""
+run_job.py — Exécuté par GitHub Actions.
+
+Variables d'environnement requises :
+    USER_ID               Supabase user UUID (passé en input du workflow)
+    SUPABASE_SERVICE_KEY  Clé de service Supabase (GitHub Secret)
+"""
+
+import json
+import os
+import sys
+import urllib.request
+
+# Permettre l'import de scraper.py dans le même dossier
+sys.path.insert(0, os.path.dirname(__file__))
+from scraper import run_scraper  # noqa: E402
+
+SUPA_URL    = "https://fmterazwesiwpwjpkyqi.supabase.co"
+SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
+USER_ID     = os.environ["USER_ID"]
+
+
+# ── Supabase helpers ───────────────────────────────────────────────────────────
+
+def _supa_get_state() -> dict:
+    url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{USER_ID}&select=state_json&limit=1"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "apikey":        SERVICE_KEY,
+            "Authorization": f"Bearer {SERVICE_KEY}",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        rows = json.loads(resp.read())
+    return rows[0]["state_json"] if rows else {}
+
+
+def _supa_patch_state(state: dict):
+    url  = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{USER_ID}"
+    body = json.dumps({"state_json": state}).encode()
+    req  = urllib.request.Request(
+        url, data=body, method="PATCH",
+        headers={
+            "apikey":        SERVICE_KEY,
+            "Authorization": f"Bearer {SERVICE_KEY}",
+            "Content-Type":  "application/json",
+            "Prefer":        "return=minimal",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15):
+        pass
+
+
+def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
+    try:
+        state = _supa_get_state()
+        state["verif_job"] = {
+            "status":   status,
+            "message":  message,
+            "invoices": invoices or [],
+            "error":    error,
+        }
+        _supa_patch_state(state)
+    except Exception as e:
+        print(f"  [warn] Supabase update failed : {e}")
+
+
+def _get_creds() -> dict:
+    state      = _supa_get_state()
+    connectors = state.get("connectors", {})
+    digi       = connectors.get("digipharmacie", {})
+    user       = digi.get("user", "")
+    passwd     = digi.get("pass", "")
+    if not user or not passwd:
+        raise ValueError(
+            "Identifiants DIGIPHARMACIE manquants dans Supabase.\n"
+            "Configure-les dans break-pharma.fr → CONNECTEUR."
+        )
+    return {"user": user, "pass": passwd}
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
+
+def main():
+    print(f"🚀  Job démarré pour user_id={USER_ID}")
+    _update_job("running", "Initialisation…")
+
+    try:
+        creds = _get_creds()
+    except ValueError as e:
+        _update_job("error", error=str(e))
+        sys.exit(1)
+
+    def progress(msg: str):
+        print(f"  → {msg}")
+        _update_job("running", msg)
+
+    try:
+        invoices = run_scraper(creds, progress)
+        _update_job("done", f"{len(invoices)} lignes extraites", invoices)
+        print(f"\n✅  {len(invoices)} lignes produits extraites et sauvegardées.")
+    except Exception as e:
+        _update_job("error", error=str(e))
+        print(f"\n❌  {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

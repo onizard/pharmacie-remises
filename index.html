@@ -1147,7 +1147,8 @@
 const SUPA_URL    = 'https://fmterazwesiwpwjpkyqi.supabase.co';
 const SUPA_KEY    = 'sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w';
 const ADMIN_EMAIL = 'oliviernizard@gmail.com';
-const SCRAPER_API = ''; // URL de l'API Render — à renseigner après déploiement
+const GH_REPO     = 'onizard/pharmacie-remises';
+const GH_TOKEN    = ''; // GitHub PAT (workflow scope) — à renseigner
 let   isAdmin     = false;
 
 const LABS_ALL = ['Arrow','Biogaran','Viatris','EG','Sandoz','Teva','Zentiva','Cristers','Zydus','Pfizer'];
@@ -2403,64 +2404,119 @@ function resetVerificateur() {
 }
 
 async function launchVerificateur() {
-  if (!SCRAPER_API) {
-    showToast('API non encore déployée — revenez bientôt.');
+  if (!GH_TOKEN) {
+    showToast('Token GitHub non configuré — contactez l\'administrateur.');
     return;
   }
   const btnEl = document.getElementById('btnLaunchVerif');
   const msgEl = document.getElementById('verifMsg');
   btnEl.disabled = true;
-  msgEl.textContent = '⏳ Connexion à DIGIPHARMACIE…';
+  msgEl.textContent = '⏳ Lancement du job…';
 
-  let token = '';
+  // Récupérer le user_id Supabase
+  let userId = '';
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
-    token = session?.access_token || '';
+    userId = session?.user?.id || '';
   } catch (_) {}
 
+  if (!userId) {
+    msgEl.textContent = '❌ Session expirée — rechargez la page.';
+    btnEl.disabled = false;
+    return;
+  }
+
+  // Marquer le job comme "running" dans Supabase (pour poll immédiat)
   try {
-    const resp = await fetch(`${SCRAPER_API}/scrape`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const { job_id } = await resp.json();
+    await _verifSupaPatch({ status: 'running', message: 'Job en attente…', invoices: [], error: '' });
+  } catch (_) {}
 
-    document.getElementById('verifInitPanel').style.display   = 'none';
-    document.getElementById('verifGameArea').style.display    = '';
-    document.getElementById('verifResultsArea').style.display = 'none';
-
-    const canvas = document.getElementById('verifCanvas');
-    canvas.width  = (canvas.parentElement.clientWidth || 800);
-    canvas.height = 340;
-    startBrickGame('verifCanvas');
-
-    _pollVerificateur(job_id);
+  // Déclencher le workflow GitHub Actions
+  try {
+    const resp = await fetch(
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/scraper.yml/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GH_TOKEN}`,
+          'Accept':        'application/vnd.github.v3+json',
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({ ref: 'master', inputs: { user_id: userId } }),
+      }
+    );
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`GitHub API ${resp.status} : ${err}`);
+    }
   } catch (e) {
     msgEl.textContent = `❌ ${e.message}`;
     btnEl.disabled = false;
+    return;
   }
+
+  // Afficher le jeu pendant le traitement
+  document.getElementById('verifInitPanel').style.display   = 'none';
+  document.getElementById('verifGameArea').style.display    = '';
+  document.getElementById('verifResultsArea').style.display = 'none';
+
+  const canvas = document.getElementById('verifCanvas');
+  canvas.width  = (canvas.parentElement.clientWidth || 800);
+  canvas.height = 340;
+  startBrickGame('verifCanvas');
+
+  // Poll Supabase toutes les 6 secondes
+  _verifPollTimer = setTimeout(_pollVerificateur, 6000);
 }
 
-async function _pollVerificateur(jobId) {
+async function _verifSupaGet() {
+  const { data: { session } } = await window._sbClient.auth.getSession();
+  const userId = session?.user?.id;
+  if (!userId) throw new Error('Session expirée');
+  const url = `${SUPA_URL}/rest/v1/user_state?user_id=eq.${userId}&select=state_json&limit=1`;
+  const resp = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${session.access_token}` } });
+  const rows = await resp.json();
+  return rows[0]?.state_json || {};
+}
+
+async function _verifSupaPatch(job) {
+  const { data: { session } } = await window._sbClient.auth.getSession();
+  const userId = session?.user?.id;
+  const state  = await _verifSupaGet();
+  state.verif_job = job;
+  const url = `${SUPA_URL}/rest/v1/user_state?user_id=eq.${userId}`;
+  await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SUPA_KEY, 'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json', 'Prefer': 'return=minimal',
+    },
+    body: JSON.stringify({ state_json: state }),
+  });
+}
+
+async function _pollVerificateur() {
   try {
-    const resp = await fetch(`${SCRAPER_API}/status/${jobId}`);
-    const data = await resp.json();
-    if (data.status === 'done') {
+    const state = await _verifSupaGet();
+    const job   = state.verif_job || {};
+    const statusEl = document.getElementById('verifGameStatus');
+
+    if (job.status === 'done') {
       document.getElementById('verifGameArea').style.display = 'none';
-      renderVerificateurResults(data.invoices || []);
+      renderVerificateurResults(job.invoices || []);
       document.getElementById('verifResultsArea').style.display = '';
-    } else if (data.status === 'error') {
-      showToast(`Erreur : ${data.error || 'inconnue'}`);
-      resetVerificateur();
-    } else {
-      const statusEl = document.getElementById('verifGameStatus');
-      if (statusEl && data.message) statusEl.textContent = `◈ ${data.message.toUpperCase()} ◈`;
-      _verifPollTimer = setTimeout(() => _pollVerificateur(jobId), 5000);
+      return;
     }
-  } catch (_) {
-    _verifPollTimer = setTimeout(() => _pollVerificateur(jobId), 6000);
-  }
+    if (job.status === 'error') {
+      showToast(`Erreur scraper : ${job.error || 'inconnue'}`);
+      resetVerificateur();
+      return;
+    }
+    if (statusEl && job.message) {
+      statusEl.textContent = `◈ ${job.message.toUpperCase()} ◈`;
+    }
+  } catch (_) {}
+  _verifPollTimer = setTimeout(_pollVerificateur, 6000);
 }
 
 function renderVerificateurResults(invoices) {
