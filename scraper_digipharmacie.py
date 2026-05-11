@@ -2,49 +2,33 @@
 Scraper DIGIPHARMACIE — Téléchargement automatique des PDFs de factures
 URL : https://app.digipharmacie.fr/login
 
-Dépendances :
-    pip install playwright
-    playwright install chromium
+Prérequis dans .env :
+    BP_EMAIL=votre_email_break_pharma
+    BP_PASSWORD=votre_mot_de_passe_break_pharma
+
+Les identifiants DIGIPHARMACIE sont lus depuis votre compte break-pharma.fr
+(bouton CONNECTEUR → DIGIPHARMACIE).
 
 Usage :
     python scraper_digipharmacie.py
 """
 
-import os
 import time
 import urllib.request
 from pathlib import Path
 from urllib.parse import urljoin
+from get_connectors import get_connectors
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-
-# ── Chargement .env ───────────────────────────────────────────────────────────
-
-def load_env(filepath=None):
-    env_path = Path(filepath) if filepath else Path(__file__).parent / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        value = value.strip().strip('"').strip("'")
-        os.environ[key.strip()] = value
-
-load_env()
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 BASE_URL   = "https://app.digipharmacie.fr"
 LOGIN_URL  = "https://app.digipharmacie.fr/login"
-USERNAME   = os.environ.get("DIGIPHARMACIE_USER", "")
-PASSWORD   = os.environ.get("DIGIPHARMACIE_PASSWORD", "")
 OUTPUT_DIR = Path("pdfs_factures")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def download_pdf(context, url: str, dest: Path) -> bool:
-    """Télécharge un PDF en réutilisant les cookies de session Playwright."""
     try:
         cookies    = context.cookies()
         cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
@@ -59,17 +43,27 @@ def download_pdf(context, url: str, dest: Path) -> bool:
             if len(data) > 500 and (data[:4] == b"%PDF" or "pdf" in resp.headers.get("Content-Type", "").lower()):
                 dest.write_bytes(data)
                 return True
-            else:
-                print(f"  ⚠️  Réponse non-PDF ({len(data)} octets)")
+            print(f"  ⚠️  Réponse non-PDF ({len(data)} octets)")
     except Exception as e:
-        print(f"  ❌  Erreur : {e}")
+        print(f"  ❌  {e}")
     return False
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    print("🔑  Récupération des identifiants depuis break-pharma.fr…")
+    try:
+        creds = get_connectors()
+    except Exception as e:
+        print(f"❌  {e}")
+        return
+
+    USERNAME = creds["digipharmacie"].get("user", "")
+    PASSWORD = creds["digipharmacie"].get("pass", "")
+
     if not USERNAME or not PASSWORD:
-        print("❌  DIGIPHARMACIE_USER et DIGIPHARMACIE_PASSWORD non définis dans le fichier .env")
+        print("❌  Identifiants DIGIPHARMACIE vides.")
+        print("    Remplis-les dans break-pharma.fr → bouton CONNECTEUR → DIGIPHARMACIE.")
         return
 
     OUTPUT_DIR.mkdir(exist_ok=True)
@@ -94,19 +88,18 @@ def main():
 
         if "login" in page.url.lower():
             print(f"❌  Échec de la connexion (URL : {page.url})")
-            print("    Vérifie DIGIPHARMACIE_USER / DIGIPHARMACIE_PASSWORD dans le fichier .env")
             browser.close()
             return
 
         print(f"✅  Connecté ! (URL : {page.url})\n")
 
-        # ── 2. Navigation vers les factures ───────────────────────────────────
-        # ⚠️  Adapter la navigation selon la structure du site DIGIPHARMACIE
+        # ── 2. Téléchargement des factures PDF ────────────────────────────────
+        # ⚠️  Adapter la navigation selon la structure réelle du site
         print("🔍  Recherche des factures PDF…\n")
 
         downloaded = 0
+        seen       = set()
 
-        # Stratégie A : liens directs vers des PDFs
         pdf_links = page.query_selector_all(
             "a[href*='.pdf'], a[href*='facture'], a[href*='invoice'], "
             "a[href*='download'], button:has-text('Télécharger'), "
@@ -114,13 +107,11 @@ def main():
         )
 
         if pdf_links:
-            print(f"📦  {len(pdf_links)} facture(s) PDF détectée(s).\n")
-            seen = set()
+            print(f"📦  {len(pdf_links)} facture(s) détectée(s).\n")
             for i, link in enumerate(pdf_links, 1):
                 try:
                     href = link.get_attribute("href") or ""
                     if not href:
-                        # Bouton de téléchargement dynamique
                         with context.expect_download(timeout=20000) as dl_info:
                             link.click()
                         download = dl_info.value
@@ -158,14 +149,13 @@ def main():
                     print(f"[{i}] ❌  {e}")
         else:
             print("⚠️  Aucune facture PDF détectée automatiquement.")
-            print("    Prends une capture pour inspecter la page :")
             page.screenshot(path="digipharmacie_debug.png")
             print("    → Capture sauvegardée : digipharmacie_debug.png")
-            print("    → Inspecte cette image et adapte les sélecteurs dans ce script.")
+            print("    → Partage cette image pour adapter les sélecteurs.")
 
         browser.close()
 
-    print(f"\n🎉  Terminé : {downloaded} PDF(s) téléchargé(s) dans « {OUTPUT_DIR.resolve()} »")
+    print(f"\n🎉  Terminé : {downloaded} PDF(s) dans « {OUTPUT_DIR.resolve()} »")
 
 
 if __name__ == "__main__":

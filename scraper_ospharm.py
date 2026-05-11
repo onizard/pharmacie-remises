@@ -2,47 +2,43 @@
 Scraper OSPHARM DATASTAT — Téléchargement automatique des CSV de ventes
 URL : https://accounts.dev.ospharm.org/
 
-Dépendances :
-    pip install playwright
-    playwright install chromium
+Prérequis dans .env :
+    BP_EMAIL=votre_email_break_pharma
+    BP_PASSWORD=votre_mot_de_passe_break_pharma
+
+Les identifiants OSPHARM sont lus depuis votre compte break-pharma.fr
+(bouton CONNECTEUR → OSPHARM DATASTAT).
 
 Usage :
     python scraper_ospharm.py
 """
 
-import os
 import time
 from pathlib import Path
+from get_connectors import get_connectors
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-
-# ── Chargement .env ───────────────────────────────────────────────────────────
-
-def load_env(filepath=None):
-    env_path = Path(filepath) if filepath else Path(__file__).parent / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        value = value.strip().strip('"').strip("'")
-        os.environ[key.strip()] = value
-
-load_env()
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 LOGIN_URL  = "https://accounts.dev.ospharm.org/"
-USERNAME   = os.environ.get("OSPHARM_USER", "")
-PASSWORD   = os.environ.get("OSPHARM_PASSWORD", "")
 OUTPUT_DIR = Path("csv_ventes")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    print("🔑  Récupération des identifiants depuis break-pharma.fr…")
+    try:
+        creds = get_connectors()
+    except Exception as e:
+        print(f"❌  {e}")
+        return
+
+    USERNAME = creds["ospharm"].get("user", "")
+    PASSWORD = creds["ospharm"].get("pass", "")
+
     if not USERNAME or not PASSWORD:
-        print("❌  OSPHARM_USER et OSPHARM_PASSWORD non définis dans le fichier .env")
+        print("❌  Identifiants OSPHARM vides.")
+        print("    Remplis-les dans break-pharma.fr → bouton CONNECTEUR → OSPHARM DATASTAT.")
         return
 
     OUTPUT_DIR.mkdir(exist_ok=True)
@@ -57,8 +53,6 @@ def main():
         print("🔐  Connexion à OSPHARM DATASTAT…")
         page.goto(LOGIN_URL, wait_until="networkidle")
 
-        # Remplissage du formulaire de connexion
-        # ⚠️  Adapter les sélecteurs après inspection du site
         try:
             page.locator("input[type='email'], input[name='username'], input[name='email'], #username").first.fill(USERNAME)
             page.locator("input[type='password'], input[name='password'], #password").first.fill(PASSWORD)
@@ -69,20 +63,17 @@ def main():
 
         if "login" in page.url.lower() or "accounts" in page.url.lower():
             print(f"❌  Échec de la connexion (URL : {page.url})")
-            print("    Vérifie OSPHARM_USER / OSPHARM_PASSWORD dans le fichier .env")
             browser.close()
             return
 
         print(f"✅  Connecté ! (URL : {page.url})\n")
 
         # ── 2. Navigation vers les exports CSV ────────────────────────────────
-        # ⚠️  Adapter la navigation selon la structure du site OSPHARM DATASTAT
+        # ⚠️  Adapter la navigation selon la structure réelle du site
         print("🔍  Recherche des exports CSV de ventes…\n")
 
         downloaded = 0
-
-        # Stratégie : chercher des liens d'export CSV ou des boutons de téléchargement
-        csv_links = page.query_selector_all(
+        csv_links  = page.query_selector_all(
             "a[href*='.csv'], a[href*='export'], a[href*='download'], "
             "button:has-text('Export'), button:has-text('CSV'), "
             "a:has-text('Export'), a:has-text('Télécharger'), a:has-text('CSV')"
@@ -96,23 +87,22 @@ def main():
                         link.click()
                     download = dl_info.value
                     filename = download.suggested_filename or f"ventes_{i}.csv"
-                    dest = OUTPUT_DIR / filename
+                    dest     = OUTPUT_DIR / filename
                     download.save_as(dest)
                     print(f"[{i}] ✅  {filename}")
                     downloaded += 1
                     time.sleep(0.5)
                 except Exception as e:
-                    print(f"[{i}] ❌  Erreur : {e}")
+                    print(f"[{i}] ❌  {e}")
         else:
             print("⚠️  Aucun lien CSV détecté automatiquement.")
-            print("    Prends une capture pour inspecter la page :")
             page.screenshot(path="ospharm_debug.png")
             print("    → Capture sauvegardée : ospharm_debug.png")
-            print("    → Inspecte cette image et adapte les sélecteurs dans ce script.")
+            print("    → Partage cette image pour adapter les sélecteurs.")
 
         browser.close()
 
-    print(f"\n🎉  Terminé : {downloaded} fichier(s) téléchargé(s) dans « {OUTPUT_DIR.resolve()} »")
+    print(f"\n🎉  Terminé : {downloaded} fichier(s) dans « {OUTPUT_DIR.resolve()} »")
 
 
 if __name__ == "__main__":
