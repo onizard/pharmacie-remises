@@ -647,6 +647,14 @@
   .conn-status { font-size: 11px; margin-top: 8px; min-height: 14px; }
   .conn-status.ok { color: var(--green); }
   .conn-status.ko { color: var(--red); }
+  .conn-test-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .conn-test-btn { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 2px; padding: 4px 12px; background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); cursor: pointer; transition: border-color .2s,color .2s; white-space: nowrap; }
+  .conn-test-btn:hover:not(:disabled) { border-color: var(--cyan-dim); color: var(--cyan); }
+  .conn-test-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .conn-test-result { font-family: 'Share Tech Mono', monospace; font-size: 11px; line-height: 1.4; }
+  .conn-test-result.ok { color: var(--green); }
+  .conn-test-result.ko { color: var(--red); }
+  .conn-test-result.warn { color: var(--amber); }
 .conn-save { display: block; width: 100%; margin-top: 22px; font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; padding: 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); transition: all .2s; }
   .conn-save:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
 
@@ -925,6 +933,10 @@
             </div>
           </div>
           <div class="conn-status" id="ospStatus"></div>
+          <div class="conn-test-row">
+            <button class="conn-test-btn" id="ospTest">TESTER</button>
+            <span class="conn-test-result" id="ospTestResult"></span>
+          </div>
         </div>
         <!-- DIGIPHARMACIE -->
         <div class="conn-site">
@@ -941,6 +953,10 @@
             </div>
           </div>
           <div class="conn-status" id="digiStatus"></div>
+          <div class="conn-test-row">
+            <button class="conn-test-btn" id="digiTest">TESTER</button>
+            <span class="conn-test-result" id="digiTestResult"></span>
+          </div>
         </div>
       </div>
       <p style="margin-top:20px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;line-height:1.6;letter-spacing:.5px">
@@ -3603,6 +3619,47 @@ function initConnecteurModal() {
     saveState();
     setTimeout(closeModal, 600);
   });
+
+  async function testConn(url, btnEl, resultEl, getUser, getPass) {
+    const user = getUser();
+    const pass = getPass();
+    if (!user || !pass) {
+      resultEl.textContent = '⚠ Identifiants vides';
+      resultEl.className = 'conn-test-result warn';
+      return;
+    }
+    btnEl.disabled = true;
+    resultEl.textContent = '⏳ Test en cours…';
+    resultEl.className = 'conn-test-result';
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      await fetch(url, { mode: 'no-cors', signal: ctrl.signal });
+      clearTimeout(timer);
+      resultEl.textContent = '✓ Serveur accessible';
+      resultEl.className = 'conn-test-result ok';
+    } catch(e) {
+      resultEl.textContent = e.name === 'AbortError' ? '✗ Délai dépassé' : '✗ Serveur inaccessible';
+      resultEl.className = 'conn-test-result ko';
+    } finally {
+      btnEl.disabled = false;
+    }
+  }
+
+  document.getElementById('ospTest').addEventListener('click', () => testConn(
+    'https://accounts.dev.ospharm.org/',
+    document.getElementById('ospTest'),
+    document.getElementById('ospTestResult'),
+    () => document.getElementById('ospUser').value.trim(),
+    () => document.getElementById('ospPass').value
+  ));
+  document.getElementById('digiTest').addEventListener('click', () => testConn(
+    'https://app.digipharmacie.fr/login',
+    document.getElementById('digiTest'),
+    document.getElementById('digiTestResult'),
+    () => document.getElementById('digiUser').value.trim(),
+    () => document.getElementById('digiPass').value
+  ));
 }
 </script>
 
