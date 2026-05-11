@@ -3,11 +3,8 @@ test_connector.py — Teste uniquement le login sur OSPHARM ou DIGIPHARMACIE.
 Écrit le résultat dans Supabase : state_json.conn_test.{connector}
 """
 
-import base64
-import hashlib
 import json
 import os
-import secrets
 import sys
 import urllib.request
 
@@ -16,10 +13,7 @@ SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 USER_ID     = os.environ["USER_ID"]
 CONNECTOR   = os.environ["CONNECTOR"]   # 'ospharm' or 'digipharmacie'
 
-CLIENT_ID     = "c44d25be-29b4-4379-a38a-83eb1473f5bd"
-CLIENT_SECRET = "02b7df13-cec6-4808-afb2-d04635a7ae1f"
-REDIRECT_URI  = "https://datastat.ospharm.org"
-AUTH_BASE     = "https://accounts.dev.ospharm.org/"
+OSPHARM_URL = "https://datastat.ospharm.org/"
 
 
 # ── Supabase ───────────────────────────────────────────────────────────────────
@@ -60,24 +54,15 @@ def _get_creds() -> dict:
 def test_ospharm(creds: dict):
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-    verifier  = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
-    challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(verifier.encode()).digest()
-    ).rstrip(b"=").decode()
-
-    login_url = (
-        f"{AUTH_BASE}?client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}"
-        f"&code_challenge_method=S256&code_challenge={challenge}"
-        f"&redirect_uri={REDIRECT_URI}"
-    )
-
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page    = browser.new_context().new_page()
-        page.goto(login_url, wait_until="networkidle", timeout=30_000)
+
+        # Aller sur le site directement — il redirige vers le formulaire OAuth
+        page.goto(OSPHARM_URL, wait_until="networkidle", timeout=30_000)
 
         try:
-            page.locator("input[type='email'],input[name='username'],input[name='email']").first.fill(creds["user"], timeout=10_000)
+            page.locator("input[type='email'],input[name='username'],input[name='email']").first.fill(creds["user"], timeout=15_000)
             page.locator("input[type='password'],input[name='password']").first.fill(creds["pass"], timeout=5_000)
             page.locator("button[type='submit'],input[type='submit']").first.click(timeout=5_000)
             try:
@@ -88,7 +73,7 @@ def test_ospharm(creds: dict):
             browser.close()
             raise RuntimeError(f"Timeout formulaire : {e}")
 
-        ok  = "datastat.ospharm.org" in page.url
+        ok  = "datastat.ospharm.org" in page.url and "accounts" not in page.url
         url = page.url
         browser.close()
 
