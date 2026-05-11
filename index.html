@@ -1476,16 +1476,13 @@ function initLabPage(conf) {
     const caInp = document.getElementById(`caInp-${uid}-${cond.uid}`);
     rgInp.value = cond.remiseGlobale !== null ? cond.remiseGlobale : '';
     caInp.value = cond.caCondition  !== null ? cond.caCondition  : '';
-    if (!isAdmin) { rgInp.readOnly = true; caInp.readOnly = true; }
     rgInp.addEventListener('input', () => {
-      if (!isAdmin) return;
       const v = parseFloat(rgInp.value.replace(',', '.'));
       cond.remiseGlobale = isNaN(v) ? null : v;
       autoFillCond(cond);
       checkDone();
     });
     caInp.addEventListener('input', () => {
-      if (!isAdmin) return;
       const v = parseFloat(caInp.value.replace(',', '.').replace(/\s/g, ''));
       cond.caCondition = isNaN(v) ? null : v;
       applyRsf25Default(cond);
@@ -1531,7 +1528,6 @@ function initLabPage(conf) {
       const radio = document.createElement('input');
       radio.type = 'radio'; radio.name = `rsfOnly-${uid}-${cond.uid}`; radio.value = val;
       radio.checked = val === 'OUI' ? cond.rsfOnly.enabled : !cond.rsfOnly.enabled;
-      if (!isAdmin) radio.disabled = true;
       label.appendChild(radio); label.appendChild(document.createTextNode(' ' + val));
       radios.appendChild(label);
     });
@@ -1707,9 +1703,7 @@ function initLabPage(conf) {
       inp2.placeholder = 'ex : 5.00'; inp2.value = row.remise2;
       if (row.remise2) inp2.classList.add('auto-c');
       if (row.excluded) inp2.classList.add('excl-r2');
-      if (!isAdmin) inp2.readOnly = true;
       inp2.addEventListener('input', e => {
-        if (!isAdmin) return;
         cond.rsfValues[idx].remise2 = e.target.value;
         inp2.classList.remove('auto-c');
         cond.rsfValues[idx].excluded = false;
@@ -1723,15 +1717,12 @@ function initLabPage(conf) {
       inp3.type = 'text'; inp3.className = 'rsf-input inp-r3';
       inp3.placeholder = 'ex : 2.50'; inp3.value = row.remise3;
       if (row.remise3) inp3.classList.add('auto-a');
-      if (!isAdmin) inp3.readOnly = true;
-      inp3.addEventListener('input', e => { if (!isAdmin) return; cond.rsfValues[idx].remise3 = e.target.value; inp3.classList.remove('auto-a'); });
+      inp3.addEventListener('input', e => { cond.rsfValues[idx].remise3 = e.target.value; inp3.classList.remove('auto-a'); });
       const td3 = document.createElement('td'); td3.className = 'col-r3'; td3.appendChild(inp3); tr.appendChild(td3);
 
       const cbExcpt = document.createElement('input');
       cbExcpt.type = 'checkbox'; cbExcpt.className = 'excpt-check'; cbExcpt.checked = row.hasExcept;
-      if (!isAdmin) cbExcpt.disabled = true;
       cbExcpt.addEventListener('change', () => {
-        if (!isAdmin) return;
         cond.rsfValues[idx].hasExcept = cbExcpt.checked;
         renderRowExcepts(cond, excptsEl);
         saveState();
