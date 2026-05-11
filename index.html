@@ -945,33 +945,6 @@
       <button class="conn-close" id="connClose">✕</button>
       <div class="conn-title">CONNECTEURS</div>
       <div class="conn-sites">
-        <!-- OSPHARM -->
-        <div class="conn-site">
-          <div id="ospFormView">
-            <div class="conn-site-title">OSPHARM DATASTAT</div>
-            <div class="conn-field">
-              <div class="conn-label">Identifiant</div>
-              <input class="conn-input" id="ospUser" type="text" autocomplete="username" placeholder="Login" />
-            </div>
-            <div class="conn-field">
-              <div class="conn-label">Mot de passe</div>
-              <div class="conn-input-wrap">
-                <input class="conn-input" id="ospPass" type="password" autocomplete="current-password" placeholder="••••••••" />
-                <button class="conn-eye" data-target="ospPass" title="Afficher/masquer">👁</button>
-              </div>
-            </div>
-            <div class="conn-test-row">
-              <button class="conn-test-btn" id="ospTest">CONNECTER</button>
-              <span class="conn-test-result" id="ospTestResult"></span>
-            </div>
-          </div>
-          <div class="conn-connected-view" id="ospConnView" style="display:none">
-            <div class="conn-check-big">✓</div>
-            <div class="conn-connected-name">OSPHARM DATASTAT</div>
-            <div class="conn-job-status" id="ospJobStatus"></div>
-            <button class="btn btn-secondary conn-disconnect-btn" id="ospDisconnect" style="display:none">RETIRER</button>
-          </div>
-        </div>
         <!-- DIGIPHARMACIE -->
         <div class="conn-site">
           <div id="digiFormView">
@@ -997,6 +970,33 @@
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="btn btn-secondary conn-disconnect-btn" id="digiDisconnect" style="display:none">RETIRER</button>
+          </div>
+        </div>
+        <!-- OSPHARM -->
+        <div class="conn-site">
+          <div id="ospFormView">
+            <div class="conn-site-title">OSPHARM DATASTAT</div>
+            <div class="conn-field">
+              <div class="conn-label">Identifiant</div>
+              <input class="conn-input" id="ospUser" type="text" autocomplete="username" placeholder="Login" />
+            </div>
+            <div class="conn-field">
+              <div class="conn-label">Mot de passe</div>
+              <div class="conn-input-wrap">
+                <input class="conn-input" id="ospPass" type="password" autocomplete="current-password" placeholder="••••••••" />
+                <button class="conn-eye" data-target="ospPass" title="Afficher/masquer">👁</button>
+              </div>
+            </div>
+            <div class="conn-test-row">
+              <button class="conn-test-btn" id="ospTest">CONNECTER</button>
+              <span class="conn-test-result" id="ospTestResult"></span>
+            </div>
+          </div>
+          <div class="conn-connected-view" id="ospConnView" style="display:none">
+            <div class="conn-check-big">✓</div>
+            <div class="conn-connected-name">OSPHARM DATASTAT</div>
+            <div class="conn-job-status" id="ospJobStatus"></div>
+            <button class="btn btn-secondary conn-disconnect-btn" id="ospDisconnect" style="display:none">RETIRER</button>
           </div>
         </div>
       </div>
