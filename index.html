@@ -2079,9 +2079,12 @@ function renderChips(chipsWrap, exc) {
     const chip = document.createElement('div');
     chip.className = 'chip';
     const lbl = document.createElement('span'); lbl.textContent = lib.text;
-    const btn = document.createElement('button'); btn.className = 'chip-remove'; btn.textContent = '✕'; btn.title = 'Supprimer';
-    btn.addEventListener('click', () => { exc.libelles = exc.libelles.filter(l => l.id !== lib.id); renderChips(chipsWrap, exc); saveState(); });
-    chip.appendChild(lbl); chip.appendChild(btn);
+    chip.appendChild(lbl);
+    if (isAdmin) {
+      const btn = document.createElement('button'); btn.className = 'chip-remove'; btn.textContent = '✕'; btn.title = 'Supprimer';
+      btn.addEventListener('click', () => { exc.libelles = exc.libelles.filter(l => l.id !== lib.id); renderChips(chipsWrap, exc); saveState(); });
+      chip.appendChild(btn);
+    }
     chipsWrap.appendChild(chip);
   });
 }
