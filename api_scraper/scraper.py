@@ -1,8 +1,10 @@
 """
-Scraper DIGIPHARMACIE — login camoufox + fetch() JS dans le navigateur
+Scraper DIGIPHARMACIE — login camoufox + interception réseau
 
-Les appels API et téléchargements PDF passent par page.evaluate(fetch(...))
-pour utiliser la session navigateur complète (cookies HttpOnly inclus).
+Stratégie :
+1. Login camoufox (contourne Cloudflare)
+2. Naviguer sur /factures/ et intercepter les réponses API que la SPA fait
+3. Pour la pagination : fetch() JS depuis le contexte /factures/
 """
 
 import base64
@@ -44,11 +46,127 @@ def _get_csrf(page) -> str:
     return ""
 
 
-def _fetch_json(page, url: str, csrf: str) -> dict | list:
-    """Appel API via fetch() JS dans le contexte navigateur."""
+# ── Récupération des factures ──────────────────────────────────────────────────
+
+def _fetch_invoices(page, progress: Callable) -> list[dict]:
+    progress("Navigation vers les factures…")
+
+    # Capturer la première réponse API que la SPA fait elle-même
+    first_data = {}
+    first_api_url = [None]
+
+    def on_response(response):
+        if first_data:
+            return
+        url = response.url
+        if ("invoices" in url or "facture" in url.lower()) and response.status == 200:
+            try:
+                body = response.json()
+                if isinstance(body, dict) and ("results" in body or "count" in body):
+                    first_data.update(body)
+                    first_api_url[0] = url
+            except Exception:
+                pass
+
+    page.on("response", on_response)
+    page.goto(f"{BASE_URL}/factures/", wait_until="networkidle", timeout=60_000)
+    page.wait_for_timeout(4000)
+    page.off("response", on_response)
+
+    # Si la SPA a fait un appel API, on a la vraie URL et le vrai format
+    if first_data and first_api_url[0]:
+        progress(f"API détectée : {first_api_url[0]}")
+        return _paginate_from_browser(page, first_data, first_api_url[0], progress)
+
+    # Fallback : tenter l'URL standard depuis le contexte /factures/
+    progress("Tentative API directe depuis /factures/…")
+    csrf = _get_csrf(page)
+    api_url = (
+        f"{BASE_URL}/api/v1/invoices/"
+        f"?ordering=-billing_date&page_size={PAGE_SIZE}&page=1"
+    )
+    return _paginate_fetch(page, api_url, csrf, progress)
+
+
+def _paginate_from_browser(page, first_data: dict, first_url: str, progress: Callable) -> list[dict]:
+    """Parcourt toutes les pages en partant des données interceptées."""
+    invoices    = []
+    total_seen  = 0
+    page_num    = 1
+    csrf        = _get_csrf(page)
+
+    data = first_data
+    while True:
+        results = data.get("results", data if isinstance(data, list) else [])
+        if not results:
+            break
+
+        total_seen += len(results)
+        stop_early  = False
+
+        for inv in results:
+            date     = str(inv.get("billing_date", ""))
+            provider = inv.get("provider_ref") or inv.get("provider_name") or ""
+            if date and date[:4] < YEAR:
+                stop_early = True
+                break
+            if date.startswith(YEAR) and _is_generic(provider):
+                invoices.append(inv)
+
+        progress(f"Page {page_num} — {total_seen} lues · {len(invoices)} génériques {YEAR}")
+
+        next_url = data.get("next")
+        if stop_early or not next_url:
+            break
+
+        page_num += 1
+        data = _js_fetch_json(page, next_url, csrf)
+        time.sleep(0.3)
+
+    return invoices
+
+
+def _paginate_fetch(page, start_url: str, csrf: str, progress: Callable) -> list[dict]:
+    """Appels fetch() JS depuis le contexte navigateur courant."""
+    invoices, page_num, total_seen = [], 1, 0
+    url = start_url
+
+    while True:
+        data    = _js_fetch_json(page, url, csrf)
+        results = data.get("results", data if isinstance(data, list) else [])
+        if not results:
+            break
+
+        total_seen += len(results)
+        stop_early  = False
+
+        for inv in results:
+            date     = str(inv.get("billing_date", ""))
+            provider = inv.get("provider_ref") or inv.get("provider_name") or ""
+            if date and date[:4] < YEAR:
+                stop_early = True
+                break
+            if date.startswith(YEAR) and _is_generic(provider):
+                invoices.append(inv)
+
+        progress(f"Page {page_num} — {total_seen} lues · {len(invoices)} génériques {YEAR}")
+
+        next_url = data.get("next")
+        if stop_early or not next_url:
+            break
+
+        page_num += 1
+        url = next_url
+        time.sleep(0.3)
+
+    return invoices
+
+
+def _js_fetch_json(page, url: str, csrf: str) -> dict:
     result = page.evaluate("""
         async ([url, csrf]) => {
             const resp = await fetch(url, {
+                credentials: 'include',
                 headers: {
                     'Accept':           'application/json',
                     'X-CSRFToken':      csrf,
@@ -62,74 +180,11 @@ def _fetch_json(page, url: str, csrf: str) -> dict | list:
 
     if result["status"] != 200:
         raise RuntimeError(f"API HTTP {result['status']}")
-
     try:
         return json.loads(result["text"])
     except Exception:
-        snippet = result["text"][:120].replace("\n", " ")
-        raise RuntimeError(f"Réponse non-JSON (session ?) : {snippet}")
-
-
-def _fetch_pdf_b64(page, url: str) -> bytes | None:
-    """Télécharge un PDF via fetch() JS, retourne les bytes."""
-    result = page.evaluate("""
-        async ([url]) => {
-            try {
-                const resp = await fetch(url);
-                if (!resp.ok) return null;
-                const buf   = await resp.arrayBuffer();
-                const bytes = new Uint8Array(buf);
-                let bin = '';
-                for (const b of bytes) bin += String.fromCharCode(b);
-                return btoa(bin);
-            } catch(e) { return null; }
-        }
-    """, [url])
-
-    if not result:
-        return None
-    return base64.b64decode(result)
-
-
-# ── Récupération des factures ──────────────────────────────────────────────────
-
-def _fetch_invoices(page, progress: Callable) -> list[dict]:
-    progress("Récupération des factures 2025…")
-    csrf = _get_csrf(page)
-    invoices, page_num, total_seen = [], 1, 0
-
-    while True:
-        url  = (
-            f"{BASE_URL}/api/v1/invoices/"
-            f"?ordering=-billing_date&page_size={PAGE_SIZE}&page={page_num}"
-        )
-        data     = _fetch_json(page, url, csrf)
-        results  = data.get("results", data if isinstance(data, list) else [])
-        if not results:
-            break
-
-        total_seen += len(results)
-        stop_early  = False
-
-        for inv in results:
-            date     = str(inv.get("billing_date", ""))
-            provider = inv.get("provider_ref") or inv.get("provider_name") or ""
-
-            if date and date[:4] < YEAR:
-                stop_early = True
-                break
-
-            if date.startswith(YEAR) and _is_generic(provider):
-                invoices.append(inv)
-
-        progress(f"Page {page_num} — {total_seen} lues · {len(invoices)} génériques {YEAR}")
-
-        if stop_early or not data.get("next"):
-            break
-        page_num += 1
-        time.sleep(0.3)
-
-    return invoices
+        snippet = result["text"][:200].replace("\n", " ")
+        raise RuntimeError(f"Réponse non-JSON : {snippet}")
 
 
 # ── PDF download + extraction ──────────────────────────────────────────────────
@@ -142,8 +197,24 @@ def _process_pdf(page, inv: dict) -> list[dict]:
     provider     = inv.get("provider_ref") or inv.get("provider_name") or ""
     billing_date = inv.get("billing_date", "")
 
-    content = _fetch_pdf_b64(page, file_url)
-    if not content or len(content) < 500:
+    b64 = page.evaluate("""
+        async ([url]) => {
+            try {
+                const resp = await fetch(url, { credentials: 'include' });
+                if (!resp.ok) return null;
+                const buf   = await resp.arrayBuffer();
+                const bytes = new Uint8Array(buf);
+                let bin = '';
+                for (const b of bytes) bin += String.fromCharCode(b);
+                return btoa(bin);
+            } catch(e) { return null; }
+        }
+    """, [file_url])
+
+    if not b64:
+        return []
+    content = base64.b64decode(b64)
+    if len(content) < 500:
         return []
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -194,9 +265,7 @@ def run_scraper(creds: dict, progress: Callable) -> list[dict]:
         if "/login" in page.url:
             raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
 
-        progress("Connecté — récupération des factures 2025…")
-
-        # 2. Factures
+        # 2. Factures (avec détection automatique de l'URL API)
         invoices = _fetch_invoices(page, progress)
         if not invoices:
             progress("Aucune facture générique 2025 trouvée")
