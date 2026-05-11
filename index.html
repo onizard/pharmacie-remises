@@ -1310,8 +1310,11 @@ async function saveCloudState(data) {
     if (!sb) return;
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return;
+    // Préserver les champs système non gérés par le state JS
+    const payload = Object.assign({}, data);
+    if (GH_TOKEN) payload.gh_actions_token = GH_TOKEN;
     await sb.from('user_state').upsert(
-      { user_id: session.user.id, state_json: data },
+      { user_id: session.user.id, state_json: payload },
       { onConflict: 'user_id' }
     );
     if (isAdmin) saveRsfDefaults();
