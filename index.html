@@ -2981,7 +2981,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
     document.documentElement.dataset.theme = t === 'light' ? 'light' : '';
     btn.textContent = t === 'light' ? '☾' : '☀';
   }
-  const saved = localStorage.getItem('bp_theme') || 'dark';
+  const saved = localStorage.getItem('bp_theme') || 'light';
   applyTheme(saved);
   btn.addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
