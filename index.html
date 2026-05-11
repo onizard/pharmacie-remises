@@ -1458,7 +1458,7 @@ function labHasPalier(lp) {
 
 
 document.querySelectorAll('.main-tab').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     const page = btn.dataset.page;
     if (page === 'comparateur' || page === 'verificateur') {
       const c = state.connectors;
@@ -1474,10 +1474,74 @@ document.querySelectorAll('.main-tab').forEach(btn => {
         return;
       }
     }
-    if (page === 'comparateur') goTo(state.currentPageId === 'results' ? 'results' : 'csv');
-    else goTo(page);
+    if (page === 'comparateur') {
+      await launchComparateur();
+    } else {
+      goTo(page);
+    }
   });
 });
+
+// Convertit les lignes OSPHARM (Webix normalisé) en csvData {cip13, qty, libelle}
+function ospharmRowsToCsvData(rows) {
+  if (!rows || !rows.length) return [];
+  const keys = Object.keys(rows[0]);
+  const n = k => (k || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+
+  const cipKey = keys.find(k => ['cip','ean','acl','codearticle','codeproduit','reference','ref'].some(p => n(k).includes(p)));
+  const qtyKey = keys.find(k => ['qte','qty','quantite','quantite','nb','nombre','vente','vendu'].some(p => n(k).includes(p)));
+  const libKey = keys.find(k => ['libelle','designation','produit','article','nom','description'].some(p => n(k).includes(p)));
+
+  if (!cipKey || !qtyKey) return [];
+
+  const result = [];
+  for (const r of rows) {
+    const rawCip = String(r[cipKey] || '').replace(/\D/g, '');
+    const cip13  = rawCip.length === 13 ? rawCip : rawCip.length === 7 ? rawCip.padStart(13, '340000') : null;
+    const qty    = parseFloat(String(r[qtyKey] || '0').replace(',', '.')) || 0;
+    if (!cip13 || qty <= 0) continue;
+    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '') : '' });
+  }
+  return result;
+}
+
+async function launchComparateur() {
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) { showToast('Session expirée — rechargez la page.'); return; }
+
+    const { data: row } = await window._sbClient.from('user_state')
+      .select('state_json').eq('user_id', session.user.id).maybeSingle();
+    const job = row?.state_json?.ospharm_job;
+
+    if (!job || job.status === 'running') {
+      showToast('Données OSPHARM en cours de récupération — réessayez dans quelques minutes.');
+      return;
+    }
+    if (job.status === 'error') {
+      showToast(`Erreur OSPHARM : ${job.error || 'inconnue'}`);
+      return;
+    }
+    if (job.status !== 'done' || !job.rows?.length) {
+      showToast('Données OSPHARM non disponibles — connectez OSPHARM DATASTAT.');
+      return;
+    }
+
+    const csvData = ospharmRowsToCsvData(job.rows);
+    if (!csvData.length) {
+      showToast('Colonnes OSPHARM non reconnues — vérifiez le format des données.');
+      return;
+    }
+
+    state.csvData = csvData;
+    state.csvRows = csvData.length;
+    saveState();
+    launchSimulation();
+
+  } catch(e) {
+    showToast(`Erreur chargement OSPHARM : ${e.message}`);
+  }
+}
 
 // ── Step bar ───────────────────────────────────────────────────────────────────
 function renderStepBar() {
