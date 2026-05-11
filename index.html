@@ -2725,7 +2725,7 @@ function startBrickGame(canvasId = 'brickCanvas') {
     const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.9;
     bdx = Math.cos(a) * SPEED; bdy = Math.sin(a) * SPEED;
     ballLaunched = false;
-    setTimeout(() => { if (document.getElementById('brickCanvas')) ballLaunched = true; }, 700);
+    setTimeout(() => { if (document.getElementById(canvasId)) ballLaunched = true; }, 700);
   }
 
   // Build pixel-art bricks spelling a lab name (2:1 brick ratio)
