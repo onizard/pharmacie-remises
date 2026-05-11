@@ -969,7 +969,7 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
-            <button class="btn btn-secondary conn-disconnect-btn" id="ospDisconnect" style="display:none" onclick="disconnectConn('ospharm','osp')">RETIRER</button>
+            <button class="btn btn-secondary conn-disconnect-btn" id="ospDisconnect" style="display:none">RETIRER</button>
           </div>
         </div>
         <!-- DIGIPHARMACIE -->
@@ -996,7 +996,7 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
-            <button class="btn btn-secondary conn-disconnect-btn" id="digiDisconnect" style="display:none" onclick="disconnectConn('digipharmacie','digi')">RETIRER</button>
+            <button class="btn btn-secondary conn-disconnect-btn" id="digiDisconnect" style="display:none">RETIRER</button>
           </div>
         </div>
       </div>
@@ -4003,8 +4003,10 @@ function initConnecteurModal() {
     } catch(_) {}
   }
 
-  document.getElementById('ospTest').addEventListener('click',  () => connectConn('ospharm', 'osp'));
-  document.getElementById('digiTest').addEventListener('click', () => connectConn('digipharmacie', 'digi'));
+  document.getElementById('ospTest').addEventListener('click',       () => connectConn('ospharm', 'osp'));
+  document.getElementById('digiTest').addEventListener('click',      () => connectConn('digipharmacie', 'digi'));
+  document.getElementById('ospDisconnect').addEventListener('click',  () => disconnectConn('ospharm', 'osp'));
+  document.getElementById('digiDisconnect').addEventListener('click', () => disconnectConn('digipharmacie', 'digi'));
 
   btnSave.addEventListener('click', () => {
     ['osp', 'digi'].forEach(p => {
