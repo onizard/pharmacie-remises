@@ -1,10 +1,11 @@
 """
-Scraper DIGIPHARMACIE — login camoufox + appels API dans le contexte navigateur
+Scraper DIGIPHARMACIE — login camoufox + fetch() JS dans le navigateur
 
-Toutes les requêtes API et PDF sont faites via page.request.get() pour conserver
-la session camoufox intacte sans transfert de cookies.
+Les appels API et téléchargements PDF passent par page.evaluate(fetch(...))
+pour utiliser la session navigateur complète (cookies HttpOnly inclus).
 """
 
+import base64
 import json
 import tempfile
 import time
@@ -43,18 +44,58 @@ def _get_csrf(page) -> str:
     return ""
 
 
-# ── API invoices (dans le contexte navigateur) ─────────────────────────────────
+def _fetch_json(page, url: str, csrf: str) -> dict | list:
+    """Appel API via fetch() JS dans le contexte navigateur."""
+    result = page.evaluate("""
+        async ([url, csrf]) => {
+            const resp = await fetch(url, {
+                headers: {
+                    'Accept':           'application/json',
+                    'X-CSRFToken':      csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            });
+            const text = await resp.text();
+            return { status: resp.status, text };
+        }
+    """, [url, csrf])
+
+    if result["status"] != 200:
+        raise RuntimeError(f"API HTTP {result['status']}")
+
+    try:
+        return json.loads(result["text"])
+    except Exception:
+        snippet = result["text"][:120].replace("\n", " ")
+        raise RuntimeError(f"Réponse non-JSON (session ?) : {snippet}")
+
+
+def _fetch_pdf_b64(page, url: str) -> bytes | None:
+    """Télécharge un PDF via fetch() JS, retourne les bytes."""
+    result = page.evaluate("""
+        async ([url]) => {
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) return null;
+                const buf   = await resp.arrayBuffer();
+                const bytes = new Uint8Array(buf);
+                let bin = '';
+                for (const b of bytes) bin += String.fromCharCode(b);
+                return btoa(bin);
+            } catch(e) { return null; }
+        }
+    """, [url])
+
+    if not result:
+        return None
+    return base64.b64decode(result)
+
+
+# ── Récupération des factures ──────────────────────────────────────────────────
 
 def _fetch_invoices(page, progress: Callable) -> list[dict]:
     progress("Récupération des factures 2025…")
-    csrf     = _get_csrf(page)
-    headers  = {
-        "Accept":           "application/json",
-        "X-CSRFToken":      csrf,
-        "X-Requested-With": "XMLHttpRequest",
-        "Referer":          f"{BASE_URL}/factures/",
-    }
-
+    csrf = _get_csrf(page)
     invoices, page_num, total_seen = [], 1, 0
 
     while True:
@@ -62,18 +103,8 @@ def _fetch_invoices(page, progress: Callable) -> list[dict]:
             f"{BASE_URL}/api/v1/invoices/"
             f"?ordering=-billing_date&page_size={PAGE_SIZE}&page={page_num}"
         )
-        resp = page.request.get(url, headers=headers, timeout=30_000)
-
-        if resp.status != 200:
-            raise RuntimeError(f"API /invoices/ : HTTP {resp.status}")
-
-        try:
-            data = resp.json()
-        except Exception:
-            snippet = resp.text()[:120].replace("\n", " ")
-            raise RuntimeError(f"Réponse API non-JSON (session expirée ?) : {snippet}")
-
-        results = data.get("results", data if isinstance(data, list) else [])
+        data     = _fetch_json(page, url, csrf)
+        results  = data.get("results", data if isinstance(data, list) else [])
         if not results:
             break
 
@@ -111,12 +142,8 @@ def _process_pdf(page, inv: dict) -> list[dict]:
     provider     = inv.get("provider_ref") or inv.get("provider_name") or ""
     billing_date = inv.get("billing_date", "")
 
-    try:
-        resp = page.request.get(file_url, timeout=60_000)
-        if resp.status != 200 or len(resp.body()) < 500:
-            return []
-        content = resp.body()
-    except Exception:
+    content = _fetch_pdf_b64(page, file_url)
+    if not content or len(content) < 500:
         return []
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -169,7 +196,7 @@ def run_scraper(creds: dict, progress: Callable) -> list[dict]:
 
         progress("Connecté — récupération des factures 2025…")
 
-        # 2. Factures via API dans le contexte navigateur
+        # 2. Factures
         invoices = _fetch_invoices(page, progress)
         if not invoices:
             progress("Aucune facture générique 2025 trouvée")
@@ -177,7 +204,7 @@ def run_scraper(creds: dict, progress: Callable) -> list[dict]:
 
         progress(f"{len(invoices)} factures trouvées — extraction PDF…")
 
-        # 3. PDFs via contexte navigateur
+        # 3. PDFs
         all_lines = []
         for i, inv in enumerate(invoices, 1):
             progress(f"PDF {i}/{len(invoices)} — {inv.get('provider_ref', '?')}")
