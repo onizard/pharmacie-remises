@@ -1801,10 +1801,8 @@ function initLabPage(conf) {
 
   function renderRowExcepts(cond, excptsEl) {
     if (!excptsEl) return;
-    const active = cond.rsfValues.filter(r => r.hasExcept);
-    const live = new Set(active.map(r => String(r.rsf_pct)));
     if (!cond.remise2Except) cond.remise2Except = {};
-    Object.keys(cond.remise2Except).forEach(k => { if (!live.has(k)) delete cond.remise2Except[k]; });
+    const active = cond.rsfValues.filter(r => r.hasExcept);
     excptsEl.innerHTML = '';
     active.forEach(row => {
       const key = String(row.rsf_pct);
