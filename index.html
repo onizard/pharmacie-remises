@@ -1441,7 +1441,7 @@ function initLabPage(conf) {
         <div class="rsf-header">
           <div class="lab-tag" id="rsfToggle-${uid}-${cond.uid}">TABLEAU DES REMISES ${year}</div>
           <div class="rsf-info" id="rsfInfo-${uid}-${cond.uid}">—</div>
-          <label class="pda-toggle" style="margin-left:auto" title="Inclure ou exclure les références PDA">
+          <label class="pda-toggle" style="margin-left:auto${isAdmin ? '' : ';display:none'}" title="Inclure ou exclure les références PDA">
             <span class="pda-toggle-label">Inclure PDA</span>
             <div class="pda-switch">
               <input type="checkbox" id="pdaChk-${uid}-${cond.uid}" class="pda-check" />
@@ -1947,6 +1947,7 @@ function buildExceptionContent(exc, rsf_pct = null, labName = '') {
 
   const searchWrap = document.createElement('div');
   searchWrap.className = 'libelle-search-wrap';
+  if (!isAdmin) searchWrap.style.display = 'none';
   const icon = document.createElement('span');
   icon.className = 'libelle-search-icon'; icon.textContent = '🔍';
   const inp = document.createElement('input');
