@@ -9,6 +9,7 @@ Variables d'environnement requises :
 import json
 import os
 import sys
+import threading
 import time
 import urllib.request
 
@@ -43,19 +44,24 @@ def _supa_patch_state(state: dict):
     with urllib.request.urlopen(req, timeout=15): pass
 
 
-def _update_job(status: str, message: str = "", rows=None, error: str = ""):
-    try:
-        state = _supa_get_state()
-        state["ospharm_job"] = {
-            "status":  status,
-            "message": message,
-            "rows":    rows or [],
-            "total":   len(rows) if rows else 0,
-            "error":   error,
-        }
-        _supa_patch_state(state)
-    except Exception as e:
-        print(f"  [warn] Supabase update failed: {e}")
+def _update_job(status: str, message: str = "", rows=None, error: str = "", blocking: bool = False):
+    def _do():
+        try:
+            state = _supa_get_state()
+            state["ospharm_job"] = {
+                "status":  status,
+                "message": message,
+                "rows":    rows or [],
+                "total":   len(rows) if rows else 0,
+                "error":   error,
+            }
+            _supa_patch_state(state)
+        except Exception as e:
+            print(f"  [warn] Supabase update failed: {e}")
+    if blocking:
+        _do()
+    else:
+        threading.Thread(target=_do, daemon=True).start()
 
 
 def _get_creds() -> dict:
@@ -105,29 +111,33 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
             raise RuntimeError("Identifiants OSPHARM incorrects")
 
         progress("Connecté — navigation vers Toutes les ventes…")
-        page.wait_for_load_state("networkidle", timeout=20_000)
-        page.wait_for_timeout(2000)
+        # Attendre que Webix soit chargé plutôt qu'un networkidle global
+        try:
+            page.wait_for_function("() => typeof webix !== 'undefined'", timeout=20_000)
+        except Exception:
+            page.wait_for_timeout(2000)
 
         # 2. Navigation
         for label in ["Analyse des ventes", "Toutes les ventes"]:
             try:
                 page.get_by_text(label, exact=True).first.click(timeout=8_000)
-                page.wait_for_load_state("networkidle", timeout=15_000)
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(800)
             except Exception:
                 pass
 
         if "sellout" not in page.url:
             page.goto("https://datastat.ospharm.org/#!/top/sellout.all",
-                      wait_until="networkidle", timeout=20_000)
-            page.wait_for_timeout(2000)
+                      wait_until="domcontentloaded", timeout=20_000)
+            try:
+                page.wait_for_function("() => typeof webix !== 'undefined'", timeout=15_000)
+            except Exception:
+                page.wait_for_timeout(1500)
 
         # 3. Sélection période "Année précédente"
         progress("Sélection période 2025…")
-        page.wait_for_timeout(1500)
         try:
             page.locator("button.webix_el_htmlbutton").first.click(timeout=10_000)
-            page.wait_for_timeout(1200)
+            page.wait_for_timeout(600)
         except Exception:
             pass
 
@@ -146,8 +156,14 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
                     page.get_by_text("Valider", exact=True).first.click(force=True, timeout=5_000)
                 except Exception:
                     pass
-            page.wait_for_load_state("networkidle", timeout=20_000)
-            page.wait_for_timeout(3000)
+            # Attendre que le datatable recharge ses données
+            try:
+                page.wait_for_function(
+                    "() => { const g = Object.values(webix?.ui?.views||{}).find(v=>v.name==='datatable'&&v.isVisible()); return g && g.count() > 0; }",
+                    timeout=20_000,
+                )
+            except Exception:
+                page.wait_for_timeout(2500)
 
         # 4. Onglet Produits
         progress("Sélection onglet Produits…")
@@ -161,8 +177,14 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
                 page.get_by_text("Produits", exact=True).first.click(timeout=8_000)
             except Exception:
                 pass
-        page.wait_for_load_state("networkidle", timeout=20_000)
-        page.wait_for_timeout(3000)
+        # Attendre que la grille Produits ait des données
+        try:
+            page.wait_for_function(
+                "() => { const g = Object.values(webix?.ui?.views||{}).find(v=>v.name==='datatable'&&v.isVisible()); return g && g.count() > 0; }",
+                timeout=20_000,
+            )
+        except Exception:
+            page.wait_for_timeout(2500)
 
         # 5. Extraction Webix
         progress("Extraction des données Webix…")
@@ -211,16 +233,19 @@ def main():
         _update_job("error", error=str(e))
         sys.exit(1)
 
+    t0 = time.time()
+
     def progress(msg):
-        print(f"  → {msg}")
+        elapsed = time.time() - t0
+        print(f"  [{elapsed:5.1f}s] {msg}")
         _update_job("running", msg)
 
     try:
         rows = run_ospharm(creds, progress)
-        _update_job("done", f"{len(rows)} lignes extraites", rows)
-        print(f"\n✅  {len(rows)} lignes OSPHARM sauvegardées dans Supabase.")
+        _update_job("done", f"{len(rows)} lignes extraites", rows, blocking=True)
+        print(f"\n✅  {len(rows)} lignes OSPHARM sauvegardées dans Supabase. ({time.time()-t0:.1f}s total)")
     except Exception as e:
-        _update_job("error", error=str(e))
+        _update_job("error", error=str(e), blocking=True)
         print(f"\n❌  {e}")
         sys.exit(1)
 
