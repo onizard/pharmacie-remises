@@ -644,9 +644,7 @@
   .conn-status { font-size: 11px; margin-top: 8px; min-height: 14px; }
   .conn-status.ok { color: var(--green); }
   .conn-status.ko { color: var(--red); }
-  .conn-aide { font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; padding: 3px 8px; cursor: pointer; background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); border-radius: 10px; transition: all .2s; }
-  .conn-aide:hover { border-color: var(--cyan); color: var(--cyan); }
-  .conn-save { display: block; width: 100%; margin-top: 22px; font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; padding: 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); transition: all .2s; }
+.conn-save { display: block; width: 100%; margin-top: 22px; font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; padding: 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); transition: all .2s; }
   .conn-save:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
 
   /* ── Responsive ── */
@@ -911,10 +909,7 @@
       <div class="conn-sites">
         <!-- OSPHARM -->
         <div class="conn-site">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-            <div class="conn-site-title" style="margin-bottom:0">OSPHARM DATASTAT</div>
-            <button class="conn-aide" onclick="window.open('chrome://password-manager/passwords?q=ospharm.org')" title="Retrouver le mot de passe dans Chrome">AIDE</button>
-          </div>
+          <div class="conn-site-title">OSPHARM DATASTAT</div>
           <div class="conn-field">
             <div class="conn-label">Identifiant</div>
             <input class="conn-input" id="ospUser" type="text" autocomplete="username" placeholder="Login" />
@@ -930,10 +925,7 @@
         </div>
         <!-- DIGIPHARMACIE -->
         <div class="conn-site">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-            <div class="conn-site-title" style="margin-bottom:0">DIGIPHARMACIE</div>
-            <button class="conn-aide" onclick="window.open('chrome://password-manager/passwords?q=digipharmacie.fr')" title="Retrouver le mot de passe dans Chrome">AIDE</button>
-          </div>
+          <div class="conn-site-title">DIGIPHARMACIE</div>
           <div class="conn-field">
             <div class="conn-label">Identifiant</div>
             <input class="conn-input" id="digiUser" type="text" autocomplete="username" placeholder="Login" />
