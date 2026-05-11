@@ -661,8 +661,6 @@
   .conn-check-big { font-size: 52px; color: var(--green); filter: drop-shadow(0 0 10px rgba(0,255,136,.45)); line-height: 1; }
   .conn-connected-name { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--green); }
   .conn-connected-user-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); }
-  .conn-modify-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 1.5px; padding: 5px 14px; cursor: pointer; transition: all .2s; }
-  .conn-modify-btn:hover { color: var(--amber); border-color: var(--amber); }
 
   /* ── Responsive ── */
   @media (max-width: 900px) {
@@ -948,7 +946,6 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-connected-user-label" id="ospConnUser"></div>
-            <button class="conn-modify-btn" id="ospModify">✎ MODIFIER</button>
           </div>
         </div>
         <!-- DIGIPHARMACIE -->
@@ -975,7 +972,6 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-connected-user-label" id="digiConnUser"></div>
-            <button class="conn-modify-btn" id="digiModify">✎ MODIFIER</button>
           </div>
         </div>
       </div>
@@ -3660,23 +3656,8 @@ function initConnecteurModal() {
     }
   }
 
-  function setupModify(prefix, connKey) {
-    document.getElementById(prefix + 'Modify').addEventListener('click', () => {
-      state.connectors[connKey].connected = false;
-      updateConnecteurBtn();
-      saveState();
-      document.getElementById(prefix + 'User').value = state.connectors[connKey].user;
-      document.getElementById(prefix + 'Pass').value = state.connectors[connKey].pass;
-      document.getElementById(prefix + 'TestResult').textContent = '';
-      showView(prefix, false, '');
-    });
-  }
-
   document.getElementById('ospTest').addEventListener('click',  () => connectConn('https://accounts.dev.ospharm.org/', 'ospharm', 'osp'));
   document.getElementById('digiTest').addEventListener('click', () => connectConn('https://app.digipharmacie.fr/login', 'digipharmacie', 'digi'));
-
-  setupModify('osp',  'ospharm');
-  setupModify('digi', 'digipharmacie');
 
   btnSave.addEventListener('click', () => {
     ['osp', 'digi'].forEach(p => {
