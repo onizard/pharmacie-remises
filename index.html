@@ -1543,6 +1543,7 @@ function initLabPage(conf) {
 
     const searchWrap = document.createElement('div');
     searchWrap.className = 'libelle-search-wrap';
+    if (!isAdmin) searchWrap.style.display = 'none';
     const icon = document.createElement('span');
     icon.className = 'libelle-search-icon'; icon.textContent = '🔍';
     const inp = document.createElement('input');
@@ -1901,6 +1902,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
 
   const searchWrap = document.createElement('div');
   searchWrap.className = 'libelle-search-wrap';
+  if (!isAdmin) searchWrap.style.display = 'none';
   const icon = document.createElement('span');
   icon.className = 'libelle-search-icon'; icon.textContent = '🔍';
   const inp = document.createElement('input');
