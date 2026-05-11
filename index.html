@@ -1419,25 +1419,21 @@ function labHasPalier(lp) {
   );
 }
 
-function checkTabPrereqs() {
-  const c = state.connectors;
-  if (!c.ospharm.connected || !c.digipharmacie.connected) {
-    const missing = [!c.ospharm.connected && 'OSPHARM DATASTAT', !c.digipharmacie.connected && 'DIGIPHARMACIE'].filter(Boolean).join(' et ');
-    return `Connecteur(s) requis : ${missing}. Renseignez vos identifiants via le bouton CONNECTEURS.`;
-  }
-  const labsOk = state.labPages.filter(lp => lp.selectedLab && labHasPalier(lp)).length;
-  if (labsOk < 2) {
-    return `Renseignez au moins 1 palier de remise pour 2 laboratoires (${labsOk}/2 actuellement).`;
-  }
-  return null;
-}
 
 document.querySelectorAll('.main-tab').forEach(btn => {
   btn.addEventListener('click', () => {
     const page = btn.dataset.page;
     if (page === 'comparateur' || page === 'verificateur') {
-      const err = checkTabPrereqs();
-      if (err) { showToast(err); return; }
+      const c = state.connectors;
+      if (!c.ospharm.connected || !c.digipharmacie.connected) {
+        document.getElementById('btnConnecteur').click();
+        return;
+      }
+      const labsOk = state.labPages.filter(lp => lp.selectedLab && labHasPalier(lp)).length;
+      if (labsOk < 2) {
+        showToast(`Renseignez au moins 1 palier de remise pour 2 laboratoires (${labsOk}/2 actuellement).`);
+        return;
+      }
     }
     if (page === 'comparateur') goTo(state.currentPageId === 'results' ? 'results' : 'csv');
     else goTo(page);
