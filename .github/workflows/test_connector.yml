@@ -1,0 +1,56 @@
+name: Test Connecteur
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: 'Supabase user ID'
+        required: true
+      connector:
+        description: 'ospharm or digipharmacie'
+        required: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache Playwright browsers
+        if: inputs.connector == 'ospharm'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Cache camoufox Firefox binary
+        if: inputs.connector == 'digipharmacie'
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/camoufox
+          key: camoufox-${{ runner.os }}-v1
+
+      - name: Install deps (OSPHARM)
+        if: inputs.connector == 'ospharm'
+        run: |
+          pip install --quiet playwright
+          playwright install chromium --with-deps
+
+      - name: Install deps (DIGIPHARMACIE)
+        if: inputs.connector == 'digipharmacie'
+        run: |
+          pip install --quiet camoufox[geoip]
+          python -m camoufox fetch
+
+      - name: Test connexion
+        env:
+          USER_ID:              ${{ inputs.user_id }}
+          CONNECTOR:            ${{ inputs.connector }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python api_scraper/test_connector.py

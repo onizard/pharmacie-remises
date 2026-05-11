@@ -669,7 +669,8 @@
   .conn-test-result { font-family: 'Share Tech Mono', monospace; font-size: 11px; line-height: 1.4; }
   .conn-test-result.ok { color: var(--green); }
   .conn-test-result.ko { color: var(--red); }
-  .conn-test-result.warn { color: var(--amber); }
+  .conn-test-result.warn  { color: var(--amber); }
+  .conn-test-result.error { color: var(--red); }
 .conn-save { display: block; width: 100%; margin-top: 22px; font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; padding: 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); transition: all .2s; }
   .conn-save:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
   .conn-connected-view { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px 16px; text-align: center; min-height: 180px; }
@@ -3911,18 +3912,84 @@ function initConnecteurModal() {
     }
 
     btnEl.disabled = true;
-    resultEl.textContent = '⏳ Enregistrement…';
+    resultEl.textContent = '⏳ Test de connexion en cours (~1-2 min)…';
     resultEl.className = 'conn-test-result';
 
-    await new Promise(r => setTimeout(r, 400));
-
-    state.connectors[connKey] = { user, pass, connected: true };
-    updateConnecteurBtn();
+    // Sauvegarder les creds (non connecté) dans Supabase pour que le workflow puisse les lire
+    state.connectors[connKey] = { user, pass, connected: false };
     saveState();
-    showView(prefix, true);
 
-    // Déclenche le workflow en arrière-plan sans attendre
-    _triggerWorkflow(connKey);
+    // Effacer le résultat précédent pour ce connecteur
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (session) {
+        const { data: row } = await window._sbClient.from('user_state')
+          .select('state_json').eq('user_id', session.user.id).maybeSingle();
+        const sj = row?.state_json || {};
+        sj.conn_test = sj.conn_test || {};
+        sj.conn_test[connKey] = { status: 'running', message: '' };
+        await window._sbClient.from('user_state')
+          .upsert({ user_id: session.user.id, state_json: sj }, { onConflict: 'user_id' });
+      }
+    } catch(_) {}
+
+    // Déclencher le workflow de test
+    let userId = '';
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      userId = session?.user?.id || '';
+      const resp = await fetch(
+        `https://api.github.com/repos/${GH_REPO}/actions/workflows/test_connector.yml/dispatches`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GH_TOKEN}`,
+            'Accept':        'application/vnd.github.v3+json',
+            'Content-Type':  'application/json',
+          },
+          body: JSON.stringify({ ref: 'master', inputs: { user_id: userId, connector: connKey } }),
+        }
+      );
+      if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+    } catch(e) {
+      resultEl.textContent = `❌ Erreur déclenchement : ${e.message}`;
+      btnEl.disabled = false;
+      return;
+    }
+
+    // Polling du résultat dans Supabase
+    _pollConnTest(connKey, prefix, btnEl, resultEl, Date.now());
+  }
+
+  async function _pollConnTest(connKey, prefix, btnEl, resultEl, startTs) {
+    // Timeout 8 min
+    if (Date.now() - startTs > 8 * 60 * 1000) {
+      resultEl.textContent = '❌ Timeout — le test a pris trop de temps';
+      btnEl.disabled = false;
+      return;
+    }
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      const { data: row } = await window._sbClient.from('user_state')
+        .select('state_json').eq('user_id', session.user.id).maybeSingle();
+      const result = row?.state_json?.conn_test?.[connKey];
+
+      if (result?.status === 'ok') {
+        state.connectors[connKey].connected = true;
+        updateConnecteurBtn();
+        saveState();
+        showView(prefix, true);
+        _triggerWorkflow(connKey);
+        return;
+      }
+      if (result?.status === 'fail') {
+        resultEl.textContent = `❌ ${result.message || 'Identifiants incorrects'}`;
+        resultEl.className = 'conn-test-result error';
+        btnEl.disabled = false;
+        return;
+      }
+    } catch(_) {}
+    setTimeout(() => _pollConnTest(connKey, prefix, btnEl, resultEl, startTs), 6000);
   }
 
   async function _triggerWorkflow(connKey) {
