@@ -677,6 +677,8 @@
   .conn-connected-name { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--green); }
   .conn-connected-user-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); }
   .conn-job-status { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: .5px; margin-top: 2px; min-height: 16px; }
+  .conn-disconnect-btn { font-size: 10px; padding: 6px 14px; letter-spacing: 2px; border-color: var(--red); color: var(--red); }
+  .conn-disconnect-btn:hover { background: var(--red); color: var(--bg); }
   .conn-job-status.running { color: var(--amber); }
   .conn-job-status.done    { color: var(--green); }
   .conn-job-status.error   { color: var(--red); }
@@ -966,8 +968,8 @@
           <div class="conn-connected-view" id="ospConnView" style="display:none">
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
-            <div class="conn-connected-user-label" id="ospConnUser"></div>
             <div class="conn-job-status" id="ospJobStatus"></div>
+            <button class="btn btn-secondary conn-disconnect-btn" id="ospDisconnect" style="display:none" onclick="disconnectConn('ospharm','osp')">RETIRER</button>
           </div>
         </div>
         <!-- DIGIPHARMACIE -->
@@ -993,8 +995,8 @@
           <div class="conn-connected-view" id="digiConnView" style="display:none">
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
-            <div class="conn-connected-user-label" id="digiConnUser"></div>
             <div class="conn-job-status" id="digiJobStatus"></div>
+            <button class="btn btn-secondary conn-disconnect-btn" id="digiDisconnect" style="display:none" onclick="disconnectConn('digipharmacie','digi')">RETIRER</button>
           </div>
         </div>
       </div>
@@ -3844,17 +3846,29 @@ function initConnecteurModal() {
   const btnClose = document.getElementById('connClose');
   const btnSave  = document.getElementById('connSave');
 
-  function showView(prefix, connected, user) {
-    const fv = document.getElementById(prefix + 'FormView');
-    const cv = document.getElementById(prefix + 'ConnView');
+  function showView(prefix, connected) {
+    const fv  = document.getElementById(prefix + 'FormView');
+    const cv  = document.getElementById(prefix + 'ConnView');
+    const btn = document.getElementById(prefix + 'Disconnect');
     if (connected) {
-      document.getElementById(prefix + 'ConnUser').textContent = user || '';
-      if (fv) fv.style.display = 'none';
-      if (cv) cv.style.display = 'flex';
+      if (fv)  fv.style.display  = 'none';
+      if (cv)  cv.style.display  = 'flex';
+      if (btn) btn.style.display = isAdmin ? '' : 'none';
     } else {
-      if (fv) fv.style.display = '';
-      if (cv) cv.style.display = 'none';
+      if (fv)  fv.style.display  = '';
+      if (cv)  cv.style.display  = 'none';
+      if (btn) btn.style.display = 'none';
     }
+  }
+
+  function disconnectConn(connKey, prefix) {
+    state.connectors[connKey] = { user: '', pass: '', connected: false };
+    updateConnecteurBtn();
+    saveState();
+    showView(prefix, false);
+    // Effacer les champs
+    document.getElementById(prefix + 'User').value = '';
+    document.getElementById(prefix + 'Pass').value = '';
   }
 
   function openModal() {
@@ -3865,8 +3879,8 @@ function initConnecteurModal() {
     document.getElementById('digiPass').value = c.digipharmacie.pass;
     document.getElementById('ospTestResult').textContent  = '';
     document.getElementById('digiTestResult').textContent = '';
-    showView('osp',  c.ospharm.connected,      c.ospharm.user);
-    showView('digi', c.digipharmacie.connected, c.digipharmacie.user);
+    showView('osp',  c.ospharm.connected);
+    showView('digi', c.digipharmacie.connected);
     modal.classList.add('open');
     refreshConnJobStatuses();
   }
@@ -3905,7 +3919,7 @@ function initConnecteurModal() {
     state.connectors[connKey] = { user, pass, connected: true };
     updateConnecteurBtn();
     saveState();
-    showView(prefix, true, user);
+    showView(prefix, true);
 
     // Déclenche le workflow en arrière-plan sans attendre
     _triggerWorkflow(connKey);
