@@ -360,6 +360,11 @@
   .lab-tag::after { content: ' ▶'; font-size: 9px; vertical-align: middle; margin-left: 4px; }
   .lab-tag.rsf-open::after { content: ' ▼'; }
   .rsf-header .rsf-info { font-size: 13px; color: var(--text-dim); }
+  .year-label { font-family: 'Orbitron', monospace; font-size: 15px; font-weight: 900; color: var(--cyan); letter-spacing: 4px; margin-bottom: 10px; user-select: none; }
+  .year-label-toggle { cursor: pointer; color: var(--amber); }
+  .year-label-toggle:hover { text-shadow: var(--glow-a); }
+  [data-theme="light"] .year-label { color: #0066cc; }
+  [data-theme="light"] .year-label-toggle { color: #b07000; }
 
   .rsf-table-wrap { overflow-x: auto; border: 1px solid var(--border); }
   table.rsf-table { width: 100%; border-collapse: collapse; }
@@ -1269,11 +1274,15 @@ function createLabContDom(lp) {
   cont.innerHTML = `
     <div style="border-top:1px solid rgba(0,229,255,.12);margin-top:16px;padding-top:16px">
       <div class="switch-warn" id="switchWarn-${uid}"></div>
+      <div class="year-label">2026</div>
       <div class="cond-tabs" id="condTabs-${uid}"></div>
       <div id="condPanels-${uid}"></div>
-      <div style="margin-top:20px">
-        <div class="cond-tabs" id="condTabs25-${uid}"></div>
-        <div id="condPanels25-${uid}"></div>
+      <div style="margin-top:24px">
+        <div class="year-label year-label-toggle" id="yearToggle25-${uid}">2025 ▶</div>
+        <div id="yearBody25-${uid}" style="display:none">
+          <div class="cond-tabs" id="condTabs25-${uid}"></div>
+          <div id="condPanels25-${uid}"></div>
+        </div>
       </div>
       <div class="loading" id="loading-${uid}">
         <div class="spinner"></div><span>CHARGEMENT DES DONNÉES RSF...</span>
@@ -1281,6 +1290,15 @@ function createLabContDom(lp) {
     </div>
   `;
   document.getElementById('labsContainer').appendChild(cont);
+  const _toggle25 = document.getElementById(`yearToggle25-${uid}`);
+  const _body25   = document.getElementById(`yearBody25-${uid}`);
+  if (_toggle25 && _body25) {
+    _toggle25.addEventListener('click', () => {
+      const open = _body25.style.display === 'none';
+      _body25.style.display = open ? '' : 'none';
+      _toggle25.textContent = open ? '2025 ▼' : '2025 ▶';
+    });
+  }
   initLabPage({
     s:            lp,
     year:         '2026',
