@@ -27,7 +27,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet camoufox[geoip] curl_cffi pdfplumber
+          pip install --quiet camoufox[geoip] pdfplumber
           python -m camoufox fetch
 
       - name: Run scraper

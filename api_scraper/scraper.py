@@ -1,16 +1,17 @@
 """
-Scraper DIGIPHARMACIE — login camoufox + API curl_cffi + extraction PDF
+Scraper DIGIPHARMACIE — login camoufox + appels API dans le contexte navigateur
 
-Appelé par main.py dans un thread séparé.
+Toutes les requêtes API et PDF sont faites via page.request.get() pour conserver
+la session camoufox intacte sans transfert de cookies.
 """
 
+import json
 import tempfile
 import time
 from pathlib import Path
 from typing import Callable
 
 from camoufox.sync_api import Camoufox
-from curl_cffi.requests import Session as CurlSession
 
 from pdf_extractor import extract_invoice_lines
 
@@ -35,65 +36,25 @@ def _is_generic(name: str) -> bool:
     return any(k in n for k in LABOS_GENERIQUES)
 
 
-# ── Login ──────────────────────────────────────────────────────────────────────
-
-def _login(username: str, password: str, progress: Callable) -> dict:
-    progress("Connexion à DIGIPHARMACIE (Cloudflare ~8s)…")
-    cookies = {}
-
-    with Camoufox(headless=True, geoip=True) as browser:
-        page = browser.new_page()
-        page.goto(f"{BASE_URL}/login/", timeout=60_000)
-
-        try:
-            page.wait_for_selector("input[type='email']", timeout=40_000)
-        except Exception:
-            raise RuntimeError("Formulaire de login DIGIPHARMACIE introuvable")
-
-        page.locator("input[type='email']").first.fill(username)
-        page.locator("input[type='password']").first.fill(password)
-        page.locator("input[type='password']").first.press("Enter")
-
-        try:
-            page.wait_for_url("**/dashboard**", timeout=20_000)
-        except Exception:
-            try:
-                page.wait_for_function(
-                    "() => !window.location.pathname.includes('/login')",
-                    timeout=15_000,
-                )
-            except Exception:
-                pass
-
-        if "/login" in page.url:
-            raise RuntimeError("Échec du login DIGIPHARMACIE — identifiants incorrects ?")
-
-        for c in page.context.cookies():
-            cookies[c["name"]] = c["value"]
-        page.close()
-
-    if not {"sessionid", "csrftoken"} <= set(cookies):
-        raise RuntimeError("Cookies de session manquants après login")
-
-    return cookies
+def _get_csrf(page) -> str:
+    for c in page.context.cookies():
+        if c["name"] == "csrftoken":
+            return c["value"]
+    return ""
 
 
-# ── API invoices ───────────────────────────────────────────────────────────────
+# ── API invoices (dans le contexte navigateur) ─────────────────────────────────
 
-def _make_session(cookies: dict) -> CurlSession:
-    sess = CurlSession(impersonate="chrome")
-    sess.cookies.update(cookies)
-    sess.headers.update({
-        "Referer":          f"{BASE_URL}/factures/",
-        "X-CSRFToken":      cookies.get("csrftoken", ""),
-        "Accept":           "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-    })
-    return sess
-
-
-def _fetch_invoices(sess: CurlSession, progress: Callable) -> list[dict]:
+def _fetch_invoices(page, progress: Callable) -> list[dict]:
     progress("Récupération des factures 2025…")
+    csrf     = _get_csrf(page)
+    headers  = {
+        "Accept":           "application/json",
+        "X-CSRFToken":      csrf,
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer":          f"{BASE_URL}/factures/",
+    }
+
     invoices, page_num, total_seen = [], 1, 0
 
     while True:
@@ -101,15 +62,17 @@ def _fetch_invoices(sess: CurlSession, progress: Callable) -> list[dict]:
             f"{BASE_URL}/api/v1/invoices/"
             f"?ordering=-billing_date&page_size={PAGE_SIZE}&page={page_num}"
         )
-        resp = sess.get(url, timeout=30)
-        if resp.status_code != 200:
-            raise RuntimeError(f"API /invoices/ : HTTP {resp.status_code}")
+        resp = page.request.get(url, headers=headers, timeout=30_000)
+
+        if resp.status != 200:
+            raise RuntimeError(f"API /invoices/ : HTTP {resp.status}")
 
         try:
             data = resp.json()
         except Exception:
-            snippet = resp.text[:120].replace("\n", " ")
-            raise RuntimeError(f"Identifiants DIGIPHARMACIE incorrects ou session expirée ({snippet})")
+            snippet = resp.text()[:120].replace("\n", " ")
+            raise RuntimeError(f"Réponse API non-JSON (session expirée ?) : {snippet}")
+
         results = data.get("results", data if isinstance(data, list) else [])
         if not results:
             break
@@ -140,11 +103,7 @@ def _fetch_invoices(sess: CurlSession, progress: Callable) -> list[dict]:
 
 # ── PDF download + extraction ──────────────────────────────────────────────────
 
-def _process_pdf(inv: dict, sess: CurlSession) -> list[dict]:
-    """
-    Télécharge le PDF de la facture, extrait les lignes produits.
-    Retourne une liste de dicts prêts pour le frontend.
-    """
+def _process_pdf(page, inv: dict) -> list[dict]:
     file_url = inv.get("file") or inv.get("file_url") or ""
     if not file_url:
         return []
@@ -153,14 +112,15 @@ def _process_pdf(inv: dict, sess: CurlSession) -> list[dict]:
     billing_date = inv.get("billing_date", "")
 
     try:
-        resp = sess.get(file_url, timeout=60)
-        if resp.status_code != 200 or len(resp.content) < 500:
+        resp = page.request.get(file_url, timeout=60_000)
+        if resp.status != 200 or len(resp.body()) < 500:
             return []
+        content = resp.body()
     except Exception:
         return []
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(resp.content)
+        tmp.write(content)
         tmp_path = Path(tmp.name)
 
     try:
@@ -174,31 +134,57 @@ def _process_pdf(inv: dict, sess: CurlSession) -> list[dict]:
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def run_scraper(creds: dict, progress: Callable) -> list[dict]:
-    """
-    Point d'entrée appelé par main.py.
-    Retourne la liste de toutes les lignes extraites des PDFs.
-    """
     username = creds["user"]
     password = creds["pass"]
 
-    # 1. Login
-    cookies = _login(username, password, progress)
-    sess    = _make_session(cookies)
+    with Camoufox(headless=True, geoip=True) as browser:
+        page = browser.new_page()
 
-    # 2. Récupérer les factures génériques 2025
-    invoices = _fetch_invoices(sess, progress)
-    if not invoices:
-        return []
+        # 1. Login
+        progress("Connexion à DIGIPHARMACIE (Cloudflare ~8s)…")
+        page.goto(f"{BASE_URL}/login/", timeout=60_000)
 
-    progress(f"{len(invoices)} factures trouvées — extraction PDF…")
+        try:
+            page.wait_for_selector("input[type='email']", timeout=40_000)
+        except Exception:
+            raise RuntimeError("Formulaire de login DIGIPHARMACIE introuvable")
 
-    # 3. Extraire les données PDF
-    all_lines = []
-    for i, inv in enumerate(invoices, 1):
-        progress(f"PDF {i}/{len(invoices)} — {inv.get('provider_ref','?')}")
-        lines = _process_pdf(inv, sess)
-        all_lines.extend(lines)
-        time.sleep(0.15)
+        page.locator("input[type='email']").first.fill(username)
+        page.locator("input[type='password']").first.fill(password)
+        page.locator("input[type='password']").first.press("Enter")
 
-    progress(f"Extraction terminée — {len(all_lines)} lignes produits")
+        try:
+            page.wait_for_url("**/dashboard**", timeout=20_000)
+        except Exception:
+            try:
+                page.wait_for_function(
+                    "() => !window.location.pathname.includes('/login')",
+                    timeout=15_000,
+                )
+            except Exception:
+                pass
+
+        if "/login" in page.url:
+            raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+
+        progress("Connecté — récupération des factures 2025…")
+
+        # 2. Factures via API dans le contexte navigateur
+        invoices = _fetch_invoices(page, progress)
+        if not invoices:
+            progress("Aucune facture générique 2025 trouvée")
+            return []
+
+        progress(f"{len(invoices)} factures trouvées — extraction PDF…")
+
+        # 3. PDFs via contexte navigateur
+        all_lines = []
+        for i, inv in enumerate(invoices, 1):
+            progress(f"PDF {i}/{len(invoices)} — {inv.get('provider_ref', '?')}")
+            lines = _process_pdf(page, inv)
+            all_lines.extend(lines)
+            time.sleep(0.15)
+
+        progress(f"Extraction terminée — {len(all_lines)} lignes produits")
+
     return all_lines
