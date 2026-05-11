@@ -3642,7 +3642,7 @@ function initConnecteurModal() {
     });
   });
 
-  async function connectConn(testUrl, connKey, prefix) {
+  async function connectConn(connKey, prefix) {
     const user     = document.getElementById(prefix + 'User').value.trim();
     const pass     = document.getElementById(prefix + 'Pass').value;
     const resultEl = document.getElementById(prefix + 'TestResult');
@@ -3655,29 +3655,19 @@ function initConnecteurModal() {
     }
 
     btnEl.disabled = true;
-    resultEl.textContent = '⏳ Connexion en cours…';
+    resultEl.textContent = '⏳ Enregistrement…';
     resultEl.className = 'conn-test-result';
 
-    try {
-      const ctrl  = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 8000);
-      await fetch(testUrl, { mode: 'no-cors', signal: ctrl.signal });
-      clearTimeout(timer);
+    await new Promise(r => setTimeout(r, 400));
 
-      state.connectors[connKey] = { user, pass, connected: true };
-      updateConnecteurBtn();
-      saveState();
-      showView(prefix, true, user);
-
-    } catch(e) {
-      resultEl.textContent = e.name === 'AbortError' ? '✗ Délai dépassé' : '✗ Connexion échouée — vérifiez vos identifiants';
-      resultEl.className = 'conn-test-result ko';
-      btnEl.disabled = false;
-    }
+    state.connectors[connKey] = { user, pass, connected: true };
+    updateConnecteurBtn();
+    saveState();
+    showView(prefix, true, user);
   }
 
-  document.getElementById('ospTest').addEventListener('click',  () => connectConn('https://accounts.dev.ospharm.org/', 'ospharm', 'osp'));
-  document.getElementById('digiTest').addEventListener('click', () => connectConn('https://app.digipharmacie.fr/login', 'digipharmacie', 'digi'));
+  document.getElementById('ospTest').addEventListener('click',  () => connectConn('ospharm', 'osp'));
+  document.getElementById('digiTest').addEventListener('click', () => connectConn('digipharmacie', 'digi'));
 
   btnSave.addEventListener('click', () => {
     ['osp', 'digi'].forEach(p => {
