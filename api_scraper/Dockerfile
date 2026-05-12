@@ -1,8 +1,10 @@
 FROM python:3.12-slim
 
-# Dépendances système pour Firefox (camoufox) + Chromium (playwright)
+# Dépendances système pour camoufox (Firefox)
+# playwright --with-deps gère les dépendances Chromium lui-même
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
+    ca-certificates \
     libgtk-3-0 \
     libdbus-glib-1-2 \
     libxt6 \
@@ -17,24 +19,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     libxss1 \
     libxtst6 \
-    libasound2 \
     libcups2 \
     libnss3 \
     libnspr4 \
     fonts-liberation \
-    ca-certificates \
+    && (apt-get install -y --no-install-recommends libasound2t64 || apt-get install -y --no-install-recommends libasound2) \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Installer les dépendances Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Télécharger Firefox (camoufox) au build
+# Firefox pour camoufox
 RUN python -m camoufox fetch
 
-# Télécharger Chromium (playwright) au build
+# Chromium pour playwright (installe aussi ses dépendances système)
 RUN playwright install chromium --with-deps
 
 COPY . .
