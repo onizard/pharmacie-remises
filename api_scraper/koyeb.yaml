@@ -1,0 +1,24 @@
+name: break-pharma-scraper
+
+services:
+  - name: api
+    type: web
+    instance_type: free
+    regions:
+      - fra                        # Frankfurt — plus proche de la France
+    git:
+      repository: github.com/onizard/pharmacie-remises
+      branch: master
+      buildpack: dockerfile
+      dockerfile: api_scraper/Dockerfile
+      docker_args:
+        context: api_scraper
+    ports:
+      - port: 8000
+        protocol: http
+    health_checks:
+      - path: /health
+        port: 8000
+    env:
+      - key: PORT
+        value: "8000"
