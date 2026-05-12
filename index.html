@@ -3096,7 +3096,7 @@ async function launchSimulation() {
     // 5. calcScenario: CA + remise par labo pour un assignment donné
     //    rsfOnly=true  → RSF uniquement (scénario N-1)
     //    forceMarketMet=true → marché toujours atteint (optimisé 1)
-    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false } = {}) {
+    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false, forcedConds = null } = {}) {
       const labMap = new Map();
       // Phase 1 : CA par labo
       csvData.forEach(row => {
@@ -3111,16 +3111,22 @@ async function launchSimulation() {
         e.qty += row.qty;
         e.rows.push({ row, ref, price: ref.puht || 0 });
       });
-      // Phase 2 : remise par labo (après CA connu → meilleur palier atteignable)
+      // Phase 2 : remise par labo (après CA connu → meilleur palier atteignable ou palier forcé)
       labMap.forEach(e => {
-        const bestCond = rsfOnly ? null : getBestCond(e.lp, e.ca, forceMarketMet, applyProrata);
+        const isForced = !!(forcedConds && e.lp && forcedConds.has(e.lp.selectedLab));
+        const bestCond = rsfOnly ? null
+          : isForced ? forcedConds.get(e.lp.selectedLab)
+          : getBestCond(e.lp, e.ca, forceMarketMet, applyProrata);
+        const pr = applyProrata ? getProrata(e.lp?.selectedLab) : 1;
         const firstMet = e.isSelected && !rsfOnly && (
           (state.gers != null && bestCond?.caCondition != null && bestCond.caCondition >= 0.9 * state.gers)
           || (bestCond?.forceFirst ?? false)
         );
         e.bestCond = bestCond;
-        e.met = bestCond !== null || !e.isSelected;
-        e.caThreshold = (applyProrata ? getProrata(e.lp?.selectedLab) : 1) * (bestCond?.caCondition || 0);
+        e.met = isForced
+          ? (bestCond !== null && (!bestCond.caCondition || e.ca >= pr * bestCond.caCondition))
+          : (bestCond !== null || !e.isSelected);
+        e.caThreshold = pr * (bestCond?.caCondition || 0);
         e.firstMet = firstMet;
         e.rows.forEach(({ row, ref, price }) => {
           const remisePct = (rsfOnly || !e.isSelected)
@@ -3245,9 +3251,83 @@ async function launchSimulation() {
       labScenarios.push({ name: labName, scenario: calcScenario(labAssignment), assignment: labAssignment });
     });
 
+    // 6e. Helper : assignment "focus labo principal + meilleur RSF pour le reste"
+    function buildFocusAssignment(primaryLab) {
+      const asgn = new Map(naturalAssignment);
+      csvData.forEach(row => {
+        const ref = naturalRefMap.get(row.cip13);
+        if (!ref) return;
+        const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === primaryLab);
+        if (labRef) asgn.set(row.cip13, labRef);
+      });
+      csvData.forEach(row => {
+        const ref = naturalRefMap.get(row.cip13);
+        if (!ref) return;
+        const alts = libelleMap.get(ref.libelle) || [];
+        if (alts.some(a => a.labo === primaryLab)) return;
+        const others = alts.filter(r => ourLabs.has(r.labo));
+        if (!others.length) return;
+        let bestRef = null, bestNet = Infinity;
+        others.forEach(a => { const n = (a.puht||0)*(1-getRSFBase(a)/100); if (n<bestNet){bestNet=n;bestRef=a;} });
+        if (bestRef) asgn.set(row.cip13, bestRef);
+      });
+      return asgn;
+    }
+
+    // 6f. Scénarios par palier : un scénario par labo × condition (labs avec ≥2 paliers)
+    const condScenarios = [];
+    state.labPages.forEach(lp => {
+      if (!lp.selectedLab) return;
+      const labName = lp.selectedLab;
+      const conds = lp.conditions || [];
+      if (conds.length < 2) return;
+      const labAsgn = buildFocusAssignment(labName);
+      conds.forEach((cond, ci) => {
+        const forced = new Map([[labName, cond]]);
+        const scenario = calcScenario(labAsgn, { forcedConds: forced });
+        const palierLbl = cond.caCondition ? `${cond.caCondition.toLocaleString('fr')} €` : 'BASE';
+        condScenarios.push({
+          key: `cond_${labName}_${ci}`,
+          label: `SCÉNARIO ${labName.toUpperCase()} — PALIER ${ci + 1} (${palierLbl})`,
+          scenario, assignment: labAsgn, forcedConds: forced,
+        });
+      });
+    });
+
+    // 6g. Scénarios par paire de laboratoires (toutes les combinaisons 2 parmi N)
+    const pairScenarios = [];
+    const labList = state.labPages.map(lp => lp.selectedLab).filter(Boolean);
+    for (let i = 0; i < labList.length; i++) {
+      for (let j = i + 1; j < labList.length; j++) {
+        const labA = labList[i], labB = labList[j];
+        const pairSet = new Set([labA, labB]);
+        const pairAsgn = new Map(naturalAssignment);
+        csvData.forEach(row => {
+          const ref = naturalRefMap.get(row.cip13);
+          if (!ref) return;
+          const alts = (libelleMap.get(ref.libelle) || []).filter(r => pairSet.has(r.labo));
+          if (!alts.length) return;
+          let bestRef = null, bestNet = Infinity;
+          alts.forEach(altRef => {
+            const lp = state.labPages.find(l => l.selectedLab === altRef.labo);
+            const cond = getBestCond(lp, Infinity, true);
+            const firstMet = state.gers != null && cond?.caCondition != null && cond.caCondition >= 0.9 * state.gers;
+            const net = (altRef.puht || 0) * (1 - getRemise(altRef, cond, firstMet) / 100);
+            if (net < bestNet) { bestNet = net; bestRef = altRef; }
+          });
+          if (bestRef) pairAsgn.set(row.cip13, bestRef);
+        });
+        pairScenarios.push({
+          key: `pair_${labA}_${labB}`,
+          label: `SCÉNARIO ${labA.toUpperCase()} + ${labB.toUpperCase()}`,
+          scenario: calcScenario(pairAsgn), assignment: pairAsgn, forcedConds: null,
+        });
+      }
+    }
+
     // 7. Export CSV scénario : CIP;Libellé;Labo;PU HT;Remise totale %;PU NET
     // filterLab : si renseigné, n'exporte que les CIPs de ce laboratoire
-    function buildScenarioCSV(assignment, labResults, filterLab = null) {
+    function buildScenarioCSV(assignment, labResults, filterLab = null, forcedConds = null) {
       const rows = ['CIP;Libellé;Labo;PU HT;Remise totale %;PU NET'];
       csvData.forEach(row => {
         const ref = assignment.get(row.cip13);
@@ -3257,7 +3337,9 @@ async function launchSimulation() {
         const firstMet = labResult?.firstMet || false;
         const lp = state.labPages.find(l => l.selectedLab === ref.labo);
         const price = ref.puht || 0;
-        const cond = lp ? getBestCond(lp, labResult?.ca || 0) : null;
+        const cond = (forcedConds && lp && forcedConds.has(lp.selectedLab))
+          ? forcedConds.get(lp.selectedLab)
+          : (lp ? getBestCond(lp, labResult?.ca || 0) : null);
         const remise = lp ? getRemise(ref, cond, firstMet) : getRSFBase(ref, firstMet);
         const punet = price * (1 - remise / 100);
         rows.push(`${row.cip13};"${ref.libelle}";${ref.labo};${price.toFixed(4).replace('.',',')};"${remise.toFixed(2).replace('.',',')} %";${punet.toFixed(4).replace('.',',')}`);
@@ -3318,7 +3400,6 @@ async function launchSimulation() {
 
     // Store assignments for CSV download
     const scenarioStore = new Map();
-    // Optimisé : un fichier par labo + un fichier tout
     opt2.labResults.filter(l => l.isSelected).forEach(l =>
       scenarioStore.set(`opt2_${l.name}`, { assignment: opt2Assignment, labResults: opt2.labResults, filterLab: l.name }));
     scenarioStore.set('opt2_all', { assignment: opt2Assignment, labResults: opt2.labResults });
@@ -3327,6 +3408,12 @@ async function launchSimulation() {
       scenarioStore.set(`lab_${name}`, { assignment, labResults: scenario.labResults });
       scenario.labResults.filter(l => l.isSelected).forEach(l =>
         scenarioStore.set(`lab_${name}_${l.name}`, { assignment, labResults: scenario.labResults, filterLab: l.name }));
+    });
+    condScenarios.forEach(({ key, scenario, assignment, forcedConds }) => {
+      scenarioStore.set(key, { assignment, labResults: scenario.labResults, forcedConds });
+    });
+    pairScenarios.forEach(({ key, scenario, assignment }) => {
+      scenarioStore.set(key, { assignment, labResults: scenario.labResults });
     });
 
     const dlBtn = (key, label = '↓ CSV') => `<button class="sim-dl-inline" data-key="${key}">${label}</button>`;
@@ -3345,10 +3432,17 @@ async function launchSimulation() {
           + dlBtn(`lab_${name}`, '↓ TOUT');
         return { key: `lab_${name}`, label: `SCÉNARIO ${name.toUpperCase()}`, sub: null, scenario, dlBtns: labDlBtns };
       }),
+      ...condScenarios.map(({ key, label, scenario }) => ({
+        key, label, sub: null, scenario, dlBtns: dlBtn(key),
+      })),
+      ...pairScenarios.map(({ key, label, scenario }) => ({
+        key, label, sub: null, scenario, dlBtns: dlBtn(key),
+      })),
     ];
     allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
     const [winnerEntry, ...otherScenarios] = allOptScenarios;
     const winnerSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
+    const totalScenarios = 1 + allOptScenarios.length;
 
     let html = '';
 
@@ -3359,6 +3453,7 @@ async function launchSimulation() {
         <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL N-1</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET N-1</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">SCÉNARIOS ÉVALUÉS</div><div class="sim-kpi-value amber">${totalScenarios}</div></div>
       </div>
     </div>`;
 
@@ -3444,8 +3539,8 @@ async function launchSimulation() {
       btn.addEventListener('click', () => {
         const s = scenarioStore.get(btn.dataset.key);
         if (!s) return;
-        const fname = `scenario_${btn.dataset.key.replace(/^lab_/, '').replace(/^opt2_/, 'optimise_')}.csv`;
-        downloadCSV(buildScenarioCSV(s.assignment, s.labResults, s.filterLab || null), fname);
+        const fname = `scenario_${btn.dataset.key.replace(/^lab_/,'').replace(/^opt2_/,'optimise_').replace(/^cond_/,'palier_').replace(/^pair_/,'paire_')}.csv`;
+        downloadCSV(buildScenarioCSV(s.assignment, s.labResults, s.filterLab || null, s.forcedConds || null), fname);
       });
     });
 
