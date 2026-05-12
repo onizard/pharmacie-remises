@@ -1,28 +1,23 @@
 """
-Supabase helpers — vérification JWT + récupération des creds DIGIPHARMACIE
+Supabase helpers — vérification JWT + lecture/écriture de user_state
 """
 
+import asyncio
 import json
 import os
 import urllib.request
 
-SUPA_URL = "https://fmterazwesiwpwjpkyqi.supabase.co"
-SUPA_KEY = "sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w"
+SUPA_URL    = "https://fmterazwesiwpwjpkyqi.supabase.co"
+SUPA_KEY    = "sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w"
+SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 
 async def verify_token(token: str) -> str:
-    """
-    Appelle /auth/v1/user avec le token de l'utilisateur.
-    Retourne le user_id (UUID) ou lève ValueError.
-    """
     url = f"{SUPA_URL}/auth/v1/user"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "apikey":        SUPA_KEY,
-            "Authorization": f"Bearer {token}",
-        },
-    )
+    req = urllib.request.Request(url, headers={
+        "apikey":        SUPA_KEY,
+        "Authorization": f"Bearer {token}",
+    })
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
@@ -34,36 +29,75 @@ async def verify_token(token: str) -> str:
         raise ValueError(f"Token refusé par Supabase : HTTP {e.code}")
 
 
-async def get_user_creds(token: str, user_id: str) -> dict:
-    """
-    Lit state_json depuis la table user_state pour l'utilisateur donné.
-    Retourne {"user": "...", "pass": "..."} pour DIGIPHARMACIE.
-    """
-    url = (
-        f"{SUPA_URL}/rest/v1/user_state"
-        f"?user_id=eq.{user_id}&select=state_json&limit=1"
-    )
-    req = urllib.request.Request(
-        url,
-        headers={
-            "apikey":        SUPA_KEY,
-            "Authorization": f"Bearer {token}",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
+def _supa_key() -> str:
+    return SERVICE_KEY or SUPA_KEY
+
+
+def _get_state_sync(user_id: str) -> dict:
+    key = _supa_key()
+    url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1"
+    req = urllib.request.Request(url, headers={
+        "apikey":        key,
+        "Authorization": f"Bearer {key}",
+    })
+    with urllib.request.urlopen(req, timeout=15) as resp:
         rows = json.loads(resp.read())
+    return rows[0]["state_json"] if rows else {}
 
-    if not rows:
-        raise ValueError("Aucun état utilisateur trouvé dans Supabase")
 
-    state      = rows[0]["state_json"]
-    connectors = state.get("connectors", {})
-    digi       = connectors.get("digipharmacie", {})
+def _patch_state_sync(user_id: str, state: dict):
+    key  = _supa_key()
+    url  = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}"
+    body = json.dumps({"state_json": state}).encode()
+    req  = urllib.request.Request(url, data=body, method="PATCH", headers={
+        "apikey":        key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=minimal",
+    })
+    with urllib.request.urlopen(req, timeout=15):
+        pass
 
-    if not digi.get("user") or not digi.get("pass"):
+
+async def get_user_creds_for(user_id: str, connector: str) -> dict:
+    loop  = asyncio.get_event_loop()
+    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+    conn  = state.get("connectors", {}).get(connector, {})
+    if not conn.get("user") or not conn.get("pass"):
         raise ValueError(
-            "Identifiants DIGIPHARMACIE manquants — "
-            "configure-les dans break-pharma.fr → CONNECTEUR"
+            f"Identifiants {connector.upper()} manquants — "
+            "configure-les dans break-pharma.fr → CONNECTEURS"
         )
+    return {"user": conn["user"], "pass": conn["pass"]}
 
-    return {"user": digi["user"], "pass": digi["pass"]}
+
+async def save_user_creds(user_id: str, connector: str, user: str, password: str, connected: bool):
+    loop  = asyncio.get_event_loop()
+    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+    state.setdefault("connectors", {})[connector] = {
+        "user":      user,
+        "pass":      password,
+        "connected": connected,
+    }
+    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))
+
+
+async def patch_connector_connected(user_id: str, connector: str, connected: bool):
+    loop  = asyncio.get_event_loop()
+    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+    state.setdefault("connectors", {}).setdefault(connector, {})["connected"] = connected
+    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))
+
+
+async def patch_job_status(user_id: str, job_key: str, status: str, message: str, data: list):
+    loop  = asyncio.get_event_loop()
+    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+    state[job_key] = {
+        "status":   status,
+        "message":  message,
+        "rows":     data,
+        "total":    len(data),
+        "invoices": data,
+        "error":    "" if status != "error" else message,
+    }
+    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: break-pharma-scraper
+    name: break-pharma-api
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: starter          # 512 MB RAM — suffisant pour camoufox + pdfplumber

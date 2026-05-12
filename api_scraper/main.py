@@ -1,23 +1,38 @@
 """
-API FastAPI — Scraper DIGIPHARMACIE + extraction PDF
+API FastAPI — Break-Pharma Scraper Service
 
 Endpoints :
-  POST /scrape          → lance le job en arrière-plan, retourne {job_id}
-  GET  /status/{job_id} → retourne le statut + les données extraites quand terminé
+  GET  /health               → sanity check
+  POST /connect/{connector}  → teste les identifiants, met à jour connected dans Supabase
+  POST /run/{connector}      → lance le scraping en arrière-plan
+  GET  /status/{job_id}      → retourne le statut du job
 
 Authentification : Bearer token Supabase (JWT de l'utilisateur break-pharma.fr)
+Connecteurs supportés : ospharm, digipharmacie
 """
 
 import asyncio
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from scraper import run_scraper
-from supabase_client import get_user_creds, verify_token
+from supabase_client import (
+    get_user_creds_for,
+    patch_connector_connected,
+    patch_job_status,
+    save_user_creds,
+    verify_token,
+)
+
+
+class ConnectBody(BaseModel):
+    user: str
+    password: str
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
@@ -35,10 +50,12 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+SUPPORTED_CONNECTORS = {"ospharm", "digipharmacie"}
+
 # ── Job store (in-memory) ──────────────────────────────────────────────────────
 
 _jobs: dict[str, dict] = {}
-JOB_TTL   = 3600        # 1 h — nettoyage automatique
+JOB_TTL   = 3600
 _executor = ThreadPoolExecutor(max_workers=3)
 
 
@@ -49,6 +66,13 @@ def _cleanup_jobs():
         del _jobs[jid]
 
 
+def _extract_token(authorization: str) -> str:
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token manquant")
+    return token
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -56,32 +80,64 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/scrape")
-async def start_scrape(
-    background_tasks: BackgroundTasks,
+@app.post("/connect/{connector}")
+async def connect_connector(
+    body: ConnectBody,
+    connector: str = Path(...),
     authorization: str = Header(default=""),
 ):
-    token = authorization.removeprefix("Bearer ").strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Token manquant")
+    """Teste les identifiants fournis, puis les persiste dans Supabase."""
+    if connector not in SUPPORTED_CONNECTORS:
+        raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
 
+    token = _extract_token(authorization)
     try:
         user_id = await verify_token(token)
-        creds   = await get_user_creds(token, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    creds = {"user": body.user, "pass": body.password}
+    loop  = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds))
+    except RuntimeError as e:
+        await save_user_creds(user_id, connector, body.user, body.password, False)
+        raise HTTPException(status_code=400, detail=str(e))
+
+    await save_user_creds(user_id, connector, body.user, body.password, True)
+    return {"status": "ok", "connector": connector}
+
+
+@app.post("/run/{connector}")
+async def run_connector(
+    background_tasks: BackgroundTasks,
+    connector: str = Path(...),
+    authorization: str = Header(default=""),
+):
+    """Lance le scraping en arrière-plan. Retourne {job_id}."""
+    if connector not in SUPPORTED_CONNECTORS:
+        raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
+
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+        creds   = await get_user_creds_for(user_id, connector)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
     _cleanup_jobs()
 
     job_id = str(uuid.uuid4())
+    job_key = f"{connector}_job"
     _jobs[job_id] = {
         "status":  "running",
-        "message": "Connexion à DIGIPHARMACIE…",
+        "message": f"Démarrage {connector.upper()}…",
         "created": time.time(),
-        "invoices": [],
+        "rows":    [],
+        "total":   0,
     }
 
-    background_tasks.add_task(_run_job_async, job_id, creds)
+    background_tasks.add_task(_run_job_async, job_id, user_id, connector, job_key, creds)
     return {"job_id": job_id}
 
 
@@ -93,20 +149,48 @@ def get_status(job_id: str):
     return job
 
 
+# ── Test connector (synchronous, called from executor) ─────────────────────────
+
+def _test_connector(connector: str, creds: dict):
+    if connector == "ospharm":
+        from test_connector import test_ospharm
+        test_ospharm(creds)
+    elif connector == "digipharmacie":
+        from test_connector import test_digipharmacie
+        test_digipharmacie(creds)
+
+
 # ── Background job ─────────────────────────────────────────────────────────────
 
-async def _run_job_async(job_id: str, creds: dict):
+async def _run_job_async(job_id: str, user_id: str, connector: str, job_key: str, creds: dict):
     loop = asyncio.get_event_loop()
+
+    def progress(msg: str):
+        if job_id in _jobs:
+            _jobs[job_id]["message"] = msg
+
     try:
-        invoices = await loop.run_in_executor(
+        rows = await loop.run_in_executor(
             _executor,
-            lambda: run_scraper(creds, lambda msg: _update_job(job_id, msg)),
+            lambda: _scrape(connector, creds, progress),
         )
-        _jobs[job_id].update({"status": "done", "invoices": invoices, "message": "Terminé"})
+        _jobs[job_id].update({
+            "status":  "done",
+            "message": f"{len(rows)} lignes extraites",
+            "rows":    rows,
+            "total":   len(rows),
+        })
+        await patch_job_status(user_id, job_key, "done", f"{len(rows)} lignes extraites", rows)
     except Exception as e:
-        _jobs[job_id].update({"status": "error", "error": str(e)})
+        _jobs[job_id].update({"status": "error", "message": str(e), "error": str(e)})
+        await patch_job_status(user_id, job_key, "error", str(e), [])
 
 
-def _update_job(job_id: str, message: str):
-    if job_id in _jobs:
-        _jobs[job_id]["message"] = message
+def _scrape(connector: str, creds: dict, progress):
+    if connector == "digipharmacie":
+        from scraper import run_scraper
+        return run_scraper(creds, progress)
+    elif connector == "ospharm":
+        from run_job_ospharm import run_ospharm
+        return run_ospharm(creds, progress)
+    raise RuntimeError(f"Connecteur inconnu : {connector}")

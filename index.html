@@ -1004,15 +1004,6 @@
           </div>
         </div>
       </div>
-      <!-- Admin : GitHub Actions PAT -->
-      <div id="connAdminSection" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-        <div class="conn-label" style="margin-bottom:8px;letter-spacing:2px">GITHUB ACTIONS TOKEN</div>
-        <div class="conn-input-wrap">
-          <input class="conn-input" id="ghTokenInput" type="password" placeholder="ghp_••••••••••••••••••" autocomplete="off" />
-          <button class="conn-eye" data-target="ghTokenInput" title="Afficher/masquer">👁</button>
-        </div>
-        <div style="font-size:10px;color:var(--text-dim);margin-top:5px;letter-spacing:.5px">PAT avec scope <b>workflow</b> — github.com/settings/tokens</div>
-      </div>
       <p style="margin-top:20px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;line-height:1.6;letter-spacing:.5px">
         🔒 Vos identifiants sont chiffrés et strictement personnels.<br>
         Aucune donnée n'est divulguée — elles ne sont visibles que par vous.
@@ -1168,9 +1159,8 @@
 const SUPA_URL    = 'https://fmterazwesiwpwjpkyqi.supabase.co';
 const SUPA_KEY    = 'sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w';
 const ADMIN_EMAIL = 'oliviernizard@gmail.com';
-const GH_REPO     = 'onizard/pharmacie-remises';
+const API_URL     = 'https://break-pharma-api.onrender.com';
 const ADMIN_UID   = '2e463bc5-a82f-4d03-aace-a33858996900';
-let   GH_TOKEN    = '';  // chargé depuis Supabase après login
 let   isAdmin     = false;
 
 const LABS_ALL = ['Arrow','Biogaran','Viatris','EG','Sandoz','Teva','Zentiva','Cristers','Zydus','Pfizer'];
@@ -1322,10 +1312,8 @@ async function saveCloudState(data) {
     if (!sb) return;
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return;
-    // Préserver les champs système non gérés par le state JS
+    // Préserver les jobs scraper écrits par l'API
     const payload = Object.assign({}, data);
-    if (GH_TOKEN) payload.gh_actions_token = GH_TOKEN;
-    // Préserver les jobs scraper écrits par GitHub Actions
     try {
       const { data: cur } = await sb.from('user_state').select('state_json').eq('user_id', session.user.id).maybeSingle();
       for (const k of ['ospharm_job', 'verif_job', 'conn_test']) {
@@ -2507,10 +2495,6 @@ function resetVerificateur() {
 }
 
 async function launchVerificateur() {
-  if (!GH_TOKEN) {
-    showToast('Token GitHub non configuré — contactez l\'administrateur.');
-    return;
-  }
   const btnEl = document.getElementById('btnLaunchVerif');
   const msgEl = document.getElementById('verifMsg');
 
@@ -2558,23 +2542,17 @@ async function launchVerificateur() {
     await _verifSupaPatch({ status: 'running', message: 'Job en attente…', invoices: [], error: '' });
   } catch (_) {}
 
-  // Déclencher le workflow GitHub Actions
+  // Déclencher le scraping via l'API break-pharma
   try {
-    const resp = await fetch(
-      `https://api.github.com/repos/${GH_REPO}/actions/workflows/scraper.yml/dispatches`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GH_TOKEN}`,
-          'Accept':        'application/vnd.github.v3+json',
-          'Content-Type':  'application/json',
-        },
-        body: JSON.stringify({ ref: 'master', inputs: { user_id: userId } }),
-      }
-    );
+    const { data: { session: sess2 } } = await window._sbClient.auth.getSession();
+    if (!sess2) throw new Error('Session expirée');
+    const resp = await fetch(`${API_URL}/run/digipharmacie`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${sess2.access_token}` },
+    });
     if (!resp.ok) {
-      const err = await resp.text();
-      throw new Error(`GitHub API ${resp.status} : ${err}`);
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `API ${resp.status}`);
     }
   } catch (e) {
     msgEl.textContent = `❌ ${e.message}`;
@@ -3864,12 +3842,6 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       if (session) {
         isAdmin = (session.user.email === ADMIN_EMAIL);
         if (!isAdmin) await loadRsfDefaults();
-        // Charger le PAT GitHub depuis le state admin (pour le vérificateur)
-        try {
-          const { data: adminRow } = await sb.from('user_state')
-            .select('state_json').eq('user_id', ADMIN_UID).maybeSingle();
-          GH_TOKEN = adminRow?.state_json?.gh_actions_token || '';
-        } catch(_) {}
         if (!_isPostReset) {
           const { data: cloud } = await sb.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
@@ -4070,14 +4042,6 @@ function initConnecteurModal() {
     document.getElementById('digiTestResult').textContent = '';
     showView('osp',  c.ospharm.connected);
     showView('digi', c.digipharmacie.connected);
-    const adminSec = document.getElementById('connAdminSection');
-    if (adminSec) {
-      adminSec.style.display = isAdmin ? '' : 'none';
-      if (isAdmin) {
-        const ghInp = document.getElementById('ghTokenInput');
-        if (ghInp) ghInp.value = GH_TOKEN;
-      }
-    }
     modal.classList.add('open');
     refreshConnJobStatuses();
   }
@@ -4095,10 +4059,11 @@ function initConnecteurModal() {
     });
   });
 
-  function connectConn(connKey, prefix) {
+  async function connectConn(connKey, prefix) {
     const user     = document.getElementById(prefix + 'User').value.trim();
     const pass     = document.getElementById(prefix + 'Pass').value;
     const resultEl = document.getElementById(prefix + 'TestResult');
+    const btn      = document.getElementById(prefix + 'Test');
 
     if (!user || !pass) {
       resultEl.textContent = '⚠ Identifiants vides';
@@ -4106,51 +4071,57 @@ function initConnecteurModal() {
       return;
     }
 
-    state.connectors[connKey] = { user, pass, connected: true };
-    updateConnecteurBtn();
-    saveState();
-    showView(prefix, true);
+    btn.disabled = true;
+    resultEl.textContent = '⏳ Vérification…';
+    resultEl.className = 'conn-test-result warn';
+
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) throw new Error('Session expirée — reconnectez-vous.');
+
+      const resp = await fetch(`${API_URL}/connect/${connKey}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({ user, password: pass }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `Erreur ${resp.status}`);
+      }
+
+      // L'API a sauvegardé les identifiants dans Supabase — on met à jour l'état local
+      state.connectors[connKey] = { user, pass, connected: true };
+      updateConnecteurBtn();
+      saveState();
+      resultEl.textContent = '';
+      showView(prefix, true);
+    } catch(e) {
+      resultEl.textContent = `❌ ${e.message}`;
+      resultEl.className = 'conn-test-result ko';
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   async function _triggerWorkflow(connKey) {
-    if (!GH_TOKEN) return;
-    let userId = '';
-    try {
-      const { data: { session } } = await window._sbClient.auth.getSession();
-      userId = session?.user?.id || '';
-    } catch(_) {}
-    if (!userId) return;
-
-    const workflow = connKey === 'digipharmacie' ? 'scraper.yml' : 'scraper_ospharm.yml';
-    const jobKey   = connKey === 'digipharmacie' ? 'verif_job'   : 'ospharm_job';
     const statusId = connKey === 'digipharmacie' ? 'digiJobStatus' : 'ospJobStatus';
-
-    // Marquer running dans Supabase
-    try {
-      const { data: { session } } = await window._sbClient.auth.getSession();
-      const { data: row } = await window._sbClient.from('user_state')
-        .select('state_json').eq('user_id', userId).maybeSingle();
-      const sj = row?.state_json || {};
-      sj[jobKey] = { status: 'running', message: 'Job en attente…', rows: [], total: 0, invoices: [], error: '' };
-      await window._sbClient.from('user_state').upsert({ user_id: userId, state_json: sj }, { onConflict: 'user_id' });
-    } catch(_) {}
-
     _setJobStatusEl(statusId, 'running', '⏳ récupération en cours…');
 
     try {
-      const resp = await fetch(
-        `https://api.github.com/repos/${GH_REPO}/actions/workflows/${workflow}/dispatches`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${GH_TOKEN}`,
-            'Accept':        'application/vnd.github.v3+json',
-            'Content-Type':  'application/json',
-          },
-          body: JSON.stringify({ ref: 'master', inputs: { user_id: userId } }),
-        }
-      );
-      if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) throw new Error('Session expirée');
+
+      const resp = await fetch(`${API_URL}/run/${connKey}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `Erreur ${resp.status}`);
+      }
     } catch(e) {
       _setJobStatusEl(statusId, 'error', `❌ ${e.message}`);
     }
@@ -4207,10 +4178,6 @@ function initConnecteurModal() {
         state.connectors[key] = { user, pass, connected: false };
       }
     });
-    if (isAdmin) {
-      const ghInp = document.getElementById('ghTokenInput');
-      if (ghInp && ghInp.value.trim()) GH_TOKEN = ghInp.value.trim();
-    }
     updateConnecteurBtn();
     saveState();
     setTimeout(closeModal, 400);

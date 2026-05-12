@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-# Dépendances système pour Firefox (requis par camoufox)
+# Dépendances système pour Firefox (camoufox) + Chromium (playwright)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     libgtk-3-0 \
@@ -31,8 +31,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Télécharger le binaire Firefox camoufox au build (pas au runtime)
+# Télécharger Firefox (camoufox) au build
 RUN python -m camoufox fetch
+
+# Télécharger Chromium (playwright) au build
+RUN playwright install chromium --with-deps
 
 COPY . .
 
