@@ -1501,9 +1501,16 @@ function ospharmRowsToCsvData(rows) {
   const keys = Object.keys(rows[0]);
   const n = k => (k || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 
-  const cipKey = keys.find(k => ['cip','ean','acl','codearticle','codeproduit','reference','ref'].some(p => n(k).includes(p)));
-  const qtyKey = keys.find(k => ['qte','qty','quantite','quantite','nb','nombre','vente','vendu'].some(p => n(k).includes(p)));
-  const libKey = keys.find(k => ['libelle','designation','produit','article','nom','description'].some(p => n(k).includes(p)));
+  // Priorité aux noms exacts connus d'OSPHARM, puis détection générique
+  const cipKey = keys.find(k => n(k) === 'codeean')
+               || keys.find(k => ['cip','ean','acl','codearticle','codeproduit'].some(p => n(k).includes(p)));
+  // 'Quantité' exact (pas 'Evolution quantité' ni 'Quantité n-1')
+  const qtyKey = keys.find(k => n(k) === 'quantite')
+               || keys.find(k => ['qte','qty'].some(p => n(k).includes(p)) && !n(k).includes('n1') && !n(k).includes('evolution'));
+  // 'Libellé produit' avant 'Libellé laboratoire'
+  const libKey = keys.find(k => n(k) === 'libelleproduit')
+               || keys.find(k => ['produit','designation','article'].some(p => n(k).includes(p)))
+               || keys.find(k => n(k).includes('libelle'));
 
   if (!cipKey || !qtyKey) return [];
 
@@ -1513,7 +1520,7 @@ function ospharmRowsToCsvData(rows) {
     const cip13  = rawCip.length === 13 ? rawCip : rawCip.length === 7 ? rawCip.padStart(13, '340000') : null;
     const qty    = parseFloat(String(r[qtyKey] || '0').replace(',', '.')) || 0;
     if (!cip13 || qty <= 0) continue;
-    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '') : '' });
+    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '').trim() : '' });
   }
   return result;
 }
