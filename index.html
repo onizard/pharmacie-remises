@@ -1004,6 +1004,15 @@
           </div>
         </div>
       </div>
+      <!-- Admin : GitHub Actions PAT -->
+      <div id="connAdminSection" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <div class="conn-label" style="margin-bottom:8px;letter-spacing:2px">GITHUB ACTIONS TOKEN</div>
+        <div class="conn-input-wrap">
+          <input class="conn-input" id="ghTokenInput" type="password" placeholder="ghp_••••••••••••••••••" autocomplete="off" />
+          <button class="conn-eye" data-target="ghTokenInput" title="Afficher/masquer">👁</button>
+        </div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:5px;letter-spacing:.5px">PAT avec scope <b>workflow</b> — github.com/settings/tokens</div>
+      </div>
       <p style="margin-top:20px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;line-height:1.6;letter-spacing:.5px">
         🔒 Vos identifiants sont chiffrés et strictement personnels.<br>
         Aucune donnée n'est divulguée — elles ne sont visibles que par vous.
@@ -4061,6 +4070,14 @@ function initConnecteurModal() {
     document.getElementById('digiTestResult').textContent = '';
     showView('osp',  c.ospharm.connected);
     showView('digi', c.digipharmacie.connected);
+    const adminSec = document.getElementById('connAdminSection');
+    if (adminSec) {
+      adminSec.style.display = isAdmin ? '' : 'none';
+      if (isAdmin) {
+        const ghInp = document.getElementById('ghTokenInput');
+        if (ghInp) ghInp.value = GH_TOKEN;
+      }
+    }
     modal.classList.add('open');
     refreshConnJobStatuses();
   }
@@ -4113,6 +4130,12 @@ function initConnecteurModal() {
     } catch(_) {}
 
     // Déclencher le workflow de test
+    if (!GH_TOKEN) {
+      resultEl.textContent = '⚠ Test automatique non disponible — token GitHub non configuré (contactez l\'administrateur)';
+      resultEl.className = 'conn-test-result warn';
+      btnEl.disabled = false;
+      return;
+    }
     let userId = '';
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
@@ -4272,6 +4295,10 @@ function initConnecteurModal() {
         state.connectors[key] = { user, pass, connected: false };
       }
     });
+    if (isAdmin) {
+      const ghInp = document.getElementById('ghTokenInput');
+      if (ghInp && ghInp.value.trim()) GH_TOKEN = ghInp.value.trim();
+    }
     updateConnecteurBtn();
     saveState();
     setTimeout(closeModal, 400);
