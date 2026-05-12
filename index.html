@@ -4095,11 +4095,10 @@ function initConnecteurModal() {
     });
   });
 
-  async function connectConn(connKey, prefix) {
+  function connectConn(connKey, prefix) {
     const user     = document.getElementById(prefix + 'User').value.trim();
     const pass     = document.getElementById(prefix + 'Pass').value;
     const resultEl = document.getElementById(prefix + 'TestResult');
-    const btnEl    = document.getElementById(prefix + 'Test');
 
     if (!user || !pass) {
       resultEl.textContent = '⚠ Identifiants vides';
@@ -4107,97 +4106,10 @@ function initConnecteurModal() {
       return;
     }
 
-    btnEl.disabled = true;
-    resultEl.textContent = '⏳ Test de connexion en cours (~1-2 min)…';
-    resultEl.className = 'conn-test-result';
-
-    // Sauvegarder les creds (non connecté) dans Supabase pour que le workflow puisse les lire
-    state.connectors[connKey] = { user, pass, connected: false };
+    state.connectors[connKey] = { user, pass, connected: true };
+    updateConnecteurBtn();
     saveState();
-
-    // Effacer le résultat précédent pour ce connecteur
-    try {
-      const { data: { session } } = await window._sbClient.auth.getSession();
-      if (session) {
-        const { data: row } = await window._sbClient.from('user_state')
-          .select('state_json').eq('user_id', session.user.id).maybeSingle();
-        const sj = row?.state_json || {};
-        sj.conn_test = sj.conn_test || {};
-        sj.conn_test[connKey] = { status: 'running', message: '' };
-        await window._sbClient.from('user_state')
-          .upsert({ user_id: session.user.id, state_json: sj }, { onConflict: 'user_id' });
-      }
-    } catch(_) {}
-
-    // Déclencher le workflow de test
-    if (!GH_TOKEN) {
-      resultEl.textContent = '⚠ Test automatique non disponible — token GitHub non configuré (contactez l\'administrateur)';
-      resultEl.className = 'conn-test-result warn';
-      btnEl.disabled = false;
-      return;
-    }
-    let userId = '';
-    try {
-      const { data: { session } } = await window._sbClient.auth.getSession();
-      userId = session?.user?.id || '';
-      const resp = await fetch(
-        `https://api.github.com/repos/${GH_REPO}/actions/workflows/test_connector.yml/dispatches`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${GH_TOKEN}`,
-            'Accept':        'application/vnd.github.v3+json',
-            'Content-Type':  'application/json',
-          },
-          body: JSON.stringify({ ref: 'master', inputs: { user_id: userId, connector: connKey } }),
-        }
-      );
-      if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
-    } catch(e) {
-      resultEl.textContent = `❌ Erreur déclenchement : ${e.message}`;
-      btnEl.disabled = false;
-      return;
-    }
-
-    // Polling du résultat dans Supabase
-    _pollConnTest(connKey, prefix, btnEl, resultEl, Date.now());
-  }
-
-  async function _pollConnTest(connKey, prefix, btnEl, resultEl, startTs) {
-    // Timeout 8 min
-    if (Date.now() - startTs > 8 * 60 * 1000) {
-      resultEl.textContent = '❌ Timeout — le test a pris trop de temps';
-      btnEl.disabled = false;
-      return;
-    }
-    try {
-      const { data: { session } } = await window._sbClient.auth.getSession();
-      const { data: row } = await window._sbClient.from('user_state')
-        .select('state_json').eq('user_id', session.user.id).maybeSingle();
-      const result = row?.state_json?.conn_test?.[connKey];
-
-      if (result?.status === 'ok') {
-        state.connectors[connKey].connected = true;
-        updateConnecteurBtn();
-        saveState();
-        showView(prefix, true);
-        _triggerWorkflow(connKey);
-        return;
-      }
-      if (result?.status === 'fail') {
-        const msg = result.message || 'Identifiants incorrects';
-        resultEl.innerHTML = `❌ ${msg}<br><span style="color:var(--text-dim)">Vérifiez vos identifiants et réessayez.</span>`;
-        resultEl.className = 'conn-test-result error';
-        btnEl.disabled = false;
-        // Vider le mot de passe et signaler visuellement les champs
-        const passEl = document.getElementById(prefix + 'Pass');
-        const userEl = document.getElementById(prefix + 'User');
-        if (passEl) { passEl.value = ''; passEl.classList.add('error', 'shake'); setTimeout(() => passEl.classList.remove('shake'), 400); }
-        if (userEl) { userEl.classList.add('error', 'shake'); setTimeout(() => userEl.classList.remove('shake'), 400); }
-        return;
-      }
-    } catch(_) {}
-    setTimeout(() => _pollConnTest(connKey, prefix, btnEl, resultEl, startTs), 6000);
+    showView(prefix, true);
   }
 
   async function _triggerWorkflow(connKey) {
