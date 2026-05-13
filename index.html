@@ -973,7 +973,7 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
-            <button class="btn btn-secondary conn-disconnect-btn" id="digiDisconnect" style="display:none">RETIRER</button>
+            <button class="conn-test-btn" id="digiReconnect">RECONNECTER</button>
           </div>
         </div>
         <!-- OSPHARM -->
@@ -1005,7 +1005,7 @@
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
             <a class="conn-file-btn" id="ospFileBtn" style="display:none" download>⬇ Télécharger Excel</a>
-            <button class="btn btn-secondary conn-disconnect-btn" id="ospDisconnect" style="display:none">RETIRER</button>
+            <button class="conn-test-btn" id="ospReconnect">RECONNECTER</button>
           </div>
         </div>
       </div>
@@ -4003,6 +4003,15 @@ function initConnecteurModal() {
     document.getElementById(prefix + 'Pass').value = '';
   }
 
+  async function reconnectConn(connKey, prefix) {
+    const creds = state.connectors[connKey];
+    if (!creds?.user || !creds?.pass) { showView(prefix, false); return; }
+    document.getElementById(prefix + 'User').value = creds.user;
+    document.getElementById(prefix + 'Pass').value = creds.pass;
+    showView(prefix, false);
+    await connectConn(connKey, prefix);
+  }
+
   function openModal() {
     const c = state.connectors;
     document.getElementById('ospUser').value  = c.ospharm.user;
@@ -4252,8 +4261,8 @@ function initConnecteurModal() {
   ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
   });
-  document.getElementById('ospDisconnect').addEventListener('click',  () => disconnectConn('ospharm', 'osp'));
-  document.getElementById('digiDisconnect').addEventListener('click', () => disconnectConn('digipharmacie', 'digi'));
+  document.getElementById('ospReconnect').addEventListener('click',  () => reconnectConn('ospharm', 'osp'));
+  document.getElementById('digiReconnect').addEventListener('click', () => reconnectConn('digipharmacie', 'digi'));
 
   btnSave.addEventListener('click', () => {
     ['osp', 'digi'].forEach(p => {
