@@ -4042,8 +4042,19 @@ function initConnecteurModal() {
       const { data: { session } } = await window._sbClient.auth.getSession();
       if (!session) throw new Error('Session expirée — reconnectez-vous.');
 
-      // Wake up Render service (cold start can take ~45s on free plan)
-      await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(60_000) }).catch(() => {});
+      // Wake up Render service — retry until it responds (cold start ~45s on free plan)
+      const t0 = Date.now();
+      let serverUp = false;
+      while (!serverUp && (Date.now() - t0) < 90_000) {
+        const elapsed = Math.round((Date.now() - t0) / 1000);
+        if (elapsed > 0) resultEl.textContent = `⏳ Démarrage du serveur… (${elapsed}s)`;
+        try {
+          const r = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(8_000) });
+          if (r.ok) { serverUp = true; break; }
+        } catch(_) {}
+        await new Promise(r => setTimeout(r, 2_000));
+      }
+      if (!serverUp) throw new Error('Serveur inaccessible — réessayez dans quelques instants.');
       resultEl.textContent = '⏳ Vérification…';
 
       const resp = await fetch(`${API_URL}/connect/${connKey}`, {
