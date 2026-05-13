@@ -1567,7 +1567,9 @@ async function launchComparateur() {
 function renderStepBar() {
   document.getElementById('stepbar').innerHTML = '';
   const btnImp = document.getElementById('btnImporter');
-  if (btnImp) btnImp.disabled = !state.labPages.some(lp => lp.selectedLab);
+  if (!btnImp) return;
+  if (!isAdmin) { btnImp.style.display = 'none'; return; }
+  btnImp.disabled = !state.labPages.some(lp => lp.selectedLab);
 }
 
 function renderLabGrid() {
@@ -3851,6 +3853,9 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
     if (saved.csvData && saved.csvData.length) {
       state.csvData = saved.csvData;
       state.csvRows = saved.csvRows || saved.csvData.length;
+    } else if (!isAdmin && saved.connectors?.ospharm?.connected) {
+      // Pas de csvData en cache → charger depuis OSPHARM si job disponible
+      setTimeout(() => launchComparateur().catch(() => {}), 1500);
     }
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 1) {
@@ -4140,8 +4145,37 @@ function initConnecteurModal() {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.detail || `Erreur ${resp.status}`);
       }
+      if (connKey === 'ospharm') _pollOspJobAndLaunch();
     } catch(e) {
       _setJobStatusEl(statusId, 'error', `❌ ${e.message}`);
+    }
+  }
+
+  async function _pollOspJobAndLaunch() {
+    const deadline = Date.now() + 600_000; // 10 min max
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 5_000));
+      try {
+        const { data: { session } } = await window._sbClient.auth.getSession();
+        if (!session) break;
+        const { data: row } = await window._sbClient.from('user_state')
+          .select('state_json').eq('user_id', session.user.id).maybeSingle();
+        const job = row?.state_json?.ospharm_job;
+        if (!job) continue;
+        if (job.status === 'running') {
+          _setJobStatusEl('ospJobStatus', 'running', `⏳ ${job.message || 'en cours…'}`);
+          continue;
+        }
+        if (job.status === 'done') {
+          _setJobStatusEl('ospJobStatus', 'done', `✓ ${job.total || 0} lignes — traitement…`);
+          await launchComparateur();
+          break;
+        }
+        if (job.status === 'error') {
+          _setJobStatusEl('ospJobStatus', 'error', `❌ ${job.error || 'erreur'}`);
+          break;
+        }
+      } catch(_) {}
     }
   }
 
