@@ -87,6 +87,31 @@ def _js_click(page, text):
     }}''')
 
 
+def _login(page, creds):
+    """Remplit le formulaire OAuth OSPHARM et attend le retour sur datastat."""
+    page.locator("input[type='email'],input[name='username'],input[name='email']").first.fill(
+        creds["user"], timeout=15_000)
+    page.locator("input[type='password'],input[name='password']").first.fill(
+        creds["pass"], timeout=5_000)
+    page.locator("button[type='submit'],input[type='submit']").first.click(timeout=5_000)
+    try:
+        page.wait_for_url("*datastat.ospharm.org*", timeout=40_000)
+    except PWTimeout:
+        raise RuntimeError("Identifiants OSPHARM incorrects ou timeout login")
+    try:
+        page.wait_for_function("() => typeof webix !== 'undefined'", timeout=20_000)
+    except Exception:
+        page.wait_for_timeout(3_000)
+
+
+def _reauth_if_needed(page, creds, label=""):
+    """Si OSPHARM a redirigé vers la page d'auth, on se reconnecte."""
+    if "accounts" not in page.url:
+        return
+    print(f"  [warn] Re-auth OSPHARM{' (' + label + ')' if label else ''} — url={page.url[:80]}")
+    _login(page, creds)
+
+
 def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], str]:
     import tempfile, openpyxl
 
@@ -99,18 +124,8 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         progress("Connexion OSPHARM…")
         page.goto(OSPHARM_URL, wait_until="networkidle", timeout=30_000)
 
-        # SSO silencieux : déjà sur le dashboard
-        if not ("datastat.ospharm.org" in page.url and "login" not in page.url and "accounts" not in page.url):
-            try:
-                page.locator("input[type='email'],input[name='username'],input[name='email']").first.fill(creds["user"], timeout=15_000)
-                page.locator("input[type='password'],input[name='password']").first.fill(creds["pass"], timeout=5_000)
-                page.locator("button[type='submit'],input[type='submit']").first.click(timeout=5_000)
-                try:
-                    page.wait_for_url("*datastat.ospharm.org*", timeout=30_000)
-                except PWTimeout:
-                    pass
-            except PWTimeout as e:
-                raise RuntimeError(f"Timeout login OSPHARM: {e}")
+        if "accounts" in page.url or "login" in page.url:
+            _login(page, creds)
 
         if "datastat.ospharm.org" not in page.url or "accounts" in page.url:
             raise RuntimeError("Identifiants OSPHARM incorrects")
@@ -119,27 +134,23 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         try:
             page.wait_for_function("() => typeof webix !== 'undefined'", timeout=20_000)
         except Exception:
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(3_000)
 
-        # 2. Analyse des ventes → Toutes mes ventes
+        # 2. Navigation vers Toutes mes ventes (hash routing SPA — pas de page.goto)
         progress("Navigation vers Toutes mes ventes…")
-        for label in ["Analyse des ventes", "Toutes les ventes", "Toutes mes ventes"]:
-            try:
-                page.get_by_text(label, exact=True).first.click(timeout=8_000)
-                page.wait_for_timeout(700)
-            except Exception:
-                pass
-
         if "sellout" not in page.url:
-            page.goto("https://datastat.ospharm.org/#!/top/sellout.all",
-                      wait_until="domcontentloaded", timeout=20_000)
+            # Naviguer via le hash pour rester dans la SPA sans déclencher un rechargement
+            page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
+            page.wait_for_timeout(3_000)
+            _reauth_if_needed(page, creds, "sellout.all")
             try:
                 page.wait_for_function("() => typeof webix !== 'undefined'", timeout=15_000)
             except Exception:
-                page.wait_for_timeout(1500)
+                page.wait_for_timeout(2_000)
 
         # 3. Sélection "Année lissée" + Valider
         progress("Sélection Année lissée…")
+        _reauth_if_needed(page, creds, "avant Année lissée")
         try:
             page.locator("button.webix_el_htmlbutton").first.click(timeout=10_000)
             page.wait_for_timeout(500)
@@ -161,20 +172,18 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                     page.get_by_text("Valider", exact=True).first.click(force=True, timeout=5_000)
                 except Exception:
                     pass
-            try:
-                page.wait_for_function(
-                    "() => { const g = Object.values(webix?.ui?.views||{}).find(v=>v.name==='datatable'&&v.isVisible()); return g && g.count() > 0; }",
-                    timeout=20_000,
-                )
-            except Exception:
-                page.wait_for_timeout(2500)
+            page.wait_for_timeout(3_000)
 
         # 4. Onglet Produits
         progress("Sélection onglet Produits…")
+        _reauth_if_needed(page, creds, "avant Produits")
         prod_ok = page.evaluate('''() => {
             const els = document.querySelectorAll(".webix_item_tab,.webix_list_item,[class*='tab'],li,span,div,a");
             for (const el of els) {
-                if (el.textContent.trim() === "Produits" && el.offsetParent !== null) { el.click(); return true; }
+                if (el.textContent.trim() === "Produits") {
+                    const r = el.getBoundingClientRect();
+                    if (r.width > 0 && r.height > 0) { el.click(); return true; }
+                }
             }
             return false;
         }''')
@@ -183,19 +192,14 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 page.get_by_text("Produits", exact=True).first.click(timeout=8_000)
             except Exception:
                 pass
-        try:
-            page.wait_for_function(
-                "() => { const g = Object.values(webix?.ui?.views||{}).find(v=>v.name==='datatable'&&v.isVisible()); return g && g.count() > 0; }",
-                timeout=20_000,
-            )
-        except Exception:
-            page.wait_for_timeout(2500)
+        page.wait_for_timeout(3_000)
+        _reauth_if_needed(page, creds, "après Produits")
 
         # 5. Export Excel
         progress("Export Excel…")
         tmp = tempfile.mktemp(suffix=".xlsx")
 
-        # ── Debug : inspecter la page pour diagnostiquer ──────────────────────
+        # ── Debug URL avant export ────────────────────────────────────────────
         dbg = page.evaluate('''() => {
             const vids = [...document.querySelectorAll("[view_id]")];
             const tabs = [...document.querySelectorAll(".webix_item_tab")];
