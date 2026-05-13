@@ -675,6 +675,8 @@
   .conn-connected-name { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--green); }
   .conn-connected-user-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); }
   .conn-job-status { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: .5px; margin-top: 2px; min-height: 16px; }
+  .conn-file-btn { font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 2px; padding: 5px 14px; border: 1px solid var(--cyan-dim); color: var(--cyan); text-decoration: none; transition: all .2s; }
+  .conn-file-btn:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
   .conn-disconnect-btn { font-size: 10px; padding: 6px 14px; letter-spacing: 2px; border-color: var(--red); color: var(--red); }
   .conn-disconnect-btn:hover { background: var(--red); color: var(--bg); }
   .conn-job-status.running { color: var(--amber); }
@@ -1002,6 +1004,7 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
+            <a class="conn-file-btn" id="ospFileBtn" style="display:none" download>⬇ Télécharger Excel</a>
             <button class="btn btn-secondary conn-disconnect-btn" id="ospDisconnect" style="display:none">RETIRER</button>
           </div>
         </div>
@@ -4206,14 +4209,18 @@ function initConnecteurModal() {
 
       const map = [
         { jobKey: 'verif_job',   elId: 'digiJobStatus' },
-        { jobKey: 'ospharm_job', elId: 'ospJobStatus'  },
+        { jobKey: 'ospharm_job', elId: 'ospJobStatus', fileBtn: 'ospFileBtn' },
       ];
-      map.forEach(({ jobKey, elId }) => {
+      map.forEach(({ jobKey, elId, fileBtn }) => {
         const job = sj[jobKey];
         if (!job) return;
         if (job.status === 'done') {
           const n = job.total || job.invoices?.length || job.rows?.length || 0;
           _setJobStatusEl(elId, 'done', `✓ ${n.toLocaleString('fr-FR')} lignes prêtes`);
+          if (fileBtn && job.file_url) {
+            const btn = document.getElementById(fileBtn);
+            if (btn) { btn.href = job.file_url; btn.style.display = ''; }
+          }
         } else if (job.status === 'running') {
           _setJobStatusEl(elId, 'running', `⏳ ${job.message || 'en cours…'}`);
         } else if (job.status === 'error') {

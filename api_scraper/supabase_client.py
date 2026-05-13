@@ -99,7 +99,52 @@ async def patch_conn_test(user_id: str, connector: str, ok: bool, message: str):
     await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))
 
 
-async def patch_job_status(user_id: str, job_key: str, status: str, message: str, data: list):
+STORAGE_BUCKET = "bp-files"
+
+
+def _ensure_bucket_sync():
+    key = _supa_key()
+    url = f"{SUPA_URL}/storage/v1/bucket"
+    body = json.dumps({"id": STORAGE_BUCKET, "name": STORAGE_BUCKET, "public": False}).encode()
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10): pass
+    except urllib.request.HTTPError as e:
+        if e.code != 409:  # 409 = already exists
+            raise
+
+
+def upload_file_sync(user_id: str, connector: str, filename: str, data: bytes, content_type: str) -> str:
+    """Upload file to Supabase Storage, return storage path."""
+    _ensure_bucket_sync()
+    key  = _supa_key()
+    path = f"{user_id}/{connector}/{filename}"
+    url  = f"{SUPA_URL}/storage/v1/object/{STORAGE_BUCKET}/{path}"
+    req  = urllib.request.Request(url, data=data, method="POST", headers={
+        "apikey": key, "Authorization": f"Bearer {key}",
+        "Content-Type": content_type, "x-upsert": "true",
+    })
+    with urllib.request.urlopen(req, timeout=60): pass
+    return path
+
+
+def get_signed_url_sync(path: str, expires_in: int = 2_592_000) -> str:
+    """Create a 30-day signed URL for a file in Supabase Storage."""
+    key  = _supa_key()
+    url  = f"{SUPA_URL}/storage/v1/object/sign/{STORAGE_BUCKET}/{path}"
+    body = json.dumps({"expiresIn": expires_in}).encode()
+    req  = urllib.request.Request(url, data=body, method="POST", headers={
+        "apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        result = json.loads(r.read())
+    signed = result.get("signedURL", "")
+    return f"{SUPA_URL}{signed}" if signed.startswith("/") else signed
+
+
+async def patch_job_status(user_id: str, job_key: str, status: str, message: str, data: list, file_url: str = ""):
     loop  = asyncio.get_event_loop()
     state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
     state[job_key] = {
@@ -109,5 +154,6 @@ async def patch_job_status(user_id: str, job_key: str, status: str, message: str
         "total":    len(data),
         "invoices": data,
         "error":    "" if status != "error" else message,
+        "file_url": file_url,
     }
     await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))

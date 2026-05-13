@@ -178,27 +178,30 @@ async def _run_job_async(job_id: str, user_id: str, connector: str, job_key: str
             _jobs[job_id]["message"] = msg
 
     try:
-        rows = await loop.run_in_executor(
+        result = await loop.run_in_executor(
             _executor,
-            lambda: _scrape(connector, creds, progress),
+            lambda: _scrape(connector, user_id, creds, progress),
         )
+        rows, file_url = result if isinstance(result, tuple) else (result, "")
+        msg = f"{len(rows)} lignes extraites"
         _jobs[job_id].update({
-            "status":  "done",
-            "message": f"{len(rows)} lignes extraites",
-            "rows":    rows,
-            "total":   len(rows),
+            "status":   "done",
+            "message":  msg,
+            "rows":     rows,
+            "total":    len(rows),
+            "file_url": file_url,
         })
-        await patch_job_status(user_id, job_key, "done", f"{len(rows)} lignes extraites", rows)
+        await patch_job_status(user_id, job_key, "done", msg, rows, file_url)
     except Exception as e:
         _jobs[job_id].update({"status": "error", "message": str(e), "error": str(e)})
         await patch_job_status(user_id, job_key, "error", str(e), [])
 
 
-def _scrape(connector: str, creds: dict, progress):
+def _scrape(connector: str, user_id: str, creds: dict, progress):
     if connector == "digipharmacie":
         from scraper import run_scraper
         return run_scraper(creds, progress)
     elif connector == "ospharm":
         from run_job_ospharm import run_ospharm
-        return run_ospharm(creds, progress)
+        return run_ospharm(creds, progress, user_id=user_id)
     raise RuntimeError(f"Connecteur inconnu : {connector}")

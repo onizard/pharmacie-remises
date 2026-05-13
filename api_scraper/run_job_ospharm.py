@@ -87,7 +87,7 @@ def _js_click(page, text):
     }}''')
 
 
-def run_ospharm(creds: dict, progress) -> list[dict]:
+def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], str]:
     import tempfile, openpyxl
 
     with sync_playwright() as p:
@@ -227,7 +227,24 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
             rows.append({h: v for h, v in zip(headers, row)})
     wb.close()
 
-    return rows
+    # Upload vers Supabase Storage
+    file_url = ""
+    if user_id:
+        try:
+            progress("Sauvegarde du fichier en ligne…")
+            from supabase_client import upload_file_sync, get_signed_url_sync
+            import datetime
+            date_str = datetime.date.today().strftime("%Y-%m-%d")
+            filename  = f"ospharm_{date_str}.xlsx"
+            with open(tmp, "rb") as f:
+                file_bytes = f.read()
+            path     = upload_file_sync(user_id, "ospharm", filename, file_bytes,
+                                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            file_url = get_signed_url_sync(path)
+        except Exception as e:
+            print(f"  [warn] Storage upload failed: {e}")
+
+    return rows, file_url
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
