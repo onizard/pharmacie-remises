@@ -60,3 +60,9 @@ SUPABASE_KEY=...
 
 ## Identité visuelle
 Thème rétro-terminal sombre : fond `#04060f`, cyan `#00e5ff`, amber `#ffab00`, vert `#00ff88`, rouge `#ff3366`. Police Orbitron pour les titres.
+
+## WIP — 2026-05-13 07:43 (master)
+```
+ .gitignore | 1 +
+ 1 file changed, 1 insertion(+)
+```

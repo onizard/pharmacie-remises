@@ -22,3 +22,4 @@ explorer_agora.py
 *.pdf
 *.csv
 *.xlsx
+.claude/settings.local.json

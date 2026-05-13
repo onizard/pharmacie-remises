@@ -93,7 +93,6 @@
   [data-theme="light"] .col-map-panel { background: #fff; border-color: #0066cc; box-shadow: 0 0 20px rgba(0,102,204,.1); }
   [data-theme="light"] select { background: #fff; color: #1a2e45; border-color: #b8cdd8; }
   [data-theme="light"] .auth-logout { background: #e8eef5; color: #1a2e45; border-color: #b8cdd8; }
-  [data-theme="light"] .pda-switch input:checked + .pda-slider { background: #d4f0e4; }
   [data-theme="light"] .step.active  { background: #e6f2ff; box-shadow: none; }
   [data-theme="light"] .step.done    { background: #e6fff4; }
   [data-theme="light"] .step.done:hover { background: #ccffe8; box-shadow: none; }
@@ -178,16 +177,6 @@
   .header-sub { font-size: 13px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; }
   .header-right { margin-left: auto; font-size: 13px; color: var(--text-dim); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 
-  /* ── PDA toggle ── */
-  .pda-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
-  .pda-toggle-label { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); transition: color .2s; }
-  .pda-switch { position: relative; width: 36px; height: 18px; flex-shrink: 0; }
-  .pda-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
-  .pda-slider { position: absolute; inset: 0; background: var(--bg2); border: 1px solid var(--border); transition: all .2s; }
-  .pda-slider::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--text-dim); transition: all .2s; }
-  .pda-switch input:checked + .pda-slider { background: #001a0f; border-color: var(--green); }
-  .pda-switch input:checked + .pda-slider::after { background: var(--green); transform: translateX(18px); box-shadow: 0 0 6px #00ff8888; }
-  .pda-toggle:hover .pda-toggle-label { color: var(--text); }
 
   /* ── Main tabs ── */
   .main-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 32px; gap: 0; overflow-x: auto; }
@@ -1244,7 +1233,6 @@ function mkLabState(uid) {
 
 let state = {
   csvFile: null, csvRows: 0, csvData: null,
-  includePDA: false,
   gers: null,
   connectors: { ospharm: { user: '', pass: '', connected: false }, digipharmacie: { user: '', pass: '', connected: false } },
   labPages: [],
@@ -1252,9 +1240,6 @@ let state = {
   changementGeneriqueur: { enabled: false, labo: null, date: '' },
 };
 
-function syncPdaToggles() {
-  document.querySelectorAll('.pda-check').forEach(cb => { cb.checked = state.includePDA; });
-}
 
 // ── Persistence ────────────────────────────────────────────────────────────────
 const LS_KEY = 'org_state_v1';
@@ -1262,7 +1247,6 @@ const LS_KEY = 'org_state_v1';
 function serializeState() {
   return {
     v: 1,
-    includePDA: state.includePDA,
     gers: state.gers,
     connectors: state.connectors,
     currentPageId: state.currentPageId,
@@ -1799,13 +1783,6 @@ function initLabPage(conf) {
           <div class="lab-tag" id="rsfToggle-${uid}-${cond.uid}">TABLEAU DES REMISES ${year}</div>
           <div class="rsf-info" id="rsfInfo-${uid}-${cond.uid}">—</div>
           ${isAdmin ? `<div class="cgv-dropzone" id="cgvDrop-${uid}-${cond.uid}" title="Glisser un PDF de CGV ici ou cliquer pour sélectionner">📄 CGV<input type="file" accept=".pdf" id="cgvFile-${uid}-${cond.uid}" style="display:none"><span id="cgvLabel-${uid}-${cond.uid}"></span></div>` : ''}
-          <label class="pda-toggle" style="margin-left:auto${isAdmin ? '' : ';display:none'}" title="Inclure ou exclure les références PDA">
-            <span class="pda-toggle-label">Inclure PDA</span>
-            <div class="pda-switch">
-              <input type="checkbox" id="pdaChk-${uid}-${cond.uid}" class="pda-check" />
-              <div class="pda-slider"></div>
-            </div>
-          </label>
         </div>
         <div class="rsf-body" id="rsfBody-${uid}-${cond.uid}" style="display:none">
           <div class="rsf-table-wrap">
@@ -1847,16 +1824,6 @@ function initLabPage(conf) {
       if (cond.remiseGlobale !== null) autoFillCond(cond);
       renderCondTable(cond);
     });
-    const pdaChk = document.getElementById(`pdaChk-${uid}-${cond.uid}`);
-    if (pdaChk) {
-      pdaChk.checked = state.includePDA;
-      pdaChk.addEventListener('change', function() {
-        state.includePDA = this.checked;
-        syncPdaToggles();
-        state.labPages.forEach(lp => { if (lp._reloadRSF) lp._reloadRSF(); if (lp._reloadRSF2025) lp._reloadRSF2025(); });
-        saveState();
-      });
-    }
     const rsfToggle = document.getElementById(`rsfToggle-${uid}-${cond.uid}`);
     const rsfBody   = document.getElementById(`rsfBody-${uid}-${cond.uid}`);
     if (rsfToggle && rsfBody) {
@@ -2259,9 +2226,8 @@ function initLabPage(conf) {
 
 // ── Shared functions ───────────────────────────────────────────────────────────
 async function fetchRSF(lab) {
-  const pdaFilter = state.includePDA ? '' : '&libelle=not.ilike.*PDA*';
   const url = `${SUPA_URL}/rest/v1/references_pharmacie`
-    + `?select=rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null${pdaFilter}&order=rsf_pct.asc&limit=2000`;
+    + `?select=rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null&order=rsf_pct.asc&limit=2000`;
   const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -3867,7 +3833,6 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 
   const saved = loadSavedState();
   if (saved) {
-    state.includePDA = !!saved.includePDA;
     state.gers = saved.gers ?? null;
     state.changementGeneriqueur = saved.changementGeneriqueur ?? { enabled: false, labo: null, date: '' };
     if (saved.connectors) {
@@ -3956,7 +3921,6 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 
   state.labPages.forEach(lp => createLabContDom(lp));
   renderLabGrid();
-  syncPdaToggles();
   renderStepBar();
 
   document.getElementById('btnImporter').addEventListener('click', () => goTo('csv'));
