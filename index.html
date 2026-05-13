@@ -1139,21 +1139,10 @@
 
   <!-- ── PAGE VÉRIFICATEUR ── -->
   <div id="page-verificateur" class="page">
-    <div class="panel" id="verifInitPanel">
-      <div class="panel-title">◈ Vérificateur de remise</div>
-      <div class="panel-sub">// Factures génériques 2025 — CIP · prix · remises · PA NET</div>
-      <div class="verif-launch-area">
-        <button class="btn btn-launch" id="btnLaunchVerif" onclick="launchVerificateur()">⬇ RÉCUPÉRER LES FACTURES 2025</button>
-        <div id="verifMsg" class="verif-msg"></div>
-      </div>
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:320px;gap:18px;padding:40px">
+      <div style="font-family:'Orbitron',monospace;font-size:28px;font-weight:900;color:var(--cyan);letter-spacing:6px;text-transform:uppercase">Coming Soon</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--text-dim);letter-spacing:2px">// Vérificateur de remise — en cours de développement</div>
     </div>
-    <div id="verifGameArea" style="display:none">
-      <div class="sim-loading">
-        <canvas id="verifCanvas"></canvas>
-        <div class="brick-status" id="verifGameStatus">◈ RÉCUPÉRATION EN COURS ◈</div>
-      </div>
-    </div>
-    <div id="verifResultsArea" style="display:none"></div>
   </div>
 
   <div class="bp-toast" id="bpToast"></div>
@@ -1473,22 +1462,16 @@ function labHasPalier(lp) {
 document.querySelectorAll('.main-tab').forEach(btn => {
   btn.addEventListener('click', async () => {
     const page = btn.dataset.page;
-    if (page === 'comparateur' || page === 'verificateur') {
+    if (page === 'comparateur') {
       const c = state.connectors;
-      if (!c.ospharm.connected || !c.digipharmacie.connected) {
-        const missing = [!c.ospharm.connected && 'OSPHARM DATASTAT', !c.digipharmacie.connected && 'DIGIPHARMACIE'].filter(Boolean).join(' et ');
-        showToast(`Connecteur(s) requis : ${missing}`);
+      if (!c.ospharm.connected) {
+        showToast('Connecteur requis : OSPHARM DATASTAT');
         document.getElementById('btnConnecteur').click();
         return;
       }
-      const labsOk = state.labPages.filter(lp => lp.selectedLab && labHasPalier(lp)).length;
-      if (labsOk < 2) {
-        showToast(`Renseignez au moins 1 palier de remise pour 2 laboratoires (${labsOk}/2 actuellement).`);
-        return;
-      }
-    }
-    if (page === 'comparateur') {
       await launchComparateur();
+    } else if (page === 'verificateur') {
+      goTo(page);
     } else {
       goTo(page);
     }
