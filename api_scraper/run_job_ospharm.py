@@ -197,21 +197,44 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         try:
             with page.expect_download(timeout=60_000) as dl_info:
                 exported = page.evaluate('''() => {
+                    const tabLabels = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
+
                     // Méthode 1 : appel direct webix.toExcel()
                     if (typeof webix !== "undefined" && webix.toExcel) {
                         const grid = Object.values(webix?.ui?.views||{})
                             .find(v => v.name === "datatable" && v.isVisible());
                         if (grid) { webix.toExcel(grid); return "webix.toExcel"; }
                     }
-                    // Méthode 2 : bouton avec texte ou attribut contenant excel/export
-                    const kw = ["excel", "export", "télécharger", "download"];
-                    const els = [...document.querySelectorAll(
-                        "button,a,[role=button],.webix_el_button button,.webix_toolbar button"
+
+                    // Méthode 2 : bouton dans la même toolbar que les onglets (à droite des onglets)
+                    const toolbars = [...document.querySelectorAll(
+                        '.webix_toolbar, [class*="toolbar"], .webix_layout_toolbar'
                     )];
-                    for (const el of els) {
+                    for (const toolbar of toolbars) {
+                        if (!toolbar.offsetParent) continue;
+                        const innerTexts = [...toolbar.querySelectorAll('*')].map(e => e.textContent.trim());
+                        if (![...tabLabels].some(t => innerTexts.includes(t))) continue;
+                        // Toolbar trouvée — chercher tout élément cliquable qui n'est pas un onglet
+                        const candidates = [...toolbar.querySelectorAll(
+                            'button, [role=button], .webix_img_btn, .webix_el_button, .webix_el_icon, a'
+                        )];
+                        for (const el of candidates) {
+                            if (!el.offsetParent) continue;
+                            if (tabLabels.has(el.textContent.trim())) continue;
+                            const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"") + " " + (el.className||"")).toLowerCase();
+                            // Exclure les boutons de navigation/période
+                            if (["semaine","mois","année","trimestre"].some(k => hay.includes(k))) continue;
+                            el.click();
+                            return "toolbar-btn:" + (el.title || el.textContent.trim() || el.className).slice(0, 40);
+                        }
+                    }
+
+                    // Méthode 3 : mot-clé excel/export dans texte ou attributs
+                    const kw = ["excel", "export", "télécharger", "download", "xls"];
+                    for (const el of [...document.querySelectorAll("button,a,[role=button],.webix_el_button button,.webix_toolbar button")]) {
                         if (!el.offsetParent) continue;
-                        const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"")).toLowerCase();
-                        if (kw.some(k => hay.includes(k))) { el.click(); return "btn:" + el.textContent.trim().slice(0,30); }
+                        const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"") + " " + (el.className||"")).toLowerCase();
+                        if (kw.some(k => hay.includes(k))) { el.click(); return "kw-btn:" + el.textContent.trim().slice(0,30); }
                     }
                     return false;
                 }''')
