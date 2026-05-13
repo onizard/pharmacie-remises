@@ -1333,6 +1333,10 @@ async function saveCloudState(data) {
       for (const k of ['ospharm_job', 'verif_job', 'conn_test']) {
         if (cur?.state_json?.[k] && payload[k] === undefined) payload[k] = cur.state_json[k];
       }
+      // Ne jamais écraser labPages cloud si le local est vide
+      if (!payload.labPages?.length && cur?.state_json?.labPages?.length) {
+        payload.labPages = cur.state_json.labPages;
+      }
     } catch(_) {}
     await sb.from('user_state').upsert(
       { user_id: session.user.id, state_json: payload },
