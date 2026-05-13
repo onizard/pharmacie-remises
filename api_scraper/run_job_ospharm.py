@@ -197,18 +197,31 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         try:
             with page.expect_download(timeout=60_000) as dl_info:
                 exported = page.evaluate('''() => {
-                    const els = document.querySelectorAll("button,a,[role=button],.webix_el_button button");
+                    // Méthode 1 : appel direct webix.toExcel()
+                    if (typeof webix !== "undefined" && webix.toExcel) {
+                        const grid = Object.values(webix?.ui?.views||{})
+                            .find(v => v.name === "datatable" && v.isVisible());
+                        if (grid) { webix.toExcel(grid); return "webix.toExcel"; }
+                    }
+                    // Méthode 2 : bouton avec texte ou attribut contenant excel/export
+                    const kw = ["excel", "export", "télécharger", "download"];
+                    const els = [...document.querySelectorAll(
+                        "button,a,[role=button],.webix_el_button button,.webix_toolbar button"
+                    )];
                     for (const el of els) {
-                        if (el.offsetParent !== null && el.textContent.toLowerCase().includes("excel")) {
-                            el.click(); return true;
-                        }
+                        if (!el.offsetParent) continue;
+                        const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"")).toLowerCase();
+                        if (kw.some(k => hay.includes(k))) { el.click(); return "btn:" + el.textContent.trim().slice(0,30); }
                     }
                     return false;
                 }''')
                 if not exported:
-                    page.get_by_text("Excel", exact=False).first.click(timeout=10_000)
+                    raise RuntimeError("Aucun bouton export trouvé — vérifiez l'interface OSPHARM")
             dl = dl_info.value
             dl.save_as(tmp)
+        except RuntimeError:
+            browser.close()
+            raise
         except Exception as e:
             browser.close()
             raise RuntimeError(f"Export Excel échoué : {e}")
