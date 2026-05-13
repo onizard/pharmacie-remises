@@ -194,137 +194,123 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         # 5. Export Excel
         progress("Export Excel…")
         tmp = tempfile.mktemp(suffix=".xlsx")
+
+        # ── Debug : inspecter la page pour diagnostiquer ──────────────────────
+        dbg = page.evaluate('''() => {
+            const vids = [...document.querySelectorAll("[view_id]")];
+            const tabs = [...document.querySelectorAll(".webix_item_tab")];
+            const tooltipEls = [...document.querySelectorAll("[webix_tooltip]")];
+            return {
+                url: location.href,
+                vw: window.innerWidth,
+                viewIdCount: vids.length,
+                viewIdSample: vids.slice(0, 8).map(e => ({
+                    id: e.getAttribute("view_id"),
+                    cls: e.className.slice(0, 40),
+                    r: (r => ({x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height)}))(e.getBoundingClientRect()),
+                })),
+                tabItems: tabs.map(t => t.textContent.trim()).slice(0, 8),
+                tooltipEls: tooltipEls.slice(0, 5).map(e => e.getAttribute("webix_tooltip")),
+                webix: typeof webix !== "undefined" ? {
+                    toExcel: typeof webix.toExcel,
+                    dollar: typeof webix.$$,
+                    uiKeys: Object.keys(webix.ui || {}).slice(0, 10),
+                } : "absent",
+            };
+        }''')
+        print(f"  [export-dbg] {dbg}")
+
         try:
             with page.expect_download(timeout=60_000) as dl_info:
                 exported = page.evaluate('''() => {
-                    // Visibilité réelle via getBoundingClientRect (offsetParent échoue
-                    // sur les éléments Webix en position:fixed)
                     function vis(el) {
                         const r = el.getBoundingClientRect();
                         return r.width > 0 && r.height > 0;
                     }
-
                     const kw = ["excel", "export", "exporter", "xls", "fomat"];
-                    const tabNames = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
 
-                    // ── Méthode 1 : position visuelle (bande des onglets) ───────────
-                    // Dans Webix 6 les onglets ont la classe .webix_item_tab.
-                    // Le bouton export est le 1er élément visible à droite du dernier onglet.
-                    {
-                        let maxRight = 0, bandTop = 0, bandBottom = 0;
-
-                        // Onglets Webix
-                        for (const tab of document.querySelectorAll(
-                                ".webix_item_tab, .webix_list_item, [role=tab]")) {
-                            if (!tabNames.has(tab.textContent.trim())) continue;
-                            const r = tab.getBoundingClientRect();
-                            if (r.width < 4 || r.height < 4) continue;
-                            if (r.right > maxRight) {
-                                maxRight = r.right; bandTop = r.top; bandBottom = r.bottom;
-                            }
-                        }
-
-                        // Fallback : chercher par texte exact avec TreeWalker
-                        if (maxRight === 0) {
-                            const walker = document.createTreeWalker(
-                                document.body, NodeFilter.SHOW_ELEMENT);
-                            while (walker.nextNode()) {
-                                const el = walker.currentNode;
-                                if (!tabNames.has(el.textContent.trim())) continue;
-                                const r = el.getBoundingClientRect();
-                                if (r.width < 4 || r.width > 300 || r.height < 4) continue;
-                                if (r.right > maxRight) {
-                                    maxRight = r.right; bandTop = r.top; bandBottom = r.bottom;
-                                }
-                            }
-                        }
-
-                        if (maxRight > 0) {
-                            const midY   = (bandTop + bandBottom) / 2;
-                            const halfH  = (bandBottom - bandTop) / 2 + 6;
-                            const cands  = [];
-
-                            // Éléments Webix connus + éléments standard à droite des onglets
-                            const sel = ".webix_el_icon, .webix_el_button, .webix_view, button, a";
-                            for (const el of document.querySelectorAll(sel)) {
-                                const r = el.getBoundingClientRect();
-                                if (r.left <= maxRight + 2)          continue;
-                                if (r.top  >  midY + halfH)          continue;
-                                if (r.bottom < midY - halfH)         continue;
-                                if (r.width  < 8 || r.height < 8)   continue;
-                                if (r.width  > 160 || r.height > 80) continue;
-                                cands.push(el);
-                            }
-                            cands.sort((a, b) =>
-                                a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-
-                            if (cands.length) {
-                                // 1er depuis la gauche = export (2e = corbeille d'après screenshot)
-                                const target = cands[0];
-                                const r = target.getBoundingClientRect();
-                                // Cliquer la target ou son enfant button/template
-                                (target.querySelector("button, .webix_template") || target).click();
-                                return "pos:" + target.tagName + "/" + target.className.slice(0,30)
-                                       + "@x" + Math.round(r.left);
-                            }
-
-                            // Dernier recours : elementFromPoint légèrement avant le bord droit
-                            const el = document.elementFromPoint(
-                                window.innerWidth - 60, midY);
-                            if (el) {
-                                let cur = el;
-                                while (cur && cur !== document.body) {
-                                    if (vis(cur) && (cur.onclick ||
-                                        /webix_el|webix_icon|webix_template|button/i.test(cur.className))) {
-                                        cur.click();
-                                        return "efp:" + cur.className.slice(0,30);
-                                    }
-                                    cur = cur.parentElement;
-                                }
-                            }
-                        }
-                    }
-
-                    // ── Méthode 2 : API interne Webix 6 ────────────────────────────
-                    if (typeof webix !== "undefined") {
-                        const coll = webix.ui?._collection || webix.ui?.views || {};
-                        for (const v of Object.values(coll)) {
+                    // ── M1 : view_id + webix.$$ (API publique Webix 6) ──────────────
+                    // Chaque div racine d'une vue Webix 6 a l'attribut view_id.
+                    // webix.$$(id).config.tooltip contient le tooltip configuré.
+                    if (typeof webix !== "undefined" && typeof webix.$$ === "function") {
+                        for (const el of document.querySelectorAll("[view_id]")) {
+                            if (!vis(el)) continue;
+                            const v = webix.$$(el.getAttribute("view_id"));
+                            if (!v) continue;
                             const tip = (v.config?.tooltip || v.config?.label || "").toLowerCase();
-                            if (!kw.some(k => tip.includes(k))) continue;
-                            const node = v.getNode?.();
-                            const r = node?.getBoundingClientRect();
-                            if (r && r.width > 0) { node.click(); return "webix-api:" + tip.slice(0,40); }
+                            if (kw.some(k => tip.includes(k))) {
+                                el.click();
+                                return "view_id:" + tip.slice(0, 40);
+                            }
                         }
+                        // webix.toExcel sur la datatable visible (via view_id du .webix_dtable)
                         if (webix.toExcel) {
-                            const grid = Object.values(coll).find(
-                                v => v.name === "datatable" && v.isVisible?.());
-                            if (grid) { webix.toExcel(grid); return "webix.toExcel"; }
+                            for (const el of document.querySelectorAll(".webix_dtable[view_id]")) {
+                                if (!vis(el)) continue;
+                                const grid = webix.$$(el.getAttribute("view_id"));
+                                if (grid) { webix.toExcel(grid); return "webix.toExcel:dtable"; }
+                            }
                         }
                     }
 
-                    // ── Méthode 3 : attribut webix_tooltip ─────────────────────────
+                    // ── M2 : position (bande des onglets, 1er élément à droite) ────
+                    const tabNames = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
+                    let maxRight = 0, bandTop = 0, bandBottom = 0;
+                    // Onglets Webix : .webix_item_tab ou éléments avec view_id dont le texte = nom onglet
+                    for (const el of document.querySelectorAll(".webix_item_tab, [view_id]")) {
+                        const txt = el.textContent.trim();
+                        if (!tabNames.has(txt)) continue;
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 4 || r.height < 4) continue;
+                        if (r.right > maxRight) { maxRight = r.right; bandTop = r.top; bandBottom = r.bottom; }
+                    }
+                    if (maxRight > 0) {
+                        const midY = (bandTop + bandBottom) / 2;
+                        const halfH = (bandBottom - bandTop) / 2 + 8;
+                        const cands = [];
+                        for (const el of document.querySelectorAll("[view_id], button, .webix_el_icon")) {
+                            const r = el.getBoundingClientRect();
+                            if (r.left <= maxRight + 2 || r.top > midY + halfH || r.bottom < midY - halfH) continue;
+                            if (r.width < 8 || r.height < 8 || r.width > 160 || r.height > 80) continue;
+                            cands.push(el);
+                        }
+                        cands.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+                        if (cands.length) {
+                            (cands[0].querySelector("button,.webix_template") || cands[0]).click();
+                            const r = cands[0].getBoundingClientRect();
+                            return "pos:" + cands[0].tagName + "@x" + Math.round(r.left);
+                        }
+                        // elementFromPoint à 60 et 90px du bord droit
+                        for (const xOff of [60, 90, 120]) {
+                            const el = document.elementFromPoint(window.innerWidth - xOff, midY);
+                            if (el && vis(el) && el.getBoundingClientRect().width < 200) {
+                                el.click();
+                                return "efp@" + xOff + ":" + el.tagName + "." + el.className.slice(0,20);
+                            }
+                        }
+                    }
+
+                    // ── M3 : attribut webix_tooltip ────────────────────────────────
                     for (const el of document.querySelectorAll("[webix_tooltip]")) {
                         if (!vis(el)) continue;
                         const tip = (el.getAttribute("webix_tooltip") || "").toLowerCase();
-                        if (!kw.some(k => tip.includes(k))) continue;
-                        (el.querySelector("button") || el).click();
-                        return "webix_tooltip:" + tip.slice(0,40);
+                        if (kw.some(k => tip.includes(k))) {
+                            (el.querySelector("button") || el).click();
+                            return "webix_tooltip:" + tip.slice(0, 40);
+                        }
                     }
 
-                    // ── Méthode 4 : mot-clé texte/title/aria ───────────────────────
-                    for (const el of document.querySelectorAll(
-                            "button, a, [role=button], .webix_el_button button")) {
+                    // ── M4 : mot-clé texte/title/aria ──────────────────────────────
+                    for (const el of document.querySelectorAll("button,a,[role=button]")) {
                         if (!vis(el)) continue;
-                        const hay = (el.textContent + " " + (el.title||"")
-                            + " " + (el.getAttribute("aria-label")||"")
-                            + " " + (el.getAttribute("webix_tooltip")||"")).toLowerCase();
+                        const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"")).toLowerCase();
                         if (kw.some(k => hay.includes(k))) { el.click(); return "kw:" + hay.slice(0,40); }
                     }
 
                     return false;
                 }''')
                 if not exported:
-                    raise RuntimeError("Aucun bouton export trouvé — vérifiez l'interface OSPHARM")
+                    raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
             dl = dl_info.value
             dl.save_as(tmp)
         except RuntimeError:
