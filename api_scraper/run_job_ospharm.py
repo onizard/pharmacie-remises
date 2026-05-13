@@ -197,44 +197,58 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         try:
             with page.expect_download(timeout=60_000) as dl_info:
                 exported = page.evaluate('''() => {
-                    const tabLabels = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
+                    const kw = ["excel", "export", "exporter", "xls", "fomat", "télécharger", "download"];
 
-                    // Méthode 1 : appel direct webix.toExcel()
-                    if (typeof webix !== "undefined" && webix.toExcel) {
-                        const grid = Object.values(webix?.ui?.views||{})
-                            .find(v => v.name === "datatable" && v.isVisible());
-                        if (grid) { webix.toExcel(grid); return "webix.toExcel"; }
-                    }
-
-                    // Méthode 2 : bouton dans la même toolbar que les onglets (à droite des onglets)
-                    const toolbars = [...document.querySelectorAll(
-                        '.webix_toolbar, [class*="toolbar"], .webix_layout_toolbar'
-                    )];
-                    for (const toolbar of toolbars) {
-                        if (!toolbar.offsetParent) continue;
-                        const innerTexts = [...toolbar.querySelectorAll('*')].map(e => e.textContent.trim());
-                        if (![...tabLabels].some(t => innerTexts.includes(t))) continue;
-                        // Toolbar trouvée — chercher tout élément cliquable qui n'est pas un onglet
-                        const candidates = [...toolbar.querySelectorAll(
-                            'button, [role=button], .webix_img_btn, .webix_el_button, .webix_el_icon, a'
-                        )];
-                        for (const el of candidates) {
-                            if (!el.offsetParent) continue;
-                            if (tabLabels.has(el.textContent.trim())) continue;
-                            const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"") + " " + (el.className||"")).toLowerCase();
-                            // Exclure les boutons de navigation/période
-                            if (["semaine","mois","année","trimestre"].some(k => hay.includes(k))) continue;
-                            el.click();
-                            return "toolbar-btn:" + (el.title || el.textContent.trim() || el.className).slice(0, 40);
+                    // Méthode 1 : API Webix interne — trouver vue dont tooltip/label contient "excel"
+                    if (typeof webix !== "undefined" && webix.ui?.views) {
+                        const views = Object.values(webix.ui.views);
+                        for (const v of views) {
+                            const tip = (v.config?.tooltip || v.config?.label || "").toLowerCase();
+                            if (kw.some(k => tip.includes(k))) {
+                                const node = v.getNode?.();
+                                if (node && node.offsetParent) { node.click(); return "webix-view:" + tip.slice(0,40); }
+                            }
+                        }
+                        // webix.toExcel sur la datatable visible
+                        if (webix.toExcel) {
+                            const grid = views.find(v => v.name === "datatable" && v.isVisible?.());
+                            if (grid) { webix.toExcel(grid); return "webix.toExcel"; }
                         }
                     }
 
-                    // Méthode 3 : mot-clé dans texte, title, aria-label, webix_tooltip
-                    const kw = ["excel", "export", "exporter", "télécharger", "download", "xls", "fomat"];
-                    for (const el of [...document.querySelectorAll("button,a,[role=button],.webix_el_button button,.webix_toolbar button,div[webix_tooltip]")]) {
+                    // Méthode 2 : attribut webix_tooltip sur n'importe quel élément visible
+                    for (const el of document.querySelectorAll("[webix_tooltip]")) {
                         if (!el.offsetParent) continue;
-                        const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"") + " " + (el.getAttribute("webix_tooltip")||"") + " " + (el.className||"")).toLowerCase();
-                        if (kw.some(k => hay.includes(k))) { el.click(); return "kw-btn:" + (el.getAttribute("webix_tooltip")||el.textContent).trim().slice(0,40); }
+                        const tip = (el.getAttribute("webix_tooltip") || "").toLowerCase();
+                        if (kw.some(k => tip.includes(k))) {
+                            const btn = el.querySelector("button,[role=button]") || el;
+                            btn.click();
+                            return "webix_tooltip:" + tip.slice(0,40);
+                        }
+                    }
+
+                    // Méthode 3 : toolbar contenant les onglets Produits/Laboratoires
+                    const tabLabels = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
+                    const skipKw = ["semaine","mois","année","trimestre","laboratoires","familles","produits","marques"];
+                    for (const toolbar of document.querySelectorAll(".webix_toolbar,.webix_layout_toolbar")) {
+                        if (!toolbar.offsetParent) continue;
+                        const texts = [...toolbar.querySelectorAll("*")].map(e => e.textContent.trim());
+                        if (![...tabLabels].some(t => texts.includes(t))) continue;
+                        for (const el of toolbar.querySelectorAll("button,[role=button],.webix_img_btn,.webix_el_button,.webix_el_icon")) {
+                            if (!el.offsetParent) continue;
+                            if (tabLabels.has(el.textContent.trim())) continue;
+                            const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("webix_tooltip")||"")).toLowerCase();
+                            if (skipKw.some(k => hay.includes(k))) continue;
+                            el.click();
+                            return "toolbar-btn:" + (el.getAttribute("webix_tooltip")||el.title||el.textContent).trim().slice(0,40);
+                        }
+                    }
+
+                    // Méthode 4 : recherche globale par mot-clé dans tous les attributs
+                    for (const el of document.querySelectorAll("button,a,[role=button],.webix_el_button button,.webix_toolbar button")) {
+                        if (!el.offsetParent) continue;
+                        const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"") + " " + (el.getAttribute("webix_tooltip")||"")).toLowerCase();
+                        if (kw.some(k => hay.includes(k))) { el.click(); return "kw:" + hay.slice(0,40); }
                     }
                     return false;
                 }''')
