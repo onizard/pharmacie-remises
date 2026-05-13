@@ -88,40 +88,45 @@ def _js_click(page, text):
 
 
 def run_ospharm(creds: dict, progress) -> list[dict]:
+    import tempfile, openpyxl
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
+        context = browser.new_context(accept_downloads=True)
         page    = context.new_page()
 
-        # 1. Login — aller sur le site, il redirige vers le formulaire OAuth
+        # 1. Login
         progress("Connexion OSPHARM…")
         page.goto(OSPHARM_URL, wait_until="networkidle", timeout=30_000)
-        try:
-            page.locator("input[type='email'],input[name='username'],input[name='email']").first.fill(creds["user"], timeout=15_000)
-            page.locator("input[type='password'],input[name='password']").first.fill(creds["pass"], timeout=5_000)
-            page.locator("button[type='submit'],input[type='submit']").first.click(timeout=5_000)
+
+        # SSO silencieux : déjà sur le dashboard
+        if not ("datastat.ospharm.org" in page.url and "login" not in page.url and "accounts" not in page.url):
             try:
-                page.wait_for_url("*datastat.ospharm.org*", timeout=30_000)
-            except PWTimeout:
-                pass
-        except PWTimeout as e:
-            raise RuntimeError(f"Timeout login OSPHARM: {e}")
+                page.locator("input[type='email'],input[name='username'],input[name='email']").first.fill(creds["user"], timeout=15_000)
+                page.locator("input[type='password'],input[name='password']").first.fill(creds["pass"], timeout=5_000)
+                page.locator("button[type='submit'],input[type='submit']").first.click(timeout=5_000)
+                try:
+                    page.wait_for_url("*datastat.ospharm.org*", timeout=30_000)
+                except PWTimeout:
+                    pass
+            except PWTimeout as e:
+                raise RuntimeError(f"Timeout login OSPHARM: {e}")
 
         if "datastat.ospharm.org" not in page.url or "accounts" in page.url:
             raise RuntimeError("Identifiants OSPHARM incorrects")
 
-        progress("Connecté — navigation vers Toutes les ventes…")
-        # Attendre que Webix soit chargé plutôt qu'un networkidle global
+        progress("Connecté — chargement…")
         try:
             page.wait_for_function("() => typeof webix !== 'undefined'", timeout=20_000)
         except Exception:
             page.wait_for_timeout(2000)
 
-        # 2. Navigation
-        for label in ["Analyse des ventes", "Toutes les ventes"]:
+        # 2. Analyse des ventes → Toutes mes ventes
+        progress("Navigation vers Toutes mes ventes…")
+        for label in ["Analyse des ventes", "Toutes les ventes", "Toutes mes ventes"]:
             try:
                 page.get_by_text(label, exact=True).first.click(timeout=8_000)
-                page.wait_for_timeout(800)
+                page.wait_for_timeout(700)
             except Exception:
                 pass
 
@@ -133,18 +138,18 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
             except Exception:
                 page.wait_for_timeout(1500)
 
-        # 3. Sélection période "Année précédente"
-        progress("Sélection période 2025…")
+        # 3. Sélection "Année lissée" + Valider
+        progress("Sélection Année lissée…")
         try:
             page.locator("button.webix_el_htmlbutton").first.click(timeout=10_000)
-            page.wait_for_timeout(600)
+            page.wait_for_timeout(500)
         except Exception:
             pass
 
-        ok = _js_click(page, "Année précédente")
+        ok = _js_click(page, "Année lissée")
         if not ok:
             try:
-                page.get_by_text("Année précédente", exact=True).first.click(force=True, timeout=5_000)
+                page.get_by_text("Année lissée", exact=True).first.click(force=True, timeout=5_000)
                 ok = True
             except Exception:
                 pass
@@ -156,7 +161,6 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
                     page.get_by_text("Valider", exact=True).first.click(force=True, timeout=5_000)
                 except Exception:
                     pass
-            # Attendre que le datatable recharge ses données
             try:
                 page.wait_for_function(
                     "() => { const g = Object.values(webix?.ui?.views||{}).find(v=>v.name==='datatable'&&v.isVisible()); return g && g.count() > 0; }",
@@ -168,8 +172,10 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
         # 4. Onglet Produits
         progress("Sélection onglet Produits…")
         prod_ok = page.evaluate('''() => {
-            const c = document.querySelectorAll(".webix_item_tab,.webix_list_item,[class*='tab'],li,span,div,a");
-            for (const el of c) { if (el.textContent.trim() === "Produits" && el.offsetParent !== null) { el.click(); return true; } }
+            const els = document.querySelectorAll(".webix_item_tab,.webix_list_item,[class*='tab'],li,span,div,a");
+            for (const el of els) {
+                if (el.textContent.trim() === "Produits" && el.offsetParent !== null) { el.click(); return true; }
+            }
             return false;
         }''')
         if not prod_ok:
@@ -177,7 +183,6 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
                 page.get_by_text("Produits", exact=True).first.click(timeout=8_000)
             except Exception:
                 pass
-        # Attendre que la grille Produits ait des données
         try:
             page.wait_for_function(
                 "() => { const g = Object.values(webix?.ui?.views||{}).find(v=>v.name==='datatable'&&v.isVisible()); return g && g.count() > 0; }",
@@ -186,39 +191,43 @@ def run_ospharm(creds: dict, progress) -> list[dict]:
         except Exception:
             page.wait_for_timeout(2500)
 
-        # 5. Extraction Webix
-        progress("Extraction des données Webix…")
-        result = page.evaluate('''() => {
-            if (typeof webix === "undefined") return { error: "webix non défini" };
-            const grids = Object.values(webix.ui.views || {}).filter(v => v.name === "datatable" && v.isVisible());
-            if (!grids.length) return { error: "aucun datatable visible" };
-            const grid = grids[0];
-            const columns = (grid.config.columns || []).map(c => {
-                let label = c.id;
-                if (typeof c.header === "string") label = c.header;
-                else if (Array.isArray(c.header)) label = c.header.map(h => typeof h === "string" ? h : (h && h.text ? h.text : "")).filter(Boolean).join(" ");
-                return { id: String(c.id), label: label || String(c.id) };
-            });
-            const rows = [];
-            grid.eachRow(id => { const item = grid.getItem(id); if (item) rows.push(item); });
-            return { columns, rows, total: rows.length };
-        }''')
+        # 5. Export Excel
+        progress("Export Excel…")
+        tmp = tempfile.mktemp(suffix=".xlsx")
+        try:
+            with page.expect_download(timeout=60_000) as dl_info:
+                exported = page.evaluate('''() => {
+                    const els = document.querySelectorAll("button,a,[role=button],.webix_el_button button");
+                    for (const el of els) {
+                        if (el.offsetParent !== null && el.textContent.toLowerCase().includes("excel")) {
+                            el.click(); return true;
+                        }
+                    }
+                    return false;
+                }''')
+                if not exported:
+                    page.get_by_text("Excel", exact=False).first.click(timeout=10_000)
+            dl = dl_info.value
+            dl.save_as(tmp)
+        except Exception as e:
+            browser.close()
+            raise RuntimeError(f"Export Excel échoué : {e}")
 
         browser.close()
 
-    if not isinstance(result, dict) or "error" in result:
-        raise RuntimeError(f"Webix extraction: {result}")
+    # Lecture Excel
+    progress("Lecture du fichier Excel…")
+    wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    headers = [str(h or "").strip() for h in next(rows_iter)]
+    rows = []
+    for row in rows_iter:
+        if any(v is not None for v in row):
+            rows.append({h: v for h, v in zip(headers, row)})
+    wb.close()
 
-    columns = result["columns"]
-    raw_rows = result["rows"]
-
-    # Normaliser les rows : utiliser les labels comme clés
-    col_map = {c["id"]: c["label"] for c in columns}
-    normalized = []
-    for r in raw_rows:
-        normalized.append({col_map.get(k, k): v for k, v in r.items() if not k.startswith("$")})
-
-    return normalized
+    return rows
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
