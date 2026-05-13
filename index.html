@@ -4035,12 +4035,16 @@ function initConnecteurModal() {
     }
 
     btn.disabled = true;
-    resultEl.textContent = '⏳ Vérification…';
+    resultEl.textContent = '⏳ Connexion au serveur…';
     resultEl.className = 'conn-test-result';
 
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
       if (!session) throw new Error('Session expirée — reconnectez-vous.');
+
+      // Wake up Render service (cold start can take ~45s on free plan)
+      await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(60_000) }).catch(() => {});
+      resultEl.textContent = '⏳ Vérification…';
 
       const resp = await fetch(`${API_URL}/connect/${connKey}`, {
         method: 'POST',
