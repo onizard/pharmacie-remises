@@ -58,9 +58,14 @@ def test_ospharm(creds: dict):
         browser = p.chromium.launch(headless=True)
         page    = browser.new_context().new_page()
 
-        # Aller sur le site directement — il redirige vers le formulaire OAuth
         page.goto(OSPHARM_URL, wait_until="networkidle", timeout=30_000)
 
+        # SSO silencieux réussi — déjà sur le dashboard
+        if "datastat.ospharm.org" in page.url and "login" not in page.url and "accounts" not in page.url:
+            browser.close()
+            return
+
+        # Formulaire de login classique
         try:
             page.locator("input[type='email'],input[name='username'],input[name='email']").first.fill(creds["user"], timeout=15_000)
             page.locator("input[type='password'],input[name='password']").first.fill(creds["pass"], timeout=5_000)
@@ -73,8 +78,7 @@ def test_ospharm(creds: dict):
             browser.close()
             raise RuntimeError(f"Timeout formulaire : {e}")
 
-        ok  = "datastat.ospharm.org" in page.url and "accounts" not in page.url
-        url = page.url
+        ok = "datastat.ospharm.org" in page.url and "accounts" not in page.url and "login" not in page.url
         browser.close()
 
     if not ok:
