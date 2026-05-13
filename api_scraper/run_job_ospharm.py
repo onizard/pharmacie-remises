@@ -229,12 +229,12 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                         }
                     }
 
-                    // Méthode 3 : mot-clé excel/export dans texte ou attributs
-                    const kw = ["excel", "export", "télécharger", "download", "xls"];
-                    for (const el of [...document.querySelectorAll("button,a,[role=button],.webix_el_button button,.webix_toolbar button")]) {
+                    // Méthode 3 : mot-clé dans texte, title, aria-label, webix_tooltip
+                    const kw = ["excel", "export", "exporter", "télécharger", "download", "xls", "fomat"];
+                    for (const el of [...document.querySelectorAll("button,a,[role=button],.webix_el_button button,.webix_toolbar button,div[webix_tooltip]")]) {
                         if (!el.offsetParent) continue;
-                        const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"") + " " + (el.className||"")).toLowerCase();
-                        if (kw.some(k => hay.includes(k))) { el.click(); return "kw-btn:" + el.textContent.trim().slice(0,30); }
+                        const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"") + " " + (el.getAttribute("webix_tooltip")||"") + " " + (el.className||"")).toLowerCase();
+                        if (kw.some(k => hay.includes(k))) { el.click(); return "kw-btn:" + (el.getAttribute("webix_tooltip")||el.textContent).trim().slice(0,40); }
                     }
                     return false;
                 }''')
