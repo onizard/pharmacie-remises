@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from supabase_client import (
     get_user_creds_for,
+    patch_conn_test,
     patch_connector_connected,
     patch_job_status,
     save_user_creds,
@@ -82,11 +83,12 @@ def health():
 
 @app.post("/connect/{connector}")
 async def connect_connector(
+    background_tasks: BackgroundTasks,
     body: ConnectBody,
     connector: str = Path(...),
     authorization: str = Header(default=""),
 ):
-    """Teste les identifiants fournis, puis les persiste dans Supabase."""
+    """Enregistre les identifiants, lance le test en arrière-plan, retourne immédiatement."""
     if connector not in SUPPORTED_CONNECTORS:
         raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
 
@@ -97,15 +99,9 @@ async def connect_connector(
         raise HTTPException(status_code=401, detail=str(e))
 
     creds = {"user": body.user, "pass": body.password}
-    loop  = asyncio.get_event_loop()
-    try:
-        await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds))
-    except RuntimeError as e:
-        await save_user_creds(user_id, connector, body.user, body.password, False)
-        raise HTTPException(status_code=400, detail=str(e))
-
-    await save_user_creds(user_id, connector, body.user, body.password, True)
-    return {"status": "ok", "connector": connector}
+    await save_user_creds(user_id, connector, body.user, body.password, False)
+    background_tasks.add_task(_run_conn_test_async, user_id, connector, creds)
+    return {"status": "testing"}
 
 
 @app.post("/run/{connector}")
@@ -147,6 +143,18 @@ def get_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job inconnu ou expiré")
     return job
+
+
+# ── Conn test (async wrapper) ──────────────────────────────────────────────────
+
+async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds))
+        await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
+        await patch_conn_test(user_id, connector, True, "Connexion réussie")
+    except Exception as e:
+        await patch_conn_test(user_id, connector, False, str(e))
 
 
 # ── Test connector (synchronous, called from executor) ─────────────────────────

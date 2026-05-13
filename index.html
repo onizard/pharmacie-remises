@@ -4055,7 +4055,18 @@ function initConnecteurModal() {
         await new Promise(r => setTimeout(r, 2_000));
       }
       if (!serverUp) throw new Error('Serveur inaccessible — réessayez dans quelques instants.');
-      resultEl.textContent = '⏳ Vérification…';
+      resultEl.textContent = '⏳ Envoi des identifiants…';
+
+      // Clear previous conn_test result so we don't read a stale one
+      try {
+        const { data: cur } = await window._sbClient.from('user_state').select('state_json').eq('user_id', session.user.id).maybeSingle();
+        if (cur?.state_json) {
+          const s = Object.assign({}, cur.state_json);
+          s.conn_test = Object.assign({}, s.conn_test);
+          delete s.conn_test[connKey];
+          await window._sbClient.from('user_state').upsert({ user_id: session.user.id, state_json: s }, { onConflict: 'user_id' });
+        }
+      } catch(_) {}
 
       const resp = await fetch(`${API_URL}/connect/${connKey}`, {
         method: 'POST',
@@ -4069,6 +4080,11 @@ function initConnecteurModal() {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.detail || `Erreur ${resp.status}`);
       }
+
+      // Poll Supabase for test result (test runs async on Render)
+      resultEl.textContent = '⏳ Test de connexion en cours…';
+      const result = await _pollConnTest(session.user.id, connKey, resultEl);
+      if (result.status !== 'ok') throw new Error(result.message || 'Identifiants incorrects');
 
       state.connectors[connKey] = { user, pass, connected: true };
       updateConnecteurBtn();
@@ -4105,6 +4121,24 @@ function initConnecteurModal() {
     } catch(e) {
       _setJobStatusEl(statusId, 'error', `❌ ${e.message}`);
     }
+  }
+
+  async function _pollConnTest(userId, connKey, statusEl) {
+    const deadline = Date.now() + 120_000;
+    let elapsed = 0;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 3_000));
+      elapsed += 3;
+      if (statusEl) statusEl.textContent = `⏳ Test de connexion… (${elapsed}s)`;
+      try {
+        const { data } = await window._sbClient
+          .from('user_state').select('state_json')
+          .eq('user_id', userId).maybeSingle();
+        const r = data?.state_json?.conn_test?.[connKey];
+        if (r?.status === 'ok' || r?.status === 'fail') return r;
+      } catch(_) {}
+    }
+    return { status: 'fail', message: 'Délai dépassé — réessayez.' };
   }
 
   function _setJobStatusEl(elId, cls, text) {

@@ -89,6 +89,16 @@ async def patch_connector_connected(user_id: str, connector: str, connected: boo
     await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))
 
 
+async def patch_conn_test(user_id: str, connector: str, ok: bool, message: str):
+    loop  = asyncio.get_event_loop()
+    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+    state.setdefault("conn_test", {})[connector] = {
+        "status":  "ok" if ok else "fail",
+        "message": message,
+    }
+    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))
+
+
 async def patch_job_status(user_id: str, job_key: str, status: str, message: str, data: list):
     loop  = asyncio.get_event_loop()
     state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))

@@ -9,9 +9,9 @@ import sys
 import urllib.request
 
 SUPA_URL    = "https://fmterazwesiwpwjpkyqi.supabase.co"
-SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
-USER_ID     = os.environ["USER_ID"]
-CONNECTOR   = os.environ["CONNECTOR"]   # 'ospharm' or 'digipharmacie'
+SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+USER_ID     = os.environ.get("USER_ID", "")
+CONNECTOR   = os.environ.get("CONNECTOR", "")
 
 OSPHARM_URL = "https://datastat.ospharm.org/"
 
