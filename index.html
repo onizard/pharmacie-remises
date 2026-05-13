@@ -1266,6 +1266,7 @@ let state = {
   labPages: [],
   currentPageId: 'labs',
   changementGeneriqueur: { enabled: false, labo: null, date: '' },
+  prorataRatios: null,
 };
 
 
@@ -1279,9 +1280,10 @@ function serializeState() {
     connectors: state.connectors,
     currentPageId: state.currentPageId,
     changementGeneriqueur: state.changementGeneriqueur,
-    csvData:     state.csvData     || null,
-    csvRows:     state.csvRows     || 0,
-    csvFileName: state.csvFile?.name || null,
+    csvData:       state.csvData       || null,
+    csvRows:       state.csvRows       || 0,
+    csvFileName:   state.csvFile?.name || null,
+    prorataRatios: state.prorataRatios || null,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -1532,6 +1534,20 @@ function ospharmRowsToCsvData(rows) {
   return result;
 }
 
+function computeProrataRatios(periodStart, periodEnd) {
+  if (!periodStart || !periodEnd) return null;
+  const s = new Date(periodStart + 'T12:00:00');
+  const e = new Date(periodEnd   + 'T12:00:00');
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || s >= e) return null;
+  const totalMs   = e.getTime() - s.getTime();
+  const boundary  = new Date('2025-12-31T23:59:59');
+  let ms2025 = 0, ms2026 = 0;
+  if (s > boundary)      { ms2026 = totalMs; }
+  else if (e <= boundary){ ms2025 = totalMs; }
+  else { ms2025 = boundary.getTime() - s.getTime(); ms2026 = e.getTime() - boundary.getTime(); }
+  return { ratio2025: ms2025 / totalMs, ratio2026: ms2026 / totalMs, periodStart, periodEnd };
+}
+
 async function launchComparateur() {
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
@@ -1560,6 +1576,7 @@ async function launchComparateur() {
       return;
     }
 
+    state.prorataRatios = computeProrataRatios(job.period_start || null, job.period_end || null);
     state.csvData = csvData;
     state.csvRows = csvData.length;
     saveState();
@@ -3038,6 +3055,17 @@ async function launchSimulation() {
       return (13 - month) / 12;
     }
 
+    function getBestCondFromArray(conditions, ca, forceMarketMet = false) {
+      if (!conditions?.length) return null;
+      const candidates = forceMarketMet
+        ? conditions
+        : conditions.filter(c => !c.caCondition || ca >= c.caCondition);
+      if (!candidates.length) return null;
+      return candidates.reduce((best, c) =>
+        (c.caCondition || 0) > (best?.caCondition || 0) ? c : best
+      );
+    }
+
     function getBestCond(lp, ca, forceMarketMet = false, applyProrata = false) {
       if (!lp?.conditions?.length) return null;
       const pr = applyProrata ? getProrata(lp.selectedLab) : 1;
@@ -3077,7 +3105,8 @@ async function launchSimulation() {
     // 5. calcScenario: CA + remise par labo pour un assignment donné
     //    rsfOnly=true  → RSF uniquement (scénario N-1)
     //    forceMarketMet=true → marché toujours atteint (optimisé 1)
-    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false, forcedConds = null } = {}) {
+    //    prorataRatios → { ratio2025, ratio2026 } — split CA par année
+    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false, forcedConds = null, prorataRatios = null } = {}) {
       const labMap = new Map();
       // Phase 1 : CA par labo
       csvData.forEach(row => {
@@ -3095,26 +3124,54 @@ async function launchSimulation() {
       // Phase 2 : remise par labo (après CA connu → meilleur palier atteignable ou palier forcé)
       labMap.forEach(e => {
         const isForced = !!(forcedConds && e.lp && forcedConds.has(e.lp.selectedLab));
-        const bestCond = rsfOnly ? null
-          : isForced ? forcedConds.get(e.lp.selectedLab)
-          : getBestCond(e.lp, e.ca, forceMarketMet, applyProrata);
-        const pr = applyProrata ? getProrata(e.lp?.selectedLab) : 1;
-        const firstMet = e.isSelected && !rsfOnly && (
-          (state.gers != null && bestCond?.caCondition != null && bestCond.caCondition >= 0.9 * state.gers)
-          || (bestCond?.forceFirst ?? false)
-        );
-        e.bestCond = bestCond;
-        e.met = isForced
-          ? (bestCond !== null && (!bestCond.caCondition || e.ca >= pr * bestCond.caCondition))
-          : (bestCond !== null || !e.isSelected);
-        e.caThreshold = pr * (bestCond?.caCondition || 0);
-        e.firstMet = firstMet;
-        e.rows.forEach(({ row, ref, price }) => {
-          const remisePct = (rsfOnly || !e.isSelected)
-            ? getRSFBase(ref, firstMet)
-            : getRemise(ref, bestCond, firstMet);
-          e.remise += row.qty * price * remisePct / 100;
-        });
+
+        // ── Prorata annuel (conditions 2025 + 2026) ─────────────────────────
+        if (prorataRatios && e.isSelected && !rsfOnly && !isForced) {
+          const { ratio2025, ratio2026 } = prorataRatios;
+          const ca2025 = e.ca * ratio2025;
+          const ca2026 = e.ca * ratio2026;
+          const cond25 = ratio2025 > 0 ? getBestCondFromArray(e.lp?.conditions2025 || [], ca2025, forceMarketMet) : null;
+          const cond26 = ratio2026 > 0 ? getBestCond(e.lp, ca2026, forceMarketMet) : null;
+          const fm25 = ratio2025 > 0 && e.isSelected && (
+            (state.gers != null && cond25?.caCondition != null && cond25.caCondition >= 0.9 * state.gers)
+            || (cond25?.forceFirst ?? false)
+          );
+          const fm26 = ratio2026 > 0 && e.isSelected && (
+            (state.gers != null && cond26?.caCondition != null && cond26.caCondition >= 0.9 * state.gers)
+            || (cond26?.forceFirst ?? false)
+          );
+          e.rows.forEach(({ row, ref, price }) => {
+            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25) : 0;
+            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26) : 0;
+            e.remise += row.qty * price * (r25 + r26) / 100;
+          });
+          e.bestCond    = cond26 || cond25;
+          e.firstMet    = fm25 || fm26;
+          e.met         = (ratio2025 === 0 || !!cond25 || !e.isSelected) && (ratio2026 === 0 || !!cond26 || !e.isSelected);
+          e.caThreshold = ratio2026 > 0 ? (cond26?.caCondition || 0) : (cond25?.caCondition || 0);
+        } else {
+          // ── Comportement existant ───────────────────────────────────────────
+          const bestCond = rsfOnly ? null
+            : isForced ? forcedConds.get(e.lp.selectedLab)
+            : getBestCond(e.lp, e.ca, forceMarketMet, applyProrata);
+          const pr = applyProrata ? getProrata(e.lp?.selectedLab) : 1;
+          const firstMet = e.isSelected && !rsfOnly && (
+            (state.gers != null && bestCond?.caCondition != null && bestCond.caCondition >= 0.9 * state.gers)
+            || (bestCond?.forceFirst ?? false)
+          );
+          e.bestCond    = bestCond;
+          e.met         = isForced
+            ? (bestCond !== null && (!bestCond.caCondition || e.ca >= pr * bestCond.caCondition))
+            : (bestCond !== null || !e.isSelected);
+          e.caThreshold = pr * (bestCond?.caCondition || 0);
+          e.firstMet    = firstMet;
+          e.rows.forEach(({ row, ref, price }) => {
+            const remisePct = (rsfOnly || !e.isSelected)
+              ? getRSFBase(ref, firstMet)
+              : getRemise(ref, bestCond, firstMet);
+            e.remise += row.qty * price * remisePct / 100;
+          });
+        }
       });
       const labResults = [...labMap.entries()].map(([name, e]) => ({
         name, ca: e.ca, remise: e.remise, qty: e.qty,
@@ -3196,7 +3253,7 @@ async function launchSimulation() {
       });
       opt2Assignment.set(row.cip13, bestRef || ref);
     });
-    const opt2 = calcScenario(opt2Assignment);
+    const opt2 = calcScenario(opt2Assignment, { prorataRatios: state.prorataRatios || null });
 
     // 6d. Scénarios par laboratoire : focus maximal sur chaque labo sélectionné
     const labScenarios = [];
@@ -3229,7 +3286,7 @@ async function launchSimulation() {
         if (bestRef) labAssignment.set(row.cip13, bestRef);
       });
 
-      labScenarios.push({ name: labName, scenario: calcScenario(labAssignment), assignment: labAssignment });
+      labScenarios.push({ name: labName, scenario: calcScenario(labAssignment, { prorataRatios: state.prorataRatios || null }), assignment: labAssignment });
     });
 
     // 6e. Helper : assignment "focus labo principal + meilleur RSF pour le reste"
@@ -3265,7 +3322,7 @@ async function launchSimulation() {
       const labAsgn = buildFocusAssignment(labName);
       conds.forEach((cond, ci) => {
         const forced = new Map([[labName, cond]]);
-        const scenario = calcScenario(labAsgn, { forcedConds: forced });
+        const scenario = calcScenario(labAsgn, { forcedConds: forced, prorataRatios: state.prorataRatios || null });
         const palierLbl = cond.caCondition ? `${cond.caCondition.toLocaleString('fr')} €` : 'BASE';
         condScenarios.push({
           key: `cond_${labName}_${ci}`,
@@ -3301,7 +3358,7 @@ async function launchSimulation() {
         pairScenarios.push({
           key: `pair_${labA}_${labB}`,
           label: `SCÉNARIO ${labA.toUpperCase()} + ${labB.toUpperCase()}`,
-          scenario: calcScenario(pairAsgn), assignment: pairAsgn, forcedConds: null,
+          scenario: calcScenario(pairAsgn, { prorataRatios: state.prorataRatios || null }), assignment: pairAsgn, forcedConds: null,
         });
       }
     }
@@ -3428,6 +3485,14 @@ async function launchSimulation() {
     let html = '';
 
     // ── KPIs ──────────────────────────────────────────────────────────────────
+    const pr = state.prorataRatios;
+    const periodBanner = pr ? (() => {
+      const pct25 = Math.round(pr.ratio2025 * 100), pct26 = 100 - pct25;
+      const fmt = d => d ? d.split('-').reverse().join('/') : '—';
+      return `<div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px">
+        PÉRIODE : ${fmt(pr.periodStart)} → ${fmt(pr.periodEnd)} — ${pct25}% conditions 2025 / ${pct26}% conditions 2026
+      </div>`;
+    })() : '';
     html += `<div class="sim-section">
       <div class="sim-title">◈ RÉSUMÉ</div>
       <div class="sim-kpi-row">
@@ -3435,7 +3500,7 @@ async function launchSimulation() {
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET N-1</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">SCÉNARIOS ÉVALUÉS</div><div class="sim-kpi-value amber">${totalScenarios}</div></div>
-      </div>
+      </div>${periodBanner}
     </div>`;
 
     // ── WINNER : scénario au PA NET le plus bas ────────────────────────────────
@@ -3858,6 +3923,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
       state.connectors.ospharm      = { user: osp.user  || '', pass: osp.pass  || '', connected: !!osp.connected };
       state.connectors.digipharmacie = { user: digi.user || '', pass: digi.pass || '', connected: !!digi.connected };
     }
+    if (saved.prorataRatios) state.prorataRatios = saved.prorataRatios;
     if (saved.csvData && saved.csvData.length) {
       state.csvData = saved.csvData;
       state.csvRows = saved.csvRows || saved.csvData.length;

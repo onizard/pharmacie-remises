@@ -44,17 +44,22 @@ def _supa_patch_state(state: dict):
     with urllib.request.urlopen(req, timeout=15): pass
 
 
-def _update_job(status: str, message: str = "", rows=None, error: str = "", blocking: bool = False):
+def _update_job(status: str, message: str = "", rows=None, error: str = "", blocking: bool = False,
+                period_start: str = "", period_end: str = ""):
     def _do():
         try:
             state = _supa_get_state()
-            state["ospharm_job"] = {
+            job = {
                 "status":  status,
                 "message": message,
                 "rows":    rows or [],
                 "total":   len(rows) if rows else 0,
                 "error":   error,
             }
+            if period_start:
+                job["period_start"] = period_start
+                job["period_end"]   = period_end
+            state["ospharm_job"] = job
             _supa_patch_state(state)
         except Exception as e:
             print(f"  [warn] Supabase update failed: {e}")
@@ -76,6 +81,38 @@ def _get_creds() -> dict:
 
 # ── OSPHARM scraper ────────────────────────────────────────────────────────────
 
+def _extract_period(page) -> tuple[str, str]:
+    """Extrait la plage de dates affichée par OSPHARM. Inference en fallback."""
+    import re as _re, datetime as _dt
+    try:
+        raw = page.evaluate(r'''() => {
+            const re = /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s*[àa\-\–]\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i;
+            const m = document.body.innerText.match(re);
+            return m ? [m[1], m[2]] : null;
+        }''')
+        if raw:
+            def _parse(s):
+                parts = _re.split(r'[\/\-]', s)
+                if len(parts) != 3: return None
+                d, mo, y = int(parts[0]), int(parts[1]), int(parts[2])
+                if y < 100: y += 2000
+                return f"{y:04d}-{mo:02d}-{d:02d}"
+            ps, pe = _parse(raw[0]), _parse(raw[1])
+            if ps and pe:
+                print(f"  [period] scraped: {ps} → {pe}")
+                return ps, pe
+    except Exception as exc:
+        print(f"  [period] scraping error: {exc}")
+    # Inference: Année lissée = 01/05/(Y-1) à 30/04/Y où Y = dernier avril écoulé
+    today = _dt.date.today()
+    apr30 = _dt.date(today.year, 4, 30)
+    y = today.year if today >= apr30 else today.year - 1
+    pe = f"{y:04d}-04-30"
+    ps = f"{y-1:04d}-05-01"
+    print(f"  [period] inferred: {ps} → {pe}")
+    return ps, pe
+
+
 def _js_click(page, text):
     return page.evaluate(f'''() => {{
         const all = document.querySelectorAll(
@@ -95,9 +132,11 @@ def _login(page, creds):
         creds["pass"], timeout=5_000)
     page.locator("button[type='submit'],input[type='submit']").first.click(timeout=5_000)
     try:
-        page.wait_for_url("*datastat.ospharm.org*", timeout=40_000)
+        page.wait_for_url("*datastat.ospharm.org*", timeout=45_000)
     except PWTimeout:
-        raise RuntimeError("Identifiants OSPHARM incorrects ou timeout login")
+        pass  # check URL below
+    if "datastat.ospharm.org" not in page.url or "accounts" in page.url:
+        raise RuntimeError("Identifiants OSPHARM incorrects")
     try:
         page.wait_for_function("() => typeof webix !== 'undefined'", timeout=20_000)
     except Exception:
@@ -112,7 +151,7 @@ def _reauth_if_needed(page, creds, label=""):
     _login(page, creds)
 
 
-def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], str]:
+def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], str, str, str]:
     import tempfile, openpyxl
 
     with sync_playwright() as p:
@@ -173,6 +212,9 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 except Exception:
                     pass
             page.wait_for_timeout(3_000)
+
+        # Capture la plage de dates (Année lissée)
+        period_start, period_end = _extract_period(page)
 
         # 4. Onglet Produits
         progress("Sélection onglet Produits…")
@@ -355,7 +397,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         except Exception as e:
             print(f"  [warn] Storage upload failed: {e}")
 
-    return rows, file_url
+    return rows, file_url, period_start, period_end
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -378,8 +420,9 @@ def main():
         _update_job("running", msg)
 
     try:
-        rows = run_ospharm(creds, progress)
-        _update_job("done", f"{len(rows)} lignes extraites", rows, blocking=True)
+        rows, _fu, ps, pe = run_ospharm(creds, progress)
+        _update_job("done", f"{len(rows)} lignes extraites", rows, blocking=True,
+                    period_start=ps, period_end=pe)
         print(f"\n✅  {len(rows)} lignes OSPHARM sauvegardées dans Supabase. ({time.time()-t0:.1f}s total)")
     except Exception as e:
         _update_job("error", error=str(e), blocking=True)

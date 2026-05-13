@@ -144,10 +144,11 @@ def get_signed_url_sync(path: str, expires_in: int = 2_592_000) -> str:
     return f"{SUPA_URL}{signed}" if signed.startswith("/") else signed
 
 
-async def patch_job_status(user_id: str, job_key: str, status: str, message: str, data: list, file_url: str = ""):
+async def patch_job_status(user_id: str, job_key: str, status: str, message: str, data: list,
+                           file_url: str = "", period_start: str = "", period_end: str = ""):
     loop  = asyncio.get_event_loop()
     state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
-    state[job_key] = {
+    job = {
         "status":   status,
         "message":  message,
         "rows":     data,
@@ -156,4 +157,8 @@ async def patch_job_status(user_id: str, job_key: str, status: str, message: str
         "error":    "" if status != "error" else message,
         "file_url": file_url,
     }
+    if period_start:
+        job["period_start"] = period_start
+        job["period_end"]   = period_end
+    state[job_key] = job
     await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))

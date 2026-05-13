@@ -182,7 +182,13 @@ async def _run_job_async(job_id: str, user_id: str, connector: str, job_key: str
             _executor,
             lambda: _scrape(connector, user_id, creds, progress),
         )
-        rows, file_url = result if isinstance(result, tuple) else (result, "")
+        if isinstance(result, (tuple, list)):
+            rows       = result[0]
+            file_url   = result[1] if len(result) > 1 else ""
+            period_start = result[2] if len(result) > 2 else ""
+            period_end   = result[3] if len(result) > 3 else ""
+        else:
+            rows, file_url, period_start, period_end = result, "", "", ""
         msg = f"{len(rows)} lignes extraites"
         _jobs[job_id].update({
             "status":   "done",
@@ -191,7 +197,8 @@ async def _run_job_async(job_id: str, user_id: str, connector: str, job_key: str
             "total":    len(rows),
             "file_url": file_url,
         })
-        await patch_job_status(user_id, job_key, "done", msg, rows, file_url)
+        await patch_job_status(user_id, job_key, "done", msg, rows, file_url,
+                               period_start=period_start, period_end=period_end)
     except Exception as e:
         _jobs[job_id].update({"status": "error", "message": str(e), "error": str(e)})
         await patch_job_status(user_id, job_key, "error", str(e), [])
