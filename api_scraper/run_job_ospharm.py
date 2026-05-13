@@ -197,55 +197,83 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         try:
             with page.expect_download(timeout=60_000) as dl_info:
                 exported = page.evaluate('''() => {
-                    const kw = ["excel", "export", "exporter", "xls", "fomat", "télécharger", "download"];
+                    const kw = ["excel", "export", "exporter", "xls", "fomat"];
 
-                    // Méthode 1 : API Webix interne — trouver vue dont tooltip/label contient "excel"
-                    if (typeof webix !== "undefined" && webix.ui?.views) {
-                        const views = Object.values(webix.ui.views);
-                        for (const v of views) {
+                    // ── Méthode 1 : POSITION VISUELLE ──────────────────────────────
+                    // Le bouton export est dans la même bande horizontale que les onglets
+                    // Laboratoires / Familles / Produits / Marques, à droite de tous.
+                    // On le trouve en cherchant les éléments visibles dans cette bande,
+                    // à droite du dernier onglet. Le 1er depuis la gauche = export, le 2e = corbeille.
+                    {
+                        const tabNames = ["Laboratoires", "Familles", "Produits", "Marques"];
+                        let maxRight = 0, bandTop = 0, bandBottom = 0;
+                        for (const name of tabNames) {
+                            for (const el of document.querySelectorAll("*")) {
+                                if (el.textContent.trim() !== name || !el.offsetParent) continue;
+                                const r = el.getBoundingClientRect();
+                                if (r.width < 5 || r.height < 5) continue;
+                                if (r.right > maxRight) {
+                                    maxRight = r.right;
+                                    bandTop    = r.top;
+                                    bandBottom = r.bottom;
+                                }
+                            }
+                        }
+                        if (maxRight > 0) {
+                            const midY = (bandTop + bandBottom) / 2;
+                            const margin = (bandBottom - bandTop) * 0.8;
+                            const candidates = [];
+                            for (const el of document.querySelectorAll("*")) {
+                                if (!el.offsetParent) continue;
+                                const r = el.getBoundingClientRect();
+                                if (r.left <= maxRight + 4) continue;   // doit être à droite des onglets
+                                if (r.top > midY + margin) continue;    // même bande verticale
+                                if (r.bottom < midY - margin) continue;
+                                if (r.width < 8 || r.height < 8) continue;
+                                if (r.width > 120 || r.height > 80) continue; // exclure conteneurs larges
+                                candidates.push(el);
+                            }
+                            candidates.sort((a, b) =>
+                                a.getBoundingClientRect().left - b.getBoundingClientRect().left
+                            );
+                            if (candidates.length) {
+                                candidates[0].click();
+                                const r = candidates[0].getBoundingClientRect();
+                                return "pos:" + candidates[0].tagName + "@" + Math.round(r.left) + "," + Math.round(r.top);
+                            }
+                        }
+                    }
+
+                    // ── Méthode 2 : API Webix interne ──────────────────────────────
+                    if (typeof webix !== "undefined") {
+                        const allViews = Object.values(
+                            webix?.ui?.views || webix?._views || {}
+                        );
+                        for (const v of allViews) {
                             const tip = (v.config?.tooltip || v.config?.label || "").toLowerCase();
                             if (kw.some(k => tip.includes(k))) {
                                 const node = v.getNode?.();
                                 if (node && node.offsetParent) { node.click(); return "webix-view:" + tip.slice(0,40); }
                             }
                         }
-                        // webix.toExcel sur la datatable visible
                         if (webix.toExcel) {
-                            const grid = views.find(v => v.name === "datatable" && v.isVisible?.());
+                            const grid = allViews.find(v => v.name === "datatable" && v.isVisible?.());
                             if (grid) { webix.toExcel(grid); return "webix.toExcel"; }
                         }
                     }
 
-                    // Méthode 2 : attribut webix_tooltip sur n'importe quel élément visible
+                    // ── Méthode 3 : attribut webix_tooltip ─────────────────────────
                     for (const el of document.querySelectorAll("[webix_tooltip]")) {
                         if (!el.offsetParent) continue;
                         const tip = (el.getAttribute("webix_tooltip") || "").toLowerCase();
                         if (kw.some(k => tip.includes(k))) {
-                            const btn = el.querySelector("button,[role=button]") || el;
-                            btn.click();
+                            (el.querySelector("button,[role=button]") || el).click();
                             return "webix_tooltip:" + tip.slice(0,40);
                         }
                     }
 
-                    // Méthode 3 : toolbar contenant les onglets Produits/Laboratoires
-                    const tabLabels = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
-                    const skipKw = ["semaine","mois","année","trimestre","laboratoires","familles","produits","marques"];
-                    for (const toolbar of document.querySelectorAll(".webix_toolbar,.webix_layout_toolbar")) {
-                        if (!toolbar.offsetParent) continue;
-                        const texts = [...toolbar.querySelectorAll("*")].map(e => e.textContent.trim());
-                        if (![...tabLabels].some(t => texts.includes(t))) continue;
-                        for (const el of toolbar.querySelectorAll("button,[role=button],.webix_img_btn,.webix_el_button,.webix_el_icon")) {
-                            if (!el.offsetParent) continue;
-                            if (tabLabels.has(el.textContent.trim())) continue;
-                            const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("webix_tooltip")||"")).toLowerCase();
-                            if (skipKw.some(k => hay.includes(k))) continue;
-                            el.click();
-                            return "toolbar-btn:" + (el.getAttribute("webix_tooltip")||el.title||el.textContent).trim().slice(0,40);
-                        }
-                    }
-
-                    // Méthode 4 : recherche globale par mot-clé dans tous les attributs
-                    for (const el of document.querySelectorAll("button,a,[role=button],.webix_el_button button,.webix_toolbar button")) {
+                    // ── Méthode 4 : mot-clé dans text/title/aria-label ─────────────
+                    for (const el of document.querySelectorAll("button,a,[role=button],.webix_el_button button")) {
                         if (!el.offsetParent) continue;
                         const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"") + " " + (el.getAttribute("webix_tooltip")||"")).toLowerCase();
                         if (kw.some(k => hay.includes(k))) { el.click(); return "kw:" + hay.slice(0,40); }
