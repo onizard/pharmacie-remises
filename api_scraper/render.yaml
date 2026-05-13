@@ -3,8 +3,10 @@ services:
     name: break-pharma-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter          # 512 MB RAM — suffisant pour camoufox + pdfplumber
+    plan: starter
     healthCheckPath: /health
     envVars:
       - key: PORT
         value: "8000"
+      - key: SUPABASE_SERVICE_KEY
+        sync: false          # à renseigner dans le dashboard Render (secret)
