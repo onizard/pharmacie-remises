@@ -663,6 +663,19 @@
   .conn-test-result.ko { color: var(--red); }
   .conn-test-result.warn  { color: var(--amber); }
   .conn-test-result.error { color: var(--red); }
+  .conn-progress { display: none; margin: 12px 0 0; }
+  .conn-progress.active { display: block; }
+  .conn-progress-track { display: flex; align-items: flex-start; }
+  .conn-step { display: flex; flex-direction: column; align-items: center; flex: 0 0 auto; }
+  .conn-step-dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--border); background: transparent; transition: all .3s; }
+  .conn-step-line { flex: 1; height: 1px; background: var(--border); margin-top: 4px; transition: background .4s; min-width: 20px; }
+  .conn-step-label { font-size: 8px; font-family: 'Orbitron', monospace; color: var(--text-dim); margin-top: 4px; letter-spacing: .5px; text-transform: uppercase; white-space: nowrap; }
+  .conn-step.active .conn-step-dot { border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); animation: conn-step-pulse .9s ease-in-out infinite alternate; }
+  .conn-step.active .conn-step-label { color: var(--cyan); }
+  .conn-step.done .conn-step-dot { border-color: var(--cyan); background: var(--cyan); }
+  .conn-step.done .conn-step-label { color: var(--cyan); }
+  .conn-step-line.done { background: var(--cyan); }
+  @keyframes conn-step-pulse { from { box-shadow: 0 0 3px var(--cyan); } to { box-shadow: 0 0 9px var(--cyan), 0 0 3px #fff2; } }
 .conn-save { display: block; width: 100%; margin-top: 22px; font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; padding: 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); transition: all .2s; }
   .conn-save:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
   .conn-connected-view { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px 16px; text-align: center; min-height: 180px; }
@@ -957,6 +970,15 @@
               <button class="conn-test-btn" id="digiTest">CONNECTER</button>
               <span class="conn-test-result" id="digiTestResult"></span>
             </div>
+            <div class="conn-progress" id="digiProgress">
+              <div class="conn-progress-track">
+                <div class="conn-step" id="digiStep1"><div class="conn-step-dot"></div><div class="conn-step-label">Serveur</div></div>
+                <div class="conn-step-line" id="digiLine1"></div>
+                <div class="conn-step" id="digiStep2"><div class="conn-step-dot"></div><div class="conn-step-label">Envoi</div></div>
+                <div class="conn-step-line" id="digiLine2"></div>
+                <div class="conn-step" id="digiStep3"><div class="conn-step-dot"></div><div class="conn-step-label">Test</div></div>
+              </div>
+            </div>
           </div>
           <div class="conn-connected-view" id="digiConnView" style="display:none">
             <div class="conn-check-big">✓</div>
@@ -983,6 +1005,15 @@
             <div class="conn-test-row">
               <button class="conn-test-btn" id="ospTest">CONNECTER</button>
               <span class="conn-test-result" id="ospTestResult"></span>
+            </div>
+            <div class="conn-progress" id="ospProgress">
+              <div class="conn-progress-track">
+                <div class="conn-step" id="ospStep1"><div class="conn-step-dot"></div><div class="conn-step-label">Serveur</div></div>
+                <div class="conn-step-line" id="ospLine1"></div>
+                <div class="conn-step" id="ospStep2"><div class="conn-step-dot"></div><div class="conn-step-label">Envoi</div></div>
+                <div class="conn-step-line" id="ospLine2"></div>
+                <div class="conn-step" id="ospStep3"><div class="conn-step-dot"></div><div class="conn-step-label">Test</div></div>
+              </div>
             </div>
           </div>
           <div class="conn-connected-view" id="ospConnView" style="display:none">
@@ -4035,8 +4066,9 @@ function initConnecteurModal() {
     }
 
     btn.disabled = true;
-    resultEl.textContent = '⏳ Connexion au serveur…';
+    resultEl.textContent = '';
     resultEl.className = 'conn-test-result';
+    _setConnProgress(prefix, 1);
 
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
@@ -4047,7 +4079,7 @@ function initConnecteurModal() {
       let serverUp = false;
       while (!serverUp && (Date.now() - t0) < 90_000) {
         const elapsed = Math.round((Date.now() - t0) / 1000);
-        if (elapsed > 0) resultEl.textContent = `⏳ Démarrage du serveur… (${elapsed}s)`;
+        if (elapsed > 0) resultEl.textContent = `démarrage… (${elapsed}s)`;
         try {
           const r = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(8_000) });
           if (r.ok) { serverUp = true; break; }
@@ -4055,7 +4087,9 @@ function initConnecteurModal() {
         await new Promise(r => setTimeout(r, 2_000));
       }
       if (!serverUp) throw new Error('Serveur inaccessible — réessayez dans quelques instants.');
-      resultEl.textContent = '⏳ Envoi des identifiants…';
+
+      _setConnProgress(prefix, 2);
+      resultEl.textContent = '';
 
       // Clear previous conn_test result so we don't read a stale one
       try {
@@ -4081,18 +4115,19 @@ function initConnecteurModal() {
         throw new Error(err.detail || `Erreur ${resp.status}`);
       }
 
-      // Poll Supabase for test result (test runs async on Render)
-      resultEl.textContent = '⏳ Test de connexion en cours…';
+      _setConnProgress(prefix, 3);
       const result = await _pollConnTest(session.user.id, connKey, resultEl);
       if (result.status !== 'ok') throw new Error(result.message || 'Identifiants incorrects');
 
       state.connectors[connKey] = { user, pass, connected: true };
       updateConnecteurBtn();
       saveState();
+      _setConnProgress(prefix, 0);
       resultEl.textContent = '';
       showView(prefix, true);
       _triggerWorkflow(connKey);
     } catch(e) {
+      _setConnProgress(prefix, 0);
       resultEl.innerHTML = `❌ ${e.message}<br><span style="color:var(--text-dim)">Vérifiez vos identifiants et réessayez.</span>`;
       resultEl.className = 'conn-test-result error';
       const passEl = document.getElementById(prefix + 'Pass');
@@ -4120,6 +4155,21 @@ function initConnecteurModal() {
       }
     } catch(e) {
       _setJobStatusEl(statusId, 'error', `❌ ${e.message}`);
+    }
+  }
+
+  function _setConnProgress(prefix, step) {
+    const bar = document.getElementById(prefix + 'Progress');
+    if (!bar) return;
+    if (step === 0) { bar.classList.remove('active'); return; }
+    bar.classList.add('active');
+    for (let i = 1; i <= 3; i++) {
+      const s = document.getElementById(prefix + 'Step' + i);
+      if (s) s.className = 'conn-step' + (i < step ? ' done' : i === step ? ' active' : '');
+      if (i < 3) {
+        const l = document.getElementById(prefix + 'Line' + i);
+        if (l) l.className = 'conn-step-line' + (i < step ? ' done' : '');
+      }
     }
   }
 
