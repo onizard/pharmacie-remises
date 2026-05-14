@@ -183,87 +183,83 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         _wait_webix(page)
 
         # ── helper : naviguer vers la section ventes ───────────────────────────
-        def _on_ventes_page():
-            return "organization.dashboard" not in page.url and "login" not in page.url
+        # La condition d'arrivée : les tabs "Laboratoires/Familles/Produits/Marques"
+        # sont visibles. C'est le seul signe fiable qu'on est bien sur la page ventes.
+        def _ventes_tabs_visible():
+            try:
+                return page.evaluate('''() => {
+                    for (const el of document.querySelectorAll(".webix_item_tab")) {
+                        if (el.textContent.trim() === "Laboratoires") return true;
+                    }
+                    return false;
+                }''') or False
+            except Exception:
+                return False
 
         def _goto_sellout():
-            """Navigue vers la section ventes. True si on n'est plus sur le dashboard."""
-            _before = page.url
+            """Navigue vers la page ventes. True si tabs Laboratoires/Produits visibles."""
 
-            # M1 : clic exact "Ventes" dans la sidebar (item visible dans le nav-debug)
+            # M1 : webix.$$("top").show("sellout.all") — navigation SPA native
             try:
-                _loc = page.get_by_text("Ventes", exact=True).first
-                if _loc.is_visible(timeout=3_000):
-                    _loc.click(timeout=5_000)
-                    print("  [nav] cliqué 'Ventes' exact")
+                _r = page.evaluate('''() => {
+                    if (typeof webix === "undefined") return "no-webix";
+                    for (const id of ["top", "app", "main", "layout"]) {
+                        try {
+                            const v = webix.$$(id);
+                            if (v && typeof v.show === "function") {
+                                v.show("sellout.all"); return "show:" + id;
+                            }
+                        } catch(e) {}
+                    }
+                    // webix.router
+                    try { webix.router.set("top/sellout.all"); return "router.set"; } catch(e) {}
+                    return false;
+                }''')
+                print(f"  [nav] webix API: {_r}")
             except Exception:
                 pass
 
-            # M2 : clic JS large sur items nav contenant "ventes"/"sellout"
-            if not _on_ventes_page():
+            if not _ventes_tabs_visible():
+                # M2 : clic "Ventes" exact dans la sidebar
                 try:
-                    _c = page.evaluate('''() => {
-                        const targets = ["ventes", "sellout", "tout"];
-                        const sels = ".webix_sidebar_item,.webix_list_item,.webix_tree_item,li,a,[role=menuitem],[role=treeitem]";
-                        for (const el of document.querySelectorAll(sels)) {
-                            const txt = el.textContent.trim().toLowerCase();
-                            const r = el.getBoundingClientRect();
-                            if (r.width < 2 || r.height < 2) continue;
-                            for (const t of targets) {
-                                if (txt === t || (txt.includes(t) && txt.length < 40)) {
-                                    el.click(); return txt.slice(0, 40);
-                                }
-                            }
-                        }
-                        return false;
-                    }''')
-                    if _c:
-                        print(f"  [nav] JS click: {_c!r}")
+                    _loc = page.get_by_text("Ventes", exact=True).first
+                    if _loc.is_visible(timeout=2_000):
+                        _loc.click(timeout=5_000)
+                        print("  [nav] cliqué 'Ventes' sidebar")
                 except Exception:
                     pass
 
-            # M3 : webix.$$().show()
-            if not _on_ventes_page():
-                try:
-                    _r = page.evaluate('''() => {
-                        if (typeof webix === "undefined") return "no-webix";
-                        for (const id of ["top", "app", "main", "layout", "router"]) {
-                            try {
-                                const v = webix.$$(id);
-                                if (v && typeof v.show === "function") {
-                                    v.show("sellout.all"); return "show:" + id;
-                                }
-                            } catch(e) {}
-                        }
-                        return false;
-                    }''')
-                    print(f"  [nav] webix.show: {_r}")
-                except Exception:
-                    pass
-
-            # M4 : hash change (change l'URL même si Webix ne l'honore pas)
-            if not _on_ventes_page():
+            if not _ventes_tabs_visible():
+                # M3 : hash change
                 try:
                     page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
                 except Exception:
                     pass
 
-            # Attendre navigation hors du dashboard
+            # Attendre que les tabs ventes (Laboratoires) soient visibles —
+            # c'est la seule condition fiable (l'URL peut bouncer entre états)
             try:
                 page.wait_for_function(
-                    "() => !location.href.includes('organization.dashboard')",
-                    timeout=15_000,
+                    '''() => {
+                        for (const el of document.querySelectorAll(".webix_item_tab")) {
+                            if (el.textContent.trim() === "Laboratoires") return true;
+                        }
+                        return false;
+                    }''',
+                    timeout=20_000,
                 )
+                print("  [nav] tabs ventes visibles ✓")
+                return True
             except Exception:
-                page.wait_for_timeout(4_000)
+                pass
 
             _reauth_if_needed(page, creds, "ventes")
             _wait_webix(page)
-            return _on_ventes_page()
+            return _ventes_tabs_visible()
 
         # 2. Navigation vers la section ventes
         progress("Navigation vers Toutes mes ventes…")
-        if "organization.dashboard" in page.url or "login" in page.url:
+        if not _ventes_tabs_visible():
             # Stabiliser la page (Webix SPA route encore après login)
             try:
                 page.wait_for_load_state("networkidle", timeout=10_000)
@@ -321,7 +317,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             pass
 
         # Si on est revenu sur le dashboard, retourner sur ventes
-        if not _on_ventes_page():
+        if not _ventes_tabs_visible():
             print(f"  [warn] Année lissée a redirigé → {page.url[:60]} — retour ventes…")
             _goto_sellout()
 
