@@ -114,16 +114,19 @@ def _extract_period(page) -> tuple[str, str]:
 
 
 def _js_click(page, text):
-    return page.evaluate(f'''() => {{
-        const t = {repr(text)}.toLowerCase();
-        const all = document.querySelectorAll(
-            ".webix_list_item,.webix_el_button button,button,input[type=button],input[type=submit],[role=option],[role=button]");
-        for (const el of all) {{
-            const hay = (el.textContent + " " + (el.value||"") + " " + (el.getAttribute("aria-label")||"")).trim().toLowerCase();
-            if (hay === t || hay.includes(t)) {{ el.click(); return true; }}
-        }}
-        return false;
-    }}''')
+    try:
+        return page.evaluate(f'''() => {{
+            const t = {repr(text)}.toLowerCase();
+            const all = document.querySelectorAll(
+                ".webix_list_item,.webix_el_button button,button,input[type=button],input[type=submit],[role=option],[role=button]");
+            for (const el of all) {{
+                const hay = (el.textContent + " " + (el.value||"") + " " + (el.getAttribute("aria-label")||"")).trim().toLowerCase();
+                if (hay === t || hay.includes(t)) {{ el.click(); return true; }}
+            }}
+            return false;
+        }}''')
+    except Exception:
+        return False
 
 
 def _login(page, creds):
@@ -213,7 +216,11 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                     page.get_by_text("Valider", exact=True).first.click(force=True, timeout=5_000)
                 except Exception:
                     pass
-            page.wait_for_timeout(3_000)
+            # Valider peut déclencher une navigation SPA — attendre que webix soit rechargé
+            try:
+                page.wait_for_function("() => typeof webix !== 'undefined'", timeout=15_000)
+            except Exception:
+                page.wait_for_timeout(3_000)
 
         # Capture la plage de dates (Année lissée)
         period_start, period_end = _extract_period(page)
@@ -221,16 +228,19 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         # 4. Onglet Produits
         progress("Sélection onglet Produits…")
         _reauth_if_needed(page, creds, "avant Produits")
-        prod_ok = page.evaluate('''() => {
-            const els = document.querySelectorAll(".webix_item_tab,.webix_list_item,[class*='tab'],li,span,div,a");
-            for (const el of els) {
-                if (el.textContent.trim() === "Produits") {
-                    const r = el.getBoundingClientRect();
-                    if (r.width > 0 && r.height > 0) { el.click(); return true; }
+        try:
+            prod_ok = page.evaluate('''() => {
+                const els = document.querySelectorAll(".webix_item_tab,.webix_list_item,[class*='tab'],li,span,div,a");
+                for (const el of els) {
+                    if (el.textContent.trim() === "Produits") {
+                        const r = el.getBoundingClientRect();
+                        if (r.width > 0 && r.height > 0) { el.click(); return true; }
+                    }
                 }
-            }
-            return false;
-        }''')
+                return false;
+            }''')
+        except Exception:
+            prod_ok = False
         if not prod_ok:
             try:
                 page.get_by_text("Produits", exact=True).first.click(timeout=8_000)
