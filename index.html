@@ -3332,18 +3332,27 @@ async function launchSimulation() {
       });
     });
 
-    // 6g. Scénarios par paire de laboratoires (toutes les combinaisons 2 parmi N)
-    const pairScenarios = [];
+    // 6g. Scénarios par groupe (toutes les combinaisons k parmi N, k=2..N)
+    function kCombinations(arr, k) {
+      const result = [];
+      (function recurse(start, cur) {
+        if (cur.length === k) { result.push([...cur]); return; }
+        for (let i = start; i <= arr.length - (k - cur.length); i++) {
+          cur.push(arr[i]); recurse(i + 1, cur); cur.pop();
+        }
+      })(0, []);
+      return result;
+    }
+    const groupScenarios = [];
     const labList = state.labPages.map(lp => lp.selectedLab).filter(Boolean);
-    for (let i = 0; i < labList.length; i++) {
-      for (let j = i + 1; j < labList.length; j++) {
-        const labA = labList[i], labB = labList[j];
-        const pairSet = new Set([labA, labB]);
-        const pairAsgn = new Map(naturalAssignment);
+    for (let k = 2; k <= labList.length; k++) {
+      kCombinations(labList, k).forEach(group => {
+        const groupSet = new Set(group);
+        const groupAsgn = new Map(naturalAssignment);
         csvData.forEach(row => {
           const ref = naturalRefMap.get(row.cip13);
           if (!ref) return;
-          const alts = (libelleMap.get(ref.libelle) || []).filter(r => pairSet.has(r.labo));
+          const alts = (libelleMap.get(ref.libelle) || []).filter(r => groupSet.has(r.labo));
           if (!alts.length) return;
           let bestRef = null, bestNet = Infinity;
           alts.forEach(altRef => {
@@ -3353,14 +3362,14 @@ async function launchSimulation() {
             const net = (altRef.puht || 0) * (1 - getRemise(altRef, cond, firstMet) / 100);
             if (net < bestNet) { bestNet = net; bestRef = altRef; }
           });
-          if (bestRef) pairAsgn.set(row.cip13, bestRef);
+          if (bestRef) groupAsgn.set(row.cip13, bestRef);
         });
-        pairScenarios.push({
-          key: `pair_${labA}_${labB}`,
-          label: `SCÉNARIO ${labA.toUpperCase()} + ${labB.toUpperCase()}`,
-          scenario: calcScenario(pairAsgn), assignment: pairAsgn, forcedConds: null,
+        groupScenarios.push({
+          key: `combo_${k}_${group.join('_')}`,
+          label: `SCÉNARIO ${group.map(l => l.toUpperCase()).join(' + ')}`,
+          scenario: calcScenario(groupAsgn), assignment: groupAsgn, forcedConds: null,
         });
-      }
+      });
     }
 
     // 7. Export CSV scénario : CIP;Libellé;Labo;PU HT;Remise totale %;PU NET
@@ -3450,7 +3459,7 @@ async function launchSimulation() {
     condScenarios.forEach(({ key, scenario, assignment, forcedConds }) => {
       scenarioStore.set(key, { assignment, labResults: scenario.labResults, forcedConds });
     });
-    pairScenarios.forEach(({ key, scenario, assignment }) => {
+    groupScenarios.forEach(({ key, scenario, assignment }) => {
       scenarioStore.set(key, { assignment, labResults: scenario.labResults });
     });
 
@@ -3473,7 +3482,7 @@ async function launchSimulation() {
       ...condScenarios.map(({ key, label, scenario }) => ({
         key, label, sub: null, scenario, dlBtns: dlBtn(key),
       })),
-      ...pairScenarios.map(({ key, label, scenario }) => ({
+      ...groupScenarios.map(({ key, label, scenario }) => ({
         key, label, sub: null, scenario, dlBtns: dlBtn(key),
       })),
     ];
@@ -3585,7 +3594,7 @@ async function launchSimulation() {
       btn.addEventListener('click', () => {
         const s = scenarioStore.get(btn.dataset.key);
         if (!s) return;
-        const fname = `scenario_${btn.dataset.key.replace(/^lab_/,'').replace(/^opt2_/,'optimise_').replace(/^cond_/,'palier_').replace(/^pair_/,'paire_')}.csv`;
+        const fname = `scenario_${btn.dataset.key.replace(/^lab_/,'').replace(/^opt2_/,'optimise_').replace(/^cond_/,'palier_').replace(/^combo_\d+_/,'groupe_')}.csv`;
         downloadCSV(buildScenarioCSV(s.assignment, s.labResults, s.filterLab || null, s.forcedConds || null), fname);
       });
     });
