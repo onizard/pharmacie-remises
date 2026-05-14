@@ -325,6 +325,8 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             print(f"  [warn] Année lissée a redirigé → {page.url[:60]} — retour ventes…")
             _goto_sellout()
 
+        _url_post3 = page.url
+        print(f"  [step3-done] url={_url_post3[:80]}")
         # Capture la plage de dates affichée (quelle que soit la sélection)
         period_start, period_end = _extract_period(page)
 
@@ -353,6 +355,10 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 pass
         page.wait_for_timeout(3_000)
         _reauth_if_needed(page, creds, "après Produits")
+        _url_post4 = page.url
+        print(f"  [step4-done] url={_url_post4[:80]}")
+        if "organization.dashboard" in _url_post4:
+            raise RuntimeError(f"Step4: retour dashboard — url={_url_post4[:80]}")
 
         # 5. Export Excel — interception réseau (fonctionne quel que soit le mécanisme
         #    de téléchargement : réponse HTTP serveur, Blob, nouvel onglet, etc.)
