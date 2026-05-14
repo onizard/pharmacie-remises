@@ -113,6 +113,14 @@ def _extract_period(page) -> tuple[str, str]:
     return ps, pe
 
 
+def _wait_webix(page, timeout=20_000):
+    """Attend que webix soit défini, absorbe toutes les erreurs (navigation, timeout)."""
+    try:
+        page.wait_for_function("() => typeof webix !== 'undefined'", timeout=timeout)
+    except Exception:
+        page.wait_for_timeout(3_000)
+
+
 def _js_click(page, text):
     try:
         return page.evaluate(f'''() => {{
@@ -142,10 +150,7 @@ def _login(page, creds):
         pass  # check URL below
     if "datastat.ospharm.org" not in page.url or "accounts" in page.url:
         raise RuntimeError("Identifiants OSPHARM incorrects")
-    try:
-        page.wait_for_function("() => typeof webix !== 'undefined'", timeout=20_000)
-    except Exception:
-        page.wait_for_timeout(3_000)
+    _wait_webix(page)
 
 
 def _reauth_if_needed(page, creds, label=""):
@@ -175,22 +180,22 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             raise RuntimeError("Identifiants OSPHARM incorrects")
 
         progress("Connecté — chargement…")
-        try:
-            page.wait_for_function("() => typeof webix !== 'undefined'", timeout=20_000)
-        except Exception:
-            page.wait_for_timeout(3_000)
+        _wait_webix(page)
 
         # 2. Navigation vers Toutes mes ventes (hash routing SPA — pas de page.goto)
         progress("Navigation vers Toutes mes ventes…")
         if "sellout" not in page.url:
-            # Naviguer via le hash pour rester dans la SPA sans déclencher un rechargement
-            page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=10_000)
+            except Exception:
+                pass
+            try:
+                page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
+            except Exception:
+                pass
             page.wait_for_timeout(3_000)
             _reauth_if_needed(page, creds, "sellout.all")
-            try:
-                page.wait_for_function("() => typeof webix !== 'undefined'", timeout=15_000)
-            except Exception:
-                page.wait_for_timeout(2_000)
+            _wait_webix(page)
 
         # 3. Sélection "Année lissée" + Valider
         progress("Sélection Année lissée…")
@@ -217,10 +222,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 except Exception:
                     pass
             # Valider peut déclencher une navigation SPA — attendre que webix soit rechargé
-            try:
-                page.wait_for_function("() => typeof webix !== 'undefined'", timeout=15_000)
-            except Exception:
-                page.wait_for_timeout(3_000)
+            _wait_webix(page)
 
         # Capture la plage de dates (Année lissée)
         period_start, period_end = _extract_period(page)
