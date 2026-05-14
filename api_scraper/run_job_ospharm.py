@@ -242,33 +242,38 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         tmp = tempfile.mktemp(suffix=".xlsx")
 
         # ── Debug URL avant export ────────────────────────────────────────────
-        dbg = page.evaluate('''() => {
-            const vids = [...document.querySelectorAll("[view_id]")];
-            const tabs = [...document.querySelectorAll(".webix_item_tab")];
-            const tooltipEls = [...document.querySelectorAll("[webix_tooltip]")];
-            return {
-                url: location.href,
-                vw: window.innerWidth,
-                viewIdCount: vids.length,
-                viewIdSample: vids.slice(0, 8).map(e => ({
-                    id: e.getAttribute("view_id"),
-                    cls: e.className.slice(0, 40),
-                    r: (r => ({x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height)}))(e.getBoundingClientRect()),
-                })),
-                tabItems: tabs.map(t => t.textContent.trim()).slice(0, 8),
-                tooltipEls: tooltipEls.slice(0, 5).map(e => e.getAttribute("webix_tooltip")),
-                webix: typeof webix !== "undefined" ? {
-                    toExcel: typeof webix.toExcel,
-                    dollar: typeof webix.$$,
-                    uiKeys: Object.keys(webix.ui || {}).slice(0, 10),
-                } : "absent",
-            };
-        }''')
-        print(f"  [export-dbg] {dbg}")
+        try:
+            dbg = page.evaluate('''() => {
+                const vids = [...document.querySelectorAll("[view_id]")];
+                const tabs = [...document.querySelectorAll(".webix_item_tab")];
+                const tooltipEls = [...document.querySelectorAll("[webix_tooltip]")];
+                return {
+                    url: location.href,
+                    vw: window.innerWidth,
+                    viewIdCount: vids.length,
+                    viewIdSample: vids.slice(0, 8).map(e => ({
+                        id: e.getAttribute("view_id"),
+                        cls: e.className.slice(0, 40),
+                        r: (r => ({x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height)}))(e.getBoundingClientRect()),
+                    })),
+                    tabItems: tabs.map(t => t.textContent.trim()).slice(0, 8),
+                    tooltipEls: tooltipEls.slice(0, 5).map(e => e.getAttribute("webix_tooltip")),
+                    webix: typeof webix !== "undefined" ? {
+                        toExcel: typeof webix.toExcel,
+                        dollar: typeof webix.$$,
+                        uiKeys: Object.keys(webix.ui || {}).slice(0, 10),
+                    } : "absent",
+                };
+            }''')
+            print(f"  [export-dbg] {dbg}")
+        except Exception as _dbg_err:
+            dbg = {}
+            print(f"  [export-dbg] skipped ({_dbg_err})")
 
         try:
             with page.expect_download(timeout=60_000) as dl_info:
-                exported = page.evaluate('''() => {
+                try:
+                  exported = page.evaluate('''() => {
                     function vis(el) {
                         const r = el.getBoundingClientRect();
                         return r.width > 0 && r.height > 0;
@@ -355,17 +360,28 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
 
                     return false;
                 }''')
+                except Exception as _eval_err:
+                  # webix.toExcel() peut déclencher une navigation immédiate qui détruit
+                  # le contexte avant que page.evaluate() ne retourne → on considère
+                  # que le download est déjà en route.
+                  if "context" in str(_eval_err).lower() or "destroyed" in str(_eval_err).lower():
+                      exported = "context-destroyed-ok"
+                      print(f"  [export] context destroyed pendant le clic — download en route")
+                  else:
+                      raise
                 if not exported:
                     raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
-                # Popup de confirmation OSPHARM : un bouton "Valider" apparaît avant
-                # que le téléchargement se déclenche (~8s après le clic).
+                # Popup de confirmation OSPHARM : apparaît uniquement quand on clique
+                # le bouton manuellement (M2/M3/M4). webix.toExcel() (M1) déclenche
+                # directement sans popup → si le contexte est déjà détruit, on saute.
                 page.wait_for_timeout(2_500)
-                val_ok = _js_click(page, "Valider")
-                if not val_ok:
-                    try:
+                try:
+                    val_ok = _js_click(page, "Valider")
+                    if not val_ok:
                         page.get_by_text("Valider", exact=True).first.click(force=True, timeout=5_000)
-                    except Exception:
-                        pass
+                except Exception as _val_err:
+                    # Contexte détruit = download déjà déclenché par M1, pas de popup à gérer
+                    print(f"  [export] Valider skip ({_val_err})")
             dl = dl_info.value
             dl.save_as(tmp)
         except RuntimeError:
