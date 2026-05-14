@@ -182,21 +182,118 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         progress("Connecté — chargement…")
         _wait_webix(page)
 
-        # 2. Navigation vers Toutes mes ventes
-        # Le hash change déclenche une navigation complète sur OSPHARM (context destroyed
-        # = comportement normal). On attend ensuite que l'URL contienne "sellout".
-        progress("Navigation vers Toutes mes ventes…")
-        if "sellout" not in page.url:
+        # ── helper : naviguer vers sellout.all via l'API Webix ──────────────────
+        def _goto_sellout():
+            """Navigue vers sellout.all. Retourne True si l'URL contient 'sellout'."""
+            # M1 : webix.$$("top").show() — navigation SPA native Webix
+            try:
+                _r = page.evaluate('''() => {
+                    if (typeof webix === "undefined") return "no-webix";
+                    // Cherche un objet qui répond à show("sellout.all")
+                    for (const id of ["top", "app", "main", "layout", "root"]) {
+                        try {
+                            const v = webix.$$(id);
+                            if (v && typeof v.show === "function") {
+                                v.show("sellout.all"); return "show:" + id;
+                            }
+                        } catch(e) {}
+                    }
+                    // Parcourt tous les webix views
+                    if (webix.__views) {
+                        for (const id of Object.keys(webix.__views)) {
+                            try {
+                                const v = webix.$$(id);
+                                if (v && typeof v.show === "function" && v.config) {
+                                    v.show("sellout.all"); return "show:" + id;
+                                }
+                            } catch(e) {}
+                        }
+                    }
+                    return false;
+                }''')
+                print(f"  [nav] webix.show: {_r}")
+            except Exception:
+                pass
+
+            # M2 : clic sidebar (Webix tree / sidebar items)
+            try:
+                _c = page.evaluate('''() => {
+                    const targets = ["toutes mes ventes", "mes ventes", "ventes", "sellout", "tout"];
+                    for (const el of document.querySelectorAll(
+                            ".webix_sidebar_item,.webix_list_item,.webix_tree_item,li,a,[role=menuitem],[role=treeitem],.webix_item_tab")) {
+                        const txt = el.textContent.trim().toLowerCase();
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 2 || r.height < 2) continue;
+                        for (const t of targets) {
+                            if (txt === t || (txt.includes(t) && txt.length < 60)) {
+                                el.click(); return txt.slice(0, 50);
+                            }
+                        }
+                    }
+                    return false;
+                }''')
+                if _c:
+                    print(f"  [nav] sidebar cliqué: {_c!r}")
+            except Exception:
+                pass
+
+            # M3 : Playwright get_by_text
+            for _nav_txt in ["Toutes mes ventes", "Mes ventes", "Ventes", "Sellout"]:
+                try:
+                    _loc = page.get_by_text(_nav_txt, exact=False).first
+                    if _loc.is_visible(timeout=2_000):
+                        _loc.click(timeout=5_000)
+                        print(f"  [nav] get_by_text: {_nav_txt!r}")
+                        break
+                except Exception:
+                    pass
+
+            # M4 : hash change (last resort)
             try:
                 page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
             except Exception:
-                pass  # context destroyed = navigation déclenchée, on attend ci-dessous
+                pass
+
             try:
                 page.wait_for_url("*sellout*", timeout=15_000)
             except Exception:
                 page.wait_for_timeout(4_000)
-            _reauth_if_needed(page, creds, "sellout.all")
+            _reauth_if_needed(page, creds, "sellout")
             _wait_webix(page)
+            return "sellout" in page.url
+
+        # 2. Navigation vers Toutes mes ventes
+        progress("Navigation vers Toutes mes ventes…")
+        if "sellout" not in page.url:
+            # Stabiliser la page (Webix SPA route encore après login)
+            try:
+                page.wait_for_load_state("networkidle", timeout=10_000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1_500)
+
+            if not _goto_sellout():
+                # Debug : lister tous les textes visibles pour diagnostiquer
+                try:
+                    _nav_dbg = page.evaluate('''() => {
+                        const items = [];
+                        for (const el of document.querySelectorAll("*")) {
+                            if (el.children.length > 0) continue;
+                            const txt = el.textContent.trim();
+                            if (txt.length < 3 || txt.length > 50) continue;
+                            const r = el.getBoundingClientRect();
+                            if (r.width < 2 || r.height < 2) continue;
+                            items.push(txt);
+                        }
+                        return [...new Set(items)].slice(0, 40);
+                    }''')
+                    print(f"  [nav-visible] {_nav_dbg}")
+                except Exception as _e:
+                    print(f"  [nav-visible] err: {_e}")
+                raise RuntimeError(
+                    f"Navigation vers Toutes mes ventes échouée — url={page.url[:80]}"
+                )
+
             print(f"  [nav] url après sellout: {page.url[:80]}")
 
         # 3. Sélection "Année lissée" + Valider
@@ -225,6 +322,12 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                     pass
             # Valider peut déclencher une navigation SPA — attendre que webix soit rechargé
             _wait_webix(page)
+
+        # Si Valider a redirigé vers dashboard (hash change sans état Webix correct),
+        # retourner sur sellout.all. La période sera extraite de l'affichage.
+        if "sellout" not in page.url:
+            print(f"  [warn] Valider a redirigé → {page.url[:60]} — retour sellout…")
+            _goto_sellout()
 
         # Capture la plage de dates (Année lissée)
         period_start, period_end = _extract_period(page)
