@@ -295,40 +295,36 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
 
             print(f"  [nav] url après ventes: {page.url[:80]}")
 
-        # 3. Sélection "Année lissée" + Valider
+        # 3. Sélection "Année lissée" — tentative légère seulement
+        # On NE clique pas le bouton global (webix_el_htmlbutton) qui ouvre le filtre
+        # date du dashboard et provoque une redirection. On cherche simplement si
+        # "Année lissée" est déjà visible sur la page ventes et on le clique.
         progress("Sélection Année lissée…")
         _reauth_if_needed(page, creds, "avant Année lissée")
         try:
-            page.locator("button.webix_el_htmlbutton").first.click(timeout=10_000)
-            page.wait_for_timeout(500)
+            _loc_lissee = page.get_by_text("Année lissée", exact=False).first
+            if _loc_lissee.is_visible(timeout=3_000):
+                _loc_lissee.click(timeout=5_000)
+                page.wait_for_timeout(1_000)
+                # Cherche Valider dans un popup SEULEMENT (pas navigation globale)
+                try:
+                    _val_loc = page.locator(
+                        ".webix_window button,.webix_popup button,.webix_modal button"
+                    ).filter(has_text="Valider").first
+                    if _val_loc.is_visible(timeout=2_000):
+                        _val_loc.click(timeout=3_000)
+                        _wait_webix(page)
+                except Exception:
+                    pass
         except Exception:
             pass
 
-        ok = _js_click(page, "Année lissée")
-        if not ok:
-            try:
-                page.get_by_text("Année lissée", exact=True).first.click(force=True, timeout=5_000)
-                ok = True
-            except Exception:
-                pass
-
-        if ok:
-            val_ok = _js_click(page, "Valider")
-            if not val_ok:
-                try:
-                    page.get_by_text("Valider", exact=True).first.click(force=True, timeout=5_000)
-                except Exception:
-                    pass
-            # Valider peut déclencher une navigation SPA — attendre que webix soit rechargé
-            _wait_webix(page)
-
-        # Si Valider a redirigé vers dashboard, retourner sur la section ventes.
-        # La période sera extraite de l'affichage (quelle que soit la date affichée).
+        # Si on est revenu sur le dashboard, retourner sur ventes
         if not _on_ventes_page():
-            print(f"  [warn] Valider a redirigé → {page.url[:60]} — retour ventes…")
+            print(f"  [warn] Année lissée a redirigé → {page.url[:60]} — retour ventes…")
             _goto_sellout()
 
-        # Capture la plage de dates (Année lissée)
+        # Capture la plage de dates affichée (quelle que soit la sélection)
         period_start, period_end = _extract_period(page)
 
         # 4. Onglet Produits
