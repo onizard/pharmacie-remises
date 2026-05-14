@@ -183,25 +183,21 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         _wait_webix(page)
 
         # 2. Navigation vers Toutes mes ventes
+        # Le hash change déclenche une navigation complète sur OSPHARM (context destroyed
+        # = comportement normal). On attend ensuite que l'URL contienne "sellout".
         progress("Navigation vers Toutes mes ventes…")
         if "sellout" not in page.url:
-            # page.goto() avec le hash est plus fiable que modifier window.location.hash
-            # (même domaine → pas de re-auth OAuth, juste un rechargement SPA)
             try:
-                page.goto("https://datastat.ospharm.org/#!/top/sellout.all",
-                          wait_until="domcontentloaded", timeout=30_000)
-            except Exception as _nav_err:
-                print(f"  [nav] goto sellout: {_nav_err}")
-                # Fallback hash
-                try:
-                    page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
-                except Exception:
-                    pass
-                page.wait_for_timeout(3_000)
+                page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
+            except Exception:
+                pass  # context destroyed = navigation déclenchée, on attend ci-dessous
+            try:
+                page.wait_for_url("*sellout*", timeout=15_000)
+            except Exception:
+                page.wait_for_timeout(4_000)
             _reauth_if_needed(page, creds, "sellout.all")
             _wait_webix(page)
-            if "sellout" not in page.url:
-                print(f"  [warn] toujours pas sur sellout après navigation — url={page.url[:80]}")
+            print(f"  [nav] url après sellout: {page.url[:80]}")
 
         # 3. Sélection "Année lissée" + Valider
         progress("Sélection Année lissée…")
