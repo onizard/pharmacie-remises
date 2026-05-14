@@ -239,31 +239,42 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         page.wait_for_timeout(3_000)
         _reauth_if_needed(page, creds, "après Produits")
 
-        # 5. Export Excel
+        # 5. Export Excel — interception réseau (fonctionne quel que soit le mécanisme
+        #    de téléchargement : réponse HTTP serveur, Blob, nouvel onglet, etc.)
         progress("Export Excel…")
         tmp = tempfile.mktemp(suffix=".xlsx")
+        _excel_bytes = []
 
-        # ── Debug URL avant export ────────────────────────────────────────────
+        def _on_response(resp):
+            if _excel_bytes:
+                return
+            try:
+                ct = resp.headers.get("content-type", "").lower()
+                cd = resp.headers.get("content-disposition", "").lower()
+                is_excel = any(x in ct for x in
+                    ["excel", "spreadsheet", "openxmlformats", "xls", "octet-stream"])
+                has_attach = "attachment" in cd
+                if is_excel or has_attach:
+                    body = resp.body()
+                    if len(body) > 500:
+                        _excel_bytes.append(body)
+                        print(f"  [export] intercepté {len(body)} bytes — ct={ct[:50]}")
+            except Exception as _ie:
+                print(f"  [export-intercept] {_ie}")
+
+        context.on("response", _on_response)
+
+        # ── Debug ──────────────────────────────────────────────────────────────
         try:
             dbg = page.evaluate('''() => {
-                const vids = [...document.querySelectorAll("[view_id]")];
                 const tabs = [...document.querySelectorAll(".webix_item_tab")];
-                const tooltipEls = [...document.querySelectorAll("[webix_tooltip]")];
+                const tips = [...document.querySelectorAll("[webix_tooltip]")];
                 return {
                     url: location.href,
-                    vw: window.innerWidth,
-                    viewIdCount: vids.length,
-                    viewIdSample: vids.slice(0, 8).map(e => ({
-                        id: e.getAttribute("view_id"),
-                        cls: e.className.slice(0, 40),
-                        r: (r => ({x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height)}))(e.getBoundingClientRect()),
-                    })),
                     tabItems: tabs.map(t => t.textContent.trim()).slice(0, 8),
-                    tooltipEls: tooltipEls.slice(0, 5).map(e => e.getAttribute("webix_tooltip")),
+                    tooltipEls: tips.slice(0, 5).map(e => e.getAttribute("webix_tooltip")),
                     webix: typeof webix !== "undefined" ? {
-                        toExcel: typeof webix.toExcel,
-                        dollar: typeof webix.$$,
-                        uiKeys: Object.keys(webix.ui || {}).slice(0, 10),
+                        toExcel: typeof webix.toExcel, dollar: typeof webix.$$,
                     } : "absent",
                 };
             }''')
@@ -272,145 +283,136 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             dbg = {}
             print(f"  [export-dbg] skipped ({_dbg_err})")
 
+        # ── Clic bouton export (M1→M4) ─────────────────────────────────────────
         try:
-            with page.expect_download(timeout=90_000) as dl_info:
-                try:
-                  exported = page.evaluate('''() => {
-                    function vis(el) {
-                        const r = el.getBoundingClientRect();
-                        return r.width > 0 && r.height > 0;
-                    }
-                    const kw = ["excel", "export", "exporter", "xls", "fomat"];
+            exported = page.evaluate('''() => {
+                function vis(el) {
+                    const r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                }
+                const kw = ["excel", "export", "exporter", "xls", "fomat"];
 
-                    // ── M1 : view_id + webix.$$ (API publique Webix 6) ──────────────
-                    // Chaque div racine d'une vue Webix 6 a l'attribut view_id.
-                    // webix.$$(id).config.tooltip contient le tooltip configuré.
-                    if (typeof webix !== "undefined" && typeof webix.$$ === "function") {
-                        for (const el of document.querySelectorAll("[view_id]")) {
+                // M1 : view_id + webix.$$
+                if (typeof webix !== "undefined" && typeof webix.$$ === "function") {
+                    for (const el of document.querySelectorAll("[view_id]")) {
+                        if (!vis(el)) continue;
+                        const v = webix.$$(el.getAttribute("view_id"));
+                        if (!v) continue;
+                        const tip = (v.config?.tooltip || v.config?.label || "").toLowerCase();
+                        if (kw.some(k => tip.includes(k))) { el.click(); return "view_id:" + tip.slice(0,40); }
+                    }
+                    if (webix.toExcel) {
+                        for (const el of document.querySelectorAll(".webix_dtable[view_id]")) {
                             if (!vis(el)) continue;
-                            const v = webix.$$(el.getAttribute("view_id"));
-                            if (!v) continue;
-                            const tip = (v.config?.tooltip || v.config?.label || "").toLowerCase();
-                            if (kw.some(k => tip.includes(k))) {
-                                el.click();
-                                return "view_id:" + tip.slice(0, 40);
-                            }
-                        }
-                        // webix.toExcel sur la datatable visible (via view_id du .webix_dtable)
-                        if (webix.toExcel) {
-                            for (const el of document.querySelectorAll(".webix_dtable[view_id]")) {
-                                if (!vis(el)) continue;
-                                const grid = webix.$$(el.getAttribute("view_id"));
-                                if (grid) { webix.toExcel(grid); return "webix.toExcel:dtable"; }
-                            }
+                            const grid = webix.$$(el.getAttribute("view_id"));
+                            if (grid) { webix.toExcel(grid); return "webix.toExcel:dtable"; }
                         }
                     }
-
-                    // ── M2 : position (bande des onglets, 1er élément à droite) ────
-                    const tabNames = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
-                    let maxRight = 0, bandTop = 0, bandBottom = 0;
-                    // Onglets Webix : .webix_item_tab ou éléments avec view_id dont le texte = nom onglet
-                    for (const el of document.querySelectorAll(".webix_item_tab, [view_id]")) {
-                        const txt = el.textContent.trim();
-                        if (!tabNames.has(txt)) continue;
+                }
+                // M2 : position bande onglets
+                const tabNames = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
+                let maxRight = 0, bandTop = 0, bandBottom = 0;
+                for (const el of document.querySelectorAll(".webix_item_tab, [view_id]")) {
+                    const txt = el.textContent.trim();
+                    if (!tabNames.has(txt)) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 4 || r.height < 4) continue;
+                    if (r.right > maxRight) { maxRight = r.right; bandTop = r.top; bandBottom = r.bottom; }
+                }
+                if (maxRight > 0) {
+                    const midY = (bandTop + bandBottom) / 2;
+                    const halfH = (bandBottom - bandTop) / 2 + 8;
+                    const cands = [];
+                    for (const el of document.querySelectorAll("[view_id], button, .webix_el_icon")) {
                         const r = el.getBoundingClientRect();
-                        if (r.width < 4 || r.height < 4) continue;
-                        if (r.right > maxRight) { maxRight = r.right; bandTop = r.top; bandBottom = r.bottom; }
+                        if (r.left <= maxRight + 2 || r.top > midY + halfH || r.bottom < midY - halfH) continue;
+                        if (r.width < 8 || r.height < 8 || r.width > 160 || r.height > 80) continue;
+                        cands.push(el);
                     }
-                    if (maxRight > 0) {
-                        const midY = (bandTop + bandBottom) / 2;
-                        const halfH = (bandBottom - bandTop) / 2 + 8;
-                        const cands = [];
-                        for (const el of document.querySelectorAll("[view_id], button, .webix_el_icon")) {
-                            const r = el.getBoundingClientRect();
-                            if (r.left <= maxRight + 2 || r.top > midY + halfH || r.bottom < midY - halfH) continue;
-                            if (r.width < 8 || r.height < 8 || r.width > 160 || r.height > 80) continue;
-                            cands.push(el);
-                        }
-                        cands.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-                        if (cands.length) {
-                            (cands[0].querySelector("button,.webix_template") || cands[0]).click();
-                            const r = cands[0].getBoundingClientRect();
-                            return "pos:" + cands[0].tagName + "@x" + Math.round(r.left);
-                        }
-                        // elementFromPoint à 60 et 90px du bord droit
-                        for (const xOff of [60, 90, 120]) {
-                            const el = document.elementFromPoint(window.innerWidth - xOff, midY);
-                            if (el && vis(el) && el.getBoundingClientRect().width < 200) {
-                                el.click();
-                                return "efp@" + xOff + ":" + el.tagName + "." + el.className.slice(0,20);
-                            }
+                    cands.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+                    if (cands.length) {
+                        (cands[0].querySelector("button,.webix_template") || cands[0]).click();
+                        return "pos:" + cands[0].tagName + "@x" + Math.round(cands[0].getBoundingClientRect().left);
+                    }
+                    for (const xOff of [60, 90, 120]) {
+                        const el = document.elementFromPoint(window.innerWidth - xOff, midY);
+                        if (el && vis(el) && el.getBoundingClientRect().width < 200) {
+                            el.click(); return "efp@" + xOff + ":" + el.tagName;
                         }
                     }
+                }
+                // M3 : webix_tooltip
+                for (const el of document.querySelectorAll("[webix_tooltip]")) {
+                    if (!vis(el)) continue;
+                    const tip = (el.getAttribute("webix_tooltip") || "").toLowerCase();
+                    if (kw.some(k => tip.includes(k))) { (el.querySelector("button") || el).click(); return "tooltip:" + tip.slice(0,40); }
+                }
+                // M4 : texte/title/aria
+                for (const el of document.querySelectorAll("button,a,[role=button]")) {
+                    if (!vis(el)) continue;
+                    const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"")).toLowerCase();
+                    if (kw.some(k => hay.includes(k))) { el.click(); return "kw:" + hay.slice(0,40); }
+                }
+                return false;
+            }''')
+        except Exception as _eval_err:
+            if "context" in str(_eval_err).lower() or "destroyed" in str(_eval_err).lower():
+                exported = "context-destroyed-ok"
+                print(f"  [export] context destroyed au clic — download en route")
+            else:
+                browser.close()
+                raise RuntimeError(f"Export Excel : evaluate échoué : {_eval_err}")
 
-                    // ── M3 : attribut webix_tooltip ────────────────────────────────
-                    for (const el of document.querySelectorAll("[webix_tooltip]")) {
-                        if (!vis(el)) continue;
-                        const tip = (el.getAttribute("webix_tooltip") || "").toLowerCase();
-                        if (kw.some(k => tip.includes(k))) {
-                            (el.querySelector("button") || el).click();
-                            return "webix_tooltip:" + tip.slice(0, 40);
-                        }
-                    }
-
-                    // ── M4 : mot-clé texte/title/aria ──────────────────────────────
-                    for (const el of document.querySelectorAll("button,a,[role=button]")) {
-                        if (!vis(el)) continue;
-                        const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"")).toLowerCase();
-                        if (kw.some(k => hay.includes(k))) { el.click(); return "kw:" + hay.slice(0,40); }
-                    }
-
-                    return false;
-                }''')
-                except Exception as _eval_err:
-                  # webix.toExcel() peut déclencher une navigation immédiate qui détruit
-                  # le contexte avant que page.evaluate() ne retourne → on considère
-                  # que le download est déjà en route.
-                  if "context" in str(_eval_err).lower() or "destroyed" in str(_eval_err).lower():
-                      exported = "context-destroyed-ok"
-                      print(f"  [export] context destroyed pendant le clic — download en route")
-                  else:
-                      raise
-                if not exported:
-                    raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
-                # Popup de confirmation OSPHARM : poll jusqu'à 20s pour trouver Valider.
-                # webix.toExcel() (M1) peut déclencher directement → contexte détruit → skip.
-                print(f"  [export] bouton cliqué ({exported}), attente popup Valider…")
-                _val_clicked = False
-                for _attempt in range(8):
-                    page.wait_for_timeout(2_500)
-                    try:
-                        # Playwright locator : couvre Webix windows/overlays
-                        _loc = page.locator(
-                            ".webix_window button, .webix_popup button, .webix_modal button,"
-                            " button, input[type=button], [role=button]"
-                        ).filter(has_text="Valider").first
-                        if _loc.is_visible(timeout=500):
-                            _loc.click(timeout=3_000)
-                            _val_clicked = True
-                            print(f"  [export] Valider cliqué (locator, attempt {_attempt+1})")
-                            break
-                    except Exception:
-                        pass
-                    try:
-                        if _js_click(page, "Valider"):
-                            _val_clicked = True
-                            print(f"  [export] Valider cliqué (js, attempt {_attempt+1})")
-                            break
-                    except Exception as _je:
-                        if "context" in str(_je).lower() or "destroyed" in str(_je).lower():
-                            print(f"  [export] context destroyed — download déjà en route")
-                            break
-                if not _val_clicked:
-                    print(f"  [export] Valider non trouvé après {8*2.5:.0f}s")
-            dl = dl_info.value
-            dl.save_as(tmp)
-        except RuntimeError:
+        if not exported:
             browser.close()
-            raise
-        except Exception as e:
+            raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
+
+        # ── Poll Valider (popup OSPHARM, jusqu'à 20s) ──────────────────────────
+        print(f"  [export] bouton cliqué ({exported}), poll Valider…")
+        _val_clicked = False
+        for _attempt in range(8):
+            page.wait_for_timeout(2_500)
+            if _excel_bytes:
+                print(f"  [export] fichier déjà reçu avant Valider — ok")
+                break
+            try:
+                _loc = page.locator(
+                    ".webix_window button, .webix_popup button, .webix_modal button,"
+                    " button, input[type=button], [role=button]"
+                ).filter(has_text="Valider").first
+                if _loc.is_visible(timeout=500):
+                    _loc.click(timeout=3_000)
+                    _val_clicked = True
+                    print(f"  [export] Valider cliqué (locator, attempt {_attempt+1})")
+                    break
+            except Exception:
+                pass
+            try:
+                if _js_click(page, "Valider"):
+                    _val_clicked = True
+                    print(f"  [export] Valider cliqué (js, attempt {_attempt+1})")
+                    break
+            except Exception as _je:
+                if "context" in str(_je).lower() or "destroyed" in str(_je).lower():
+                    print(f"  [export] context destroyed pendant poll Valider — ok")
+                    break
+        if not _val_clicked and not _excel_bytes:
+            print(f"  [export] Valider non trouvé après 20s")
+
+        # ── Attente réponse Excel jusqu'à 45s ──────────────────────────────────
+        progress("Attente du fichier Excel…")
+        for _w in range(18):
+            if _excel_bytes:
+                break
+            page.wait_for_timeout(2_500)
+            print(f"  [export] attente... {(_w+1)*2.5:.0f}s")
+
+        if not _excel_bytes:
             browser.close()
-            raise RuntimeError(f"Export Excel échoué : {e}")
+            raise RuntimeError(f"Export Excel : aucun fichier reçu en 45s. Debug: {dbg}")
+
+        with open(tmp, "wb") as f:
+            f.write(_excel_bytes[0])
 
         browser.close()
 
