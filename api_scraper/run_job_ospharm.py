@@ -330,35 +330,13 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         # Capture la plage de dates affichée (quelle que soit la sélection)
         period_start, period_end = _extract_period(page)
 
-        # 4. Onglet Produits — UNIQUEMENT les tabs webix, pas les liens de navigation
+        # 4. Onglet Produits — NOTE: cliquer l'onglet déclenche une navigation SPA
+        # vers organization.dashboard (redirection OSPHARM). On skip le clic d'onglet
+        # et on exporte directement depuis la page ventes (export multi-onglets).
         print(f"  [step4] url={page.url[:80]}")
         progress("Sélection onglet Produits…")
-        _reauth_if_needed(page, creds, "avant Produits")
-        try:
-            prod_ok = page.evaluate('''() => {
-                // Cherche uniquement dans les tabs Webix (pas les liens <a> de nav)
-                for (const el of document.querySelectorAll(".webix_item_tab")) {
-                    if (el.textContent.trim() === "Produits") {
-                        const r = el.getBoundingClientRect();
-                        if (r.width > 0 && r.height > 0) { el.click(); return true; }
-                    }
-                }
-                return false;
-            }''')
-        except Exception:
-            prod_ok = False
-        if not prod_ok:
-            try:
-                # Cibler explicitement les tabs webix, pas get_by_text générique
-                page.locator(".webix_item_tab").filter(has_text="Produits").first.click(timeout=8_000)
-            except Exception:
-                pass
-        page.wait_for_timeout(3_000)
-        _reauth_if_needed(page, creds, "après Produits")
-        _url_post4 = page.url
-        print(f"  [step4-done] url={_url_post4[:80]}")
-        if "organization.dashboard" in _url_post4:
-            raise RuntimeError(f"Step4: retour dashboard — url={_url_post4[:80]}")
+        page.wait_for_timeout(2_000)  # laisser la page ventes se stabiliser
+        print(f"  [step4-done] url={page.url[:80]}")
 
         # 5. Export Excel — interception réseau (fonctionne quel que soit le mécanisme
         #    de téléchargement : réponse HTTP serveur, Blob, nouvel onglet, etc.)
