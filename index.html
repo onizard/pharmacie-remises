@@ -3253,7 +3253,7 @@ async function launchSimulation() {
       });
       opt2Assignment.set(row.cip13, bestRef || ref);
     });
-    const opt2 = calcScenario(opt2Assignment, { prorataRatios: state.prorataRatios || null });
+    const opt2 = calcScenario(opt2Assignment);
 
     // 6d. Scénarios par laboratoire : focus maximal sur chaque labo sélectionné
     const labScenarios = [];
@@ -3286,7 +3286,7 @@ async function launchSimulation() {
         if (bestRef) labAssignment.set(row.cip13, bestRef);
       });
 
-      labScenarios.push({ name: labName, scenario: calcScenario(labAssignment, { prorataRatios: state.prorataRatios || null }), assignment: labAssignment });
+      labScenarios.push({ name: labName, scenario: calcScenario(labAssignment), assignment: labAssignment });
     });
 
     // 6e. Helper : assignment "focus labo principal + meilleur RSF pour le reste"
@@ -3322,7 +3322,7 @@ async function launchSimulation() {
       const labAsgn = buildFocusAssignment(labName);
       conds.forEach((cond, ci) => {
         const forced = new Map([[labName, cond]]);
-        const scenario = calcScenario(labAsgn, { forcedConds: forced, prorataRatios: state.prorataRatios || null });
+        const scenario = calcScenario(labAsgn, { forcedConds: forced });
         const palierLbl = cond.caCondition ? `${cond.caCondition.toLocaleString('fr')} €` : 'BASE';
         condScenarios.push({
           key: `cond_${labName}_${ci}`,
@@ -3358,7 +3358,7 @@ async function launchSimulation() {
         pairScenarios.push({
           key: `pair_${labA}_${labB}`,
           label: `SCÉNARIO ${labA.toUpperCase()} + ${labB.toUpperCase()}`,
-          scenario: calcScenario(pairAsgn, { prorataRatios: state.prorataRatios || null }), assignment: pairAsgn, forcedConds: null,
+          scenario: calcScenario(pairAsgn), assignment: pairAsgn, forcedConds: null,
         });
       }
     }
