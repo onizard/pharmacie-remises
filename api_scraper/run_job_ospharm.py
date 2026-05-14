@@ -115,10 +115,12 @@ def _extract_period(page) -> tuple[str, str]:
 
 def _js_click(page, text):
     return page.evaluate(f'''() => {{
+        const t = {repr(text)}.toLowerCase();
         const all = document.querySelectorAll(
-            ".webix_list_item,.webix_el_button button,button,[role=option],[role=button]");
+            ".webix_list_item,.webix_el_button button,button,input[type=button],input[type=submit],[role=option],[role=button]");
         for (const el of all) {{
-            if (el.textContent.trim() === {repr(text)}) {{ el.click(); return true; }}
+            const hay = (el.textContent + " " + (el.value||"") + " " + (el.getAttribute("aria-label")||"")).trim().toLowerCase();
+            if (hay === t || hay.includes(t)) {{ el.click(); return true; }}
         }}
         return false;
     }}''')
@@ -271,7 +273,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             print(f"  [export-dbg] skipped ({_dbg_err})")
 
         try:
-            with page.expect_download(timeout=60_000) as dl_info:
+            with page.expect_download(timeout=90_000) as dl_info:
                 try:
                   exported = page.evaluate('''() => {
                     function vis(el) {
@@ -371,17 +373,36 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                       raise
                 if not exported:
                     raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
-                # Popup de confirmation OSPHARM : apparaît uniquement quand on clique
-                # le bouton manuellement (M2/M3/M4). webix.toExcel() (M1) déclenche
-                # directement sans popup → si le contexte est déjà détruit, on saute.
-                page.wait_for_timeout(2_500)
-                try:
-                    val_ok = _js_click(page, "Valider")
-                    if not val_ok:
-                        page.get_by_text("Valider", exact=True).first.click(force=True, timeout=5_000)
-                except Exception as _val_err:
-                    # Contexte détruit = download déjà déclenché par M1, pas de popup à gérer
-                    print(f"  [export] Valider skip ({_val_err})")
+                # Popup de confirmation OSPHARM : poll jusqu'à 20s pour trouver Valider.
+                # webix.toExcel() (M1) peut déclencher directement → contexte détruit → skip.
+                print(f"  [export] bouton cliqué ({exported}), attente popup Valider…")
+                _val_clicked = False
+                for _attempt in range(8):
+                    page.wait_for_timeout(2_500)
+                    try:
+                        # Playwright locator : couvre Webix windows/overlays
+                        _loc = page.locator(
+                            ".webix_window button, .webix_popup button, .webix_modal button,"
+                            " button, input[type=button], [role=button]"
+                        ).filter(has_text="Valider").first
+                        if _loc.is_visible(timeout=500):
+                            _loc.click(timeout=3_000)
+                            _val_clicked = True
+                            print(f"  [export] Valider cliqué (locator, attempt {_attempt+1})")
+                            break
+                    except Exception:
+                        pass
+                    try:
+                        if _js_click(page, "Valider"):
+                            _val_clicked = True
+                            print(f"  [export] Valider cliqué (js, attempt {_attempt+1})")
+                            break
+                    except Exception as _je:
+                        if "context" in str(_je).lower() or "destroyed" in str(_je).lower():
+                            print(f"  [export] context destroyed — download déjà en route")
+                            break
+                if not _val_clicked:
+                    print(f"  [export] Valider non trouvé après {8*2.5:.0f}s")
             dl = dl_info.value
             dl.save_as(tmp)
         except RuntimeError:
