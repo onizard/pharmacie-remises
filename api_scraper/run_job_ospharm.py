@@ -273,9 +273,10 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             page.wait_for_timeout(1_500)
 
             if not _goto_sellout():
-                # Debug : lister tous les textes visibles pour diagnostiquer
+                # Capture les textes visibles et l'URL dans le message d'erreur
+                _nav_visible = []
                 try:
-                    _nav_dbg = page.evaluate('''() => {
+                    _nav_visible = page.evaluate('''() => {
                         const items = [];
                         for (const el of document.querySelectorAll("*")) {
                             if (el.children.length > 0) continue;
@@ -287,11 +288,10 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                         }
                         return [...new Set(items)].slice(0, 40);
                     }''')
-                    print(f"  [nav-visible] {_nav_dbg}")
                 except Exception as _e:
-                    print(f"  [nav-visible] err: {_e}")
+                    _nav_visible = [f"err:{_e}"]
                 raise RuntimeError(
-                    f"Navigation vers Toutes mes ventes échouée — url={page.url[:80]}"
+                    f"Nav sellout échoué — url={page.url[:80]} — visible={_nav_visible}"
                 )
 
             print(f"  [nav] url après sellout: {page.url[:80]}")
