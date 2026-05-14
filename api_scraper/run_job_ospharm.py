@@ -182,89 +182,88 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         progress("Connecté — chargement…")
         _wait_webix(page)
 
-        # ── helper : naviguer vers sellout.all via l'API Webix ──────────────────
+        # ── helper : naviguer vers la section ventes ───────────────────────────
+        def _on_ventes_page():
+            return "organization.dashboard" not in page.url and "login" not in page.url
+
         def _goto_sellout():
-            """Navigue vers sellout.all. Retourne True si l'URL contient 'sellout'."""
-            # M1 : webix.$$("top").show() — navigation SPA native Webix
+            """Navigue vers la section ventes. True si on n'est plus sur le dashboard."""
+            _before = page.url
+
+            # M1 : clic exact "Ventes" dans la sidebar (item visible dans le nav-debug)
             try:
-                _r = page.evaluate('''() => {
-                    if (typeof webix === "undefined") return "no-webix";
-                    // Cherche un objet qui répond à show("sellout.all")
-                    for (const id of ["top", "app", "main", "layout", "root"]) {
-                        try {
-                            const v = webix.$$(id);
-                            if (v && typeof v.show === "function") {
-                                v.show("sellout.all"); return "show:" + id;
+                _loc = page.get_by_text("Ventes", exact=True).first
+                if _loc.is_visible(timeout=3_000):
+                    _loc.click(timeout=5_000)
+                    print("  [nav] cliqué 'Ventes' exact")
+            except Exception:
+                pass
+
+            # M2 : clic JS large sur items nav contenant "ventes"/"sellout"
+            if not _on_ventes_page():
+                try:
+                    _c = page.evaluate('''() => {
+                        const targets = ["ventes", "sellout", "tout"];
+                        const sels = ".webix_sidebar_item,.webix_list_item,.webix_tree_item,li,a,[role=menuitem],[role=treeitem]";
+                        for (const el of document.querySelectorAll(sels)) {
+                            const txt = el.textContent.trim().toLowerCase();
+                            const r = el.getBoundingClientRect();
+                            if (r.width < 2 || r.height < 2) continue;
+                            for (const t of targets) {
+                                if (txt === t || (txt.includes(t) && txt.length < 40)) {
+                                    el.click(); return txt.slice(0, 40);
+                                }
                             }
-                        } catch(e) {}
-                    }
-                    // Parcourt tous les webix views
-                    if (webix.__views) {
-                        for (const id of Object.keys(webix.__views)) {
+                        }
+                        return false;
+                    }''')
+                    if _c:
+                        print(f"  [nav] JS click: {_c!r}")
+                except Exception:
+                    pass
+
+            # M3 : webix.$$().show()
+            if not _on_ventes_page():
+                try:
+                    _r = page.evaluate('''() => {
+                        if (typeof webix === "undefined") return "no-webix";
+                        for (const id of ["top", "app", "main", "layout", "router"]) {
                             try {
                                 const v = webix.$$(id);
-                                if (v && typeof v.show === "function" && v.config) {
+                                if (v && typeof v.show === "function") {
                                     v.show("sellout.all"); return "show:" + id;
                                 }
                             } catch(e) {}
                         }
-                    }
-                    return false;
-                }''')
-                print(f"  [nav] webix.show: {_r}")
-            except Exception:
-                pass
-
-            # M2 : clic sidebar (Webix tree / sidebar items)
-            try:
-                _c = page.evaluate('''() => {
-                    const targets = ["toutes mes ventes", "mes ventes", "ventes", "sellout", "tout"];
-                    for (const el of document.querySelectorAll(
-                            ".webix_sidebar_item,.webix_list_item,.webix_tree_item,li,a,[role=menuitem],[role=treeitem],.webix_item_tab")) {
-                        const txt = el.textContent.trim().toLowerCase();
-                        const r = el.getBoundingClientRect();
-                        if (r.width < 2 || r.height < 2) continue;
-                        for (const t of targets) {
-                            if (txt === t || (txt.includes(t) && txt.length < 60)) {
-                                el.click(); return txt.slice(0, 50);
-                            }
-                        }
-                    }
-                    return false;
-                }''')
-                if _c:
-                    print(f"  [nav] sidebar cliqué: {_c!r}")
-            except Exception:
-                pass
-
-            # M3 : Playwright get_by_text
-            for _nav_txt in ["Toutes mes ventes", "Mes ventes", "Ventes", "Sellout"]:
-                try:
-                    _loc = page.get_by_text(_nav_txt, exact=False).first
-                    if _loc.is_visible(timeout=2_000):
-                        _loc.click(timeout=5_000)
-                        print(f"  [nav] get_by_text: {_nav_txt!r}")
-                        break
+                        return false;
+                    }''')
+                    print(f"  [nav] webix.show: {_r}")
                 except Exception:
                     pass
 
-            # M4 : hash change (last resort)
-            try:
-                page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
-            except Exception:
-                pass
+            # M4 : hash change (change l'URL même si Webix ne l'honore pas)
+            if not _on_ventes_page():
+                try:
+                    page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
+                except Exception:
+                    pass
 
+            # Attendre navigation hors du dashboard
             try:
-                page.wait_for_url("*sellout*", timeout=15_000)
+                page.wait_for_function(
+                    "() => !location.href.includes('organization.dashboard')",
+                    timeout=15_000,
+                )
             except Exception:
                 page.wait_for_timeout(4_000)
-            _reauth_if_needed(page, creds, "sellout")
-            _wait_webix(page)
-            return "sellout" in page.url
 
-        # 2. Navigation vers Toutes mes ventes
+            _reauth_if_needed(page, creds, "ventes")
+            _wait_webix(page)
+            return _on_ventes_page()
+
+        # 2. Navigation vers la section ventes
         progress("Navigation vers Toutes mes ventes…")
-        if "sellout" not in page.url:
+        if "organization.dashboard" in page.url or "login" in page.url:
             # Stabiliser la page (Webix SPA route encore après login)
             try:
                 page.wait_for_load_state("networkidle", timeout=10_000)
@@ -291,10 +290,10 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 except Exception as _e:
                     _nav_visible = [f"err:{_e}"]
                 raise RuntimeError(
-                    f"Nav sellout échoué — url={page.url[:80]} — visible={_nav_visible}"
+                    f"Nav ventes échoué — url={page.url[:80]} — visible={_nav_visible}"
                 )
 
-            print(f"  [nav] url après sellout: {page.url[:80]}")
+            print(f"  [nav] url après ventes: {page.url[:80]}")
 
         # 3. Sélection "Année lissée" + Valider
         progress("Sélection Année lissée…")
@@ -323,10 +322,10 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             # Valider peut déclencher une navigation SPA — attendre que webix soit rechargé
             _wait_webix(page)
 
-        # Si Valider a redirigé vers dashboard (hash change sans état Webix correct),
-        # retourner sur sellout.all. La période sera extraite de l'affichage.
-        if "sellout" not in page.url:
-            print(f"  [warn] Valider a redirigé → {page.url[:60]} — retour sellout…")
+        # Si Valider a redirigé vers dashboard, retourner sur la section ventes.
+        # La période sera extraite de l'affichage (quelle que soit la date affichée).
+        if not _on_ventes_page():
+            print(f"  [warn] Valider a redirigé → {page.url[:60]} — retour ventes…")
             _goto_sellout()
 
         # Capture la plage de dates (Année lissée)
