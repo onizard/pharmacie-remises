@@ -357,6 +357,15 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 }''')
                 if not exported:
                     raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
+                # Popup de confirmation OSPHARM : un bouton "Valider" apparaît avant
+                # que le téléchargement se déclenche (~8s après le clic).
+                page.wait_for_timeout(2_500)
+                val_ok = _js_click(page, "Valider")
+                if not val_ok:
+                    try:
+                        page.get_by_text("Valider", exact=True).first.click(force=True, timeout=5_000)
+                    except Exception:
+                        pass
             dl = dl_info.value
             dl.save_as(tmp)
         except RuntimeError:
