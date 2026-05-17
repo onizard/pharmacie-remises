@@ -3176,11 +3176,12 @@ async function launchSimulation() {
             : isForced ? forcedConds.get(e.lp.selectedLab)
             : getBestCond(e.lp, e.ca, forceMarketMet, applyProrata);
           const pr = applyProrata ? getProrata(e.lp?.selectedLab) : 1;
-          // Si palier forcé mais CA seuil non atteint → RSF de base uniquement
-          // (pas de remise 2/RDP/coop/remise 3, pas de RSF First)
-          const effectiveCond = (isForced && bestCond?.caCondition && e.ca < pr * bestCond.caCondition)
-            ? null
-            : bestCond;
+          // Palier forcé : si CA < seuil → RSF base ; si CA ≥ seuil → meilleur palier atteint
+          // (le palier le plus difficile/rentable est prioritaire s'il est atteint)
+          const effectiveCond = !isForced ? bestCond
+            : (bestCond?.caCondition && e.ca < pr * bestCond.caCondition)
+              ? null
+              : (getBestCond(e.lp, e.ca, false, applyProrata) || bestCond);
           const firstMet = e.isSelected && !rsfOnly && (
             (state.gers != null && effectiveCond?.caCondition != null && effectiveCond.caCondition >= 0.9 * state.gers)
             || (effectiveCond?.forceFirst ?? false)
