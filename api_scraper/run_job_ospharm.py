@@ -197,9 +197,47 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 return False
 
         def _goto_sellout():
-            """Navigue vers la page ventes. True si tabs Laboratoires/Produits visibles."""
+            """Navigue vers 'Toutes mes ventes'. True si tabs Laboratoires stables."""
 
-            # M1 : webix.$$("top").show("sellout.all") — navigation SPA native
+            def _wait_tabs(ms=15_000):
+                try:
+                    page.wait_for_function(
+                        '''() => {
+                            for (const el of document.querySelectorAll(".webix_item_tab")) {
+                                if (el.textContent.trim() === "Laboratoires") return true;
+                            }
+                            return false;
+                        }''',
+                        timeout=ms,
+                    )
+                    return True
+                except Exception:
+                    return False
+
+            def _stable(label):
+                """Après navigation, vérifie la stabilité des tabs (2s)."""
+                page.wait_for_timeout(2_000)
+                if _ventes_tabs_visible():
+                    print(f"  [nav] {label} ✓")
+                    return True
+                print(f"  [nav] {label} bounce")
+                return False
+
+            # Debug : état courant avant navigation
+            try:
+                _sidebar = page.evaluate('''() =>
+                    [...document.querySelectorAll(
+                        ".webix_item,.webix_sidebar_item,.webix_list_item"
+                    )].filter(el => {
+                        const r = el.getBoundingClientRect();
+                        return r.width > 0 && r.height > 0 && el.textContent.trim().length < 40;
+                    }).map(el => el.textContent.trim()).slice(0, 20)
+                ''')
+                print(f"  [nav] avant goto url={page.url[-70:]} sidebar={_sidebar}")
+            except Exception:
+                pass
+
+            # M1 : Webix SPA navigation native
             try:
                 _r = page.evaluate('''() => {
                     if (typeof webix === "undefined") return "no-webix";
@@ -211,56 +249,68 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                             }
                         } catch(e) {}
                     }
-                    // webix.router
                     try { webix.router.set("top/sellout.all"); return "router.set"; } catch(e) {}
-                    return false;
+                    return "no-nav";
                 }''')
-                print(f"  [nav] webix API: {_r}")
-            except Exception:
-                pass
+                print(f"  [nav] M1 webix: {_r}")
+                if _r not in ("no-webix", "no-nav", False, None):
+                    if _wait_tabs(10_000) and _stable("M1-webix"):
+                        return True
+            except Exception as _e:
+                print(f"  [nav] M1 err: {_e}")
 
-            if not _ventes_tabs_visible():
-                # M2 : clic "Ventes" exact dans la sidebar
+            # M2 : clic Playwright sur "Ventes" dans la sidebar (+ délai de navigation)
+            for _txt in ["Ventes", "Toutes mes ventes"]:
                 try:
-                    _loc = page.get_by_text("Ventes", exact=True).first
-                    if _loc.is_visible(timeout=2_000):
+                    _loc = page.get_by_text(_txt, exact=True).first
+                    if _loc.is_visible(timeout=1_500):
                         _loc.click(timeout=5_000)
-                        print("  [nav] cliqué 'Ventes' sidebar")
-                except Exception:
-                    pass
+                        print(f"  [nav] M2 clic '{_txt}'")
+                        page.wait_for_timeout(3_000)   # laisser la SPA naviguer
+                        if _ventes_tabs_visible():
+                            return True
+                        if _wait_tabs(10_000) and _stable(f"M2-{_txt}"):
+                            return True
+                except Exception as _e:
+                    print(f"  [nav] M2 '{_txt}' err: {_e}")
 
-            if not _ventes_tabs_visible():
-                # M3 : hash change
-                try:
-                    page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
-                except Exception:
-                    pass
+            # M3 : clic JS (plus bas-niveau, ignore les overlays)
+            try:
+                _cl = page.evaluate('''() => {
+                    for (const txt of ["Ventes", "Toutes mes ventes"]) {
+                        for (const el of document.querySelectorAll(
+                            ".webix_sidebar_item,.webix_tree_item,.webix_list_item,li,div,span"
+                        )) {
+                            if (el.textContent.trim() !== txt) continue;
+                            const r = el.getBoundingClientRect();
+                            if (r.width > 0 && r.height > 0) { el.click(); return txt; }
+                        }
+                    }
+                    return null;
+                }''')
+                print(f"  [nav] M3 JS clic: {_cl!r}")
+                if _cl:
+                    page.wait_for_timeout(3_000)
+                    if _ventes_tabs_visible():
+                        return True
+                    if _wait_tabs(10_000) and _stable("M3-js"):
+                        return True
+            except Exception as _e:
+                print(f"  [nav] M3 err: {_e}")
 
-            # Attendre que les tabs ventes (Laboratoires) soient visibles ET stables
-            for _attempt in range(3):
+            # M4 : page.goto() avec URL directe — plusieurs routes possibles
+            for _route in ["#!/top/sellout.all", "#!/top/sellout", "#!/top/ventes"]:
                 try:
-                    page.wait_for_function(
-                        '''() => {
-                            for (const el of document.querySelectorAll(".webix_item_tab")) {
-                                if (el.textContent.trim() === "Laboratoires") return true;
-                            }
-                            return false;
-                        }''',
-                        timeout=20_000,
-                    )
-                except Exception:
-                    break
-                # Vérifier la stabilité : attendre 3s et re-vérifier
-                page.wait_for_timeout(3_000)
-                if _ventes_tabs_visible():
-                    print(f"  [nav] tabs ventes stables ✓ (attempt {_attempt+1})")
-                    return True
-                print(f"  [nav] tabs ventes ont disparu (bounce) — retry {_attempt+1}")
-                # Re-tenter navigation
-                try:
-                    page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
-                except Exception:
-                    pass
+                    _full = f"https://datastat.ospharm.org/{_route}"
+                    print(f"  [nav] M4 goto {_full}")
+                    page.goto(_full, wait_until="domcontentloaded", timeout=25_000)
+                    page.wait_for_timeout(2_000)
+                    if _ventes_tabs_visible():
+                        return True
+                    if _wait_tabs(12_000) and _stable(f"M4-{_route}"):
+                        return True
+                except Exception as _e:
+                    print(f"  [nav] M4 '{_route}' err: {_e}")
 
             _reauth_if_needed(page, creds, "ventes")
             _wait_webix(page)
