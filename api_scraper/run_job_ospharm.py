@@ -410,6 +410,60 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             print(f"  [step4] err: {_e4}")
         print(f"  [step4-done] url={page.url[:80]}")
 
+        # 4b. Reauth check — la session peut expirer pendant les étapes précédentes
+        if "accounts" in page.url:
+            print(f"  [warn] Session expirée avant export — reconnexion…")
+            _reauth_if_needed(page, creds, "avant export")
+            _wait_webix(page)
+            progress("Re-navigation après reconnexion…")
+            if not _goto_sellout():
+                raise RuntimeError("Re-navigation ventes après reauth échouée")
+            # Re-select Année lissée
+            try:
+                page.evaluate('''() => {
+                    const el = document.querySelector("[view_id='button_date_picker']");
+                    if (!el) return;
+                    (el.querySelector("button") || el).click();
+                }''')
+                page.wait_for_timeout(1_500)
+                page.evaluate('''() => {
+                    for (const el of document.querySelectorAll("*")) {
+                        if (el.children.length > 0) continue;
+                        if (!el.textContent.trim().toLowerCase().includes("liss")) continue;
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 2 || r.height < 2) continue;
+                        el.click(); return;
+                    }
+                }''')
+                page.wait_for_timeout(800)
+                page.evaluate('''() => {
+                    for (const el of document.querySelectorAll("button")) {
+                        if (el.textContent.trim().toLowerCase() === "valider") {
+                            el.click(); return;
+                        }
+                    }
+                }''')
+                page.wait_for_timeout(3_000)
+                period_start, period_end = _extract_period(page)
+            except Exception as _e_ra3:
+                print(f"  [reauth] step3 err: {_e_ra3}")
+            # Re-select Produits
+            try:
+                page.evaluate('''() => {
+                    for (const el of document.querySelectorAll(
+                        ".webix_segment_0, .webix_segment_1, .webix_segment_N, button"
+                    )) {
+                        if (el.textContent.trim() !== "Produits") continue;
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 2 || r.height < 2) continue;
+                        el.click(); return;
+                    }
+                }''')
+                page.wait_for_timeout(3_000)
+            except Exception as _e_ra4:
+                print(f"  [reauth] step4 err: {_e_ra4}")
+            print(f"  [reauth] setup terminé — url={page.url[:80]}")
+
         # 5. Export Excel
         # Deux mécanismes de capture complémentaires :
         # - page.on("download") → blob côté client (webix.toExcel, lien <a download>, etc.)
