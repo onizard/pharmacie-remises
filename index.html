@@ -3071,10 +3071,10 @@ async function launchSimulation() {
       if (!conditions?.length) return null;
       const candidates = forceMarketMet
         ? conditions
-        : conditions.filter(c => !c.caCondition || ca >= c.caCondition);
+        : conditions.filter(c => !c.caCondition || ca >= parseFloat(c.caCondition) || 0);
       if (!candidates.length) return null;
       return candidates.reduce((best, c) =>
-        (c.caCondition || 0) > (best?.caCondition || 0) ? c : best
+        (parseFloat(c.caCondition) || 0) > (parseFloat(best?.caCondition) || 0) ? c : best
       );
     }
 
@@ -3083,10 +3083,10 @@ async function launchSimulation() {
       const pr = applyProrata ? getProrata(lp.selectedLab) : 1;
       const candidates = forceMarketMet
         ? lp.conditions
-        : lp.conditions.filter(c => !c.caCondition || ca >= pr * c.caCondition);
+        : lp.conditions.filter(c => !c.caCondition || ca >= pr * (parseFloat(c.caCondition) || 0));
       if (!candidates.length) return null;
       return candidates.reduce((best, c) =>
-        (c.caCondition || 0) > (best?.caCondition || 0) ? c : best
+        (parseFloat(c.caCondition) || 0) > (parseFloat(best?.caCondition) || 0) ? c : best
       );
     }
 
@@ -3144,12 +3144,14 @@ async function launchSimulation() {
           const ca2026 = e.ca * ratio2026;
           const cond25 = ratio2025 > 0 ? getBestCondFromArray(e.lp?.conditions2025 || [], ca2025, forceMarketMet) : null;
           const cond26 = ratio2026 > 0 ? getBestCond(e.lp, ca2026, forceMarketMet) : null;
+          const _ca25 = parseFloat(cond25?.caCondition) || 0;
+          const _ca26 = parseFloat(cond26?.caCondition) || 0;
           const fm25 = ratio2025 > 0 && e.isSelected && (
-            (state.gers != null && cond25?.caCondition != null && cond25.caCondition >= 0.9 * state.gers)
+            (state.gers != null && _ca25 > 0 && _ca25 >= 0.9 * state.gers)
             || (cond25?.forceFirst ?? false)
           );
           const fm26 = ratio2026 > 0 && e.isSelected && (
-            (state.gers != null && cond26?.caCondition != null && cond26.caCondition >= 0.9 * state.gers)
+            (state.gers != null && _ca26 > 0 && _ca26 >= 0.9 * state.gers)
             || (cond26?.forceFirst ?? false)
           );
           e.rows.forEach(({ row, ref, price }) => {
@@ -3160,12 +3162,12 @@ async function launchSimulation() {
           e.bestCond    = cond26 || cond25;
           e.firstMet    = fm25 || fm26;
           e.met         = (ratio2025 === 0 || !!cond25 || !e.isSelected) && (ratio2026 === 0 || !!cond26 || !e.isSelected);
-          const _achT   = ratio2026 > 0 ? (cond26?.caCondition || 0) : (cond25?.caCondition || 0);
+          const _achT   = ratio2026 > 0 ? _ca26 : _ca25;
           if (_achT) {
             e.caThreshold = _achT;
           } else if (e.isSelected) {
             const _fbCs = ratio2026 > 0 ? (e.lp?.conditions || []) : (e.lp?.conditions2025 || []);
-            const _fbTs = _fbCs.filter(c => c.caCondition > 0).map(c => c.caCondition);
+            const _fbTs = _fbCs.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
             e.caThreshold = _fbTs.length ? Math.min(..._fbTs) : 0;
           } else {
             e.caThreshold = 0;
@@ -3178,22 +3180,24 @@ async function launchSimulation() {
           const pr = applyProrata ? getProrata(e.lp?.selectedLab) : 1;
           // Palier forcé : si CA < seuil → RSF base ; si CA ≥ seuil → meilleur palier atteint
           // (le palier le plus difficile/rentable est prioritaire s'il est atteint)
+          const _forcedCA = parseFloat(bestCond?.caCondition) || 0;
           const effectiveCond = !isForced ? bestCond
-            : (bestCond?.caCondition && e.ca < pr * bestCond.caCondition)
+            : (_forcedCA && e.ca < pr * _forcedCA)
               ? null
               : (getBestCond(e.lp, e.ca, false, applyProrata) || bestCond);
+          const _effCA = parseFloat(effectiveCond?.caCondition) || 0;
           const firstMet = e.isSelected && !rsfOnly && (
-            (state.gers != null && effectiveCond?.caCondition != null && effectiveCond.caCondition >= 0.9 * state.gers)
+            (state.gers != null && _effCA > 0 && _effCA >= 0.9 * state.gers)
             || (effectiveCond?.forceFirst ?? false)
           );
           e.bestCond    = bestCond;
           e.met         = isForced
-            ? (bestCond !== null && (!bestCond.caCondition || e.ca >= pr * bestCond.caCondition))
+            ? (bestCond !== null && (!_forcedCA || e.ca >= pr * _forcedCA))
             : (bestCond !== null || !e.isSelected);
           if (bestCond) {
-            e.caThreshold = pr * (bestCond.caCondition || 0);
+            e.caThreshold = pr * _forcedCA;
           } else if (e.isSelected && e.lp?.conditions?.length) {
-            const _tiers = e.lp.conditions.filter(c => c.caCondition > 0).map(c => c.caCondition);
+            const _tiers = e.lp.conditions.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
             e.caThreshold = _tiers.length ? pr * Math.min(..._tiers) : 0;
           } else {
             e.caThreshold = 0;
