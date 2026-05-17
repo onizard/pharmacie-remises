@@ -989,10 +989,6 @@
               <button class="conn-test-btn" id="digiTest">CONNECTER</button>
               <span class="conn-test-result" id="digiTestResult"></span>
             </div>
-            <div class="conn-prog-bar" id="digiProgBar">
-              <div class="conn-prog-track"><div class="conn-prog-fill" id="digiProgFill"></div></div>
-              <div class="conn-prog-pct" id="digiProgPct">0%</div>
-            </div>
           </div>
           <div class="conn-connected-view" id="digiConnView" style="display:none">
             <div class="conn-check-big">✓</div>
@@ -1002,6 +998,10 @@
             <button class="conn-test-btn" id="digiReconnectBtn">RECONNECTER</button>
             <button class="conn-change-link" id="digiChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="digiReqStatus"></div>
+          </div>
+          <div class="conn-prog-bar" id="digiProgBar">
+            <div class="conn-prog-track"><div class="conn-prog-fill" id="digiProgFill"></div></div>
+            <div class="conn-prog-pct" id="digiProgPct">0%</div>
           </div>
         </div>
         <!-- OSPHARM -->
@@ -1023,10 +1023,6 @@
               <button class="conn-test-btn" id="ospTest">CONNECTER</button>
               <span class="conn-test-result" id="ospTestResult"></span>
             </div>
-            <div class="conn-prog-bar" id="ospProgBar">
-              <div class="conn-prog-track"><div class="conn-prog-fill" id="ospProgFill"></div></div>
-              <div class="conn-prog-pct" id="ospProgPct">0%</div>
-            </div>
           </div>
           <div class="conn-connected-view" id="ospConnView" style="display:none">
             <div class="conn-check-big">✓</div>
@@ -1036,6 +1032,10 @@
             <button class="conn-test-btn" id="ospReconnectBtn">RECONNECTER</button>
             <button class="conn-change-link" id="ospChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
+          </div>
+          <div class="conn-prog-bar" id="ospProgBar">
+            <div class="conn-prog-track"><div class="conn-prog-fill" id="ospProgFill"></div></div>
+            <div class="conn-prog-pct" id="ospProgPct">0%</div>
           </div>
         </div>
       </div>
@@ -1570,11 +1570,12 @@ async function autoRunOspharm() {
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
     if (!session) return;
+    window._setConnProgress?.('osp', 'job');
     const resp = await fetch(`${API_URL}/run/ospharm`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${session.access_token}` },
     });
-    if (!resp.ok) return;
+    if (!resp.ok) { window._setConnProgress?.('osp', 'reset'); return; }
     // Polling toutes les 5 s, 10 min max
     const deadline = Date.now() + 600_000;
     while (Date.now() < deadline) {
@@ -1584,7 +1585,12 @@ async function autoRunOspharm() {
           .select('state_json').eq('user_id', session.user.id).maybeSingle();
         const job = row?.state_json?.ospharm_job;
         if (!job || job.status === 'running') continue;
-        if (job.status === 'done') { await launchComparateur(); break; }
+        if (job.status === 'done') {
+          window._setConnProgress?.('osp', 'ready');
+          await launchComparateur();
+          break;
+        }
+        window._setConnProgress?.('osp', 'reset');
         break; // error ou inconnu → stop silencieux
       } catch(_) {}
     }
@@ -4538,10 +4544,9 @@ function initConnecteurModal() {
       state.connectors[connKey] = { user, pass, connected: true };
       updateConnecteurBtn();
       saveState();
-      _setConnProgress(prefix, 'done');
       resultEl.textContent = '';
       showView(prefix, true);
-      _triggerWorkflow(connKey);
+      _triggerWorkflow(connKey, prefix);
     } catch(e) {
       _setConnProgress(prefix, 'reset');
       resultEl.innerHTML = `❌ ${e.message}<br><span style="color:var(--text-dim)">Vérifiez vos identifiants et réessayez.</span>`;
@@ -4555,9 +4560,10 @@ function initConnecteurModal() {
     }
   }
 
-  async function _triggerWorkflow(connKey) {
+  async function _triggerWorkflow(connKey, prefix) {
     const statusId = connKey === 'digipharmacie' ? 'digiJobStatus' : 'ospJobStatus';
-    _setJobStatusEl(statusId, 'running', '⏳ récupération en cours…');
+    _setJobStatusEl(statusId, 'running', '');
+    _setConnProgress(prefix, 'job');
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
       if (!session) throw new Error('Session expirée');
@@ -4569,13 +4575,14 @@ function initConnecteurModal() {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.detail || `Erreur ${resp.status}`);
       }
-      if (connKey === 'ospharm') _pollOspJobAndLaunch();
+      if (connKey === 'ospharm') _pollOspJobAndLaunch(prefix);
     } catch(e) {
       _setJobStatusEl(statusId, 'error', `❌ ${e.message}`);
+      _setConnProgress(prefix, 'reset');
     }
   }
 
-  async function _pollOspJobAndLaunch() {
+  async function _pollOspJobAndLaunch(prefix) {
     const deadline = Date.now() + 600_000; // 10 min max
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 5_000));
@@ -4587,17 +4594,19 @@ function initConnecteurModal() {
         const job = row?.state_json?.ospharm_job;
         if (!job) continue;
         if (job.status === 'running') {
-          _setJobStatusEl('ospJobStatus', 'running', `⏳ ${job.message || 'en cours…'}`);
+          _setJobStatusEl('ospJobStatus', 'running', '');
           continue;
         }
         if (job.status === 'done') {
-          _setJobStatusEl('ospJobStatus', 'done', `✓ Traitement…`);
+          _setConnProgress(prefix, 'ready');
+          _setJobStatusEl('ospJobStatus', 'done', '✓');
           const ok = await launchComparateur();
           if (ok) document.getElementById('connecteurModal').classList.remove('open');
           break;
         }
         if (job.status === 'error') {
           _setJobStatusEl('ospJobStatus', 'error', `❌ ${job.error || 'erreur'}`);
+          _setConnProgress(prefix, 'reset');
           break;
         }
       } catch(_) {}
@@ -4607,6 +4616,7 @@ function initConnecteurModal() {
   let _connProgTimer = null;
 
   function _setConnProgress(prefix, action) {
+    if (!prefix) return;
     clearInterval(_connProgTimer);
     const bar  = document.getElementById(prefix + 'ProgBar');
     const fill = document.getElementById(prefix + 'ProgFill');
@@ -4618,13 +4628,12 @@ function initConnecteurModal() {
     };
     if (action === 'reset') { bar?.classList.remove('active'); set(0); return; }
     bar?.classList.add('active');
-    // Phases : serveur 0→35, envoi 35→65, test 65→95, done →100
-    const phases = { serveur: [0, 35], envoi: [35, 65], test: [65, 95], done: [100, 100] };
-    const [from, to] = phases[action] || [0, 0];
+    // Phases : serveur 0→25, envoi 25→50, test 50→75, job 75→98 (lent), ready →100 (fixe)
+    const phases = { serveur: [0, 25, 60, 300], envoi: [25, 50, 60, 300], test: [50, 75, 60, 300], job: [75, 98, 800, 300] };
+    if (action === 'ready') { set(100); return; }
+    const [from, to, steps, ms] = phases[action] || [0, 0, 60, 300];
     let cur = from;
     set(cur);
-    if (action === 'done') { setTimeout(() => { bar?.classList.remove('active'); set(0); }, 600); return; }
-    const steps = 60, ms = 300;
     const inc = (to - from) / steps;
     _connProgTimer = setInterval(() => {
       cur = Math.min(to, cur + inc);
@@ -4632,6 +4641,7 @@ function initConnecteurModal() {
       if (cur >= to) clearInterval(_connProgTimer);
     }, ms);
   }
+  window._setConnProgress = (prefix, action) => _setConnProgress(prefix, action);
 
   async function _pollConnTest(userId, connKey, statusEl) {
     const deadline = Date.now() + 120_000;
@@ -4757,8 +4767,8 @@ function initConnecteurModal() {
   ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
   });
-  document.getElementById('ospRefreshBtn').addEventListener('click',   () => _triggerWorkflow('ospharm'));
-  document.getElementById('digiRefreshBtn').addEventListener('click',  () => _triggerWorkflow('digipharmacie'));
+  document.getElementById('ospRefreshBtn').addEventListener('click',   () => _triggerWorkflow('ospharm', 'osp'));
+  document.getElementById('digiRefreshBtn').addEventListener('click',  () => _triggerWorkflow('digipharmacie', 'digi'));
   document.getElementById('ospReconnectBtn').addEventListener('click', () => showView('osp', false));
   document.getElementById('digiReconnectBtn').addEventListener('click',() => showView('digi', false));
   document.getElementById('compRefreshBtn').addEventListener('click', () => {
