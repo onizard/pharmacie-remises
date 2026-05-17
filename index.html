@@ -3351,6 +3351,7 @@ async function launchSimulation() {
     }
 
     // 6f. Scénarios par palier : un scénario par labo × condition (labs avec ≥2 paliers)
+    const _labScenarioPaNet = new Map(labScenarios.map(ls => [ls.name, ls.scenario.totalPaNet]));
     const condScenarios = [];
     state.labPages.forEach(lp => {
       if (!lp.selectedLab) return;
@@ -3361,12 +3362,15 @@ async function launchSimulation() {
       conds.forEach((cond, ci) => {
         const forced = new Map([[labName, cond]]);
         const scenario = calcScenario(labAsgn, { forcedConds: forced });
-        // Si le CA atteint un palier supérieur au palier ciblé → scénario redondant, on skip
+        // Skip si palier supérieur atteint (redondant)
         const res = scenario.labResults.find(l => l.name === labName);
         if (res) {
           const actualBest = getBestCond(lp, res.ca, false);
           if ((parseFloat(actualBest?.caCondition) || 0) > (parseFloat(cond.caCondition) || 0)) return;
         }
+        // Skip si résultat identique au scénario labo de base (doublon)
+        const labPaNet = _labScenarioPaNet.get(labName);
+        if (labPaNet !== undefined && Math.abs(scenario.totalPaNet - labPaNet) < 0.01) return;
         const palierLbl = cond.caCondition ? `${parseFloat(cond.caCondition).toLocaleString('fr')} €` : 'BASE';
         condScenarios.push({
           key: `cond_${labName}_${ci}`,
@@ -3427,7 +3431,7 @@ async function launchSimulation() {
       }
     }
 
-    // 6g. Scénarios par groupe (toutes les combinaisons k parmi N, k=2..N)
+    // 6g. Scénarios par groupe (combinaisons k parmi N, k=2..N-1 — k=N = opt2, déjà couvert)
     function kCombinations(arr, k) {
       const result = [];
       (function recurse(start, cur) {
@@ -3440,7 +3444,7 @@ async function launchSimulation() {
     }
     const groupScenarios = [];
     const labList = state.labPages.map(lp => lp.selectedLab).filter(Boolean);
-    for (let k = 2; k <= labList.length; k++) {
+    for (let k = 2; k < labList.length; k++) {  // k < N : évite doublon avec opt2
       kCombinations(labList, k).forEach(group => {
         const groupSet = new Set(group);
         const groupAsgn = new Map(naturalAssignment);
@@ -3602,6 +3606,16 @@ async function launchSimulation() {
         dlBtns: mkScenarioDlBtns(key, scenario, assignment),
       })) : []),
     ];
+    // Déduplication finale : retire les scénarios avec le même PA net (au centime près)
+    const _seenPaNet = new Set();
+    const _deduped = allOptScenarios.filter(s => {
+      const key = Math.round(s.scenario.totalPaNet * 100);
+      if (_seenPaNet.has(key)) return false;
+      _seenPaNet.add(key);
+      return true;
+    });
+    allOptScenarios.length = 0;
+    allOptScenarios.push(..._deduped);
     allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
     const [winnerEntry, ...otherScenarios] = allOptScenarios;
     const winnerSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
