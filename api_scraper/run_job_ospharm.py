@@ -186,10 +186,18 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         # La condition d'arrivée : les tabs "Laboratoires/Familles/Produits/Marques"
         # sont visibles. C'est le seul signe fiable qu'on est bien sur la page ventes.
         def _ventes_tabs_visible():
+            # Condition 1 : URL contient une route ventes
+            try:
+                if any(x in page.url for x in ["sellout", "ventes.all", "mysellout"]):
+                    return True
+            except Exception:
+                pass
+            # Condition 2 : un des tabs Laboratoires/Familles/Produits/Marques est visible
             try:
                 return page.evaluate('''() => {
+                    const tabs = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
                     for (const el of document.querySelectorAll(".webix_item_tab")) {
-                        if (el.textContent.trim() === "Laboratoires") return true;
+                        if (tabs.has(el.textContent.trim())) return true;
                     }
                     return false;
                 }''') or False
