@@ -2260,7 +2260,11 @@ function initLabPage(conf) {
       renderCondTabs();
     } catch(err) { console.error(err); }
     finally { el.loading.classList.remove('visible'); }
-    if (conf.onLabSelected) conf.onLabSelected();
+    // Pendant la restauration, ne pas déclencher onLabSelected (qui appellerait _selectLab2025
+    // sans await, créant une race condition avec _restoreFromSave2025 qui suit).
+    // On appelle uniquement les mises à jour visuelles nécessaires.
+    renderLabGrid();
+    renderStepBar();
   };
 
   s[conf.reRenderAs || '_reRenderCondTables'] = function() {
