@@ -3360,6 +3360,50 @@ async function launchSimulation() {
       });
     });
 
+    // 6f.5. Scénarios multi-paliers : toutes les paires (labA palier i) × (labB palier j)
+    //       quand au moins un des deux labs a ≥2 conditions (sinon = trivial)
+    const multiCondScenarios = [];
+    {
+      const lpWithConds = state.labPages.filter(lp => lp.selectedLab && (lp.conditions||[]).length >= 1);
+      for (let _i = 0; _i < lpWithConds.length - 1; _i++) {
+        for (let _j = _i + 1; _j < lpWithConds.length; _j++) {
+          const lpA = lpWithConds[_i], lpB = lpWithConds[_j];
+          const nameA = lpA.selectedLab, nameB = lpB.selectedLab;
+          const condsA = lpA.conditions || [], condsB = lpB.conditions || [];
+          if (condsA.length + condsB.length < 3) continue;
+          const groupSet = new Set([nameA, nameB]);
+          const groupAsgn = new Map(naturalAssignment);
+          csvData.forEach(row => {
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const alts = (libelleMap.get(ref.libelle) || []).filter(r => groupSet.has(r.labo));
+            if (!alts.length) return;
+            let bestRef = null, bestNet = Infinity;
+            alts.forEach(altRef => {
+              const lp = altRef.labo === nameA ? lpA : lpB;
+              const cond = getBestCond(lp, Infinity, true);
+              const net = (altRef.puht || 0) * (1 - getRemise(altRef, cond, false) / 100);
+              if (net < bestNet) { bestNet = net; bestRef = altRef; }
+            });
+            if (bestRef) groupAsgn.set(row.cip13, bestRef);
+          });
+          condsA.forEach((condA, ci) => {
+            condsB.forEach((condB, cj) => {
+              const forced = new Map([[nameA, condA], [nameB, condB]]);
+              const scenario = calcScenario(groupAsgn, { forcedConds: forced });
+              const lblA = condA.caCondition ? `${condA.caCondition.toLocaleString('fr')} €` : 'BASE';
+              const lblB = condB.caCondition ? `${condB.caCondition.toLocaleString('fr')} €` : 'BASE';
+              multiCondScenarios.push({
+                key: `mc_${nameA}_${ci}_${nameB}_${cj}`,
+                label: `SCÉNARIO ${nameA.toUpperCase()} P${ci+1} (${lblA}) + ${nameB.toUpperCase()} P${cj+1} (${lblB})`,
+                scenario, assignment: groupAsgn, forcedConds: forced,
+              });
+            });
+          });
+        }
+      }
+    }
+
     // 6g. Scénarios par groupe (toutes les combinaisons k parmi N, k=2..N)
     function kCombinations(arr, k) {
       const result = [];
@@ -3487,6 +3531,9 @@ async function launchSimulation() {
     condScenarios.forEach(({ key, scenario, assignment, forcedConds }) => {
       scenarioStore.set(key, { assignment, labResults: scenario.labResults, forcedConds });
     });
+    multiCondScenarios.forEach(({ key, scenario, assignment, forcedConds }) => {
+      scenarioStore.set(key, { assignment, labResults: scenario.labResults, forcedConds });
+    });
     groupScenarios.forEach(({ key, scenario, assignment }) => {
       scenarioStore.set(key, { assignment, labResults: scenario.labResults });
     });
@@ -3508,6 +3555,9 @@ async function launchSimulation() {
         return { key: `lab_${name}`, label: `SCÉNARIO ${name.toUpperCase()}`, sub: null, scenario, dlBtns: labDlBtns };
       }),
       ...condScenarios.map(({ key, label, scenario }) => ({
+        key, label, sub: null, scenario, dlBtns: dlBtn(key),
+      })),
+      ...multiCondScenarios.map(({ key, label, scenario }) => ({
         key, label, sub: null, scenario, dlBtns: dlBtn(key),
       })),
       ...(groupScenarios.length ? [groupScenarios.reduce((best, s) =>
