@@ -1587,7 +1587,18 @@ async function autoRunOspharm() {
         if (!job || job.status === 'running') continue;
         if (job.status === 'done') {
           window._setConnProgress?.('osp', 'ready');
-          await launchComparateur();
+          // Mettre à jour les données en silence ; naviguer seulement si l'user
+          // est déjà sur le comparateur (sinon on l'arracherait de la page conditions)
+          try {
+            const csvData = ospharmRowsToCsvData(job.rows || []);
+            if (csvData.length) {
+              state.prorataRatios = computeProrataRatios(job.period_start || null, job.period_end || null);
+              state.csvData  = csvData;
+              state.csvRows  = csvData.length;
+              saveState();
+              if (['csv', 'results'].includes(state.currentPageId)) launchSimulation();
+            }
+          } catch(_) {}
           break;
         }
         window._setConnProgress?.('osp', 'reset');
