@@ -1579,7 +1579,7 @@ async function launchComparateur() {
     const csvData = ospharmRowsToCsvData(job.rows);
     if (!csvData.length) {
       showToast('Colonnes OSPHARM non reconnues — vérifiez le format des données.');
-      return;
+      return false;
     }
 
     state.prorataRatios = computeProrataRatios(job.period_start || null, job.period_end || null);
@@ -1587,9 +1587,11 @@ async function launchComparateur() {
     state.csvRows = csvData.length;
     saveState();
     launchSimulation();
+    return true;
 
   } catch(e) {
     showToast(`Erreur chargement OSPHARM : ${e.message}`);
+    return false;
   }
 }
 
@@ -4391,7 +4393,8 @@ function initConnecteurModal() {
         }
         if (job.status === 'done') {
           _setJobStatusEl('ospJobStatus', 'done', `✓ ${job.total || 0} lignes — traitement…`);
-          await launchComparateur();
+          const ok = await launchComparateur();
+          if (ok) document.getElementById('connecteurModal').classList.remove('open');
           break;
         }
         if (job.status === 'error') {
