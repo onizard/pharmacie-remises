@@ -3580,7 +3580,7 @@ async function launchSimulation() {
 
     // Build ranked list : winner = lowest totalPaNet
     const allOptScenarios = [
-      { key: 'opt2', label: 'SCÉNARIO RÉALISATION DES MARCHÉS', sub: null, scenario: opt2, dlBtns: opt2DlBtns },
+      { key: 'opt2', label: `SCÉNARIO ${labList.map(l => l.toUpperCase()).join(' + ')}`, sub: null, scenario: opt2, dlBtns: opt2DlBtns },
       ...labScenarios.map(({ name, scenario }) => {
         const labDlBtns = scenario.labResults.filter(l => l.isSelected)
           .map(l => dlBtn(`lab_${name}_${l.name}`, `↓ ${l.name}`)).join('')
