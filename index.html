@@ -1551,6 +1551,33 @@ function computeProrataRatios(periodStart, periodEnd) {
   return { ratio2025: ms2025 / totalMs, ratio2026: ms2026 / totalMs, periodStart, periodEnd };
 }
 
+async function autoRunOspharm() {
+  // Déclenche un scrape OSPHARM à chaque connexion pour avoir les données à jour.
+  // Silencieux : pas de toast d'erreur, pas de blocage UI.
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) return;
+    const resp = await fetch(`${API_URL}/run/ospharm`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    });
+    if (!resp.ok) return;
+    // Polling toutes les 5 s, 10 min max
+    const deadline = Date.now() + 600_000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 5_000));
+      try {
+        const { data: row } = await window._sbClient.from('user_state')
+          .select('state_json').eq('user_id', session.user.id).maybeSingle();
+        const job = row?.state_json?.ospharm_job;
+        if (!job || job.status === 'running') continue;
+        if (job.status === 'done') { await launchComparateur(); break; }
+        break; // error ou inconnu → stop silencieux
+      } catch(_) {}
+    }
+  } catch(_) {}
+}
+
 async function launchComparateur() {
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
@@ -4090,9 +4117,11 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
     if (saved.csvData && saved.csvData.length) {
       state.csvData = saved.csvData;
       state.csvRows = saved.csvRows || saved.csvData.length;
-    } else if (!isAdmin && saved.connectors?.ospharm?.connected) {
-      // Pas de csvData en cache → charger depuis OSPHARM si job disponible
-      setTimeout(() => launchComparateur().catch(() => {}), 1500);
+    }
+    if (!isAdmin && saved.connectors?.ospharm?.connected) {
+      // Relancer le scrape OSPHARM à chaque connexion pour avoir les données à jour.
+      // Les données en cache sont déjà chargées ci-dessus et restent affichées pendant le scrape.
+      setTimeout(() => autoRunOspharm().catch(() => {}), 1500);
     }
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 1) {
