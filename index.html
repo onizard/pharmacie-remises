@@ -3156,7 +3156,16 @@ async function launchSimulation() {
           e.bestCond    = cond26 || cond25;
           e.firstMet    = fm25 || fm26;
           e.met         = (ratio2025 === 0 || !!cond25 || !e.isSelected) && (ratio2026 === 0 || !!cond26 || !e.isSelected);
-          e.caThreshold = ratio2026 > 0 ? (cond26?.caCondition || 0) : (cond25?.caCondition || 0);
+          const _achT   = ratio2026 > 0 ? (cond26?.caCondition || 0) : (cond25?.caCondition || 0);
+          if (_achT) {
+            e.caThreshold = _achT;
+          } else if (e.isSelected) {
+            const _fbCs = ratio2026 > 0 ? (e.lp?.conditions || []) : (e.lp?.conditions2025 || []);
+            const _fbTs = _fbCs.filter(c => c.caCondition > 0).map(c => c.caCondition);
+            e.caThreshold = _fbTs.length ? Math.min(..._fbTs) : 0;
+          } else {
+            e.caThreshold = 0;
+          }
         } else {
           // ── Comportement existant ───────────────────────────────────────────
           const bestCond = rsfOnly ? null
@@ -3171,7 +3180,14 @@ async function launchSimulation() {
           e.met         = isForced
             ? (bestCond !== null && (!bestCond.caCondition || e.ca >= pr * bestCond.caCondition))
             : (bestCond !== null || !e.isSelected);
-          e.caThreshold = pr * (bestCond?.caCondition || 0);
+          if (bestCond) {
+            e.caThreshold = pr * (bestCond.caCondition || 0);
+          } else if (e.isSelected && e.lp?.conditions?.length) {
+            const _tiers = e.lp.conditions.filter(c => c.caCondition > 0).map(c => c.caCondition);
+            e.caThreshold = _tiers.length ? pr * Math.min(..._tiers) : 0;
+          } else {
+            e.caThreshold = 0;
+          }
           e.firstMet    = firstMet;
           e.rows.forEach(({ row, ref, price }) => {
             const remisePct = (rsfOnly || !e.isSelected)
@@ -3533,8 +3549,11 @@ async function launchSimulation() {
       ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
     </div>`;
 
-    // ── Autres scénarios triés par PA NET croissant ────────────────────────────
-    otherScenarios.forEach(({ key, label, scenario }) => {
+    // ── Autres scénarios triés par PA NET croissant (top 2 visibles, reste masqué) ──
+    const _visOthers = otherScenarios.slice(0, 2);
+    const _hidOthers = otherScenarios.slice(2);
+
+    _visOthers.forEach(({ key, label, scenario }) => {
       const perte = scenario.totalPaNet - winnerEntry.scenario.totalPaNet;
       html += `<div class="sim-section">
         <div class="sim-scenario-header">
@@ -3544,6 +3563,24 @@ async function launchSimulation() {
         ${mkScenarioTable(scenario.labResults, true, perte)}
       </div>`;
     });
+
+    if (_hidOthers.length) {
+      let _hidHtml = '';
+      _hidOthers.forEach(({ key, label, scenario }) => {
+        const perte = scenario.totalPaNet - winnerEntry.scenario.totalPaNet;
+        _hidHtml += `<div class="sim-section">
+          <div class="sim-scenario-header">
+            <span>▸ ${label}</span>
+            ${dlBtn(key)}
+          </div>
+          ${mkScenarioTable(scenario.labResults, true, perte)}
+        </div>`;
+      });
+      html += `<div id="simHiddenScenarios" style="display:none">${_hidHtml}</div>
+        <div id="simShowMoreWrap" style="text-align:center;margin:20px 0 28px">
+          <button id="simShowMore" style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:2px;padding:10px 28px;cursor:pointer;background:transparent;border:1px solid var(--cyan-dim);color:var(--text-dim);transition:all .2s">▾ AFFICHER LES ${_hidOthers.length} AUTRES SCÉNARIOS</button>
+        </div>`;
+    }
 
     // ── Scénario Actuel (toujours dernier) ─────────────────────────────────────
     html += `<div class="sim-section">
@@ -3555,6 +3592,12 @@ async function launchSimulation() {
     </div>`;
 
     container.innerHTML = html;
+
+    // "Afficher plus" — révèle les scénarios masqués
+    document.getElementById('simShowMore')?.addEventListener('click', function() {
+      document.getElementById('simHiddenScenarios').style.display = '';
+      document.getElementById('simShowMoreWrap').style.display = 'none';
+    });
 
     // Pixel-art fireworks on winner banner
     (function startFireworks() {
