@@ -675,8 +675,6 @@
   .conn-connected-name { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--green); }
   .conn-connected-user-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); }
   .conn-job-status { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: .5px; margin-top: 2px; min-height: 16px; }
-  .conn-file-btn { font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 2px; padding: 5px 14px; border: 1px solid var(--cyan-dim); color: var(--cyan); text-decoration: none; transition: all .2s; }
-  .conn-file-btn:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
   .conn-disconnect-btn { font-size: 10px; padding: 6px 14px; letter-spacing: 2px; border-color: var(--red); color: var(--red); }
   .conn-disconnect-btn:hover { background: var(--red); color: var(--bg); }
   .conn-job-status.running { color: var(--amber); }
@@ -1027,7 +1025,6 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
-            <a class="conn-file-btn" id="ospFileBtn" style="display:none" href="#">⬇ Télécharger Excel</a>
             <button class="conn-test-btn" id="ospReconnect">RECONNECTER</button>
             <button class="conn-change-link" id="ospChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
@@ -4636,7 +4633,7 @@ function initConnecteurModal() {
 
       const map = [
         { jobKey: 'verif_job',   elId: 'digiJobStatus' },
-        { jobKey: 'ospharm_job', elId: 'ospJobStatus', fileBtn: 'ospFileBtn' },
+        { jobKey: 'ospharm_job', elId: 'ospJobStatus' },
       ];
       map.forEach(({ jobKey, elId, fileBtn }) => {
         const job = sj[jobKey];
@@ -4657,35 +4654,6 @@ function initConnecteurModal() {
     } catch(_) {}
   }
 
-  document.getElementById('ospFileBtn').addEventListener('click', async function(e) {
-    e.preventDefault();
-    const url = this.dataset.fileUrl;
-    if (!url) return;
-    const orig = this.textContent;
-    this.textContent = '⏳ Téléchargement…';
-    try {
-      let headers = {};
-      try {
-        const { data: { session } } = await window._sbClient.auth.getSession();
-        if (session) headers.Authorization = `Bearer ${session.access_token}`;
-      } catch(_) {}
-      const resp = await fetch(url, { headers });
-      if (!resp.ok) throw new Error(`Erreur serveur ${resp.status}`);
-      const blob = await resp.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      const rawName = url.split('/').pop().split('?')[0] || '';
-      a.download = rawName.endsWith('.xlsx') ? rawName : 'ospharm_datastat.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    } catch(err) {
-      showToast(`Erreur téléchargement : ${err.message}`);
-    } finally {
-      this.textContent = orig;
-    }
-  });
 
   document.getElementById('ospTest').addEventListener('click',       () => connectConn('ospharm', 'osp'));
   document.getElementById('digiTest').addEventListener('click',      () => connectConn('digipharmacie', 'digi'));
