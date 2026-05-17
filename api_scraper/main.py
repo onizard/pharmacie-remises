@@ -12,6 +12,7 @@ Connecteurs supportés : ospharm, digipharmacie
 """
 
 import asyncio
+import re as _re
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -192,19 +193,67 @@ async def _run_job_async(job_id: str, user_id: str, connector: str, job_key: str
             period_end   = result[3] if len(result) > 3 else ""
         else:
             rows, file_url, period_start, period_end = result, "", "", ""
+        # Pour OSPHARM : compacter à {cip13, qty, libelle} avant stockage Supabase
+        # (réduit ~5 Mo → ~400 Ko ; ospharmRowsToCsvData() sur le front gère les deux formats)
+        stored_rows = _compact_osp_rows(rows) if connector == "ospharm" else rows
         msg = f"{len(rows)} lignes extraites"
         _jobs[job_id].update({
             "status":   "done",
             "message":  msg,
-            "rows":     rows,
+            "rows":     stored_rows,
             "total":    len(rows),
             "file_url": file_url,
         })
-        await patch_job_status(user_id, job_key, "done", msg, rows, file_url,
+        await patch_job_status(user_id, job_key, "done", msg, stored_rows, file_url,
                                period_start=period_start, period_end=period_end)
     except Exception as e:
         _jobs[job_id].update({"status": "error", "message": str(e), "error": str(e)})
         await patch_job_status(user_id, job_key, "error", str(e), [])
+
+
+def _compact_osp_rows(rows: list[dict]) -> list[dict]:
+    """Convertit les lignes OSPHARM brutes (24 cols) en {cip13, qty, libelle}.
+    Réduit ~5 Mo → ~400 Ko pour le stockage dans Supabase.
+    Même logique que ospharmRowsToCsvData() côté frontend.
+    """
+    if not rows:
+        return []
+
+    def _n(k):
+        s = (k or "").lower()
+        for a, b in [("é","e"),("è","e"),("ê","e"),("à","a"),("ù","u"),("î","i"),("ô","o")]:
+            s = s.replace(a, b)
+        return _re.sub(r"[^a-z0-9]", "", s)
+
+    keys = list(rows[0].keys())
+    cip_k = next((k for k in keys if _n(k) == "codeean"), None) or \
+            next((k for k in keys if any(p in _n(k) for p in ("cip", "ean", "acl"))), None)
+    qty_k = next((k for k in keys if _n(k) == "quantite"), None) or \
+            next((k for k in keys if any(p in _n(k) for p in ("qte", "qty"))
+                  and "n1" not in _n(k) and "evo" not in _n(k)), None)
+    lib_k = next((k for k in keys if _n(k) == "libelleproduit"), None) or \
+            next((k for k in keys if "produit" in _n(k)), None) or \
+            next((k for k in keys if "libelle" in _n(k)), None)
+
+    if not cip_k or not qty_k:
+        return rows  # fallback: renvoyer les données brutes si colonnes non trouvées
+
+    result = []
+    for r in rows:
+        raw = _re.sub(r"\D", "", str(r.get(cip_k) or ""))
+        cip13 = raw if len(raw) == 13 else ("340000" + raw if len(raw) == 7 else None)
+        try:
+            qty = float(str(r.get(qty_k) or 0).replace(",", "."))
+        except (ValueError, TypeError):
+            qty = 0.0
+        if not cip13 or qty <= 0:
+            continue
+        result.append({
+            "cip13":   cip13,
+            "qty":     qty,
+            "libelle": str(r.get(lib_k) or "").strip() if lib_k else "",
+        })
+    return result
 
 
 def _scrape(connector: str, user_id: str, creds: dict, progress):
