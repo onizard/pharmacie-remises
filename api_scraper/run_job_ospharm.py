@@ -498,6 +498,32 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 print(f"  [reauth] step4 err: {_e_ra4}")
             print(f"  [reauth] setup terminé — url={page.url[:80]}")
 
+        # 4c. Attente chargement données — la datatable affiche "Chargement en cours..."
+        # après sélection de l'onglet Produits ; l'export ne doit se faire qu'une fois
+        # les lignes effectivement présentes dans le DOM (sinon Excel = 1 ligne vide).
+        progress("Chargement des données produits…")
+        try:
+            page.wait_for_function('''() => {
+                // "Chargement en cours..." ou tout spinner doit avoir disparu
+                for (const el of document.querySelectorAll("*")) {
+                    if (el.children.length > 0) continue;
+                    const t = el.textContent.trim();
+                    if ((t.includes("Chargement") || t.includes("loading") || t.includes("Loading"))
+                            && el.getBoundingClientRect().width > 0) {
+                        return false;
+                    }
+                }
+                // Et au moins une ligne de données visible dans la datatable
+                const rows = document.querySelectorAll(
+                    ".webix_dtable .webix_row, .webix_ss_body .webix_column .webix_cell"
+                );
+                return rows.length > 0;
+            }''', timeout=120_000)
+            print("  [step4c] données chargées")
+        except Exception as _e4c:
+            print(f"  [step4c] timeout attente données ({_e4c}) — export quand même")
+        _snap("4c_donnees_chargees")
+
         # 5. Export Excel
         # Deux mécanismes de capture complémentaires :
         # - page.on("download") → blob côté client (webix.toExcel, lien <a download>, etc.)
