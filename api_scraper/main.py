@@ -160,6 +160,9 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
 # ── Test connector (synchronous, called from executor) ─────────────────────────
 
 def _test_connector(connector: str, creds: dict):
+    # Playwright sync API interdit si une event loop asyncio tourne dans le thread.
+    # On isole le thread en lui assignant une loop neuve (non démarrée).
+    asyncio.set_event_loop(asyncio.new_event_loop())
     if connector == "ospharm":
         from test_connector import test_ospharm
         test_ospharm(creds)
@@ -205,6 +208,7 @@ async def _run_job_async(job_id: str, user_id: str, connector: str, job_key: str
 
 
 def _scrape(connector: str, user_id: str, creds: dict, progress):
+    asyncio.set_event_loop(asyncio.new_event_loop())
     if connector == "digipharmacie":
         from scraper import run_scraper
         return run_scraper(creds, progress)
