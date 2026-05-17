@@ -195,9 +195,10 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             # Condition 2 : un des tabs Laboratoires/Familles/Produits/Marques est visible
             try:
                 return page.evaluate('''() => {
-                    const tabs = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
+                    const kw = ["laboratoire", "famille", "produit", "marque"];
                     for (const el of document.querySelectorAll(".webix_item_tab")) {
-                        if (tabs.has(el.textContent.trim())) return true;
+                        const t = el.textContent.trim().toLowerCase();
+                        if (kw.some(k => t.startsWith(k))) return true;
                     }
                     return false;
                 }''') or False
@@ -213,9 +214,11 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                         '''() => {
                             if (["sellout","ventes.all","mysellout"].some(x => location.hash.includes(x)))
                                 return true;
-                            const tabs = new Set(["Laboratoires","Familles","Produits","Marques"]);
-                            for (const el of document.querySelectorAll(".webix_item_tab"))
-                                if (tabs.has(el.textContent.trim())) return true;
+                            for (const el of document.querySelectorAll(".webix_item_tab")) {
+                                const t = el.textContent.trim().toLowerCase();
+                                if (["laboratoire","famille","produit","marque"].some(k => t.startsWith(k)))
+                                    return true;
+                            }
                             return false;
                         }''',
                         timeout=ms,
@@ -224,160 +227,123 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 except Exception:
                     return False
 
-            def _click_visible_subitem():
-                """Après expansion du groupe Ventes, cherche et clique le sous-item dans popups/sidebars."""
-                _sub = page.evaluate('''() => {
-                    const kw = ["toutes", "sellout", "ventes.all", "all"];
-                    const selectors = [
-                        ".webix_sidebar_popup_list .webix_list_item",
-                        ".webix_sidebar_childs .webix_list_item",
-                        ".webix_popup .webix_list_item",
-                        ".webix_sidebar_item",
-                        ".webix_list_item",
-                    ];
-                    for (const sel of selectors) {
-                        for (const item of document.querySelectorAll(sel)) {
-                            const txt = item.textContent.trim().toLowerCase();
-                            if (!kw.some(k => txt.includes(k))) continue;
-                            if (txt === "ventes") continue;  // skip parent group
-                            const r = item.getBoundingClientRect();
-                            if (r.width < 2 || r.height < 2) continue;
-                            return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2), txt };
+            # ── M0 : Webix Jet app.show() — contourne les guards de routing ────────
+            try:
+                _r0 = page.evaluate('''() => {
+                    if (typeof webix === "undefined") return "no-webix";
+
+                    // Cherche l'instance Webix Jet (app.show prend une URL de route)
+                    let app = null;
+                    if (webix.app && typeof webix.app.show === "function") {
+                        app = webix.app;
+                    } else {
+                        // Chercher dans window
+                        for (const key of Object.keys(window)) {
+                            try {
+                                const v = window[key];
+                                if (v && typeof v === "object" && typeof v.show === "function"
+                                    && typeof v.getService === "function") {
+                                    app = v; break;
+                                }
+                            } catch(e) {}
+                        }
+                    }
+                    if (!app) {
+                        // Chercher dans les vues Webix enregistrées
+                        try {
+                            for (const id in webix.ui.views || {}) {
+                                const v = webix.$$(id);
+                                if (v && v.app && typeof v.app.show === "function") {
+                                    app = v.app; break;
+                                }
+                            }
+                        } catch(e) {}
+                    }
+
+                    if (app) {
+                        for (const url of ["/top/sellout.all", "/sellout.all", "sellout.all"]) {
+                            try { app.show(url); return "app.show:" + url; } catch(e) {}
+                        }
+                    }
+
+                    // Fallback : sidebar.select leaf
+                    const sideEl = document.querySelector(".webix_sidebar");
+                    if (!sideEl) return "no-sidebar";
+                    const sb = webix.$$(sideEl.getAttribute("view_id"));
+                    if (!sb) return "no-sb";
+                    const flat = [];
+                    function flatten(arr) { for (const it of arr) { flat.push(it); if (it.data) flatten(it.data); } }
+                    flatten(sb.data.serialize ? sb.data.serialize() : []);
+                    console.log("[sidebar]", JSON.stringify(flat.map(x => ({v: x.value, id: x.id}))));
+                    const leaf = flat.find(it =>
+                        (it.id||"").includes("sellout") || (it.value||"").toLowerCase().includes("vente")
+                    );
+                    if (leaf) { sb.select(leaf.id); return "select:" + leaf.id; }
+                    return "no-leaf:" + JSON.stringify(flat.slice(0,8).map(x=>(x.value||x.id||"").slice(0,12)));
+                }''')
+                print(f"  [nav] M0: {_r0}")
+                if _r0 and _r0 not in ("no-webix", "no-sidebar", "no-sb") and not str(_r0).startswith("no-leaf"):
+                    page.wait_for_timeout(4_000)
+                    if _ventes_tabs_visible(): return True
+                    if _wait_tabs(10_000) and _ventes_tabs_visible(): return True
+            except Exception as _e:
+                print(f"  [nav] M0 err: {_e}")
+
+            # ── M1 : dispatchEvent click (plus fiable que mouse.click pour Webix) ──
+            try:
+                _r1 = page.evaluate('''() => {
+                    const targets = ["Ventes", "Analyse des ventes", "Toutes mes ventes"];
+                    for (const target of targets) {
+                        for (const sel of [".webix_sidebar_item", ".webix_list_item", ".webix_item", "li"]) {
+                            for (const item of document.querySelectorAll(sel)) {
+                                if (item.textContent.trim() !== target) continue;
+                                const r = item.getBoundingClientRect();
+                                if (r.width < 2 || r.height < 2) continue;
+                                item.dispatchEvent(new MouseEvent("click", {bubbles:true, cancelable:true, view:window}));
+                                return "dispatch:" + target + ":" + item.tagName + "." + item.className.slice(0,30);
+                            }
                         }
                     }
                     return null;
                 }''')
-                print(f"  [nav] sub-item: {_sub}")
-                if _sub:
-                    page.mouse.click(_sub['x'], _sub['y'])
-                    page.wait_for_timeout(3_000)
-                    if _ventes_tabs_visible(): return True
-                    return _wait_tabs(10_000) and _ventes_tabs_visible()
-                return False
-
-            # ── M0 : API Webix sidebar — sélection directe par ID ─────────────────
-            try:
-                _r0 = page.evaluate('''() => {
-                    if (typeof webix === "undefined") return "no-webix";
-                    const sideEl = document.querySelector(".webix_sidebar");
-                    if (!sideEl) return "no-sidebar-el";
-                    const sid = sideEl.getAttribute("view_id");
-                    const sb  = webix.$$(sid);
-                    if (!sb) return "no-sidebar-widget:" + sid;
-
-                    const allItems = sb.data.serialize ? sb.data.serialize() : [];
-                    const flat = [];
-                    function flatten(arr) {
-                        for (const it of arr) { flat.push(it); if (it.data) flatten(it.data); }
-                    }
-                    flatten(allItems);
-                    console.log("[sidebar-items]", JSON.stringify(flat.map(x => ({v: x.value, id: x.id}))));
-
-                    // Cherche d'abord le sous-item leaf (Toutes mes ventes / sellout.all)
-                    const leaf = flat.find(it =>
-                        (it.id||"").includes("sellout.all") ||
-                        (it.id||"").includes("ventes.all") ||
-                        (it.value||"").toLowerCase().includes("toutes")
-                    );
-                    if (leaf) { sb.select(leaf.id); return "select-leaf:" + leaf.id; }
-
-                    // Sinon sélectionne le groupe Ventes pour l'ouvrir
-                    const group = flat.find(it =>
-                        (it.value||"").trim() === "Ventes" ||
-                        (it.id||"").toLowerCase().includes("sellout")
-                    );
-                    if (!group) return "no-ventes:" + JSON.stringify(flat.map(x => (x.value||x.id||"").slice(0,15)));
-
-                    // Tenter callEvent("onItemClick") en plus de select()
-                    try { sb.callEvent("onItemClick", [group.id, {}, null]); } catch(e) {}
-                    sb.select(group.id);
-                    return "select-group:" + group.id;
-                }''')
-                print(f"  [nav] M0 sidebar.select: {_r0}")
-                if str(_r0).startswith("select-leaf:"):
+                print(f"  [nav] M1 dispatch: {_r1}")
+                if _r1:
                     page.wait_for_timeout(3_000)
                     if _ventes_tabs_visible(): return True
                     if _wait_tabs(10_000) and _ventes_tabs_visible(): return True
-                elif str(_r0).startswith("select-group:"):
-                    # Groupe sélectionné/expansé — chercher le sous-item
-                    page.wait_for_timeout(2_000)
-                    if _click_visible_subitem(): return True
-                    # Réessayer la sélection leaf après expansion
-                    _r0b = page.evaluate('''() => {
-                        if (typeof webix === "undefined") return "no-webix";
-                        const sideEl = document.querySelector(".webix_sidebar");
-                        if (!sideEl) return "no-sidebar";
-                        const sb = webix.$$(sideEl.getAttribute("view_id"));
-                        if (!sb) return "no-sb";
-                        const flat = [];
-                        function flatten(arr) { for (const it of arr) { flat.push(it); if (it.data) flatten(it.data); } }
-                        flatten(sb.data.serialize ? sb.data.serialize() : []);
-                        const leaf = flat.find(it =>
-                            (it.id||"").includes("sellout") || (it.value||"").toLowerCase().includes("toutes")
-                        );
-                        if (leaf) { sb.select(leaf.id); return "select:" + leaf.id; }
-                        return "no-leaf:" + JSON.stringify(flat.slice(0,8).map(x=>x.value||x.id));
-                    }''')
-                    print(f"  [nav] M0b leaf: {_r0b}")
-                    if str(_r0b).startswith("select:"):
-                        page.wait_for_timeout(3_000)
-                        if _ventes_tabs_visible(): return True
-                        if _wait_tabs(10_000) and _ventes_tabs_visible(): return True
-            except Exception as _e:
-                print(f"  [nav] M0 err: {_e}")
-
-            # ── M1 : clic souris sur item "Ventes" → attente popup → clic sous-item ─
-            try:
-                _info = page.evaluate('''() => {
-                    for (const item of document.querySelectorAll(".webix_sidebar_item, .webix_list_item, .webix_item")) {
-                        const spans = [...item.querySelectorAll("span,div")];
-                        const hasVentes = spans.some(s => s.textContent.trim() === "Ventes") ||
-                                          item.textContent.trim() === "Ventes";
-                        if (!hasVentes) continue;
-                        const r = item.getBoundingClientRect();
-                        if (r.width < 2 || r.height < 2) continue;
-                        return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2),
-                                 cls: item.className.slice(0,60) };
-                    }
-                    return null;
-                }''')
-                print(f"  [nav] M1 Ventes item: {_info}")
-                if _info:
-                    page.mouse.click(_info['x'], _info['y'])
-                    page.wait_for_timeout(2_000)
-                    if _ventes_tabs_visible(): return True
-                    if _click_visible_subitem(): return True
-                    if _wait_tabs(8_000) and _ventes_tabs_visible(): return True
             except Exception as _e:
                 print(f"  [nav] M1 err: {_e}")
 
-            # ── M2 : get_by_text — d'abord "Ventes", puis "Toutes mes ventes" ───────
+            # ── M2 : mouse.click par coordonnées ─────────────────────────────────
             try:
-                _loc_v = page.get_by_text("Ventes", exact=True).first
-                if _loc_v.is_visible(timeout=1_500):
-                    _loc_v.click(force=True, timeout=5_000)
-                    print(f"  [nav] M2 cliqué 'Ventes'")
-                    page.wait_for_timeout(2_000)
-                    if _ventes_tabs_visible(): return True
-                    if _click_visible_subitem(): return True
-            except Exception as _e:
-                print(f"  [nav] M2 'Ventes' err: {_e}")
-            try:
-                _loc_t = page.get_by_text("Toutes mes ventes", exact=True).first
-                if _loc_t.is_visible(timeout=1_500):
-                    _loc_t.click(force=True, timeout=5_000)
-                    print(f"  [nav] M2 cliqué 'Toutes mes ventes'")
+                _info = page.evaluate('''() => {
+                    for (const target of ["Ventes", "Toutes mes ventes"]) {
+                        for (const item of document.querySelectorAll(".webix_sidebar_item, .webix_list_item, .webix_item")) {
+                            if (item.textContent.trim() !== target) continue;
+                            const r = item.getBoundingClientRect();
+                            if (r.width < 2 || r.height < 2) continue;
+                            return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2),
+                                     txt: target, cls: item.className.slice(0,40) };
+                        }
+                    }
+                    return null;
+                }''')
+                print(f"  [nav] M2 mouse: {_info}")
+                if _info:
+                    page.mouse.move(_info['x'], _info['y'])
+                    page.wait_for_timeout(500)
+                    page.mouse.click(_info['x'], _info['y'])
                     page.wait_for_timeout(3_000)
                     if _ventes_tabs_visible(): return True
                     if _wait_tabs(10_000) and _ventes_tabs_visible(): return True
             except Exception as _e:
-                print(f"  [nav] M2 'Toutes mes ventes' err: {_e}")
+                print(f"  [nav] M2 err: {_e}")
 
             # ── M3 : webix.$$("top").show / router ───────────────────────────────
             try:
                 _r3 = page.evaluate('''() => {
                     if (typeof webix === "undefined") return "no-webix";
-                    for (const id of ["top","app","main","layout","menu"]) {
+                    for (const id of ["top","app","main","layout","menu","root"]) {
                         try {
                             const v = webix.$$(id);
                             if (v && typeof v.show === "function") {
@@ -388,7 +354,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                     try { webix.router.set("top/sellout.all"); return "router.set"; } catch(e) {}
                     return "no-nav";
                 }''')
-                print(f"  [nav] M3 webix: {_r3}")
+                print(f"  [nav] M3: {_r3}")
                 if _r3 not in ("no-webix", "no-nav", False, None):
                     page.wait_for_timeout(3_000)
                     if _ventes_tabs_visible(): return True
@@ -415,12 +381,12 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         # 2. Navigation vers la section ventes
         progress("Navigation vers Toutes mes ventes…")
         if not _ventes_tabs_visible():
-            # Stabiliser la page (Webix SPA route encore après login)
+            # Attendre que le SPA ait fini d'initialiser (API calls dashboard, etc.)
             try:
-                page.wait_for_load_state("networkidle", timeout=10_000)
+                page.wait_for_load_state("networkidle", timeout=20_000)
             except Exception:
                 pass
-            page.wait_for_timeout(1_500)
+            page.wait_for_timeout(3_000)
 
             if not _goto_sellout():
                 # Capture les textes visibles et l'URL dans le message d'erreur
