@@ -112,7 +112,10 @@ def _ensure_bucket_sync():
     try:
         with urllib.request.urlopen(req, timeout=10): pass
     except urllib.request.HTTPError as e:
-        if e.code != 409:  # 409 = already exists
+        # Supabase returns 400 with statusCode:409 in body when bucket already exists
+        body = e.read()
+        is_duplicate = e.code == 409 or b"already" in body.lower() or b"duplicate" in body.lower()
+        if not is_duplicate:
             raise
 
 
@@ -122,11 +125,19 @@ def upload_file_sync(user_id: str, connector: str, filename: str, data: bytes, c
     key  = _supa_key()
     path = f"{user_id}/{connector}/{filename}"
     url  = f"{SUPA_URL}/storage/v1/object/{STORAGE_BUCKET}/{path}"
-    req  = urllib.request.Request(url, data=data, method="POST", headers={
-        "apikey": key, "Authorization": f"Bearer {key}",
-        "Content-Type": content_type, "x-upsert": "true",
-    })
-    with urllib.request.urlopen(req, timeout=60): pass
+    hdrs = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": content_type}
+    # POST with x-upsert; some content-types (xlsx) fail upsert → fall back to PUT
+    req = urllib.request.Request(url, data=data, method="POST",
+                                 headers={**hdrs, "x-upsert": "true"})
+    try:
+        with urllib.request.urlopen(req, timeout=120): pass
+    except urllib.request.HTTPError as e:
+        body = e.read()
+        if e.code in (400, 409) and b"Duplicate" in body:
+            req2 = urllib.request.Request(url, data=data, method="PUT", headers=hdrs)
+            with urllib.request.urlopen(req2, timeout=120): pass
+        else:
+            raise
     return path
 
 

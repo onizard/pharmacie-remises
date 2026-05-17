@@ -306,29 +306,49 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             print(f"  [nav] url après ventes: {page.url[:80]}")
 
         print(f"  [step3] url={page.url[:80]}")
-        # 3. Sélection "Année lissée" — tentative légère seulement
-        # On NE clique pas le bouton global (webix_el_htmlbutton) qui ouvre le filtre
-        # date du dashboard et provoque une redirection. On cherche simplement si
-        # "Année lissée" est déjà visible sur la page ventes et on le clique.
+        # 3. Sélection "Année lissée" — ouvrir le date picker puis cliquer l'option
         progress("Sélection Année lissée…")
         _reauth_if_needed(page, creds, "avant Année lissée")
         try:
-            _loc_lissee = page.get_by_text("Année lissée", exact=False).first
-            if _loc_lissee.is_visible(timeout=3_000):
-                _loc_lissee.click(timeout=5_000)
-                page.wait_for_timeout(1_000)
-                # Cherche Valider dans un popup SEULEMENT (pas navigation globale)
-                try:
-                    _val_loc = page.locator(
-                        ".webix_window button,.webix_popup button,.webix_modal button"
-                    ).filter(has_text="Valider").first
-                    if _val_loc.is_visible(timeout=2_000):
-                        _val_loc.click(timeout=3_000)
-                        _wait_webix(page)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+            # Cliquer le bouton date picker pour ouvrir le popup
+            _date_clicked = page.evaluate('''() => {
+                const el = document.querySelector("[view_id='button_date_picker']");
+                if (!el) return "no-el";
+                const btn = el.querySelector("button") || el;
+                btn.click();
+                return "clicked:" + btn.tagName;
+            }''')
+            print(f"  [step3] date picker: {_date_clicked}")
+            page.wait_for_timeout(1_500)
+
+            # Cliquer "Année lissée" dans le popup
+            _lissee_clicked = page.evaluate('''() => {
+                for (const el of document.querySelectorAll("*")) {
+                    if (el.children.length > 0) continue;
+                    if (!el.textContent.trim().toLowerCase().includes("liss")) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 2 || r.height < 2) continue;
+                    el.click();
+                    return el.textContent.trim();
+                }
+                return null;
+            }''')
+            print(f"  [step3] lissée: {_lissee_clicked}")
+            page.wait_for_timeout(800)
+
+            # Cliquer "Valider"
+            _val = page.evaluate('''() => {
+                for (const el of document.querySelectorAll("button")) {
+                    if (el.textContent.trim().toLowerCase() === "valider") {
+                        el.click(); return "clicked";
+                    }
+                }
+                return "not-found";
+            }''')
+            print(f"  [step3] valider: {_val}")
+            page.wait_for_timeout(3_000)
+        except Exception as _e3:
+            print(f"  [step3] err: {_e3}")
 
         # Si on est revenu sur le dashboard, retourner sur ventes
         if not _ventes_tabs_visible():
@@ -337,15 +357,28 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
 
         _url_post3 = page.url
         print(f"  [step3-done] url={_url_post3[:80]}")
-        # Capture la plage de dates affichée (quelle que soit la sélection)
         period_start, period_end = _extract_period(page)
 
-        # 4. Onglet Produits — NOTE: cliquer l'onglet déclenche une navigation SPA
-        # vers organization.dashboard (redirection OSPHARM). On skip le clic d'onglet
-        # et on exporte directement depuis la page ventes (export multi-onglets).
+        # 4. Onglet Produits
         print(f"  [step4] url={page.url[:80]}")
         progress("Sélection onglet Produits…")
-        page.wait_for_timeout(2_000)  # laisser la page ventes se stabiliser
+        try:
+            _prod_clicked = page.evaluate('''() => {
+                for (const el of document.querySelectorAll(
+                    ".webix_segment_0, .webix_segment_1, .webix_segment_N, button"
+                )) {
+                    if (el.textContent.trim() !== "Produits") continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 2 || r.height < 2) continue;
+                    el.click();
+                    return el.className.slice(0, 50);
+                }
+                return null;
+            }''')
+            print(f"  [step4] Produits: {_prod_clicked}")
+            page.wait_for_timeout(3_000)
+        except Exception as _e4:
+            print(f"  [step4] err: {_e4}")
         print(f"  [step4-done] url={page.url[:80]}")
 
         # 5. Export Excel
@@ -592,6 +625,12 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         browser.close()
 
     # Lecture Excel
+    import re as _re
+    def _strip_html(v):
+        if isinstance(v, str) and "<" in v:
+            return _re.sub(r"<[^>]+>", "", v).strip()
+        return v
+
     progress("Lecture du fichier Excel…")
     wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
     ws = wb.active
@@ -600,7 +639,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
     rows = []
     for row in rows_iter:
         if any(v is not None for v in row):
-            rows.append({h: v for h, v in zip(headers, row)})
+            rows.append({h: _strip_html(v) for h, v in zip(headers, row)})
     wb.close()
 
     # Upload vers Supabase Storage
