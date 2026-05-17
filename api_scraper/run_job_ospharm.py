@@ -205,15 +205,17 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 return False
 
         def _goto_sellout():
-            """Navigue vers 'Toutes mes ventes'. True si tabs Laboratoires stables."""
+            """Navigue vers 'Toutes mes ventes'. True si URL contient sellout ou tabs visibles."""
 
-            def _wait_tabs(ms=15_000):
+            def _wait_tabs(ms=12_000):
                 try:
                     page.wait_for_function(
                         '''() => {
-                            for (const el of document.querySelectorAll(".webix_item_tab")) {
-                                if (el.textContent.trim() === "Laboratoires") return true;
-                            }
+                            if (["sellout","ventes.all","mysellout"].some(x => location.hash.includes(x)))
+                                return true;
+                            const tabs = new Set(["Laboratoires","Familles","Produits","Marques"]);
+                            for (const el of document.querySelectorAll(".webix_item_tab"))
+                                if (tabs.has(el.textContent.trim())) return true;
                             return false;
                         }''',
                         timeout=ms,
@@ -222,34 +224,88 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 except Exception:
                     return False
 
-            def _stable(label):
-                """Après navigation, vérifie la stabilité des tabs (2s)."""
-                page.wait_for_timeout(2_000)
-                if _ventes_tabs_visible():
-                    print(f"  [nav] {label} ✓")
-                    return True
-                print(f"  [nav] {label} bounce")
-                return False
-
-            # Debug : état courant avant navigation
+            # ── M0 : API Webix sidebar — sélection directe de l'item "Ventes" ─────
             try:
-                _sidebar = page.evaluate('''() =>
-                    [...document.querySelectorAll(
-                        ".webix_item,.webix_sidebar_item,.webix_list_item"
-                    )].filter(el => {
-                        const r = el.getBoundingClientRect();
-                        return r.width > 0 && r.height > 0 && el.textContent.trim().length < 40;
-                    }).map(el => el.textContent.trim()).slice(0, 20)
-                ''')
-                print(f"  [nav] avant goto url={page.url[-70:]} sidebar={_sidebar}")
-            except Exception:
-                pass
-
-            # M1 : Webix SPA navigation native
-            try:
-                _r = page.evaluate('''() => {
+                _r0 = page.evaluate('''() => {
                     if (typeof webix === "undefined") return "no-webix";
-                    for (const id of ["top", "app", "main", "layout"]) {
+                    // Chercher le widget sidebar parmi les widgets Webix connus
+                    const sideEl = document.querySelector(".webix_sidebar");
+                    if (!sideEl) return "no-sidebar-el";
+                    const sid = sideEl.getAttribute("view_id");
+                    const sb  = webix.$$(sid);
+                    if (!sb) return "no-sidebar-widget:" + sid;
+
+                    // Lister tous les items (plats + imbriqués via serialize)
+                    const allItems = sb.data.serialize ? sb.data.serialize() : [];
+                    const flat = [];
+                    function flatten(arr) {
+                        for (const it of arr) {
+                            flat.push(it);
+                            if (it.data) flatten(it.data);
+                        }
+                    }
+                    flatten(allItems);
+                    const found = flat.find(it =>
+                        (it.value||"").trim() === "Ventes" ||
+                        (it.id||"").includes("sellout")
+                    );
+                    if (!found) return "no-ventes-in-items:" + JSON.stringify(flat.slice(0,6).map(x=>x.value||x.id));
+
+                    // Sélectionner l'item (déclenche la navigation native)
+                    sb.select(found.id);
+                    return "select:" + found.id;
+                }''')
+                print(f"  [nav] M0 sidebar.select: {_r0}")
+                if str(_r0).startswith("select:"):
+                    page.wait_for_timeout(3_000)
+                    if _ventes_tabs_visible(): return True
+                    if _wait_tabs(10_000) and _ventes_tabs_visible(): return True
+            except Exception as _e:
+                print(f"  [nav] M0 err: {_e}")
+
+            # ── M1 : clic Playwright sur l'item sidebar PARENT (pas le span enfant) ─
+            try:
+                _info = page.evaluate('''() => {
+                    // Trouver le parent webix_sidebar_item dont un enfant porte exactement "Ventes"
+                    for (const item of document.querySelectorAll(".webix_sidebar_item, .webix_list_item, .webix_item")) {
+                        const spans = [...item.querySelectorAll("span,div")];
+                        const hasVentes = spans.some(s => s.textContent.trim() === "Ventes") ||
+                                          item.textContent.trim() === "Ventes";
+                        if (!hasVentes) continue;
+                        const r = item.getBoundingClientRect();
+                        if (r.width < 2 || r.height < 2) continue;
+                        return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2),
+                                 cls: item.className.slice(0,60) };
+                    }
+                    return null;
+                }''')
+                print(f"  [nav] M1 sidebar item: {_info}")
+                if _info:
+                    page.mouse.click(_info['x'], _info['y'])
+                    page.wait_for_timeout(3_000)
+                    if _ventes_tabs_visible(): return True
+                    if _wait_tabs(10_000) and _ventes_tabs_visible(): return True
+            except Exception as _e:
+                print(f"  [nav] M1 err: {_e}")
+
+            # ── M2 : Playwright get_by_text — clic sur l'élément texte ────────────
+            for _txt in ["Ventes", "Toutes mes ventes"]:
+                try:
+                    _loc = page.get_by_text(_txt, exact=True).first
+                    if _loc.is_visible(timeout=1_500):
+                        _loc.click(force=True, timeout=5_000)
+                        print(f"  [nav] M2 get_by_text clic '{_txt}'")
+                        page.wait_for_timeout(3_000)
+                        if _ventes_tabs_visible(): return True
+                        if _wait_tabs(10_000) and _ventes_tabs_visible(): return True
+                except Exception as _e:
+                    print(f"  [nav] M2 '{_txt}' err: {_e}")
+
+            # ── M3 : webix.$$("top").show / router ───────────────────────────────
+            try:
+                _r3 = page.evaluate('''() => {
+                    if (typeof webix === "undefined") return "no-webix";
+                    for (const id of ["top","app","main","layout","menu"]) {
                         try {
                             const v = webix.$$(id);
                             if (v && typeof v.show === "function") {
@@ -260,63 +316,23 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                     try { webix.router.set("top/sellout.all"); return "router.set"; } catch(e) {}
                     return "no-nav";
                 }''')
-                print(f"  [nav] M1 webix: {_r}")
-                if _r not in ("no-webix", "no-nav", False, None):
-                    if _wait_tabs(10_000) and _stable("M1-webix"):
-                        return True
-            except Exception as _e:
-                print(f"  [nav] M1 err: {_e}")
-
-            # M2 : clic Playwright sur "Ventes" dans la sidebar (+ délai de navigation)
-            for _txt in ["Ventes", "Toutes mes ventes"]:
-                try:
-                    _loc = page.get_by_text(_txt, exact=True).first
-                    if _loc.is_visible(timeout=1_500):
-                        _loc.click(timeout=5_000)
-                        print(f"  [nav] M2 clic '{_txt}'")
-                        page.wait_for_timeout(3_000)   # laisser la SPA naviguer
-                        if _ventes_tabs_visible():
-                            return True
-                        if _wait_tabs(10_000) and _stable(f"M2-{_txt}"):
-                            return True
-                except Exception as _e:
-                    print(f"  [nav] M2 '{_txt}' err: {_e}")
-
-            # M3 : clic JS (plus bas-niveau, ignore les overlays)
-            try:
-                _cl = page.evaluate('''() => {
-                    for (const txt of ["Ventes", "Toutes mes ventes"]) {
-                        for (const el of document.querySelectorAll(
-                            ".webix_sidebar_item,.webix_tree_item,.webix_list_item,li,div,span"
-                        )) {
-                            if (el.textContent.trim() !== txt) continue;
-                            const r = el.getBoundingClientRect();
-                            if (r.width > 0 && r.height > 0) { el.click(); return txt; }
-                        }
-                    }
-                    return null;
-                }''')
-                print(f"  [nav] M3 JS clic: {_cl!r}")
-                if _cl:
+                print(f"  [nav] M3 webix: {_r3}")
+                if _r3 not in ("no-webix", "no-nav", False, None):
                     page.wait_for_timeout(3_000)
-                    if _ventes_tabs_visible():
-                        return True
-                    if _wait_tabs(10_000) and _stable("M3-js"):
-                        return True
+                    if _ventes_tabs_visible(): return True
+                    if _wait_tabs(10_000) and _ventes_tabs_visible(): return True
             except Exception as _e:
                 print(f"  [nav] M3 err: {_e}")
 
-            # M4 : page.goto() avec URL directe — plusieurs routes possibles
+            # ── M4 : page.goto() URL directe ─────────────────────────────────────
             for _route in ["#!/top/sellout.all", "#!/top/sellout", "#!/top/ventes"]:
                 try:
                     _full = f"https://datastat.ospharm.org/{_route}"
                     print(f"  [nav] M4 goto {_full}")
                     page.goto(_full, wait_until="domcontentloaded", timeout=25_000)
-                    page.wait_for_timeout(2_000)
-                    if _ventes_tabs_visible():
-                        return True
-                    if _wait_tabs(12_000) and _stable(f"M4-{_route}"):
-                        return True
+                    page.wait_for_timeout(3_000)
+                    if _ventes_tabs_visible(): return True
+                    if _wait_tabs(10_000) and _ventes_tabs_visible(): return True
                 except Exception as _e:
                     print(f"  [nav] M4 '{_route}' err: {_e}")
 
