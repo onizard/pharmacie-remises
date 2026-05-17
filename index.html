@@ -3293,7 +3293,7 @@ async function launchSimulation() {
     // 6a. Scénario N-1 : CIP → premier match Supabase, RSF uniquement
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
-    const actuel = calcScenario(naturalAssignment, { applyProrata: true });
+    const actuel = calcScenario(naturalAssignment, { applyProrata: true, prorataRatios: state.prorataRatios || null });
     const totalCA = actuel.totalCA;
 
     // 6c. Optimisé 2 : réalisation des marchés (seuils les plus serrés en priorité)
@@ -3693,14 +3693,6 @@ async function launchSimulation() {
     let html = '';
 
     // ── KPIs ──────────────────────────────────────────────────────────────────
-    const pr = state.prorataRatios;
-    const periodBanner = pr ? (() => {
-      const pct25 = Math.round(pr.ratio2025 * 100), pct26 = 100 - pct25;
-      const fmt = d => d ? d.split('-').reverse().join('/') : '—';
-      return `<div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px">
-        PÉRIODE : ${fmt(pr.periodStart)} → ${fmt(pr.periodEnd)} — ${pct25}% conditions 2025 / ${pct26}% conditions 2026
-      </div>`;
-    })() : '';
     html += `<div class="sim-section">
       <div class="sim-title">◈ RÉSUMÉ</div>
       <div class="sim-kpi-row">
@@ -3708,7 +3700,7 @@ async function launchSimulation() {
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET N-1</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">SCÉNARIOS ÉVALUÉS</div><div class="sim-kpi-value amber">${totalScenarios}</div></div>
-      </div>${periodBanner}
+      </div>
     </div>`;
 
     // ── WINNER : scénario au PA NET le plus bas ────────────────────────────────
