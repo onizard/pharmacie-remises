@@ -565,6 +565,12 @@
   .sim-dl-btn { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 2px; padding: 8px 18px; cursor: pointer; background: #001a0f; border: 1px solid var(--green); color: var(--green); margin: 4px; transition: all .2s; }
   .sim-dl-btn:hover { background: #002a1a; box-shadow: var(--glow-g); }
   .sim-warn { color: var(--amber); font-family: 'Share Tech Mono', monospace; font-size: 12px; padding: 10px; border: 1px solid var(--amber); margin-bottom: 12px; }
+  .sim-custom-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0 20px; }
+  .sim-custom-row { display: flex; flex-direction: column; gap: 5px; }
+  .sim-custom-label { font-family: 'Orbitron', monospace; font-size: 10px; color: var(--amber); letter-spacing: 2px; }
+  .sim-custom-select { background: var(--bg2); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 12px; padding: 8px 10px; width: 100%; cursor: pointer; transition: border-color .15s; }
+  .sim-custom-select:focus { outline: none; border-color: var(--amber); }
+  .sim-custom-result { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
   /* Column mapper modal */
   .col-map-overlay { position: fixed; inset: 0; background: rgba(4,6,15,0.88); z-index: 999; display: flex; align-items: flex-start; justify-content: center; padding-top: 60px; }
   .col-map-panel { background: var(--bg2); border: 1px solid var(--cyan); width: min(820px, 96vw); max-height: 85vh; overflow-y: auto; padding: 28px 28px 24px; box-shadow: 0 0 40px #00e5ff22; }
@@ -3715,10 +3721,8 @@ async function launchSimulation() {
     </div>`;
 
     // ── Autres scénarios triés par PA NET croissant (top 2 visibles, reste masqué) ──
-    const _visOthers = otherScenarios.slice(0, 2);
-    const _hidOthers = otherScenarios.slice(2);
-
-    _visOthers.forEach(({ key, label, scenario }) => {
+    // ── Top 2 autres (top 3 en comptant le winner) ────────────────────────────
+    otherScenarios.slice(0, 2).forEach(({ key, label, scenario }) => {
       const perte = scenario.totalPaNet - winnerEntry.scenario.totalPaNet;
       html += `<div class="sim-section">
         <div class="sim-scenario-header">
@@ -3729,25 +3733,7 @@ async function launchSimulation() {
       </div>`;
     });
 
-    if (_hidOthers.length) {
-      let _hidHtml = '';
-      _hidOthers.forEach(({ key, label, scenario }) => {
-        const perte = scenario.totalPaNet - winnerEntry.scenario.totalPaNet;
-        _hidHtml += `<div class="sim-section">
-          <div class="sim-scenario-header">
-            <span>▸ ${label}</span>
-            ${dlBtn(key)}
-          </div>
-          ${mkScenarioTable(scenario.labResults, true, perte)}
-        </div>`;
-      });
-      html += `<div id="simHiddenScenarios" style="display:none">${_hidHtml}</div>
-        <div id="simShowMoreWrap" style="text-align:center;margin:20px 0 28px">
-          <button id="simShowMore" style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:2px;padding:10px 28px;cursor:pointer;background:transparent;border:1px solid var(--cyan-dim);color:var(--text-dim);transition:all .2s">▾ AFFICHER LES ${_hidOthers.length} AUTRES SCÉNARIOS</button>
-        </div>`;
-    }
-
-    // ── Scénario Actuel (toujours dernier) ─────────────────────────────────────
+    // ── Scénario N-1 ───────────────────────────────────────────────────────────
     html += `<div class="sim-section">
       <div class="sim-scenario-header">
         <span>▸ SCÉNARIO N-1</span>
@@ -3756,12 +3742,99 @@ async function launchSimulation() {
       ${mkScenarioTable(actuel.labResults, true, null)}
     </div>`;
 
+    // ── Simulateur personnalisé ─────────────────────────────────────────────────
+    const _availLabs = state.labPages.map(lp => lp.selectedLab).filter(Boolean);
+    const _labOpts = `<option value="">— Aucun —</option>` +
+      _availLabs.map(l => `<option value="${l.replace(/"/g,'&quot;')}">${l}</option>`).join('');
+    html += `<div class="sim-section" id="customSimSection">
+      <div class="sim-title">◈ SIMULATEUR PERSONNALISÉ</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:4px">
+        // Choisissez vos génériqueurs par ordre de priorité — le programme maximise leur CA pour atteindre le meilleur palier possible
+      </div>
+      <div class="sim-custom-grid">
+        ${[1,2,3,4].map(n => `<div class="sim-custom-row">
+          <span class="sim-custom-label">GÉNÉRIQUEUR N°${n}</span>
+          <select class="sim-custom-select" id="customLabSel${n}">${_labOpts}</select>
+        </div>`).join('')}
+      </div>
+      <button id="customSimBtn" class="btn btn-launch" style="margin-top:4px">▶ SIMULER</button>
+      <div id="customSimResult" class="sim-custom-result" style="display:none"></div>
+    </div>`;
+
     container.innerHTML = html;
 
-    // "Afficher plus" — révèle les scénarios masqués
-    document.getElementById('simShowMore')?.addEventListener('click', function() {
-      document.getElementById('simHiddenScenarios').style.display = '';
-      document.getElementById('simShowMoreWrap').style.display = 'none';
+    // ── Simulateur personnalisé ─────────────────────────────────────────────────
+    function calcCustomScenario(priorities) {
+      const assignment = new Map(naturalAssignment);
+      const cipLocked  = new Set();
+      for (const labName of priorities) {
+        if (!labName) continue;
+        const lp = state.labPages.find(l => l.selectedLab === labName);
+        if (!lp) continue;
+        const candidates = [];
+        let labCA = 0;
+        csvData.forEach(row => {
+          if (cipLocked.has(row.cip13)) return;
+          const ref = naturalRefMap.get(row.cip13);
+          if (!ref) return;
+          const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName);
+          if (!labRef) return;
+          candidates.push({ row, labRef });
+          labCA += row.qty * (labRef.puht || 0);
+        });
+        if (!candidates.length) continue;
+        const bestCond = getBestCond(lp, labCA, false);
+        if (bestCond) {
+          candidates.forEach(({ row, labRef }) => {
+            assignment.set(row.cip13, labRef);
+            cipLocked.add(row.cip13);
+          });
+        }
+      }
+      // Refs non verrouillées → meilleur prix net
+      csvData.forEach(row => {
+        if (cipLocked.has(row.cip13)) return;
+        const ref = naturalRefMap.get(row.cip13);
+        if (!ref) return;
+        const alts = (libelleMap.get(ref.libelle) || []).filter(r => ourLabs.has(r.labo));
+        if (!alts.length) { if (!assignment.has(row.cip13)) assignment.set(row.cip13, ref); return; }
+        let bestRef = null, bestNet = Infinity;
+        alts.forEach(altRef => {
+          const altLp = state.labPages.find(l => l.selectedLab === altRef.labo);
+          if (!altLp) return;
+          const cond = getBestCond(altLp, Infinity, true);
+          const fm = state.gers != null && cond?.caCondition != null && cond.caCondition >= 0.9 * state.gers;
+          const net = (altRef.puht || 0) * (1 - getRemise(altRef, cond, fm) / 100);
+          if (net < bestNet) { bestNet = net; bestRef = altRef; }
+        });
+        assignment.set(row.cip13, bestRef || ref);
+      });
+      return { scenario: calcScenario(assignment), assignment };
+    }
+
+    document.getElementById('customSimBtn')?.addEventListener('click', () => {
+      const priorities = [1,2,3,4].map(n => document.getElementById(`customLabSel${n}`)?.value || '');
+      const resDiv = document.getElementById('customSimResult');
+      if (!resDiv) return;
+      const { scenario, assignment } = calcCustomScenario(priorities);
+      const gain = actuel.totalPaNet - scenario.totalPaNet;
+      const key  = 'custom';
+      scenarioStore.set(key, { assignment, labResults: scenario.labResults });
+      const dlInline = `<button class="sim-dl-inline" data-key="${key}" style="font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;padding:6px 14px;cursor:pointer;background:transparent;border:1px solid var(--green);color:var(--green);transition:all .2s">⬇ CSV</button>`;
+      resDiv.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <span style="font-family:'Orbitron',monospace;font-size:12px;color:var(--amber);letter-spacing:2px">RÉSULTAT — PA NET : ${fmtE(scenario.totalPaNet)} &nbsp;·&nbsp; GAIN vs N-1 : <span style="color:${gain>=0?'var(--green)':'var(--red)'}">${gain>=0?'+':''}${fmtE(gain)}</span></span>
+          ${dlInline}
+        </div>
+        ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}`;
+      resDiv.style.display = '';
+      resDiv.querySelectorAll('.sim-dl-inline').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const s = scenarioStore.get(btn.dataset.key);
+          if (!s) return;
+          downloadCSV(buildScenarioCSV(s.assignment, s.labResults, null, null), 'scenario_personnalise.csv');
+        });
+      });
     });
 
     // Pixel-art fireworks on winner banner
