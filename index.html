@@ -3081,13 +3081,15 @@ async function launchSimulation() {
     // Query by libellé + selected lab to find all their equivalents.
     if (ourLabs.size > 0) {
       const allLibelles = [...new Set(refRows.map(r => r.libelle))];
-      const LIB_CHUNK = 50;
+      const LIB_CHUNK = 30;
       for (const lab of ourLabs) {
         for (let i = 0; i < allLibelles.length; i += LIB_CHUNK) {
           const chunk = allLibelles.slice(i, i + LIB_CHUNK);
           const libStr = chunk.map(l => `"${l.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
           const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&libelle=in.(${libStr})&limit=2000`;
-          const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
+          let res;
+          try { res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }); }
+          catch(_) { continue; } // réseau momentanément indisponible → on passe au chunk suivant
           if (res.ok) {
             const rows = await res.json();
             rows.forEach(r => {
@@ -3814,7 +3816,15 @@ async function launchSimulation() {
 
   } catch(err) {
     console.error(err);
-    container.innerHTML = `<div class="sim-warn">⚠ Erreur lors de l'analyse : ${err.message}</div>`;
+    const isNetwork = err.message === 'Failed to fetch' || err.name === 'TypeError';
+    const msg = isNetwork
+      ? '⚠ Connexion interrompue — vérifiez votre réseau et réessayez.'
+      : `⚠ Erreur lors de l'analyse : ${err.message}`;
+    container.innerHTML = `<div class="sim-warn" style="display:flex;flex-direction:column;align-items:center;gap:14px">
+      <span>${msg}</span>
+      <button id="simRetryBtn" style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:2px;padding:10px 24px;cursor:pointer;background:transparent;border:1px solid var(--amber);color:var(--amber);transition:all .2s" onmouseover="this.style.background='var(--amber)';this.style.color='var(--bg)'" onmouseout="this.style.background='transparent';this.style.color='var(--amber)'">↺ RÉESSAYER</button>
+    </div>`;
+    document.getElementById('simRetryBtn')?.addEventListener('click', () => launchSimulation());
   }
 }
 
