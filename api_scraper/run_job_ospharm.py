@@ -45,16 +45,17 @@ def _supa_patch_state(state: dict):
 
 
 def _update_job(status: str, message: str = "", rows=None, error: str = "", blocking: bool = False,
-                period_start: str = "", period_end: str = ""):
+                period_start: str = "", period_end: str = "", file_url: str = ""):
     def _do():
         try:
             state = _supa_get_state()
             job = {
-                "status":  status,
-                "message": message,
-                "rows":    rows or [],
-                "total":   len(rows) if rows else 0,
-                "error":   error,
+                "status":   status,
+                "message":  message,
+                "rows":     rows or [],
+                "total":    len(rows) if rows else 0,
+                "error":    error,
+                "file_url": file_url,
             }
             if period_start:
                 job["period_start"] = period_start
@@ -77,6 +78,53 @@ def _get_creds() -> dict:
     if not user or not passwd:
         raise ValueError("Identifiants OSPHARM manquants dans Supabase.")
     return {"user": user, "pass": passwd}
+
+
+# ── Row compaction ────────────────────────────────────────────────────────────
+
+def _compact_osp_rows(rows: list[dict]) -> list[dict]:
+    """Convertit les lignes OSPHARM brutes (24 cols) en {cip13, qty, libelle}.
+    Réduit ~5 Mo → ~400 Ko pour le stockage dans Supabase.
+    """
+    import re as _re
+    if not rows:
+        return []
+
+    def _n(k):
+        s = (k or "").lower()
+        for a, b in [("é","e"),("è","e"),("ê","e"),("à","a"),("ù","u"),("î","i"),("ô","o")]:
+            s = s.replace(a, b)
+        return _re.sub(r"[^a-z0-9]", "", s)
+
+    keys = list(rows[0].keys())
+    cip_k = next((k for k in keys if _n(k) == "codeean"), None) or \
+            next((k for k in keys if any(p in _n(k) for p in ("cip", "ean", "acl"))), None)
+    qty_k = next((k for k in keys if _n(k) == "quantite"), None) or \
+            next((k for k in keys if any(p in _n(k) for p in ("qte", "qty"))
+                  and "n1" not in _n(k) and "evo" not in _n(k)), None)
+    lib_k = next((k for k in keys if _n(k) == "libelleproduit"), None) or \
+            next((k for k in keys if "produit" in _n(k)), None) or \
+            next((k for k in keys if "libelle" in _n(k)), None)
+
+    if not cip_k or not qty_k:
+        return rows
+
+    result = []
+    for r in rows:
+        raw = _re.sub(r"\D", "", str(r.get(cip_k) or ""))
+        cip13 = raw if len(raw) == 13 else ("340000" + raw if len(raw) == 7 else None)
+        try:
+            qty = float(str(r.get(qty_k) or 0).replace(",", "."))
+        except (ValueError, TypeError):
+            qty = 0.0
+        if not cip13 or qty <= 0:
+            continue
+        result.append({
+            "cip13":   cip13,
+            "qty":     qty,
+            "libelle": str(r.get(lib_k) or "").strip() if lib_k else "",
+        })
+    return result
 
 
 # ── OSPHARM scraper ────────────────────────────────────────────────────────────
@@ -827,10 +875,12 @@ def main():
         _update_job("running", msg)
 
     try:
-        rows, _fu, ps, pe = run_ospharm(creds, progress)
-        _update_job("done", f"{len(rows)} lignes extraites", rows, blocking=True,
-                    period_start=ps, period_end=pe)
-        print(f"\n✅  {len(rows)} lignes OSPHARM sauvegardées dans Supabase. ({time.time()-t0:.1f}s total)")
+        rows, file_url, ps, pe = run_ospharm(creds, progress, user_id=USER_ID)
+        stored_rows = _compact_osp_rows(rows)
+        print(f"  [compact] {len(rows)} → {len(stored_rows)} lignes ({len(stored_rows)/max(len(rows),1)*100:.0f}%)")
+        _update_job("done", f"{len(stored_rows)} lignes extraites", stored_rows, blocking=True,
+                    period_start=ps, period_end=pe, file_url=file_url)
+        print(f"\n✅  {len(stored_rows)} lignes OSPHARM sauvegardées dans Supabase. ({time.time()-t0:.1f}s total)")
     except Exception as e:
         _update_job("error", error=str(e), blocking=True)
         print(f"\n❌  {e}")
