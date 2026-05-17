@@ -992,6 +992,7 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
+            <button class="conn-test-btn" id="digiRefreshBtn" style="display:none">RAFRAÎCHIR</button>
             <button class="conn-change-link" id="digiChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
@@ -1024,6 +1025,7 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
+            <button class="conn-test-btn" id="ospRefreshBtn" style="display:none">RAFRAÎCHIR</button>
             <button class="conn-change-link" id="ospChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
           </div>
@@ -4623,10 +4625,14 @@ function initConnecteurModal() {
     return { status: 'fail', message: 'Délai dépassé — réessayez.' };
   }
 
+  const _jobRefreshMap = { ospJobStatus: 'ospRefreshBtn', digiJobStatus: 'digiRefreshBtn' };
+
   function _setJobStatusEl(elId, cls, text) {
     const el = document.getElementById(elId);
     if (!el) return;
     el.className = `conn-job-status ${cls}`;
+    const refreshBtn = document.getElementById(_jobRefreshMap[elId]);
+    if (refreshBtn) refreshBtn.style.display = cls === 'error' ? '' : 'none';
     if (cls === 'error') {
       el.innerHTML = '';
       const wrap = document.createElement('div');
@@ -4686,6 +4692,8 @@ function initConnecteurModal() {
   ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
   });
+  document.getElementById('ospRefreshBtn').addEventListener('click',  () => _triggerWorkflow('ospharm'));
+  document.getElementById('digiRefreshBtn').addEventListener('click', () => _triggerWorkflow('digipharmacie'));
   document.getElementById('ospChangeLink').addEventListener('click',  () => requestAccountChange('ospharm', 'osp'));
   document.getElementById('digiChangeLink').addEventListener('click', () => requestAccountChange('digipharmacie', 'digi'));
 
