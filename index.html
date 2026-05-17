@@ -4294,17 +4294,22 @@ function initConnecteurModal() {
   const btnSave  = document.getElementById('connSave');
 
   function showView(prefix, connected) {
-    const fv     = document.getElementById(prefix + 'FormView');
-    const cv     = document.getElementById(prefix + 'ConnView');
-    const userEl = document.getElementById(prefix + 'User');
+    const fv      = document.getElementById(prefix + 'FormView');
+    const cv      = document.getElementById(prefix + 'ConnView');
+    const userEl  = document.getElementById(prefix + 'User');
     if (connected) {
       if (fv) fv.style.display = 'none';
       if (cv) cv.style.display = 'flex';
     } else {
       if (fv) fv.style.display = '';
       if (cv) cv.style.display = 'none';
-      // Déverrouiller l'email quand on revient au formulaire hors reconnexion
-      if (userEl) { userEl.readOnly = false; userEl.removeAttribute('title'); }
+      const connKey  = prefix === 'osp' ? 'ospharm' : 'digipharmacie';
+      const hasCreds = !!state.connectors[connKey]?.user;
+      if (userEl) {
+        userEl.readOnly = hasCreds;
+        if (hasCreds) userEl.title = '🔒 Pour changer de compte, utilisez le lien "Changer de compte ?"';
+        else userEl.removeAttribute('title');
+      }
     }
   }
 
