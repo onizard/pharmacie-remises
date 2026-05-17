@@ -1021,7 +1021,7 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
-            <a class="conn-file-btn" id="ospFileBtn" style="display:none" download>⬇ Télécharger Excel</a>
+            <a class="conn-file-btn" id="ospFileBtn" style="display:none" href="#">⬇ Télécharger Excel</a>
             <button class="conn-test-btn" id="ospReconnect">RECONNECTER</button>
             <button class="conn-change-link" id="ospChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
@@ -4470,7 +4470,7 @@ function initConnecteurModal() {
           _setJobStatusEl(elId, 'done', `✓ ${n.toLocaleString('fr-FR')} lignes prêtes`);
           if (fileBtn && job.file_url) {
             const btn = document.getElementById(fileBtn);
-            if (btn) { btn.href = job.file_url; btn.style.display = ''; }
+            if (btn) { btn.dataset.fileUrl = job.file_url; btn.style.display = ''; }
           }
         } else if (job.status === 'running') {
           _setJobStatusEl(elId, 'running', `⏳ ${job.message || 'en cours…'}`);
@@ -4480,6 +4480,36 @@ function initConnecteurModal() {
       });
     } catch(_) {}
   }
+
+  document.getElementById('ospFileBtn').addEventListener('click', async function(e) {
+    e.preventDefault();
+    const url = this.dataset.fileUrl;
+    if (!url) return;
+    const orig = this.textContent;
+    this.textContent = '⏳ Téléchargement…';
+    try {
+      let headers = {};
+      try {
+        const { data: { session } } = await window._sbClient.auth.getSession();
+        if (session) headers.Authorization = `Bearer ${session.access_token}`;
+      } catch(_) {}
+      const resp = await fetch(url, { headers });
+      if (!resp.ok) throw new Error(`Erreur serveur ${resp.status}`);
+      const blob = await resp.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const rawName = url.split('/').pop().split('?')[0] || '';
+      a.download = rawName.endsWith('.xlsx') ? rawName : 'ospharm_datastat.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch(err) {
+      showToast(`Erreur téléchargement : ${err.message}`);
+    } finally {
+      this.textContent = orig;
+    }
+  });
 
   document.getElementById('ospTest').addEventListener('click',       () => connectConn('ospharm', 'osp'));
   document.getElementById('digiTest').addEventListener('click',      () => connectConn('digipharmacie', 'digi'));

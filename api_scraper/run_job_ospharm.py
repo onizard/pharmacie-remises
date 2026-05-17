@@ -236,22 +236,31 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 except Exception:
                     pass
 
-            # Attendre que les tabs ventes (Laboratoires) soient visibles —
-            # c'est la seule condition fiable (l'URL peut bouncer entre états)
-            try:
-                page.wait_for_function(
-                    '''() => {
-                        for (const el of document.querySelectorAll(".webix_item_tab")) {
-                            if (el.textContent.trim() === "Laboratoires") return true;
-                        }
-                        return false;
-                    }''',
-                    timeout=20_000,
-                )
-                print("  [nav] tabs ventes visibles ✓")
-                return True
-            except Exception:
-                pass
+            # Attendre que les tabs ventes (Laboratoires) soient visibles ET stables
+            for _attempt in range(3):
+                try:
+                    page.wait_for_function(
+                        '''() => {
+                            for (const el of document.querySelectorAll(".webix_item_tab")) {
+                                if (el.textContent.trim() === "Laboratoires") return true;
+                            }
+                            return false;
+                        }''',
+                        timeout=20_000,
+                    )
+                except Exception:
+                    break
+                # Vérifier la stabilité : attendre 3s et re-vérifier
+                page.wait_for_timeout(3_000)
+                if _ventes_tabs_visible():
+                    print(f"  [nav] tabs ventes stables ✓ (attempt {_attempt+1})")
+                    return True
+                print(f"  [nav] tabs ventes ont disparu (bounce) — retry {_attempt+1}")
+                # Re-tenter navigation
+                try:
+                    page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
+                except Exception:
+                    pass
 
             _reauth_if_needed(page, creds, "ventes")
             _wait_webix(page)
