@@ -3545,6 +3545,16 @@ async function launchSimulation() {
 
     const dlBtn = (key, label = '↓ CSV') => `<button class="sim-dl-inline" data-key="${key}">${label}</button>`;
 
+    // Helper : génère les boutons par labo + TOUT et enregistre les entrées filtrées dans scenarioStore
+    function mkScenarioDlBtns(key, scenario, assignment, forcedConds = null) {
+      const labBtns = scenario.labResults.filter(l => l.isSelected).map(l => {
+        const lk = `${key}_${l.name}`;
+        scenarioStore.set(lk, { assignment, labResults: scenario.labResults, filterLab: l.name, forcedConds });
+        return dlBtn(lk, `↓ ${l.name}`);
+      }).join('');
+      return labBtns + dlBtn(key, '↓ TOUT');
+    }
+
     // Boutons de téléchargement du scénario optimisé : un par labo sélectionné + tout
     const opt2DlBtns = opt2.labResults.filter(l => l.isSelected)
       .map(l => dlBtn(`opt2_${l.name}`, `↓ ${l.name}`)).join('')
@@ -3559,16 +3569,19 @@ async function launchSimulation() {
           + dlBtn(`lab_${name}`, '↓ TOUT');
         return { key: `lab_${name}`, label: `SCÉNARIO ${name.toUpperCase()}`, sub: null, scenario, dlBtns: labDlBtns };
       }),
-      ...condScenarios.map(({ key, label, scenario }) => ({
-        key, label, sub: null, scenario, dlBtns: dlBtn(key),
+      ...condScenarios.map(({ key, label, scenario, assignment, forcedConds }) => ({
+        key, label, sub: null, scenario,
+        dlBtns: mkScenarioDlBtns(key, scenario, assignment, forcedConds),
       })),
-      ...multiCondScenarios.map(({ key, label, scenario }) => ({
-        key, label, sub: null, scenario, dlBtns: dlBtn(key),
+      ...multiCondScenarios.map(({ key, label, scenario, assignment, forcedConds }) => ({
+        key, label, sub: null, scenario,
+        dlBtns: mkScenarioDlBtns(key, scenario, assignment, forcedConds),
       })),
       ...(groupScenarios.length ? [groupScenarios.reduce((best, s) =>
         s.scenario.totalPaNet < best.scenario.totalPaNet ? s : best
-      )].map(({ key, label, scenario }) => ({
-        key, label, sub: null, scenario, dlBtns: dlBtn(key),
+      )].map(({ key, label, scenario, assignment }) => ({
+        key, label, sub: null, scenario,
+        dlBtns: mkScenarioDlBtns(key, scenario, assignment),
       })) : []),
     ];
     allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
