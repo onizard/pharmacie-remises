@@ -212,9 +212,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 return False
 
         def _goto_sellout():
-            """Navigue vers 'Toutes les ventes' (sellout.all).
-            Méthode principale : sidebar.select("sellout.all") — ID confirmé par tests locaux.
-            """
+            """Navigue vers 'Toutes les ventes' (sellout.all)."""
             def _wait_sellout(ms=10_000):
                 try:
                     page.wait_for_function(
@@ -225,47 +223,73 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 except Exception:
                     return False
 
-            # ── M0 : sidebar.select("sellout.all") — approche principale ─────────
+            # ── M0 : sidebar select + clic DOM réel sur le nœud ─────────────────
             try:
                 _r0 = page.evaluate('''() => {
                     if (typeof webix === "undefined") return "no-webix";
-                    const sideEl = document.querySelector(".webix_sidebar");
-                    if (!sideEl) return "no-sidebar";
-                    const sb = webix.$$(sideEl.getAttribute("view_id"));
+                    const sb = webix.$$("top:menu")
+                             || webix.$$(document.querySelector(".webix_sidebar")
+                                         ?.getAttribute("view_id"));
                     if (!sb) return "no-sb";
+                    try { sb.open("sellout"); } catch(e) {}
                     sb.select("sellout.all");
-                    return "selected";
+                    const node = sb.getItemNode ? sb.getItemNode("sellout.all") : null;
+                    if (node) {
+                        node.dispatchEvent(new MouseEvent("click",
+                            {bubbles:true, cancelable:true}));
+                        return "click-node";
+                    }
+                    return "select-only";
                 }''')
-                print(f"  [nav] M0 sidebar.select: {_r0}")
-                if _r0 == "selected":
+                print(f"  [nav] M0: {_r0}")
+                if _r0 not in ("no-webix", "no-sb"):
                     page.wait_for_timeout(4_000)
                     if _ventes_tabs_visible(): return True
-                    if _wait_sellout() and _ventes_tabs_visible(): return True
+                    if _wait_sellout(6_000) and _ventes_tabs_visible(): return True
             except Exception as _e:
                 print(f"  [nav] M0 err: {_e}")
 
-            # ── M1 : click "Toutes les ventes" ou "Analyse des ventes" par texte ──
-            for _txt in ["Toutes les ventes", "Analyse des ventes"]:
-                try:
-                    _loc = page.get_by_text(_txt, exact=True).first
-                    if _loc.is_visible(timeout=1_500):
-                        _loc.click(force=True, timeout=5_000)
-                        print(f"  [nav] M1 clic '{_txt}'")
-                        page.wait_for_timeout(3_000)
-                        if _ventes_tabs_visible(): return True
-                        if _wait_sellout() and _ventes_tabs_visible(): return True
-                except Exception as _e:
-                    print(f"  [nav] M1 '{_txt}' err: {_e}")
-
-            # ── M2 : page.goto URL directe ────────────────────────────────────────
+            # ── M1 : changement direct du hash (router SPA — méthode la plus fiable)
             try:
-                page.goto("https://datastat.ospharm.org/#!/top/sellout.all",
-                          wait_until="domcontentloaded", timeout=25_000)
+                _old = page.evaluate("() => location.hash")
+                page.evaluate("() => { window.location.hash = '#!/top/sellout.all'; }")
+                print(f"  [nav] M1 hash: {_old!r} -> #!/top/sellout.all")
                 page.wait_for_timeout(4_000)
                 if _ventes_tabs_visible(): return True
                 if _wait_sellout(8_000) and _ventes_tabs_visible(): return True
             except Exception as _e:
-                print(f"  [nav] M2 goto err: {_e}")
+                print(f"  [nav] M1 err: {_e}")
+
+            # ── M2 : expand "Analyse des ventes" puis clic "Toutes les ventes" ──
+            try:
+                _loc_a = page.get_by_text("Analyse des ventes", exact=True).first
+                if _loc_a.is_visible(timeout=1_500):
+                    _loc_a.click(force=True, timeout=5_000)
+                    print(f"  [nav] M2 expanded 'Analyse des ventes'")
+                    page.wait_for_timeout(1_500)
+            except Exception as _e:
+                print(f"  [nav] M2a err: {_e}")
+            try:
+                _loc_t = page.get_by_text("Toutes les ventes", exact=True).first
+                if _loc_t.is_visible(timeout=2_500):
+                    _loc_t.click(force=True, timeout=5_000)
+                    print(f"  [nav] M2 clicked 'Toutes les ventes'")
+                    page.wait_for_timeout(3_000)
+                    if _ventes_tabs_visible(): return True
+                    if _wait_sellout(6_000) and _ventes_tabs_visible(): return True
+            except Exception as _e:
+                print(f"  [nav] M2b err: {_e}")
+
+            # ── M3 : page.goto (rechargement complet) ────────────────────────────
+            try:
+                page.goto("https://datastat.ospharm.org/#!/top/sellout.all",
+                          wait_until="domcontentloaded", timeout=25_000)
+                _wait_webix(page)
+                page.wait_for_timeout(5_000)
+                if _ventes_tabs_visible(): return True
+                if _wait_sellout(10_000) and _ventes_tabs_visible(): return True
+            except Exception as _e:
+                print(f"  [nav] M3 goto err: {_e}")
 
             _reauth_if_needed(page, creds, "ventes")
             _wait_webix(page)
