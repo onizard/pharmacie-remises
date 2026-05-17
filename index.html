@@ -999,6 +999,7 @@
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="conn-test-btn" id="digiRefreshBtn" style="display:none">RAFRAÎCHIR</button>
+            <button class="conn-test-btn" id="digiReconnectBtn">RECONNECTER</button>
             <button class="conn-change-link" id="digiChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
@@ -1032,6 +1033,7 @@
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
             <button class="conn-test-btn" id="ospRefreshBtn" style="display:none">RAFRAÎCHIR</button>
+            <button class="conn-test-btn" id="ospReconnectBtn">RECONNECTER</button>
             <button class="conn-change-link" id="ospChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
           </div>
@@ -4716,8 +4718,10 @@ function initConnecteurModal() {
   ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
   });
-  document.getElementById('ospRefreshBtn').addEventListener('click',  () => _triggerWorkflow('ospharm'));
-  document.getElementById('digiRefreshBtn').addEventListener('click', () => _triggerWorkflow('digipharmacie'));
+  document.getElementById('ospRefreshBtn').addEventListener('click',   () => _triggerWorkflow('ospharm'));
+  document.getElementById('digiRefreshBtn').addEventListener('click',  () => _triggerWorkflow('digipharmacie'));
+  document.getElementById('ospReconnectBtn').addEventListener('click', () => showView('osp', false));
+  document.getElementById('digiReconnectBtn').addEventListener('click',() => showView('digi', false));
   document.getElementById('compRefreshBtn').addEventListener('click', () => {
     document.getElementById('connecteurModal').classList.add('open');
     const ospRefresh = document.getElementById('ospRefreshBtn');
