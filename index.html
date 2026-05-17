@@ -3361,7 +3361,13 @@ async function launchSimulation() {
       conds.forEach((cond, ci) => {
         const forced = new Map([[labName, cond]]);
         const scenario = calcScenario(labAsgn, { forcedConds: forced });
-        const palierLbl = cond.caCondition ? `${cond.caCondition.toLocaleString('fr')} €` : 'BASE';
+        // Si le CA atteint un palier supérieur au palier ciblé → scénario redondant, on skip
+        const res = scenario.labResults.find(l => l.name === labName);
+        if (res) {
+          const actualBest = getBestCond(lp, res.ca, false);
+          if ((parseFloat(actualBest?.caCondition) || 0) > (parseFloat(cond.caCondition) || 0)) return;
+        }
+        const palierLbl = cond.caCondition ? `${parseFloat(cond.caCondition).toLocaleString('fr')} €` : 'BASE';
         condScenarios.push({
           key: `cond_${labName}_${ci}`,
           label: `SCÉNARIO ${labName.toUpperCase()} — PALIER ${ci + 1} (${palierLbl})`,
@@ -3401,8 +3407,15 @@ async function launchSimulation() {
             condsB.forEach((condB, cj) => {
               const forced = new Map([[nameA, condA], [nameB, condB]]);
               const scenario = calcScenario(groupAsgn, { forcedConds: forced });
-              const lblA = condA.caCondition ? `${condA.caCondition.toLocaleString('fr')} €` : 'BASE';
-              const lblB = condB.caCondition ? `${condB.caCondition.toLocaleString('fr')} €` : 'BASE';
+              // Skip si le CA d'un des deux labs atteint un palier supérieur au palier ciblé
+              const resA = scenario.labResults.find(l => l.name === nameA);
+              const resB = scenario.labResults.find(l => l.name === nameB);
+              const bestA = resA ? getBestCond(lpA, resA.ca, false) : null;
+              const bestB = resB ? getBestCond(lpB, resB.ca, false) : null;
+              if ((parseFloat(bestA?.caCondition) || 0) > (parseFloat(condA.caCondition) || 0)) return;
+              if ((parseFloat(bestB?.caCondition) || 0) > (parseFloat(condB.caCondition) || 0)) return;
+              const lblA = condA.caCondition ? `${parseFloat(condA.caCondition).toLocaleString('fr')} €` : 'BASE';
+              const lblB = condB.caCondition ? `${parseFloat(condB.caCondition).toLocaleString('fr')} €` : 'BASE';
               multiCondScenarios.push({
                 key: `mc_${nameA}_${ci}_${nameB}_${cj}`,
                 label: `SCÉNARIO ${nameA.toUpperCase()} P${ci+1} (${lblA}) + ${nameB.toUpperCase()} P${cj+1} (${lblB})`,
