@@ -61,8 +61,16 @@ SUPABASE_KEY=...
 ## Identité visuelle
 Thème rétro-terminal sombre : fond `#04060f`, cyan `#00e5ff`, amber `#ffab00`, vert `#00ff88`, rouge `#ff3366`. Police Orbitron pour les titres.
 
-## WIP — 2026-05-13 07:43 (master)
+## WIP — 2026-05-17 (master @ 66deaa8)
 ```
- .gitignore | 1 +
- 1 file changed, 1 insertion(+)
+ api_scraper/test_annee_lissee.py | 262 ++++++++++++
+ api_scraper/test_full_ospharm.py |  53 +++++++
+ api_scraper/test_nav_ospharm.py  | 261 ++++++++++++
+ 3 files changed, 576 insertions(+)
 ```
+
+### Derniers changements significatifs
+- **GitHub Actions OSPHARM** : dispatch depuis Render, scraping sur runners 7 GB. Fichier : `.github/workflows/scraper_ospharm.yml`, script : `api_scraper/run_job_ospharm.py`.
+- **Popup connecteurs** : se ferme automatiquement et ouvre le comparateur quand OSPHARM réussit + données reconnues.
+- **Comparateur — CA CIBLE** : affiche le seuil du 1er palier même si non atteint (en rouge avec ✗).
+- **Comparateur — Top 3** : seuls gagnant + 2 suivants visibles par défaut ; bouton "AFFICHER LES N AUTRES SCÉNARIOS" pour le reste.
