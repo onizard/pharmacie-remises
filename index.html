@@ -4565,7 +4565,7 @@ function initConnecteurModal() {
           continue;
         }
         if (job.status === 'done') {
-          _setJobStatusEl('ospJobStatus', 'done', `✓ ${job.total || 0} lignes — traitement…`);
+          _setJobStatusEl('ospJobStatus', 'done', `✓ Traitement…`);
           const ok = await launchComparateur();
           if (ok) document.getElementById('connecteurModal').classList.remove('open');
           break;
@@ -4668,8 +4668,7 @@ function initConnecteurModal() {
         const job = sj[jobKey];
         if (!job) return;
         if (job.status === 'done') {
-          const n = job.total || job.invoices?.length || job.rows?.length || 0;
-          _setJobStatusEl(elId, 'done', `✓ ${n.toLocaleString('fr-FR')} lignes prêtes`);
+          _setJobStatusEl(elId, 'done', `✓ Prêt`);
           if (fileBtn && job.file_url) {
             const btn = document.getElementById(fileBtn);
             if (btn) { btn.dataset.fileUrl = job.file_url; btn.style.display = ''; }
