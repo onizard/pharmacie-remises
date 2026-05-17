@@ -992,7 +992,6 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
-            <button class="conn-test-btn" id="digiReconnect">RECONNECTER</button>
             <button class="conn-change-link" id="digiChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
@@ -1025,7 +1024,6 @@
             <div class="conn-check-big">✓</div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
-            <button class="conn-test-btn" id="ospReconnect">RECONNECTER</button>
             <button class="conn-change-link" id="ospChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
           </div>
@@ -4668,7 +4666,7 @@ function initConnecteurModal() {
         const job = sj[jobKey];
         if (!job) return;
         if (job.status === 'done') {
-          _setJobStatusEl(elId, 'done', `✓ Prêt`);
+          // statut 'done' : pas d'affichage
           if (fileBtn && job.file_url) {
             const btn = document.getElementById(fileBtn);
             if (btn) { btn.dataset.fileUrl = job.file_url; btn.style.display = ''; }
@@ -4688,8 +4686,6 @@ function initConnecteurModal() {
   ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
   });
-  document.getElementById('ospReconnect').addEventListener('click',  () => reconnectConn('ospharm', 'osp'));
-  document.getElementById('digiReconnect').addEventListener('click', () => reconnectConn('digipharmacie', 'digi'));
   document.getElementById('ospChangeLink').addEventListener('click',  () => requestAccountChange('ospharm', 'osp'));
   document.getElementById('digiChangeLink').addEventListener('click', () => requestAccountChange('digipharmacie', 'digi'));
 
