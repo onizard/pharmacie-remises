@@ -3176,9 +3176,14 @@ async function launchSimulation() {
             : isForced ? forcedConds.get(e.lp.selectedLab)
             : getBestCond(e.lp, e.ca, forceMarketMet, applyProrata);
           const pr = applyProrata ? getProrata(e.lp?.selectedLab) : 1;
+          // Si palier forcé mais CA seuil non atteint → RSF de base uniquement
+          // (pas de remise 2/RDP/coop/remise 3, pas de RSF First)
+          const effectiveCond = (isForced && bestCond?.caCondition && e.ca < pr * bestCond.caCondition)
+            ? null
+            : bestCond;
           const firstMet = e.isSelected && !rsfOnly && (
-            (state.gers != null && bestCond?.caCondition != null && bestCond.caCondition >= 0.9 * state.gers)
-            || (bestCond?.forceFirst ?? false)
+            (state.gers != null && effectiveCond?.caCondition != null && effectiveCond.caCondition >= 0.9 * state.gers)
+            || (effectiveCond?.forceFirst ?? false)
           );
           e.bestCond    = bestCond;
           e.met         = isForced
@@ -3196,7 +3201,7 @@ async function launchSimulation() {
           e.rows.forEach(({ row, ref, price }) => {
             const remisePct = (rsfOnly || !e.isSelected)
               ? getRSFBase(ref, firstMet)
-              : getRemise(ref, bestCond, firstMet);
+              : getRemise(ref, effectiveCond, firstMet);
             e.remise += row.qty * price * remisePct / 100;
           });
         }
