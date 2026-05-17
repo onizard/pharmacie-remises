@@ -12,8 +12,11 @@ Connecteurs supportés : ospharm, digipharmacie
 """
 
 import asyncio
+import json
+import os
 import re as _re
 import time
+import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
@@ -30,6 +33,10 @@ from supabase_client import (
     save_user_creds,
     verify_token,
 )
+
+GH_TOKEN = os.environ.get("GH_TOKEN", "")
+GH_REPO  = "onizard/pharmacie-remises"
+GH_WORKFLOW = "scraper_ospharm.yml"
 
 
 class ConnectBody(BaseModel):
@@ -111,7 +118,7 @@ async def run_connector(
     connector: str = Path(...),
     authorization: str = Header(default=""),
 ):
-    """Lance le scraping en arrière-plan. Retourne {job_id}."""
+    """Lance le scraping. OSPHARM → GitHub Actions. DIGIPHARMACIE → local."""
     if connector not in SUPPORTED_CONNECTORS:
         raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
 
@@ -123,8 +130,14 @@ async def run_connector(
         raise HTTPException(status_code=401, detail=str(e))
 
     _cleanup_jobs()
-
     job_id = str(uuid.uuid4())
+
+    if connector == "ospharm":
+        # OSPHARM : dispatch GitHub Actions (7 GB RAM, stable)
+        background_tasks.add_task(_dispatch_gh_ospharm, user_id)
+        return {"job_id": job_id, "mode": "github_actions"}
+
+    # DIGIPHARMACIE : exécution locale sur Render
     job_key = f"{connector}_job"
     _jobs[job_id] = {
         "status":  "running",
@@ -133,9 +146,36 @@ async def run_connector(
         "rows":    [],
         "total":   0,
     }
-
     background_tasks.add_task(_run_job_async, job_id, user_id, connector, job_key, creds)
     return {"job_id": job_id}
+
+
+async def _dispatch_gh_ospharm(user_id: str):
+    """Déclenche le workflow GitHub Actions scraper_ospharm.yml."""
+    # Marque immédiatement le job comme "running" dans Supabase
+    await patch_job_status(user_id, "ospharm_job", "running",
+                           "Scraping OSPHARM en cours via GitHub Actions…", [])
+
+    if not GH_TOKEN:
+        await patch_job_status(user_id, "ospharm_job", "error",
+                               "GH_TOKEN manquant sur le serveur — contacter l'admin", [])
+        return
+
+    url  = f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{GH_WORKFLOW}/dispatches"
+    body = json.dumps({"ref": "master", "inputs": {"user_id": user_id}}).encode()
+    req  = urllib.request.Request(url, data=body, method="POST", headers={
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept":        "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type":  "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            print(f"  [gh-dispatch] HTTP {r.status} — workflow ospharm déclenché pour {user_id[:8]}")
+    except Exception as e:
+        print(f"  [gh-dispatch] ERREUR: {e}")
+        await patch_job_status(user_id, "ospharm_job", "error",
+                               f"Impossible de lancer le workflow GitHub: {e}", [])
 
 
 @app.get("/status/{job_id}")
