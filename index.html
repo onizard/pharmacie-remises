@@ -508,6 +508,12 @@
   .cursor { display: inline-block; width: 8px; height: 14px; background: var(--cyan); animation: blink 1s step-end infinite; vertical-align: middle; margin-left: 4px; }
   @keyframes blink { 50% { opacity: 0; } }
 
+  .comp-error-banner { display: none; align-items: flex-start; gap: 12px; background: rgba(255,51,102,.08); border: 1px solid var(--red); padding: 12px 16px; margin-bottom: 16px; }
+  .comp-error-banner.visible { display: flex; }
+  .comp-error-msg { flex: 1; font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--red); line-height: 1.5; }
+  .comp-error-banner .btn-refresh-comp { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; letter-spacing: 2px; padding: 8px 16px; cursor: pointer; text-transform: uppercase; border: 1px solid var(--red); color: var(--red); background: transparent; white-space: nowrap; transition: all .2s; flex-shrink: 0; }
+  .comp-error-banner .btn-refresh-comp:hover { background: var(--red); color: var(--bg); }
+
   .term-line { font-size: 13px; color: var(--text-dim); padding: 4px 0; letter-spacing: 1px; }
   .term-line .prompt { color: var(--green); margin-right: 8px; }
   .term-line .val { color: var(--text); }
@@ -1077,6 +1083,11 @@
       <div class="panel-title">◈ Mes ventes génériques N-1</div>
       <div class="panel-sub">// Importation du fichier CSV — liste des médicaments vendus sur l'exercice précédent</div>
 
+      <div class="comp-error-banner" id="compErrorBanner">
+        <span class="comp-error-msg" id="compErrorMsg"></span>
+        <button class="btn-refresh-comp" id="compRefreshBtn">↺ RAFRAÎCHIR LES DONNÉES</button>
+      </div>
+
       <input type="file" id="csvInput" accept=".csv,.txt,.xlsx,.pdf" style="display:none" />
       <div class="dropzone" id="dropzone">
         <div class="dropzone-default">
@@ -1578,8 +1589,21 @@ async function autoRunOspharm() {
   } catch(_) {}
 }
 
+function showCompError(msg) {
+  const banner = document.getElementById('compErrorBanner');
+  const msgEl  = document.getElementById('compErrorMsg');
+  if (!banner || !msgEl) return;
+  msgEl.textContent = msg;
+  banner.classList.add('visible');
+}
+function hideCompError() {
+  const banner = document.getElementById('compErrorBanner');
+  if (banner) banner.classList.remove('visible');
+}
+
 async function launchComparateur() {
   try {
+    hideCompError();
     const { data: { session } } = await window._sbClient.auth.getSession();
     if (!session) { showToast('Session expirée — rechargez la page.'); return; }
 
@@ -1588,21 +1612,21 @@ async function launchComparateur() {
     const job = row?.state_json?.ospharm_job;
 
     if (!job || job.status === 'running') {
-      showToast('Données OSPHARM en cours de récupération — réessayez dans quelques minutes.');
+      showCompError('Données OSPHARM en cours de récupération — réessayez dans quelques minutes.');
       return;
     }
     if (job.status === 'error') {
-      showToast(`Erreur OSPHARM : ${job.error || 'inconnue'}`);
+      showCompError(`Erreur OSPHARM : ${job.error || 'inconnue'}`);
       return;
     }
     if (job.status !== 'done' || !job.rows?.length) {
-      showToast('Données OSPHARM non disponibles — connectez OSPHARM DATASTAT.');
+      showCompError('Données OSPHARM non disponibles — connectez OSPHARM DATASTAT.');
       return;
     }
 
     const csvData = ospharmRowsToCsvData(job.rows);
     if (!csvData.length) {
-      showToast('Colonnes OSPHARM non reconnues — vérifiez le format des données.');
+      showCompError('Colonnes OSPHARM non reconnues — vérifiez le format des données.');
       return false;
     }
 
@@ -1614,7 +1638,7 @@ async function launchComparateur() {
     return true;
 
   } catch(e) {
-    showToast(`Erreur chargement OSPHARM : ${e.message}`);
+    showCompError(`Erreur chargement OSPHARM : ${e.message}`);
     return false;
   }
 }
@@ -4694,6 +4718,11 @@ function initConnecteurModal() {
   });
   document.getElementById('ospRefreshBtn').addEventListener('click',  () => _triggerWorkflow('ospharm'));
   document.getElementById('digiRefreshBtn').addEventListener('click', () => _triggerWorkflow('digipharmacie'));
+  document.getElementById('compRefreshBtn').addEventListener('click', () => {
+    document.getElementById('connecteurModal').classList.add('open');
+    const ospRefresh = document.getElementById('ospRefreshBtn');
+    if (ospRefresh) ospRefresh.style.display = '';
+  });
   document.getElementById('ospChangeLink').addEventListener('click',  () => requestAccountChange('ospharm', 'osp'));
   document.getElementById('digiChangeLink').addEventListener('click', () => requestAccountChange('digipharmacie', 'digi'));
 
