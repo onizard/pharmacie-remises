@@ -518,7 +518,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                     ".webix_dtable .webix_row, .webix_ss_body .webix_column .webix_cell"
                 );
                 return rows.length > 0;
-            }''', timeout=120_000)
+            }''', timeout=360_000)
             print("  [step4c] données chargées")
         except Exception as _e4c:
             print(f"  [step4c] timeout attente données ({_e4c}) — export quand même")
@@ -749,17 +749,18 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         if not _val_clicked and not _excel_bytes:
             print(f"  [export] Valider non trouvé après 25s")
 
-        # ── Attente réception fichier Excel jusqu'à 60s ────────────────────────
+        # ── Attente réception fichier Excel jusqu'à 3 min (gros fichiers > 20 MB) ──
         progress("Attente du fichier Excel…")
-        for _w in range(24):
+        for _w in range(72):
             if _excel_bytes:
                 break
             page.wait_for_timeout(2_500)
-            print(f"  [export] attente... {(_w+1)*2.5:.0f}s")
+            if (_w + 1) % 4 == 0:
+                print(f"  [export] attente... {(_w+1)*2.5:.0f}s")
 
         if not _excel_bytes:
             browser.close()
-            raise RuntimeError(f"Export Excel : aucun fichier reçu en 60s. Debug: {dbg}")
+            raise RuntimeError(f"Export Excel : aucun fichier reçu en 3 min. Debug: {dbg}")
 
         print(f"  [export] fichier capturé ({len(_excel_bytes[0]):,} bytes) — fermeture navigateur")
         with open(tmp, "wb") as f:
