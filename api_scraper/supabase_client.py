@@ -140,7 +140,11 @@ def get_signed_url_sync(path: str, expires_in: int = 2_592_000) -> str:
     })
     with urllib.request.urlopen(req, timeout=15) as r:
         result = json.loads(r.read())
-    signed = result.get("signedURL", "")
+    # Supabase retourne "signedURL" (avec URL en majuscules) — fallback sur les variantes
+    signed = (result.get("signedURL") or result.get("signedUrl")
+              or result.get("signed_url") or "")
+    if not signed:
+        raise ValueError(f"Supabase Storage sign: réponse inattendue {result}")
     return f"{SUPA_URL}{signed}" if signed.startswith("/") else signed
 
 

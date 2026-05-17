@@ -343,11 +343,34 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         page.wait_for_timeout(2_000)  # laisser la page ventes se stabiliser
         print(f"  [step4-done] url={page.url[:80]}")
 
-        # 5. Export Excel — interception réseau (fonctionne quel que soit le mécanisme
-        #    de téléchargement : réponse HTTP serveur, Blob, nouvel onglet, etc.)
+        # 5. Export Excel
+        # Deux mécanismes de capture complémentaires :
+        # - page.on("download") → blob côté client (webix.toExcel, lien <a download>, etc.)
+        # - context.on("response") → réponse HTTP serveur avec Content-Disposition: attachment
         progress("Export Excel…")
-        tmp = tempfile.mktemp(suffix=".xlsx")
+        import tempfile as _tf
+        _tmp_fd, tmp = _tf.mkstemp(suffix=".xlsx")
+        import os as _os; _os.close(_tmp_fd)
+        _tmp_dl_fd, _tmp_dl = _tf.mkstemp(suffix=".xlsx")
+        _os.close(_tmp_dl_fd)
         _excel_bytes = []
+
+        def _on_download(dl):
+            if _excel_bytes:
+                return
+            try:
+                dl.save_as(_tmp_dl)
+                with open(_tmp_dl, "rb") as _f:
+                    body = _f.read()
+                if len(body) > 500:
+                    _excel_bytes.append(body)
+                    print(f"  [export] download event: '{dl.suggested_filename}' ({len(body):,} bytes)")
+                else:
+                    print(f"  [export] download event trop petit ({len(body)} bytes) — ignoré")
+            except Exception as _de:
+                print(f"  [export] download event erreur: {_de}")
+
+        page.on("download", _on_download)
 
         def _on_response(resp):
             if _excel_bytes:
@@ -356,67 +379,84 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 ct = resp.headers.get("content-type", "").lower()
                 cd = resp.headers.get("content-disposition", "").lower()
                 is_excel = any(x in ct for x in
-                    ["excel", "spreadsheet", "openxmlformats", "xls", "octet-stream"])
-                has_attach = "attachment" in cd
+                    ["excel", "spreadsheet", "openxmlformats", "xls"])
+                has_attach = "attachment" in cd and ("xls" in cd or "xlsx" in cd or "excel" in cd)
                 if is_excel or has_attach:
                     body = resp.body()
                     if len(body) > 500:
                         _excel_bytes.append(body)
-                        print(f"  [export] intercepté {len(body)} bytes — ct={ct[:50]}")
+                        print(f"  [export] HTTP response: {len(body):,} bytes — ct={ct[:60]}")
             except Exception as _ie:
                 print(f"  [export-intercept] {_ie}")
 
         context.on("response", _on_response)
 
-        # ── Debug ──────────────────────────────────────────────────────────────
+        # ── Debug étendu ───────────────────────────────────────────────────────
         try:
             dbg = page.evaluate('''() => {
+                function vis(el) { const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1; }
                 const tabs = [...document.querySelectorAll(".webix_item_tab")];
-                const tips = [...document.querySelectorAll("[webix_tooltip]")];
+                const tips = [...document.querySelectorAll("[webix_tooltip]")].filter(vis);
+                const viewIds = [...document.querySelectorAll("[view_id]")].filter(vis).slice(0, 20).map(el => {
+                    const vid = el.getAttribute("view_id");
+                    let cfg = {};
+                    try {
+                        if (typeof webix !== "undefined") {
+                            const v = webix.$$(vid);
+                            if (v) cfg = { tooltip: v.config?.tooltip, label: v.config?.label, type: v.name };
+                        }
+                    } catch(e) {}
+                    return { vid, tag: el.tagName, cfg };
+                });
                 return {
                     url: location.href,
-                    tabItems: tabs.map(t => t.textContent.trim()).slice(0, 8),
-                    tooltipEls: tips.slice(0, 5).map(e => e.getAttribute("webix_tooltip")),
+                    tabItems: tabs.map(t => t.textContent.trim()).slice(0, 10),
+                    tooltipEls: tips.slice(0, 10).map(e => e.getAttribute("webix_tooltip")),
+                    viewIds,
                     webix: typeof webix !== "undefined" ? {
-                        toExcel: typeof webix.toExcel, dollar: typeof webix.$$,
+                        toExcel: typeof webix.toExcel,
+                        dollar:  typeof webix.$$,
                     } : "absent",
                 };
             }''')
-            print(f"  [export-dbg] {dbg}")
+            print(f"  [export-dbg] tabs={dbg.get('tabItems')} webix={dbg.get('webix')}")
+            print(f"  [export-dbg] tooltips={dbg.get('tooltipEls')}")
+            print(f"  [export-dbg] viewIds={dbg.get('viewIds')}")
         except Exception as _dbg_err:
             dbg = {}
             print(f"  [export-dbg] skipped ({_dbg_err})")
 
-        # ── Clic bouton export (M1→M4) ─────────────────────────────────────────
+        # ── Clic bouton export (M1→M5) ─────────────────────────────────────────
+        kw_export = ["excel", "export", "exporter", "xls", "format", "fomat", "télécharger"]
         try:
-            exported = page.evaluate('''() => {
+            exported = page.evaluate('''(kw) => {
                 function vis(el) {
                     const r = el.getBoundingClientRect();
                     return r.width > 0 && r.height > 0;
                 }
-                const kw = ["excel", "export", "exporter", "xls", "fomat"];
 
-                // M1 : view_id + webix.$$
+                // M1a : view_id avec tooltip/label contenant un mot-clé export
                 if (typeof webix !== "undefined" && typeof webix.$$ === "function") {
                     for (const el of document.querySelectorAll("[view_id]")) {
                         if (!vis(el)) continue;
                         const v = webix.$$(el.getAttribute("view_id"));
                         if (!v) continue;
                         const tip = (v.config?.tooltip || v.config?.label || "").toLowerCase();
-                        if (kw.some(k => tip.includes(k))) { el.click(); return "view_id:" + tip.slice(0,40); }
+                        if (kw.some(k => tip.includes(k))) { el.click(); return "M1a:view_id:" + tip.slice(0,40); }
                     }
-                    if (webix.toExcel) {
+                    // M1b : webix.toExcel direct sur la première datatable visible
+                    if (typeof webix.toExcel === "function") {
                         for (const el of document.querySelectorAll(".webix_dtable[view_id]")) {
                             if (!vis(el)) continue;
                             const grid = webix.$$(el.getAttribute("view_id"));
-                            if (grid) { webix.toExcel(grid); return "webix.toExcel:dtable"; }
+                            if (grid) { webix.toExcel(grid); return "M1b:webix.toExcel"; }
                         }
                     }
                 }
-                // M2 : position bande onglets
+                // M2 : boutons à droite de la bande d'onglets ventes
                 const tabNames = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
                 let maxRight = 0, bandTop = 0, bandBottom = 0;
-                for (const el of document.querySelectorAll(".webix_item_tab, [view_id]")) {
+                for (const el of document.querySelectorAll(".webix_item_tab")) {
                     const txt = el.textContent.trim();
                     if (!tabNames.has(txt)) continue;
                     const r = el.getBoundingClientRect();
@@ -425,23 +465,25 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 }
                 if (maxRight > 0) {
                     const midY = (bandTop + bandBottom) / 2;
-                    const halfH = (bandBottom - bandTop) / 2 + 8;
+                    const halfH = (bandBottom - bandTop) / 2 + 10;
                     const cands = [];
-                    for (const el of document.querySelectorAll("[view_id], button, .webix_el_icon")) {
+                    for (const el of document.querySelectorAll("[view_id], button, .webix_el_icon, .webix_el_button")) {
                         const r = el.getBoundingClientRect();
                         if (r.left <= maxRight + 2 || r.top > midY + halfH || r.bottom < midY - halfH) continue;
-                        if (r.width < 8 || r.height < 8 || r.width > 160 || r.height > 80) continue;
+                        if (r.width < 8 || r.height < 8 || r.width > 200 || r.height > 100) continue;
                         cands.push(el);
                     }
                     cands.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
                     if (cands.length) {
-                        (cands[0].querySelector("button,.webix_template") || cands[0]).click();
-                        return "pos:" + cands[0].tagName + "@x" + Math.round(cands[0].getBoundingClientRect().left);
+                        const target = cands[0].querySelector("button,.webix_template") || cands[0];
+                        target.click();
+                        return "M2:pos:" + cands[0].tagName + "@x" + Math.round(cands[0].getBoundingClientRect().left);
                     }
-                    for (const xOff of [60, 90, 120]) {
+                    // fallback elementFromPoint
+                    for (const xOff of [50, 80, 110, 140]) {
                         const el = document.elementFromPoint(window.innerWidth - xOff, midY);
                         if (el && vis(el) && el.getBoundingClientRect().width < 200) {
-                            el.click(); return "efp@" + xOff + ":" + el.tagName;
+                            el.click(); return "M2:efp@" + xOff + ":" + el.tagName;
                         }
                     }
                 }
@@ -449,16 +491,30 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 for (const el of document.querySelectorAll("[webix_tooltip]")) {
                     if (!vis(el)) continue;
                     const tip = (el.getAttribute("webix_tooltip") || "").toLowerCase();
-                    if (kw.some(k => tip.includes(k))) { (el.querySelector("button") || el).click(); return "tooltip:" + tip.slice(0,40); }
+                    if (kw.some(k => tip.includes(k))) {
+                        (el.querySelector("button") || el).click();
+                        return "M3:tooltip:" + tip.slice(0,40);
+                    }
                 }
                 // M4 : texte/title/aria
-                for (const el of document.querySelectorAll("button,a,[role=button]")) {
+                for (const el of document.querySelectorAll("button,a,[role=button],.webix_el_button")) {
                     if (!vis(el)) continue;
                     const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"")).toLowerCase();
-                    if (kw.some(k => hay.includes(k))) { el.click(); return "kw:" + hay.slice(0,40); }
+                    if (kw.some(k => hay.includes(k))) { el.click(); return "M4:kw:" + hay.slice(0,40); }
+                }
+                // M5 : icône de téléchargement par forme/position (dernier recours)
+                const allVis = [...document.querySelectorAll("button,.webix_el_icon,[role=button]")].filter(vis);
+                for (const el of allVis) {
+                    const r = el.getBoundingClientRect();
+                    if (r.right > window.innerWidth * 0.6 && r.top < window.innerHeight * 0.3) {
+                        const inner = el.innerHTML.toLowerCase();
+                        if (inner.includes("download") || inner.includes("arrow") || inner.includes("↓")) {
+                            el.click(); return "M5:icon:" + el.tagName + "@" + Math.round(r.left);
+                        }
+                    }
                 }
                 return false;
-            }''')
+            }''', kw_export)
         except Exception as _eval_err:
             if "context" in str(_eval_err).lower() or "destroyed" in str(_eval_err).lower():
                 exported = "context-destroyed-ok"
@@ -471,20 +527,20 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             browser.close()
             raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
 
-        # ── Poll Valider (popup OSPHARM, jusqu'à 20s) ──────────────────────────
+        # ── Poll Valider (popup OSPHARM, jusqu'à 25s) ──────────────────────────
         print(f"  [export] bouton cliqué ({exported}), poll Valider…")
         _val_clicked = False
-        for _attempt in range(8):
+        for _attempt in range(10):
             page.wait_for_timeout(2_500)
             if _excel_bytes:
-                print(f"  [export] fichier déjà reçu avant Valider — ok")
+                print(f"  [export] fichier reçu avant/pendant Valider — ok")
                 break
             try:
                 _loc = page.locator(
                     ".webix_window button, .webix_popup button, .webix_modal button,"
-                    " button, input[type=button], [role=button]"
+                    " .webix_win_body button, button"
                 ).filter(has_text="Valider").first
-                if _loc.is_visible(timeout=500):
+                if _loc.is_visible(timeout=400):
                     _loc.click(timeout=3_000)
                     _val_clicked = True
                     print(f"  [export] Valider cliqué (locator, attempt {_attempt+1})")
@@ -501,11 +557,11 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                     print(f"  [export] context destroyed pendant poll Valider — ok")
                     break
         if not _val_clicked and not _excel_bytes:
-            print(f"  [export] Valider non trouvé après 20s")
+            print(f"  [export] Valider non trouvé après 25s")
 
-        # ── Attente réponse Excel jusqu'à 45s ──────────────────────────────────
+        # ── Attente réception fichier Excel jusqu'à 60s ────────────────────────
         progress("Attente du fichier Excel…")
-        for _w in range(18):
+        for _w in range(24):
             if _excel_bytes:
                 break
             page.wait_for_timeout(2_500)
@@ -513,8 +569,9 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
 
         if not _excel_bytes:
             browser.close()
-            raise RuntimeError(f"Export Excel : aucun fichier reçu en 45s. Debug: {dbg}")
+            raise RuntimeError(f"Export Excel : aucun fichier reçu en 60s. Debug: {dbg}")
 
+        print(f"  [export] fichier capturé ({len(_excel_bytes[0]):,} bytes) — fermeture navigateur")
         with open(tmp, "wb") as f:
             f.write(_excel_bytes[0])
 
