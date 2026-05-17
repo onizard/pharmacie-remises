@@ -4161,7 +4161,7 @@ dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.class
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
 dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
 
-document.getElementById('btnCsvBack').addEventListener('click', () => goTo('labs'));
+document.getElementById('btnCsvBack')?.addEventListener('click', () => goTo('labs'));
 btn1Next.addEventListener('click', launchSimulation);
 
 document.addEventListener('input', saveState);
