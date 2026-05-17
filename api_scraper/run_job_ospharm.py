@@ -164,9 +164,37 @@ def _reauth_if_needed(page, creds, label=""):
 def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], str, str, str]:
     import tempfile, openpyxl
 
+    # ── Screenshots diagnostic ─────────────────────────────────────────────────
+    _screenshots: list[tuple[str, bytes]] = []  # [(label, png_bytes)]
+
+    def _snap(label: str):
+        """Capture un screenshot et le conserve pour upload en fin de run."""
+        try:
+            data = page.screenshot(full_page=False)
+            _screenshots.append((label, data))
+            print(f"  [snap] {label} ({len(data):,} bytes) url={page.url[:70]}")
+        except Exception as _se:
+            print(f"  [snap] {label} ERREUR: {_se}")
+
+    def _upload_screenshots():
+        if not user_id or not _screenshots:
+            return
+        try:
+            from supabase_client import upload_file_sync
+            import datetime
+            ts = datetime.datetime.now().strftime("%H%M%S")
+            for label, data in _screenshots:
+                safe = label.replace(" ", "_").replace("/", "-")
+                path = upload_file_sync(user_id, "ospharm_debug",
+                                        f"{ts}_{safe}.png", data, "image/png")
+                print(f"  [snap-upload] {path}")
+        except Exception as _ue:
+            print(f"  [snap-upload] ERREUR: {_ue}")
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(accept_downloads=True)
+        context = browser.new_context(accept_downloads=True,
+                                      viewport={"width": 1440, "height": 900})
         page    = context.new_page()
 
         # 1. Login
@@ -181,6 +209,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
 
         progress("Connecté — chargement…")
         _wait_webix(page)
+        _snap("1_apres_login")
 
         # ── helper : naviguer vers la section ventes ───────────────────────────
         # La condition d'arrivée : les tabs "Laboratoires/Familles/Produits/Marques"
@@ -309,8 +338,10 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             except Exception:
                 pass
             page.wait_for_timeout(5_000)  # 5s pour que Webix Jet enregistre les listeners
+            _snap("2_avant_nav")
 
             if not _goto_sellout():
+                _snap("2_nav_echec")
                 # Capture les textes visibles et l'URL dans le message d'erreur
                 _nav_visible = []
                 try:
@@ -328,11 +359,13 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                     }''')
                 except Exception as _e:
                     _nav_visible = [f"err:{_e}"]
+                _upload_screenshots()
                 raise RuntimeError(
                     f"Nav ventes échoué — url={page.url[:80]} — visible={_nav_visible}"
                 )
 
             print(f"  [nav] url après ventes: {page.url[:80]}")
+            _snap("2_apres_nav_ok")
 
         print(f"  [step3] url={page.url[:80]}")
         # 3. Sélection "Année lissée" — ouvrir le date picker puis cliquer l'option
@@ -408,6 +441,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             page.wait_for_timeout(3_000)
         except Exception as _e4:
             print(f"  [step4] err: {_e4}")
+        _snap("4_apres_produits")
         print(f"  [step4-done] url={page.url[:80]}")
 
         # 4b. Reauth check — la session peut expirer pendant les étapes précédentes
@@ -705,6 +739,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         with open(tmp, "wb") as f:
             f.write(_excel_bytes[0])
 
+        _upload_screenshots()
         browser.close()
 
     # Lecture Excel
