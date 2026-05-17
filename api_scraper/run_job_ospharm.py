@@ -431,13 +431,30 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             dbg = {}
             print(f"  [export-dbg] skipped ({_dbg_err})")
 
-        # ── Clic bouton export (M1→M5) ─────────────────────────────────────────
+        # ── Clic bouton export (M0→M5) ─────────────────────────────────────────
         kw_export = ["excel", "export", "exporter", "xls", "format", "fomat", "télécharger"]
         try:
             exported = page.evaluate('''(kw) => {
                 function vis(el) {
                     const r = el.getBoundingClientRect();
                     return r.width > 0 && r.height > 0;
+                }
+                function strTip(v) {
+                    // Certaines configs Webix ont tooltip/label en tant que fonction ou objet
+                    const raw = v.config?.tooltip || v.config?.label || "";
+                    return (typeof raw === "string" ? raw : "").toLowerCase();
+                }
+
+                // M0 : webix.toExcel direct sur datatable_sellout (confirmé par tests)
+                if (typeof webix !== "undefined" && typeof webix.toExcel === "function") {
+                    const direct = webix.$$("datatable_sellout");
+                    if (direct) { webix.toExcel(direct); return "M0:datatable_sellout"; }
+                    // Fallback: première datatable visible
+                    for (const el of document.querySelectorAll(".webix_dtable[view_id]")) {
+                        if (!vis(el)) continue;
+                        const grid = webix.$$(el.getAttribute("view_id"));
+                        if (grid) { webix.toExcel(grid); return "M0:dtable:" + el.getAttribute("view_id"); }
+                    }
                 }
 
                 // M1a : view_id avec tooltip/label contenant un mot-clé export
@@ -446,16 +463,8 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                         if (!vis(el)) continue;
                         const v = webix.$$(el.getAttribute("view_id"));
                         if (!v) continue;
-                        const tip = (v.config?.tooltip || v.config?.label || "").toLowerCase();
+                        const tip = strTip(v);
                         if (kw.some(k => tip.includes(k))) { el.click(); return "M1a:view_id:" + tip.slice(0,40); }
-                    }
-                    // M1b : webix.toExcel direct sur la première datatable visible
-                    if (typeof webix.toExcel === "function") {
-                        for (const el of document.querySelectorAll(".webix_dtable[view_id]")) {
-                            if (!vis(el)) continue;
-                            const grid = webix.$$(el.getAttribute("view_id"));
-                            if (grid) { webix.toExcel(grid); return "M1b:webix.toExcel"; }
-                        }
                     }
                 }
                 // M2 : boutons à droite de la bande d'onglets ventes
