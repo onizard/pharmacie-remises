@@ -27,7 +27,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet playwright
+          pip install --quiet playwright openpyxl
           playwright install chromium --with-deps
 
       - name: Run scraper OSPHARM
