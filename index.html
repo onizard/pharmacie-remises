@@ -3157,9 +3157,13 @@ async function launchSimulation() {
         [/\bZOPICL\b/gi,        'ZOPICLONE'],
         [/\bAMITRIPT\b/gi,      'AMITRIPTYLINE'],
         [/\bMYFENAX\b/gi,       'MYCOPHENOLATE'],
+        [/\bASPIRINE\b/gi,      'ACIDE ACETYL'],
+        [/\bACIDE FOLIQ\b/gi,   'ACIDE FOLIQUE'],
       ].forEach(([re, full]) => { lib = lib.replace(re, full); });
       // Strip forme galénique en fin de libellé (après quantité) — \s*$ tolère espace traîlant
       lib = lib.replace(/(\d+)\s*(SACHETS?|SACHS?|GELULES?|GELU|COMPRIMES?|COMP|CPR?|CAPSULES?|CAPS|CACHETS?|GELCAPS?)(\s+\S+)*\s*$/i, '$1');
+      // Normalise boîte 1 mois (28≡30) et boîte 3 mois (84≡90) en quantité finale
+      lib = lib.replace(/\b28$/, '30').replace(/\b84$/, '90');
       return lib.replace(/\s+/g, ' ').trim();
     }
     const formNormMap = new Map();
