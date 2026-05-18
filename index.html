@@ -3119,6 +3119,10 @@ async function launchSimulation() {
     // 3b. Form-agnostic libelle map : "AMLODIPINE 5MG 30CP" ≡ "AMLODIPINE 5MG 30GELULE"
     //     Sert à trouver les équivalents d'un autre labo quand seule la forme galénique diffère.
     function formNormKey(lib) {
+      // Normalise les dosages : 1G → 1000MG, 0,5G → 500MG (G seul, pas GELULE)
+      lib = lib.replace(/(\d+(?:[.,]\d+)?)G\b/gi, (_, n) =>
+        Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'MG'
+      );
       // Strip forme galénique + tout ce qui suit (DIS, EFF, PEL, FLACON, etc.)
       return lib.replace(/(\d+)(GELULES?|COMPRIMES?|CPR?|CAPSULES?|CACHETS?|GELCAPS?)(\s+\S+)*$/i, '$1').trim();
     }
