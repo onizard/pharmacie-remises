@@ -3752,61 +3752,20 @@ async function launchSimulation() {
       const assignment = new Map(naturalAssignment);
       const cipLocked  = new Set();
 
-      active.forEach((labName, idx) => {
-        const isLast = idx === active.length - 1;
-        const lp     = state.labPages.find(l => l.selectedLab === labName);
+      active.forEach((labName) => {
+        const lp = state.labPages.find(l => l.selectedLab === labName);
         if (!lp) return;
 
-        // Collecter toutes les refs équivalentes disponibles pour ce labo
-        const candidates = [];
-        let totalCA = 0;
+        // Affecter TOUTES les refs équivalentes disponibles à ce labo (par ordre de priorité)
         csvData.forEach(row => {
           if (cipLocked.has(row.cip13)) return;
           const ref = naturalRefMap.get(row.cip13);
           if (!ref) return;
           const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName);
           if (!labRef) return;
-          const ca = row.qty * (labRef.puht || 0);
-          candidates.push({ row, labRef, ca });
-          totalCA += ca;
+          assignment.set(row.cip13, labRef);
+          cipLocked.add(row.cip13);
         });
-        if (!candidates.length) return;
-
-        if (isLast) {
-          // Dernier labo sélectionné : tout ce qui reste lui est affecté
-          candidates.forEach(({ row, labRef }) => {
-            assignment.set(row.cip13, labRef);
-            cipLocked.add(row.cip13);
-          });
-        } else {
-          // Labos intermédiaires : affecter le minimum de refs pour atteindre leur palier cible,
-          // puis laisser le reste aux labos suivants
-          const bestCond = getBestCond(lp, totalCA, false);
-          const targetCA = bestCond ? (parseFloat(bestCond.caCondition) || 0) : 0;
-
-          if (targetCA > 0 && totalCA >= targetCA) {
-            // Trier par prix net croissant : les refs où ce labo est le plus rentable en premier
-            const fm = state.gers != null && parseFloat(bestCond?.caCondition) >= 0.9 * state.gers;
-            candidates.sort((a, b) => {
-              const netA = (a.labRef.puht || 0) * (1 - getRemise(a.labRef, bestCond, fm) / 100);
-              const netB = (b.labRef.puht || 0) * (1 - getRemise(b.labRef, bestCond, fm) / 100);
-              return netA - netB;
-            });
-            let accCA = 0;
-            for (const { row, labRef, ca } of candidates) {
-              assignment.set(row.cip13, labRef);
-              cipLocked.add(row.cip13);
-              accCA += ca;
-              if (accCA >= targetCA) break;
-            }
-          } else {
-            // Pas de palier atteignable ou palier sans seuil → tout affecter
-            candidates.forEach(({ row, labRef }) => {
-              assignment.set(row.cip13, labRef);
-              cipLocked.add(row.cip13);
-            });
-          }
-        }
       });
 
       // Refs non couvertes → meilleur prix net
