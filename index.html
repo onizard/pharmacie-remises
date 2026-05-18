@@ -3115,6 +3115,20 @@ async function launchSimulation() {
       }
     }
 
+    // 3b. Form-agnostic libelle map : "AMLODIPINE 5MG 30CP" ≡ "AMLODIPINE 5MG 30GELULE"
+    //     Sert à trouver les équivalents d'un autre labo quand seule la forme galénique diffère.
+    function formNormKey(lib) {
+      return lib.replace(/(\d+)(GELULES?|COMPRIMES?|CPR?|CAPSULES?|CACHETS?|GELCAPS?)$/i, '$1').trim();
+    }
+    const formNormMap = new Map();
+    libelleMap.forEach((refs, lib) => {
+      const key = formNormKey(lib);
+      if (!formNormMap.has(key)) formNormMap.set(key, []);
+      for (const r of refs) {
+        if (!formNormMap.get(key).some(x => x.cip13 === r.cip13)) formNormMap.get(key).push(r);
+      }
+    });
+
     // 3. Natural ref map (no lab preference) + current lab CA breakdown
     const naturalRefMap = new Map();
     refRows.forEach(r => { if (!naturalRefMap.has(r.cip13)) naturalRefMap.set(r.cip13, r); });
@@ -3761,7 +3775,8 @@ async function launchSimulation() {
           if (cipLocked.has(row.cip13)) return;
           const ref = naturalRefMap.get(row.cip13);
           if (!ref) return;
-          const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName);
+          const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName)
+                      || (formNormMap.get(formNormKey(ref.libelle)) || []).find(a => a.labo === labName);
           if (!labRef) return;
           assignment.set(row.cip13, labRef);
           cipLocked.add(row.cip13);
