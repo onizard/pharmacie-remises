@@ -3119,16 +3119,31 @@ async function launchSimulation() {
     // 3b. Form-agnostic libelle map : "AMLODIPINE 5MG 30CP" ≡ "AMLODIPINE 5MG 30GELULE"
     //     Sert à trouver les équivalents d'un autre labo quand seule la forme galénique diffère.
     function formNormKey(lib) {
-      // Strip qualificatifs de formulation inter-labos (PDR, SOL BUV…)
-      lib = lib.replace(/\bPDR\b/gi, '').replace(/\bSOL\s+BUV\b/gi, '');
-      // MACROGOL : strip poids moléculaire (3350, 4000…) qui n'apparaît que chez certains labos
+      // Strip qualificatifs de distribution/formulation inter-labos (PDR, PDA, SOL BUV…)
+      lib = lib.replace(/\bP(?:DR|DA)\b/gi, '').replace(/\bSOL\s+BUV\b/gi, '');
+      // MACROGOL : strip poids moléculaire (3350, 4000…)
       lib = lib.replace(/\bMACROGOL\s+(?:3350|4000|6000)\b/gi, 'MACROGOL');
-      // Normalise les dosages : 1G → 1000MG, 0,5G → 500MG (G seul, pas GELULE) — avec ou sans espace avant G
+      // Normalise dosages : 1G → 1000MG (G seul, pas GELULE) — avec ou sans espace avant G
       lib = lib.replace(/(\d+(?:[.,]\d+)?)\s*G\b/gi, (_, n) =>
         Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'MG'
       );
-      // Strip forme galénique (incl. SACH/SACHET) + tout ce qui suit (DIS, EFF, PEL, FLACON, etc.)
-      lib = lib.replace(/(\d+)\s*(SACHETS?|SACHS?|GELULES?|COMPRIMES?|CPR?|CAPSULES?|CACHETS?|GELCAPS?)(\s+\S+)*$/i, '$1');
+      // Noms de molécules tronqués → forme complète
+      [
+        [/\bATORVASTAT\b/gi,    'ATORVASTATINE'],
+        [/\bLEVETIRAC\b/gi,     'LEVETIRACETAM'],
+        [/\bMETHYLPHEN\b/gi,    'METHYLPHENIDATE'],
+        [/\bVENLAFAX\b/gi,      'VENLAFAXINE'],
+        [/\bTAMSULOS\b/gi,      'TAMSULOSINE'],
+        [/\bESCITALOP\b/gi,     'ESCITALOPRAM'],
+        [/\bDESLORATADIN\b/gi,  'DESLORATADINE'],
+        [/\bPANTOPRAZ\b/gi,     'PANTOPRAZOLE'],
+        [/\bLANSOPRAZOL\b/gi,   'LANSOPRAZOLE'],
+        [/\bSPIRONOLACT\b/gi,   'SPIRONOLACTONE'],
+        [/\bPARACET\b/gi,       'PARACETAMOL'],
+        [/\bCELIPR\b/gi,        'CELIPROLOL'],
+      ].forEach(([re, full]) => { lib = lib.replace(re, full); });
+      // Strip forme galénique (incl. SACH/SACHET) + tout ce qui suit — \s*$ pour tolérer espace traîlant
+      lib = lib.replace(/(\d+)\s*(SACHETS?|SACHS?|GELULES?|COMPRIMES?|CPR?|CAPSULES?|CACHETS?|GELCAPS?)(\s+\S+)*\s*$/i, '$1');
       return lib.replace(/\s+/g, ' ').trim();
     }
     const formNormMap = new Map();
