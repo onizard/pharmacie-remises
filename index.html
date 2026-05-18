@@ -3817,11 +3817,46 @@ async function launchSimulation() {
       const key  = 'custom';
       scenarioStore.set(key, { assignment, labResults: scenario.labResults });
       const dlInline = `<button class="sim-dl-inline" data-key="${key}" style="font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;padding:6px 14px;cursor:pointer;background:transparent;border:1px solid var(--green);color:var(--green);transition:all .2s">⬇ CSV</button>`;
+
+      // Calcul couverture : CA potentiel par labo sélectionné + CA sans équivalent
+      const active = priorities.filter(Boolean);
+      const labCovCA = {};
+      active.forEach(l => { labCovCA[l] = 0; });
+      let uncoveredCA = 0;
+      csvData.forEach(row => {
+        const ref = naturalRefMap.get(row.cip13);
+        if (!ref) return;
+        let found = false;
+        for (const labName of active) {
+          const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName)
+                      || (formNormMap.get(formNormKey(ref.libelle)) || []).find(a => a.labo === labName);
+          if (labRef) {
+            labCovCA[labName] = (labCovCA[labName] || 0) + row.qty * (labRef.puht || 0);
+            found = true;
+            break;
+          }
+        }
+        if (!found) uncoveredCA += row.qty * (ref.puht || 0);
+      });
+      const totalCovCA = Object.values(labCovCA).reduce((s, v) => s + v, 0) + uncoveredCA;
+      const coverageLines = active.map(l => {
+        const pct = totalCovCA > 0 ? (labCovCA[l] / totalCovCA * 100).toFixed(1) : '0.0';
+        return `<span style="color:var(--green)">▸ ${l} : <b>${fmtE(labCovCA[l])}</b> de CA potentiel (${pct}% de vos achats)</span>`;
+      }).join('<br>');
+      const uncovPct = totalCovCA > 0 ? (uncoveredCA / totalCovCA * 100).toFixed(1) : '0.0';
+      const coverageHtml = `
+        <div style="font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.8;margin-bottom:14px;padding:10px 14px;border:1px solid var(--border);background:rgba(0,229,255,.04)">
+          <div style="font-family:'Orbitron',monospace;font-size:10px;color:var(--amber);letter-spacing:2px;margin-bottom:6px">COUVERTURE</div>
+          ${coverageLines}<br>
+          <span style="color:var(--red)">▸ Sans équivalent dans les labos sélectionnés : <b>${fmtE(uncoveredCA)}</b> (${uncovPct}%)</span>
+        </div>`;
+
       resDiv.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <span style="font-family:'Orbitron',monospace;font-size:12px;color:var(--amber);letter-spacing:2px">RÉSULTAT — PA NET : ${fmtE(scenario.totalPaNet)} &nbsp;·&nbsp; GAIN vs N-1 : <span style="color:${gain>=0?'var(--green)':'var(--red)'}">${gain>=0?'+':''}${fmtE(gain)}</span></span>
           ${dlInline}
         </div>
+        ${coverageHtml}
         ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}`;
       resDiv.style.display = '';
       resDiv.querySelectorAll('.sim-dl-inline').forEach(btn => {
