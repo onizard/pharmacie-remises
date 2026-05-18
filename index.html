@@ -2358,8 +2358,24 @@ async function fetchRSF(lab) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   const paliers = [...new Set(data.map(r => r.rsf_pct))].sort((a, b) => a - b);
+  // Build firstMap: for each standard palier, use the most frequent (mode) rsf_first_pct
+  // that is at least as good as the standard (more negative = better discount).
+  // Guards against: (a) First worse than standard due to stale data, (b) non-deterministic
+  // "last wins" when a palier has heterogeneous First values.
+  const firstCounts = new Map();
+  data.forEach(r => {
+    if (r.rsf_first_pct != null && r.rsf_first_pct <= r.rsf_pct) {
+      if (!firstCounts.has(r.rsf_pct)) firstCounts.set(r.rsf_pct, new Map());
+      const c = firstCounts.get(r.rsf_pct);
+      c.set(r.rsf_first_pct, (c.get(r.rsf_first_pct) || 0) + 1);
+    }
+  });
   const firstMap = new Map();
-  data.forEach(r => { if (r.rsf_first_pct != null) firstMap.set(r.rsf_pct, r.rsf_first_pct); });
+  firstCounts.forEach((counts, rsf_pct) => {
+    let best = null, bestN = 0;
+    counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
+    if (best !== null) firstMap.set(rsf_pct, best);
+  });
   return { paliers, firstMap };
 }
 
