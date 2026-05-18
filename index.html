@@ -3130,6 +3130,16 @@ async function launchSimulation() {
       }
     });
 
+    // Helper : fusionne libelleMap (exact) + formNormMap (form-agnostic) pour un libellé donné
+    function mergedAlts(libelle) {
+      const exact = libelleMap.get(libelle) || [];
+      const fuzzy = formNormMap.get(formNormKey(libelle)) || [];
+      if (!fuzzy.length) return exact;
+      const seen = new Set(exact.map(r => r.cip13 + '|' + r.labo));
+      const extra = fuzzy.filter(r => !seen.has(r.cip13 + '|' + r.labo));
+      return extra.length ? [...exact, ...extra] : exact;
+    }
+
     // 3. Natural ref map (no lab preference) + current lab CA breakdown
     const naturalRefMap = new Map();
     refRows.forEach(r => { if (!naturalRefMap.has(r.cip13)) naturalRefMap.set(r.cip13, r); });
@@ -3328,7 +3338,7 @@ async function launchSimulation() {
       csvData.forEach(row => {
         const ref = naturalRefMap.get(row.cip13);
         if (!ref) return;
-        const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === lp.selectedLab);
+        const labRef = mergedAlts(ref.libelle).find(a => a.labo === lp.selectedLab);
         if (labRef) potentialCA += row.qty * (labRef.puht || 0);
       });
       // Meilleur palier atteignable (seuil le plus élevé que le CA potentiel couvre)
@@ -3351,7 +3361,7 @@ async function launchSimulation() {
           if (labCA >= threshold || cipLocked.has(row.cip13)) return;
           const ref = naturalRefMap.get(row.cip13);
           if (!ref) return;
-          const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName);
+          const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
           if (!labRef) return;
           toCommit.push({ row, labRef });
           labCA += row.qty * (labRef.puht || 0);
@@ -3366,7 +3376,7 @@ async function launchSimulation() {
       if (cipLocked.has(row.cip13)) return;
       const ref = naturalRefMap.get(row.cip13);
       if (!ref) return;
-      const alts = (libelleMap.get(ref.libelle) || []).filter(r => ourLabs.has(r.labo));
+      const alts = mergedAlts(ref.libelle).filter(r => ourLabs.has(r.labo));
       if (!alts.length) { opt2Assignment.set(row.cip13, ref); return; }
       let bestRef = null, bestNet = Infinity;
       alts.forEach(altRef => {
@@ -3392,7 +3402,7 @@ async function launchSimulation() {
       csvData.forEach(row => {
         const ref = naturalRefMap.get(row.cip13);
         if (!ref) return;
-        const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName);
+        const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
         if (labRef) labAssignment.set(row.cip13, labRef);
       });
 
@@ -3400,7 +3410,7 @@ async function launchSimulation() {
       csvData.forEach(row => {
         const ref = naturalRefMap.get(row.cip13);
         if (!ref) return;
-        const alts = libelleMap.get(ref.libelle) || [];
+        const alts = mergedAlts(ref.libelle);
         if (alts.some(a => a.labo === labName)) return;
         const otherAlts = alts.filter(r => ourLabs.has(r.labo));
         if (!otherAlts.length) return;
@@ -3421,13 +3431,13 @@ async function launchSimulation() {
       csvData.forEach(row => {
         const ref = naturalRefMap.get(row.cip13);
         if (!ref) return;
-        const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === primaryLab);
+        const labRef = mergedAlts(ref.libelle).find(a => a.labo === primaryLab);
         if (labRef) asgn.set(row.cip13, labRef);
       });
       csvData.forEach(row => {
         const ref = naturalRefMap.get(row.cip13);
         if (!ref) return;
-        const alts = libelleMap.get(ref.libelle) || [];
+        const alts = mergedAlts(ref.libelle);
         if (alts.some(a => a.labo === primaryLab)) return;
         const others = alts.filter(r => ourLabs.has(r.labo));
         if (!others.length) return;
@@ -3484,7 +3494,7 @@ async function launchSimulation() {
           csvData.forEach(row => {
             const ref = naturalRefMap.get(row.cip13);
             if (!ref) return;
-            const alts = (libelleMap.get(ref.libelle) || []).filter(r => groupSet.has(r.labo));
+            const alts = mergedAlts(ref.libelle).filter(r => groupSet.has(r.labo));
             if (!alts.length) return;
             let bestRef = null, bestNet = Infinity;
             alts.forEach(altRef => {
@@ -3539,7 +3549,7 @@ async function launchSimulation() {
         csvData.forEach(row => {
           const ref = naturalRefMap.get(row.cip13);
           if (!ref) return;
-          const alts = (libelleMap.get(ref.libelle) || []).filter(r => groupSet.has(r.labo));
+          const alts = mergedAlts(ref.libelle).filter(r => groupSet.has(r.labo));
           if (!alts.length) return;
           let bestRef = null, bestNet = Infinity;
           alts.forEach(altRef => {
@@ -3778,8 +3788,7 @@ async function launchSimulation() {
           if (cipLocked.has(row.cip13)) return;
           const ref = naturalRefMap.get(row.cip13);
           if (!ref) return;
-          const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName)
-                      || (formNormMap.get(formNormKey(ref.libelle)) || []).find(a => a.labo === labName);
+          const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
           if (!labRef) return;
           assignment.set(row.cip13, labRef);
           cipLocked.add(row.cip13);
@@ -3791,7 +3800,7 @@ async function launchSimulation() {
         if (cipLocked.has(row.cip13)) return;
         const ref = naturalRefMap.get(row.cip13);
         if (!ref) return;
-        const alts = (libelleMap.get(ref.libelle) || []).filter(r => ourLabs.has(r.labo));
+        const alts = mergedAlts(ref.libelle).filter(r => ourLabs.has(r.labo));
         if (!alts.length) { if (!assignment.has(row.cip13)) assignment.set(row.cip13, ref); return; }
         let bestRef = null, bestNet = Infinity;
         alts.forEach(altRef => {
@@ -3828,8 +3837,7 @@ async function launchSimulation() {
         if (!ref) return;
         let found = false;
         for (const labName of active) {
-          const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName)
-                      || (formNormMap.get(formNormKey(ref.libelle)) || []).find(a => a.labo === labName);
+          const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
           if (labRef) {
             labCovCA[labName] = (labCovCA[labName] || 0) + row.qty * (labRef.puht || 0);
             found = true;
