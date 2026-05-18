@@ -3132,6 +3132,8 @@ async function launchSimulation() {
       lib = lib.replace(/(\d+(?:[.,]\d+)?)\s*G\b/gi, (_, n) =>
         Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'MG'
       );
+      // Normalise slash entre mots (AMOX/CLAV → AMOX CLAV) sans toucher les ratios numériques (500/62.5MG)
+      lib = lib.replace(/([A-Za-z])\/([A-Za-z])/g, '$1 $2');
       // Strip forme galénique placée AVANT le dosage (ex: DOXYLIS CPR 100MG → DOXYLIS 100MG)
       lib = lib.replace(/\b(?:GELULES?|COMPRIMES?|CPR?|CAPSULES?|CACHETS?|GELCAPS?|GELU|CAPS|COMP)\b(?=\s*\d)/gi, '');
       // Marques → DCI + noms tronqués → forme complète
@@ -3141,7 +3143,8 @@ async function launchSimulation() {
         [/\bATORVASTAT\b/gi,    'ATORVASTATINE'],
         [/\bLEVETIRAC\b/gi,     'LEVETIRACETAM'],
         [/\bMETHYLPHEN\b/gi,    'METHYLPHENIDATE'],
-        [/\bVENLAFAXIN?\b/gi,    'VENLAFAXINE'],
+        [/\bVENLAFAX(?:IN?)?\b/gi, 'VENLAFAXINE'],
+        [/\bVENLASOV\b/gi,       'VENLAFAXINE'],
         [/\bTAMSULOS\b/gi,      'TAMSULOSINE'],
         [/\bESCITALOP\b/gi,     'ESCITALOPRAM'],
         [/\bDESLORATADIN\b/gi,  'DESLORATADINE'],
@@ -3150,6 +3153,10 @@ async function launchSimulation() {
         [/\bSPIRONOLACT\b/gi,   'SPIRONOLACTONE'],
         [/\bPARACET\b/gi,       'PARACETAMOL'],
         [/\bCELIPR\b/gi,        'CELIPROLOL'],
+        [/\bROSUVASTAT\b/gi,    'ROSUVASTATINE'],
+        [/\bZOPICL\b/gi,        'ZOPICLONE'],
+        [/\bAMITRIPT\b/gi,      'AMITRIPTYLINE'],
+        [/\bMYFENAX\b/gi,       'MYCOPHENOLATE'],
       ].forEach(([re, full]) => { lib = lib.replace(re, full); });
       // Strip forme galénique en fin de libellé (après quantité) — \s*$ tolère espace traîlant
       lib = lib.replace(/(\d+)\s*(SACHETS?|SACHS?|GELULES?|GELU|COMPRIMES?|COMP|CPR?|CAPSULES?|CAPS|CACHETS?|GELCAPS?)(\s+\S+)*\s*$/i, '$1');
