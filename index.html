@@ -3125,6 +3125,9 @@ async function launchSimulation() {
       lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE)\b/gi, '');
       // MACROGOL : strip poids moléculaire (3350, 4000…)
       lib = lib.replace(/\bMACROGOL\s+(?:3350|4000|6000)\b/gi, 'MACROGOL');
+      // Normalise séparateur décimal (virgule → point) et espace entre chiffre et unité (4 MG → 4MG)
+      lib = lib.replace(/(\d),(\d)/g, '$1.$2');
+      lib = lib.replace(/(\d)\s+(MG|MCG|ML|G|UI|PC|%)\b/gi, '$1$2');
       // Normalise dosages : 1G → 1000MG (G seul, pas GELULE) — avec ou sans espace avant G
       lib = lib.replace(/(\d+(?:[.,]\d+)?)\s*G\b/gi, (_, n) =>
         Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'MG'
@@ -3138,7 +3141,7 @@ async function launchSimulation() {
         [/\bATORVASTAT\b/gi,    'ATORVASTATINE'],
         [/\bLEVETIRAC\b/gi,     'LEVETIRACETAM'],
         [/\bMETHYLPHEN\b/gi,    'METHYLPHENIDATE'],
-        [/\bVENLAFAX\b/gi,      'VENLAFAXINE'],
+        [/\bVENLAFAXIN?\b/gi,    'VENLAFAXINE'],
         [/\bTAMSULOS\b/gi,      'TAMSULOSINE'],
         [/\bESCITALOP\b/gi,     'ESCITALOPRAM'],
         [/\bDESLORATADIN\b/gi,  'DESLORATADINE'],
