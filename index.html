@@ -3763,31 +3763,22 @@ async function launchSimulation() {
     function calcCustomScenario(priorities) {
       const assignment = new Map(naturalAssignment);
       const cipLocked  = new Set();
+      // Affecter toutes les refs équivalentes à chaque labo prioritaire dans l'ordre
+      // (sans condition de palier — l'objectif est de maximiser leur CA pour atteindre le meilleur palier possible)
       for (const labName of priorities) {
         if (!labName) continue;
-        const lp = state.labPages.find(l => l.selectedLab === labName);
-        if (!lp) continue;
-        const candidates = [];
-        let labCA = 0;
+        if (!state.labPages.find(l => l.selectedLab === labName)) continue;
         csvData.forEach(row => {
           if (cipLocked.has(row.cip13)) return;
           const ref = naturalRefMap.get(row.cip13);
           if (!ref) return;
           const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName);
           if (!labRef) return;
-          candidates.push({ row, labRef });
-          labCA += row.qty * (labRef.puht || 0);
+          assignment.set(row.cip13, labRef);
+          cipLocked.add(row.cip13);
         });
-        if (!candidates.length) continue;
-        const bestCond = getBestCond(lp, labCA, false);
-        if (bestCond) {
-          candidates.forEach(({ row, labRef }) => {
-            assignment.set(row.cip13, labRef);
-            cipLocked.add(row.cip13);
-          });
-        }
       }
-      // Refs non verrouillées → meilleur prix net
+      // Refs non couvertes par les labos prioritaires → meilleur prix net
       csvData.forEach(row => {
         if (cipLocked.has(row.cip13)) return;
         const ref = naturalRefMap.get(row.cip13);
