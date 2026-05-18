@@ -3761,24 +3761,63 @@ async function launchSimulation() {
 
     // ── Simulateur personnalisé ─────────────────────────────────────────────────
     function calcCustomScenario(priorities) {
+      const active    = priorities.filter(Boolean);
       const assignment = new Map(naturalAssignment);
       const cipLocked  = new Set();
-      // Affecter toutes les refs équivalentes à chaque labo prioritaire dans l'ordre
-      // (sans condition de palier — l'objectif est de maximiser leur CA pour atteindre le meilleur palier possible)
-      for (const labName of priorities) {
-        if (!labName) continue;
-        if (!state.labPages.find(l => l.selectedLab === labName)) continue;
+
+      active.forEach((labName, idx) => {
+        const isLast = idx === active.length - 1;
+        const lp     = state.labPages.find(l => l.selectedLab === labName);
+        if (!lp) return;
+
+        // Collecter toutes les refs équivalentes disponibles pour ce labo
+        const candidates = [];
+        let totalCA = 0;
         csvData.forEach(row => {
           if (cipLocked.has(row.cip13)) return;
           const ref = naturalRefMap.get(row.cip13);
           if (!ref) return;
           const labRef = (libelleMap.get(ref.libelle) || []).find(a => a.labo === labName);
           if (!labRef) return;
-          assignment.set(row.cip13, labRef);
-          cipLocked.add(row.cip13);
+          const ca = row.qty * (labRef.puht || 0);
+          candidates.push({ row, labRef, ca });
+          totalCA += ca;
         });
-      }
-      // Refs non couvertes par les labos prioritaires → meilleur prix net
+        if (!candidates.length) return;
+
+        if (isLast) {
+          // Dernier labo sélectionné : tout ce qui reste lui est affecté
+          candidates.forEach(({ row, labRef }) => {
+            assignment.set(row.cip13, labRef);
+            cipLocked.add(row.cip13);
+          });
+        } else {
+          // Labos intermédiaires : affecter le minimum de refs pour atteindre leur palier cible,
+          // puis laisser le reste aux labos suivants
+          const bestCond = getBestCond(lp, totalCA, false);
+          const targetCA = bestCond ? (parseFloat(bestCond.caCondition) || 0) : 0;
+
+          if (targetCA > 0 && totalCA >= targetCA) {
+            // Trier par CA décroissant : atteindre le seuil avec le moins de refs possible
+            candidates.sort((a, b) => b.ca - a.ca);
+            let accCA = 0;
+            for (const { row, labRef, ca } of candidates) {
+              assignment.set(row.cip13, labRef);
+              cipLocked.add(row.cip13);
+              accCA += ca;
+              if (accCA >= targetCA) break;
+            }
+          } else {
+            // Pas de palier atteignable ou palier sans seuil → tout affecter
+            candidates.forEach(({ row, labRef }) => {
+              assignment.set(row.cip13, labRef);
+              cipLocked.add(row.cip13);
+            });
+          }
+        }
+      });
+
+      // Refs non couvertes → meilleur prix net
       csvData.forEach(row => {
         if (cipLocked.has(row.cip13)) return;
         const ref = naturalRefMap.get(row.cip13);
@@ -3796,6 +3835,7 @@ async function launchSimulation() {
         });
         assignment.set(row.cip13, bestRef || ref);
       });
+
       return { scenario: calcScenario(assignment), assignment };
     }
 
