@@ -3826,7 +3826,6 @@ async function launchSimulation() {
         ${[1,2,3,4].map(n => `<div class="sim-custom-row">
           <span class="sim-custom-label">GÉNÉRIQUEUR N°${n}</span>
           <select class="sim-custom-select" id="customLabSel${n}">${_labOpts}</select>
-          <button class="sim-dl-inline" id="customLabDl${n}" style="display:none;font-size:10px;padding:4px 8px;letter-spacing:1px">⬇ CATALOGUE CSV</button>
         </div>`).join('')}
       </div>
       <button id="customSimBtn" class="btn btn-launch" style="margin-top:4px">▶ SIMULER</button>
@@ -3839,55 +3838,17 @@ async function launchSimulation() {
     function syncLabSelects() {
       const vals = [1,2,3,4].map(n => (document.getElementById(`customLabSel${n}`) || {}).value || '');
       [1,2,3,4].forEach((n, i) => {
-        const sel   = document.getElementById(`customLabSel${n}`);
-        const dlBtn = document.getElementById(`customLabDl${n}`);
+        const sel = document.getElementById(`customLabSel${n}`);
         if (!sel) return;
         const others = vals.filter((v, j) => j !== i && v);
         Array.from(sel.options).forEach(opt => {
           if (!opt.value) return;
           opt.disabled = opt.hidden = others.includes(opt.value);
         });
-        if (dlBtn) dlBtn.style.display = vals[i] ? '' : 'none';
       });
     }
     [1,2,3,4].forEach(n => {
       document.getElementById(`customLabSel${n}`)?.addEventListener('change', syncLabSelects);
-    });
-
-    async function downloadLabCatalogue(labName, btn) {
-      const orig = btn.textContent;
-      btn.textContent = '…'; btn.disabled = true;
-      try {
-        const refs = [];
-        let offset = 0;
-        while (true) {
-          const url = `${SUPA_URL}/rest/v1/references_pharmacie`
-            + `?labo=eq.${encodeURIComponent(labName)}&select=cip13,libelle,puht,rsf_pct,rsf_first_pct,punet`
-            + `&order=libelle.asc&limit=1000&offset=${offset}`;
-          const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
-          if (!res.ok) break;
-          const page = await res.json();
-          refs.push(...page);
-          if (page.length < 1000) break;
-          offset += 1000;
-        }
-        const fn = (v, d = 4) => v != null ? v.toFixed(d).replace('.', ',') : '';
-        const lines = [
-          'CIP13;Libellé;PU HT;RSF %;RSF First %;PU NET',
-          ...refs.map(r => [
-            r.cip13, r.libelle,
-            fn(r.puht), fn(r.rsf_pct != null ? Math.abs(r.rsf_pct) : null, 2),
-            fn(r.rsf_first_pct != null ? Math.abs(r.rsf_first_pct) : null, 2), fn(r.punet),
-          ].join(';')),
-        ].join('\n');
-        downloadCSV(lines, `catalogue_${labName.replace(/\s+/g, '_')}.csv`);
-      } finally { btn.textContent = orig; btn.disabled = false; }
-    }
-    [1,2,3,4].forEach(n => {
-      document.getElementById(`customLabDl${n}`)?.addEventListener('click', function() {
-        const lab = (document.getElementById(`customLabSel${n}`) || {}).value;
-        if (lab) downloadLabCatalogue(lab, this);
-      });
     });
 
     function calcCustomScenario(priorities) {
@@ -3941,7 +3902,7 @@ async function launchSimulation() {
       const gain = actuel.totalPaNet - scenario.totalPaNet;
       const key  = 'custom';
       scenarioStore.set(key, { assignment, labResults: scenario.labResults });
-      const dlInline = `<button class="sim-dl-inline" data-key="${key}" style="font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;padding:6px 14px;cursor:pointer;background:transparent;border:1px solid var(--green);color:var(--green);transition:all .2s">⬇ CSV</button>`;
+      const dlInline = mkScenarioDlBtns(key, scenario, assignment);
 
       // Calcul couverture : CA potentiel par labo sélectionné + CA sans équivalent
       const active = priorities.filter(Boolean);
@@ -3978,7 +3939,7 @@ async function launchSimulation() {
       resDiv.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <span style="font-family:'Orbitron',monospace;font-size:12px;color:var(--amber);letter-spacing:2px">RÉSULTAT — PA NET : ${fmtE(scenario.totalPaNet)} &nbsp;·&nbsp; GAIN vs N-1 : <span style="color:${gain>=0?'var(--green)':'var(--red)'}">${gain>=0?'+':''}${fmtE(gain)}</span></span>
-          ${dlInline}
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${dlInline}</div>
         </div>
         ${coverageHtml}
         ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}`;
@@ -3987,7 +3948,9 @@ async function launchSimulation() {
         btn.addEventListener('click', () => {
           const s = scenarioStore.get(btn.dataset.key);
           if (!s) return;
-          downloadCSV(buildScenarioCSV(s.assignment, s.labResults, null, null), 'scenario_personnalise.csv');
+          const lab = s.filterLab || null;
+          const fname = lab ? `scenario_perso_${lab.replace(/\s+/g,'_')}.csv` : 'scenario_personnalise.csv';
+          downloadCSV(buildScenarioCSV(s.assignment, s.labResults, lab, null), fname);
         });
       });
     });
