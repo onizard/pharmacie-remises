@@ -3716,19 +3716,6 @@ async function launchSimulation() {
       ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
     </div>`;
 
-    // ── Autres scénarios triés par PA NET croissant (top 2 visibles, reste masqué) ──
-    // ── Top 2 autres (top 3 en comptant le winner) ────────────────────────────
-    otherScenarios.slice(0, 2).forEach(({ key, label, scenario }) => {
-      const perte = scenario.totalPaNet - winnerEntry.scenario.totalPaNet;
-      html += `<div class="sim-section">
-        <div class="sim-scenario-header">
-          <span>▸ ${label}</span>
-          ${dlBtn(key)}
-        </div>
-        ${mkScenarioTable(scenario.labResults, true, perte)}
-      </div>`;
-    });
-
     // ── Scénario N-1 ───────────────────────────────────────────────────────────
     html += `<div class="sim-section">
       <div class="sim-scenario-header">
