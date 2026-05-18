@@ -3121,6 +3121,8 @@ async function launchSimulation() {
     function formNormKey(lib) {
       // Strip qualificatifs de formulation inter-labos (PDR, SOL BUV…)
       lib = lib.replace(/\bPDR\b/gi, '').replace(/\bSOL\s+BUV\b/gi, '');
+      // MACROGOL : strip poids moléculaire (3350, 4000…) qui n'apparaît que chez certains labos
+      lib = lib.replace(/\bMACROGOL\s+(?:3350|4000|6000)\b/gi, 'MACROGOL');
       // Normalise les dosages : 1G → 1000MG, 0,5G → 500MG (G seul, pas GELULE) — avec ou sans espace avant G
       lib = lib.replace(/(\d+(?:[.,]\d+)?)\s*G\b/gi, (_, n) =>
         Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'MG'
