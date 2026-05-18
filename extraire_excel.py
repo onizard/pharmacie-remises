@@ -415,9 +415,10 @@ def parser_libelle(libelle: str) -> dict:
     """
     lib = libelle.strip().upper()
 
-    # 1. Détection PDA
+    # 1. Détection PDA + suppression termes contenants (FLACON = mot parasite dans certains PDFs)
     pda = bool(re.search(r'\bPDA\b', lib))
     lib = re.sub(r'\bPDA\b', '', lib).strip()
+    lib = re.sub(r'\bFLACON\b', '', lib).strip()
 
     # 2. Suppression abréviations labo
     lib = supprimer_abrev(lib)

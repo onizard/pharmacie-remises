@@ -3135,8 +3135,8 @@ async function launchSimulation() {
     // 3b. Form-agnostic libelle map : "AMLODIPINE 5MG 30CP" ≡ "AMLODIPINE 5MG 30GELULE"
     //     Sert à trouver les équivalents d'un autre labo quand seule la forme galénique diffère.
     function formNormKey(lib) {
-      // Strip qualificatifs de distribution/formulation (PDR=poudre, PDA=distribution, SOL BUV)
-      lib = lib.replace(/\bP(?:DR|DA)\b/gi, '').replace(/\bSOL\s+BUV\b/gi, '');
+      // Strip qualificatifs de distribution/formulation (PDR=poudre, PDA=distribution, SOL BUV, FLACON)
+      lib = lib.replace(/\bP(?:DR|DA)\b/gi, '').replace(/\bSOL\s+BUV\b/gi, '').replace(/\bFLACON\b/gi, '');
       // Strip codes labo résiduels (Actavis, Ratiopharm, Sandoz MCV, Zentiva ZTK/ZTV/GLE, Winthrop WIN, Sun SUN)
       lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE)\b/gi, '');
       // MACROGOL : strip poids moléculaire (3350, 4000…)
