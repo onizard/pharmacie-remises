@@ -207,6 +207,29 @@ DCI_CORRECTIONS = {
     r'\bCLARITHROMYCYNE\b': 'CLARITHROMYCINE',
 }
 
+# ── Corrections de libellés par CIP13 ────────────────────────────────────────
+# Dosages tronqués dans les PDFs source (ex : 0,4MG → 0MG quand le PDF
+# ne contient pas la virgule). Vérifiés via la BDPM (base-donnees-publique.medicaments.gouv.fr).
+LIBELLES_CORRIGES_CIP13 = {
+    # TAMSULOSINE LP 0,4MG — seul dosage commercialisé en France
+    '3400930173534': 'TAMSULOSINE LP 0,4MG 30GELU',   # Arrow
+    '3400937056984': 'TAMSULOSINE LP 0,4MG 30GELU',   # Biogaran
+    '3400938841817': 'TAMSULOSINE LP 0,4MG 30GELU',   # Cristers
+    '3400941771033': 'TAMSULOSINE LP 0,4MG 30CPR',    # EG (comprimé)
+    '3400937119832': 'TAMSULOSINE LP 0,4MG 30GELU',   # EG (gélule)
+    '3400937186438': 'TAMSULOSINE LP 0,4MG 30GELU',   # Sandoz
+    '3400937185608': 'TAMSULOSINE LP 0,4MG 30GELU',   # Teva
+    '3400937076807': 'TAMSULOSINE LP 0,4MG 30GELU',   # Viatris
+    '3400930111963': 'TAMSULOSINE LP 0,4MG 30GELU',   # Zentiva
+    # PRAMIPEXOLE LP Sandoz 0,52MG (CIS 60949122 — BDPM)
+    '3400930012314': 'PRAMIPEXOLE LP 0,52MG 30CPR',
+    # ALPRAZOLAM Viatris PDA — deux dosages distincts
+    '3400934832468': 'ALPRAZOLAM PDA 0,5MG 30CPR',
+    '3400934837432': 'ALPRAZOLAM PDA 0,25MG 30CPR',
+    # REPAGLINIDE Viatris PDA 0,5MG (CIS confirmé BDPM)
+    '3400930208977': 'REPAGLINIDE PDA 0,5MG 90CPR',
+}
+
 def supprimer_abrev(libelle: str) -> str:
     """Supprime les abréviations de labos, collées ou non au dosage."""
     for abrev in ABREV_LABOS:
@@ -732,6 +755,15 @@ def main():
         print(f"\n  📌  {len(rsf_first_map)} CIP(s) Viatris First → colonne RSF First %")
     for row in all_rows:
         row['RSF First %'] = rsf_first_map.get(row['CIP13'])
+
+    # 1c. Corrections de libellés par CIP13 (dosages tronqués dans les PDFs source)
+    nb_corriges = 0
+    for row in all_rows:
+        if row['CIP13'] in LIBELLES_CORRIGES_CIP13:
+            row['Libellé brut'] = LIBELLES_CORRIGES_CIP13[row['CIP13']]
+            nb_corriges += 1
+    if nb_corriges:
+        print(f"  🔧  {nb_corriges} libellé(s) corrigé(s) par CIP13 (dosage tronqué dans PDF)\n")
 
     print(f"\n🔧  Parsing et normalisation structurée...", flush=True)
 
