@@ -3119,16 +3119,22 @@ async function launchSimulation() {
     // 3b. Form-agnostic libelle map : "AMLODIPINE 5MG 30CP" ≡ "AMLODIPINE 5MG 30GELULE"
     //     Sert à trouver les équivalents d'un autre labo quand seule la forme galénique diffère.
     function formNormKey(lib) {
-      // Strip qualificatifs de distribution/formulation inter-labos (PDR, PDA, SOL BUV…)
+      // Strip qualificatifs de distribution/formulation (PDR=poudre, PDA=distribution, SOL BUV)
       lib = lib.replace(/\bP(?:DR|DA)\b/gi, '').replace(/\bSOL\s+BUV\b/gi, '');
+      // Strip codes labo résiduels (Actavis, Ratiopharm, Sandoz MCV, Zentiva ZTK/ZTV/GLE, Winthrop WIN, Sun SUN)
+      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE)\b/gi, '');
       // MACROGOL : strip poids moléculaire (3350, 4000…)
       lib = lib.replace(/\bMACROGOL\s+(?:3350|4000|6000)\b/gi, 'MACROGOL');
       // Normalise dosages : 1G → 1000MG (G seul, pas GELULE) — avec ou sans espace avant G
       lib = lib.replace(/(\d+(?:[.,]\d+)?)\s*G\b/gi, (_, n) =>
         Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'MG'
       );
-      // Noms de molécules tronqués → forme complète
+      // Strip forme galénique placée AVANT le dosage (ex: DOXYLIS CPR 100MG → DOXYLIS 100MG)
+      lib = lib.replace(/\b(?:GELULES?|COMPRIMES?|CPR?|CAPSULES?|CACHETS?|GELCAPS?|GELU|CAPS|COMP)\b(?=\s*\d)/gi, '');
+      // Marques → DCI + noms tronqués → forme complète
       [
+        [/\bDOXYLIS\b/gi,       'DOXYCYCLINE'],
+        [/\bESLICARB\b/gi,      'ESLICARBAZEPINE'],
         [/\bATORVASTAT\b/gi,    'ATORVASTATINE'],
         [/\bLEVETIRAC\b/gi,     'LEVETIRACETAM'],
         [/\bMETHYLPHEN\b/gi,    'METHYLPHENIDATE'],
@@ -3142,8 +3148,8 @@ async function launchSimulation() {
         [/\bPARACET\b/gi,       'PARACETAMOL'],
         [/\bCELIPR\b/gi,        'CELIPROLOL'],
       ].forEach(([re, full]) => { lib = lib.replace(re, full); });
-      // Strip forme galénique (incl. SACH/SACHET) + tout ce qui suit — \s*$ pour tolérer espace traîlant
-      lib = lib.replace(/(\d+)\s*(SACHETS?|SACHS?|GELULES?|COMPRIMES?|CPR?|CAPSULES?|CACHETS?|GELCAPS?)(\s+\S+)*\s*$/i, '$1');
+      // Strip forme galénique en fin de libellé (après quantité) — \s*$ tolère espace traîlant
+      lib = lib.replace(/(\d+)\s*(SACHETS?|SACHS?|GELULES?|GELU|COMPRIMES?|COMP|CPR?|CAPSULES?|CAPS|CACHETS?|GELCAPS?)(\s+\S+)*\s*$/i, '$1');
       return lib.replace(/\s+/g, ' ').trim();
     }
     const formNormMap = new Map();
