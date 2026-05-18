@@ -1286,6 +1286,7 @@ let state = {
   currentPageId: 'labs',
   changementGeneriqueur: { enabled: false, labo: null, date: '' },
   prorataRatios: null,
+  condTolerance: 1.0,
 };
 
 
@@ -3226,9 +3227,10 @@ async function launchSimulation() {
 
     function getBestCondFromArray(conditions, ca, forceMarketMet = false) {
       if (!conditions?.length) return null;
+      const tol = state.condTolerance ?? 1.0;
       const candidates = forceMarketMet
         ? conditions
-        : conditions.filter(c => !c.caCondition || ca >= parseFloat(c.caCondition) || 0);
+        : conditions.filter(c => !c.caCondition || ca >= tol * (parseFloat(c.caCondition) || 0));
       if (!candidates.length) return null;
       return candidates.reduce((best, c) =>
         (parseFloat(c.caCondition) || 0) > (parseFloat(best?.caCondition) || 0) ? c : best
@@ -3237,10 +3239,11 @@ async function launchSimulation() {
 
     function getBestCond(lp, ca, forceMarketMet = false, applyProrata = false) {
       if (!lp?.conditions?.length) return null;
+      const tol = state.condTolerance ?? 1.0;
       const pr = applyProrata ? getProrata(lp.selectedLab) : 1;
       const candidates = forceMarketMet
         ? lp.conditions
-        : lp.conditions.filter(c => !c.caCondition || ca >= pr * (parseFloat(c.caCondition) || 0));
+        : lp.conditions.filter(c => !c.caCondition || ca >= tol * pr * (parseFloat(c.caCondition) || 0));
       if (!candidates.length) return null;
       return candidates.reduce((best, c) =>
         (parseFloat(c.caCondition) || 0) > (parseFloat(best?.caCondition) || 0) ? c : best
@@ -3338,8 +3341,9 @@ async function launchSimulation() {
           // Palier forcé : si CA < seuil → RSF base ; si CA ≥ seuil → meilleur palier atteint
           // (le palier le plus difficile/rentable est prioritaire s'il est atteint)
           const _forcedCA = parseFloat(bestCond?.caCondition) || 0;
+          const _tol = state.condTolerance ?? 1.0;
           const effectiveCond = !isForced ? bestCond
-            : (_forcedCA && e.ca < pr * _forcedCA)
+            : (_forcedCA && e.ca < _tol * pr * _forcedCA)
               ? null
               : (getBestCond(e.lp, e.ca, false, applyProrata) || bestCond);
           const _effCA = parseFloat(effectiveCond?.caCondition) || 0;
@@ -3349,7 +3353,7 @@ async function launchSimulation() {
           );
           e.bestCond    = bestCond;
           e.met         = isForced
-            ? (bestCond !== null && (!_forcedCA || e.ca >= pr * _forcedCA))
+            ? (bestCond !== null && (!_forcedCA || e.ca >= _tol * pr * _forcedCA))
             : (bestCond !== null || !e.isSelected);
           if (bestCond) {
             e.caThreshold = pr * _forcedCA;
@@ -3783,8 +3787,14 @@ async function launchSimulation() {
     let html = '';
 
     // ── KPIs ──────────────────────────────────────────────────────────────────
+    const _tolActive = (state.condTolerance ?? 1.0) < 1;
     html += `<div class="sim-section">
-      <div class="sim-title">◈ RÉSUMÉ</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="sim-title" style="margin-bottom:0">◈ RÉSUMÉ</div>
+        <button id="tolBtn" class="r3-toggle" style="font-size:10px;padding:3px 10px;${_tolActive ? 'color:var(--green);border-color:var(--green);box-shadow:var(--glow-g)' : ''}"
+          title="Les labos tolèrent un écart de 5% si le CA cible n'est pas atteint"
+        >${_tolActive ? '✓' : '○'} TOLÉRANCE CA −5%</button>
+      </div>
       <div class="sim-kpi-row">
         <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL N-1</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET N-1</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
@@ -3974,6 +3984,11 @@ async function launchSimulation() {
         const fname = `scenario_${btn.dataset.key.replace(/^lab_/,'').replace(/^opt2_/,'optimise_').replace(/^cond_/,'palier_').replace(/^combo_\d+_/,'groupe_')}.csv`;
         downloadCSV(buildScenarioCSV(s.assignment, s.labResults, s.filterLab || null, s.forcedConds || null), fname);
       });
+    });
+
+    document.getElementById('tolBtn')?.addEventListener('click', () => {
+      state.condTolerance = (state.condTolerance ?? 1.0) < 1 ? 1.0 : 0.95;
+      launchSimulation();
     });
 
   } catch(err) {
