@@ -4420,8 +4420,7 @@ async function extractCgvConditions(file, cond, labUid, cgvDrop, cgvLabel, rende
     openProfileModal();
   });
 })();
-// ── Profile modal (éléments après </script>, câblés dans DOMContentLoaded) ──
-// → voir bloc DOMContentLoaded en fin de fichier
+// ── Profile modal (éléments hors script, câblés dans DOMContentLoaded) ──
 
 function openProfileModal() {
   const profile = state.userProfile || {};
