@@ -2528,17 +2528,21 @@ function initLabPage(conf) {
 // ── Shared functions ───────────────────────────────────────────────────────────
 async function fetchRSF(lab) {
   const url = `${SUPA_URL}/rest/v1/references_pharmacie`
-    + `?select=rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null&order=rsf_pct.asc&limit=2000`;
+    + `?select=cip13,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null&order=rsf_pct.asc&limit=2000`;
   const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  const paliers = [...new Set(data.map(r => r.rsf_pct))].sort((a, b) => a - b);
+  // Si des données d'achats sont disponibles, ne garder que les paliers
+  // représentés par au moins une ref achetée — élimine les paliers fantômes (données obsolètes en base).
+  const csvCips = new Set((state.csvData || []).map(r => r.cip13));
+  const relevant = csvCips.size > 0 ? data.filter(r => csvCips.has(r.cip13)) : data;
+  const paliers = [...new Set(relevant.map(r => r.rsf_pct))].sort((a, b) => a - b);
   // Build firstMap: for each standard palier, use the most frequent (mode) rsf_first_pct
   // that is at least as good as the standard (more negative = better discount).
   // Guards against: (a) First worse than standard due to stale data, (b) non-deterministic
   // "last wins" when a palier has heterogeneous First values.
   const firstCounts = new Map();
-  data.forEach(r => {
+  relevant.forEach(r => {
     if (r.rsf_first_pct != null && r.rsf_first_pct <= r.rsf_pct) {
       if (!firstCounts.has(r.rsf_pct)) firstCounts.set(r.rsf_pct, new Map());
       const c = firstCounts.get(r.rsf_pct);
