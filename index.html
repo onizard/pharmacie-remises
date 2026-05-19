@@ -313,16 +313,16 @@
 
   /* ── Condition tabs ── */
   .cond-tabs {
-    display: none; align-items: flex-end; gap: 2px;
+    display: none; align-items: flex-end; gap: 2px; flex-wrap: wrap;
     border-bottom: 1px solid var(--cyan-dim);
     margin-bottom: 20px;
   }
   .cond-tabs.visible { display: flex; }
   .cond-tab {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 14px; margin-bottom: -1px;
-    font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700;
-    letter-spacing: 2px; text-transform: uppercase;
+    display: flex; align-items: center; gap: 5px;
+    padding: 6px 10px; margin-bottom: -1px;
+    font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
     border: 1px solid var(--border); border-bottom: none;
     background: var(--bg2); color: var(--text-dim);
     cursor: pointer; transition: all .2s;
@@ -2094,7 +2094,7 @@ function initLabPage(conf) {
       const tab = document.createElement('div');
       tab.className = 'cond-tab' + (i === s[aciKey] ? ' active' : '');
       const label = document.createElement('span');
-      label.textContent = `PALIER ${i + 1}`;
+      label.textContent = `P${i + 1}`;
       tab.appendChild(label);
       if (i > 0) {
         const x = document.createElement('span');
