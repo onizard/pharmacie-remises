@@ -1435,9 +1435,12 @@ async function saveRsfDefaults() {
   const sb = window._sbClient;
   if (!sb || !isAdmin) return;
   const rows = [];
+  const excRows = [];
   state.labPages.forEach(lp => {
     if (!lp.selectedLab) return;
     const seen = {};
+    const mergedExc = {};
+    const mergedR2Exc = {};
     [...(lp.conditions || []), ...(lp.conditions2025 || [])].forEach(cond => {
       (cond.rsfValues || []).forEach(r => {
         const key = String(r.rsf_pct);
@@ -1445,13 +1448,25 @@ async function saveRsfDefaults() {
           seen[key] = { remise2: r.remise2 || '', remise3: r.remise3 || '' };
         }
       });
+      Object.assign(mergedExc,   cond.exceptions    || {});
+      Object.assign(mergedR2Exc, cond.remise2Except || {});
     });
     Object.entries(seen).forEach(([rsf_pct, vals]) => {
       rows.push({ lab: lp.selectedLab, rsf_pct, ...vals });
     });
+    if (Object.keys(mergedExc).length || Object.keys(mergedR2Exc).length) {
+      excRows.push({
+        lab: lp.selectedLab,
+        exceptions_json:    mergedExc,
+        remise2except_json: mergedR2Exc,
+      });
+    }
   });
   if (!rows.length) return;
   try { await sb.from('rsf_defaults').upsert(rows, { onConflict: 'lab,rsf_pct' }); } catch(e) {}
+  if (excRows.length) {
+    try { await sb.from('lab_config').upsert(excRows, { onConflict: 'lab' }); } catch(e) {}
+  }
 }
 
 async function loadRsfDefaults() {
@@ -1466,19 +1481,38 @@ async function loadRsfDefaults() {
       window._rsfDefaults[r.lab][String(r.rsf_pct)] = { remise2: r.remise2, remise3: r.remise3 };
     });
   } catch(e) {}
+  try {
+    const { data: excData } = await sb.from('lab_config').select('lab,exceptions_json,remise2except_json');
+    if (excData?.length) {
+      window._labExceptions = {};
+      excData.forEach(r => {
+        window._labExceptions[r.lab] = {
+          exceptions:    r.exceptions_json    || {},
+          remise2Except: r.remise2except_json || {},
+        };
+      });
+    }
+  } catch(e) {}
 }
 
 function applyRsfDefaults() {
-  if (isAdmin || !window._rsfDefaults) return;
+  if (isAdmin) return;
   state.labPages.forEach(lp => {
     if (!lp.selectedLab) return;
-    const defs = window._rsfDefaults[lp.selectedLab];
-    if (!defs) return;
+    const defs = window._rsfDefaults?.[lp.selectedLab];
+    const exc  = window._labExceptions?.[lp.selectedLab];
+    if (!defs && !exc) return;
     [...(lp.conditions || []), ...(lp.conditions2025 || [])].forEach(cond => {
-      (cond.rsfValues || []).forEach(r => {
-        const d = defs[String(r.rsf_pct)];
-        if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; }
-      });
+      if (defs) {
+        (cond.rsfValues || []).forEach(r => {
+          const d = defs[String(r.rsf_pct)];
+          if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; }
+        });
+      }
+      if (exc) {
+        Object.assign(cond.exceptions,    exc.exceptions);
+        Object.assign(cond.remise2Except, exc.remise2Except);
+      }
     });
     if (lp._reRenderCondTables) lp._reRenderCondTables();
     if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();

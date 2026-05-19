@@ -672,6 +672,22 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 // M0 (webix.toExcel) supprimé — n'exporte que les lignes en mémoire (pagination serveur)
                 // → utiliser uniquement le bouton natif OSPHARM qui génère un export complet
 
+                // M1b : bouton Webix dont l'icon (config) contient un mot-clé export
+                if (typeof webix !== "undefined" && typeof webix.$$ === "function") {
+                    for (const el of document.querySelectorAll("[view_id]")) {
+                        if (!vis(el)) continue;
+                        const vid = el.getAttribute("view_id");
+                        const v = webix.$$(vid);
+                        if (!v || v.name !== "button") continue;
+                        const icon = (typeof v.config?.icon === "string" ? v.config.icon : "").toLowerCase();
+                        const cls  = (el.className || "").toLowerCase();
+                        const html = el.innerHTML.toLowerCase();
+                        const isExport = ["excel", "xls", "export", "exporter", "download", "télécharger", "file-"]
+                            .some(k => icon.includes(k) || html.includes(k));
+                        if (isExport) { el.click(); return "M1b:icon:" + (icon || cls).slice(0, 50); }
+                    }
+                }
+
                 // M1a : view_id avec tooltip/label contenant un mot-clé export
                 if (typeof webix !== "undefined" && typeof webix.$$ === "function") {
                     for (const el of document.querySelectorAll("[view_id]")) {
@@ -792,9 +808,9 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
         if not _val_clicked and not _excel_bytes:
             print(f"  [export] Valider non trouvé après 25s")
 
-        # ── Attente réception fichier Excel jusqu'à 3 min (gros fichiers > 20 MB) ──
+        # ── Attente réception fichier Excel jusqu'à 10 min (export serveur OSPHARM) ──
         progress("Attente du fichier Excel…")
-        for _w in range(72):
+        for _w in range(240):
             if _excel_bytes:
                 break
             page.wait_for_timeout(2_500)
@@ -805,7 +821,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             _snap("export_fichier_timeout")
             _upload_screenshots()
             browser.close()
-            raise RuntimeError(f"Export Excel : aucun fichier reçu en 3 min. Debug: {dbg}")
+            raise RuntimeError(f"Export Excel : aucun fichier reçu en 10 min. Debug: {dbg}")
 
         print(f"  [export] fichier capturé ({len(_excel_bytes[0]):,} bytes) — fermeture navigateur")
         with open(tmp, "wb") as f:
