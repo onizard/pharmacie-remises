@@ -1936,12 +1936,10 @@ function initLabPage(conf) {
       tab.addEventListener('click', () => activateCondition(i));
       el.condTabs.appendChild(tab);
     });
-    if (s[condKey].length < 4) {
-      const addBtn = document.createElement('div');
-      addBtn.className = 'cond-tab-add'; addBtn.textContent = '+';
-      addBtn.addEventListener('click', addCondition);
-      el.condTabs.appendChild(addBtn);
-    }
+    const addBtn = document.createElement('div');
+    addBtn.className = 'cond-tab-add'; addBtn.textContent = '+';
+    addBtn.addEventListener('click', addCondition);
+    el.condTabs.appendChild(addBtn);
   }
 
   function activateCondition(idx) {
@@ -1953,7 +1951,6 @@ function initLabPage(conf) {
   }
 
   function addCondition() {
-    if (s[condKey].length >= 4) return;
     const cond = mkCondState('c' + Date.now());
     cond.rsfValues = mkRsfValues(s.selectedLab, s.rsfPaliers);
     s[condKey].push(cond);
