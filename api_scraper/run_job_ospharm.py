@@ -905,6 +905,49 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
     return all_rows, file_url, ps_25, pe_25, ps_26, pe_26, len(rows_2025), len(rows_2026)
 
 
+# ── Sync PUHT → references_pharmacie ─────────────────────────────────────────
+
+def _sync_puht_supabase(puht_dict: dict):
+    """Met à jour references_pharmacie.puht pour chaque CIP depuis OSPHARM.
+    Requêtes PATCH parallèles par lots de 50.
+    puht_dict: {cip13: puht_float}
+    """
+    items = list(puht_dict.items())
+    if not items:
+        return
+    errors = []
+    done_count = [0]
+    lock = threading.Lock()
+
+    def _patch(cip13, puht):
+        url = f"{SUPA_URL}/rest/v1/references_pharmacie?cip13=eq.{cip13}"
+        body = json.dumps({"puht": puht}).encode()
+        req = urllib.request.Request(url, data=body, method="PATCH", headers={
+            "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+            "Content-Type": "application/json", "Prefer": "return=minimal",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=15): pass
+        except Exception as e:
+            with lock:
+                errors.append(f"{cip13}: {e}")
+        with lock:
+            done_count[0] += 1
+            if done_count[0] % 500 == 0:
+                print(f"  [puht-sync] {done_count[0]}/{len(items)}…")
+
+    BATCH = 50
+    for i in range(0, len(items), BATCH):
+        batch = items[i:i + BATCH]
+        threads = [threading.Thread(target=_patch, args=(c, p), daemon=True) for c, p in batch]
+        for t in threads: t.start()
+        for t in threads: t.join()
+
+    print(f"  [puht-sync] ✅ {len(items)} PUHT mis à jour ({len(errors)} erreurs)")
+    if errors[:3]:
+        print(f"  [puht-sync] exemples erreurs: {errors[:3]}")
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -946,6 +989,20 @@ def main():
             file_url=file_url,
         )
         print(f"\n✅  {len(stored_rows)} lignes OSPHARM sauvegardées. ({time.time()-t0:.1f}s total)")
+
+        # Mise à jour PUHT Supabase depuis OSPHARM (priorité année 2026)
+        puht_dict: dict = {}
+        for r in stored_rows:
+            p = r.get("puht")
+            if not p:
+                continue
+            cip = r["cip13"]
+            yr = r.get("year", 0)
+            if cip not in puht_dict or yr == 2026:
+                puht_dict[cip] = p
+        if puht_dict:
+            progress(f"Mise à jour PUHT Supabase ({len(puht_dict)} CIPs)…")
+            _sync_puht_supabase(puht_dict)
         print(f"    2025: {n25} CIP ({ps_25} → {pe_25})")
         print(f"    2026: {n26} CIP ({ps_26} → {pe_26})")
     except Exception as e:
