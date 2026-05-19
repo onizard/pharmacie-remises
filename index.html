@@ -381,9 +381,9 @@
   [data-theme="light"] .year-label { color: #0066cc; }
   [data-theme="light"] .year-label-toggle { color: #b07000; }
 
-  .rsf-table-wrap { overflow-x: auto; border: 1px solid var(--border); }
+  .rsf-table-wrap { overflow-x: auto; overflow-y: auto; max-height: min(65vh, 520px); border: 1px solid var(--border); }
   table.rsf-table { width: 100%; border-collapse: collapse; }
-  table.rsf-table thead tr { background: #060e1c; border-bottom: 2px solid var(--cyan-dim); }
+  table.rsf-table thead tr { background: #060e1c; border-bottom: 2px solid var(--cyan-dim); position: sticky; top: 0; z-index: 2; }
   table.rsf-table th { padding: 12px 20px; font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; text-align: left; }
   table.rsf-table th:nth-child(1) { color: var(--cyan); }
   table.rsf-table th:nth-child(2) { color: var(--amber); }
