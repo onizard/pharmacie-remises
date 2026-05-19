@@ -1145,7 +1145,7 @@
 
   <nav class="main-tabs" id="mainTabs">
     <button class="main-tab" data-page="recap">RÉCAP ACHATS/VENTES</button>
-    <button class="main-tab admin-only" data-page="comparateur" style="display:none">COMPARATEUR</button>
+    <button class="main-tab" data-page="comparateur">COMPARATEUR</button>
     <button class="main-tab" data-page="verificateur">VÉRIFICATEUR DE REMISE</button>
   </nav>
 
@@ -1899,12 +1899,15 @@ function renderRecap() {
   const el = document.getElementById('recapContainer');
   if (!el) return;
   const ventes = state._recapVentes || [];
-  const achats = state._recapAchats || [];
-  if (!ventes.length && !achats.length) {
+  if (!ventes.length) {
     el.innerHTML = `<div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:13px;padding:60px 0;text-align:center;letter-spacing:2px">// Connectez-vous à OSPHARM pour charger vos données de ventes</div>`;
     return;
   }
-  el.innerHTML = renderRecapTable(ventes, '◇ RÉCAP VENTES') + renderRecapTable(achats, '◇ RÉCAP ACHATS OPTIMISÉS');
+  const achatPlaceholder = `<div class="recap-section">
+    <div class="recap-section-title">◇ RÉCAP ACHATS</div>
+    <div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:12px;padding:20px 0;letter-spacing:1px">// Disponible prochainement — connecteur DIGIPHARMACIE en cours de développement</div>
+  </div>`;
+  el.innerHTML = renderRecapTable(ventes, '◇ RÉCAP VENTES') + achatPlaceholder;
 }
 
 function renderLabGrid() {
@@ -2498,7 +2501,9 @@ function initLabPage(conf) {
       inp2.placeholder = 'ex : 5.00'; inp2.value = row.remise2;
       if (row.remise2) inp2.classList.add('auto-c');
       if (row.excluded) inp2.classList.add('excl-r2');
+      if (!isAdmin) inp2.readOnly = true;
       inp2.addEventListener('input', e => {
+        if (!isAdmin) return;
         cond.rsfValues[idx].remise2 = e.target.value;
         inp2.classList.remove('auto-c');
         cond.rsfValues[idx].excluded = false;
@@ -4156,7 +4161,6 @@ async function launchSimulation() {
       return rows;
     }
     state._recapVentes = buildRecapRows(naturalAssignment);
-    state._recapAchats = buildRecapRows(winnerEntry.assignment);
     renderRecap();
 
     let html = '';
@@ -5027,7 +5031,7 @@ async function saveProfile() {
     goTo('recap');
   }
 
-  // Admin : afficher le tab COMPARATEUR
+  // Admin : afficher le bouton IMPORTER (non-admins n'ont pas de CSV manuel)
   if (isAdmin) {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
   }
