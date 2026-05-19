@@ -44,12 +44,8 @@ def _supa_patch_state(state: dict):
     with urllib.request.urlopen(req, timeout=15): pass
 
 
-def _update_job(status: str, message: str = "", rows=None, error: str = "",
-                blocking: bool = False,
-                period_start: str = "", period_end: str = "",
-                period_start_2026: str = "", period_end_2026: str = "",
-                rows_2025: int = 0, rows_2026: int = 0,
-                file_url: str = ""):
+def _update_job(status: str, message: str = "", rows=None, error: str = "", blocking: bool = False,
+                period_start: str = "", period_end: str = "", file_url: str = ""):
     def _do():
         try:
             state = _supa_get_state()
@@ -64,12 +60,6 @@ def _update_job(status: str, message: str = "", rows=None, error: str = "",
             if period_start:
                 job["period_start"] = period_start
                 job["period_end"]   = period_end
-            if period_start_2026:
-                job["period_start_2026"] = period_start_2026
-                job["period_end_2026"]   = period_end_2026
-            if rows_2025 or rows_2026:
-                job["rows_2025"] = rows_2025
-                job["rows_2026"] = rows_2026
             state["ospharm_job"] = job
             _supa_patch_state(state)
         except Exception as e:
@@ -92,8 +82,8 @@ def _get_creds() -> dict:
 
 # ── Row compaction ────────────────────────────────────────────────────────────
 
-def _compact_osp_rows(rows: list[dict], year: int = 0) -> list[dict]:
-    """Convertit les lignes OSPHARM brutes (24 cols) en {cip13, qty, libelle, year}.
+def _compact_osp_rows(rows: list[dict]) -> list[dict]:
+    """Convertit les lignes OSPHARM brutes (24 cols) en {cip13, qty, libelle}.
     Réduit ~5 Mo → ~400 Ko pour le stockage dans Supabase.
     """
     import re as _re
@@ -133,7 +123,6 @@ def _compact_osp_rows(rows: list[dict], year: int = 0) -> list[dict]:
             "cip13":   cip13,
             "qty":     qty,
             "libelle": str(r.get(lib_k) or "").strip() if lib_k else "",
-            "year":    year,
         })
     return result
 
@@ -162,8 +151,7 @@ def _extract_period(page) -> tuple[str, str]:
                 return ps, pe
     except Exception as exc:
         print(f"  [period] scraping error: {exc}")
-    # Fallback inference
-    import datetime as _dt
+    # Inference: Année lissée = 01/05/(Y-1) à 30/04/Y où Y = dernier avril écoulé
     today = _dt.date.today()
     apr30 = _dt.date(today.year, 4, 30)
     y = today.year if today >= apr30 else today.year - 1
@@ -207,7 +195,7 @@ def _login(page, creds):
     try:
         page.wait_for_url("*datastat.ospharm.org*", timeout=45_000)
     except PWTimeout:
-        pass
+        pass  # check URL below
     if "datastat.ospharm.org" not in page.url or "accounts" in page.url:
         raise RuntimeError("Identifiants OSPHARM incorrects")
     _wait_webix(page)
@@ -221,61 +209,20 @@ def _reauth_if_needed(page, creds, label=""):
     _login(page, creds)
 
 
-def _select_period(page, period_kw: str) -> bool:
-    """Ouvre le date picker OSPHARM et clique l'option contenant period_kw.
-    Retourne True si l'option a été trouvée et cliquée."""
-    try:
-        _date_clicked = page.evaluate('''() => {
-            const el = document.querySelector("[view_id='button_date_picker']");
-            if (!el) return "no-el";
-            const btn = el.querySelector("button") || el;
-            btn.click();
-            return "clicked:" + btn.tagName;
-        }''')
-        print(f"  [period] date picker: {_date_clicked}")
-        page.wait_for_timeout(1_500)
-
-        kw = period_kw.lower()
-        _opt_clicked = page.evaluate(f'''() => {{
-            const kw = {repr(kw)};
-            for (const el of document.querySelectorAll("*")) {{
-                if (el.children.length > 0) continue;
-                const t = el.textContent.trim().toLowerCase();
-                if (!t.includes(kw)) continue;
-                const r = el.getBoundingClientRect();
-                if (r.width < 2 || r.height < 2) continue;
-                el.click();
-                return el.textContent.trim();
-            }}
-            return null;
-        }}''')
-        print(f"  [period] option '{period_kw}': {_opt_clicked}")
-        page.wait_for_timeout(800)
-
-        _val = page.evaluate('''() => {
-            for (const el of document.querySelectorAll("button")) {
-                if (el.textContent.trim().toLowerCase() === "valider") {
-                    el.click(); return "clicked";
-                }
-            }
-            return "not-found";
-        }''')
-        print(f"  [period] valider: {_val}")
-        page.wait_for_timeout(3_000)
-        return bool(_opt_clicked)
-    except Exception as e:
-        print(f"  [period] err '{period_kw}': {e}")
-        return False
-
-
-def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], str, str, str, str, str]:
-    """Lance le scraping OSPHARM en deux passes (2025 + 2026).
-    Retourne (compact_rows_combined, file_url, ps_2025, pe_2025, ps_2026, pe_2026).
-    """
+def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], str, str, str]:
     import tempfile, openpyxl
 
     # ── Screenshots diagnostic ─────────────────────────────────────────────────
-    _screenshots: list[tuple[str, bytes]] = []
+    _screenshots: list[tuple[str, bytes]] = []  # [(label, png_bytes)]
+
+    def _snap(label: str):
+        """Capture un screenshot et le conserve pour upload en fin de run."""
+        try:
+            data = page.screenshot(full_page=False)
+            _screenshots.append((label, data))
+            print(f"  [snap] {label} ({len(data):,} bytes) url={page.url[:70]}")
+        except Exception as _se:
+            print(f"  [snap] {label} ERREUR: {_se}")
 
     def _upload_screenshots():
         if not user_id or not _screenshots:
@@ -298,21 +245,32 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                                       viewport={"width": 1440, "height": 900})
         page    = context.new_page()
 
-        def _snap(label: str):
-            try:
-                data = page.screenshot(full_page=False)
-                _screenshots.append((label, data))
-                print(f"  [snap] {label} ({len(data):,} bytes) url={page.url[:70]}")
-            except Exception as _se:
-                print(f"  [snap] {label} ERREUR: {_se}")
+        # 1. Login
+        progress("Connexion OSPHARM…")
+        page.goto(OSPHARM_URL, wait_until="networkidle", timeout=30_000)
 
-        # ── helper : tabs ventes visibles ──────────────────────────────────────
+        if "accounts" in page.url or "login" in page.url:
+            _login(page, creds)
+
+        if "datastat.ospharm.org" not in page.url or "accounts" in page.url:
+            raise RuntimeError("Identifiants OSPHARM incorrects")
+
+        progress("Connecté — chargement…")
+        _wait_webix(page)
+        _snap("1_apres_login")
+
+        # ── helper : naviguer vers la section ventes ───────────────────────────
+        # La condition d'arrivée : les tabs "Laboratoires/Familles/Produits/Marques"
+        # sont visibles. C'est le seul signe fiable qu'on est bien sur la page ventes.
         def _ventes_tabs_visible():
+            # Condition 1 : URL contient une route ventes (méthode la plus fiable)
             try:
                 if any(x in page.url for x in ["sellout", "ventes.all", "mysellout"]):
                     return True
             except Exception:
                 pass
+            # Condition 2 : segments Laboratoires/Familles/Produits/Marques visibles
+            # (boutons webix_segment_X sur la page sellout.all)
             try:
                 return page.evaluate('''() => {
                     const kw = ["laboratoire", "famille", "produit", "marque"];
@@ -342,7 +300,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 except Exception:
                     return False
 
-            # M0 : sidebar select + clic DOM réel
+            # ── M0 : sidebar select + clic DOM réel sur le nœud ─────────────────
             try:
                 _r0 = page.evaluate('''() => {
                     if (typeof webix === "undefined") return "no-webix";
@@ -368,7 +326,9 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             except Exception as _e:
                 print(f"  [nav] M0 err: {_e}")
 
-            # M1 : location.href
+            # ── M1 : location.href (router hash SPA)
+            # NOTE : location.hash setter ajoute '#' automatiquement → double hash.
+            # On utilise location.href avec le hash complet pour éviter ce piège.
             try:
                 _r1 = page.evaluate("""() => {
                     const base = location.href.split('#')[0];
@@ -382,7 +342,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             except Exception as _e:
                 print(f"  [nav] M1 err: {_e}")
 
-            # M2 : expand sidebar + clic "Toutes les ventes"
+            # ── M2 : expand "Analyse des ventes" puis clic "Toutes les ventes" ──
             try:
                 _loc_a = page.get_by_text("Analyse des ventes", exact=True).first
                 if _loc_a.is_visible(timeout=1_500):
@@ -402,7 +362,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             except Exception as _e:
                 print(f"  [nav] M2b err: {_e}")
 
-            # M3 : page.goto rechargement complet
+            # ── M3 : page.goto (rechargement complet — dernier recours) ──────────
             try:
                 page.goto("https://datastat.ospharm.org/#!/top/sellout.all",
                           wait_until="domcontentloaded", timeout=25_000)
@@ -417,362 +377,20 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             _wait_webix(page)
             return _ventes_tabs_visible()
 
-        def _select_produits_tab():
-            """Clique l'onglet Produits dans la barre de segmentation ventes."""
-            try:
-                _prod_clicked = page.evaluate('''() => {
-                    for (const el of document.querySelectorAll(
-                        ".webix_segment_0, .webix_segment_1, .webix_segment_N, button"
-                    )) {
-                        if (el.textContent.trim() !== "Produits") continue;
-                        const r = el.getBoundingClientRect();
-                        if (r.width < 2 || r.height < 2) continue;
-                        el.click();
-                        return el.className.slice(0, 50);
-                    }
-                    return null;
-                }''')
-                print(f"  [produits] {_prod_clicked}")
-                page.wait_for_timeout(3_000)
-            except Exception as _e:
-                print(f"  [produits] err: {_e}")
-
-        # ── helper : une passe export complète (steps 3→5) ────────────────────
-        def _do_export_pass(pass_label: str, period_kw: str, year_tag: int,
-                            fallback_kw: str | None = None) -> tuple[list[dict], str, str]:
-            """Sélectionne la période, exporte le fichier Excel, retourne (rows, ps, pe)."""
-            import tempfile as _tf, os as _os, re as _re
-
-            # Step 3: sélectionner la période
-            progress(f"Sélection {pass_label}…")
-            _reauth_if_needed(page, creds, f"avant {pass_label}")
-            found = _select_period(page, period_kw)
-            if not found and fallback_kw:
-                print(f"  [{pass_label}] '{period_kw}' non trouvé — fallback '{fallback_kw}'")
-                _select_period(page, fallback_kw)
-
-            if not _ventes_tabs_visible():
-                print(f"  [warn] {pass_label}: période a redirigé → {page.url[:60]} — retour ventes…")
-                _goto_sellout()
-
-            _snap(f"{year_tag}a_periode")
-            ps, pe = _extract_period(page)
-            print(f"  [{pass_label}] période: {ps} → {pe}")
-
-            # Step 4: onglet Produits
-            progress(f"Onglet Produits ({pass_label})…")
-            _select_produits_tab()
-            _snap(f"{year_tag}b_produits")
-
-            # Step 4b: reauth check
-            if "accounts" in page.url:
-                print(f"  [warn] Session expirée avant export {pass_label} — reconnexion…")
-                _reauth_if_needed(page, creds, f"export {pass_label}")
-                _wait_webix(page)
-                progress(f"Re-navigation après reconnexion ({pass_label})…")
-                if not _goto_sellout():
-                    raise RuntimeError(f"Re-navigation ventes après reauth échouée ({pass_label})")
-                _select_period(page, period_kw)
-                ps, pe = _extract_period(page)
-                _select_produits_tab()
-                print(f"  [{pass_label}] reauth terminé — url={page.url[:80]}")
-
-            # Step 4c: attente chargement données
-            progress(f"Chargement données {pass_label}…")
-            try:
-                page.wait_for_function('''() => {
-                    for (const el of document.querySelectorAll("*")) {
-                        if (el.children.length > 0) continue;
-                        const t = el.textContent.trim();
-                        if ((t.includes("Chargement") || t.includes("loading") || t.includes("Loading"))
-                                && el.getBoundingClientRect().width > 0) {
-                            return false;
-                        }
-                    }
-                    const rows = document.querySelectorAll(
-                        ".webix_dtable .webix_row, .webix_ss_body .webix_column .webix_cell"
-                    );
-                    return rows.length > 0;
-                }''', timeout=360_000)
-                print(f"  [{pass_label}] données chargées")
-            except Exception as _e4c:
-                print(f"  [{pass_label}] timeout attente données ({_e4c}) — export quand même")
-            _snap(f"{year_tag}c_donnees")
-
-            # Step 5: export Excel
-            progress(f"Export Excel {pass_label}…")
-            _tmp_fd, tmp = _tf.mkstemp(suffix=".xlsx")
-            _os.close(_tmp_fd)
-            _tmp_dl_fd, _tmp_dl = _tf.mkstemp(suffix=".xlsx")
-            _os.close(_tmp_dl_fd)
-            excel_bytes: list[bytes] = []
-
-            def _on_download(dl):
-                if excel_bytes: return
-                try:
-                    dl.save_as(_tmp_dl)
-                    body = open(_tmp_dl, "rb").read()
-                    if len(body) > 500:
-                        excel_bytes.append(body)
-                        print(f"  [{pass_label}] download: '{dl.suggested_filename}' ({len(body):,} bytes)")
-                    else:
-                        print(f"  [{pass_label}] download trop petit ({len(body)} bytes) — ignoré")
-                except Exception as _de:
-                    print(f"  [{pass_label}] download err: {_de}")
-
-            def _on_response(resp):
-                if excel_bytes: return
-                try:
-                    ct = resp.headers.get("content-type", "").lower()
-                    cd = resp.headers.get("content-disposition", "").lower()
-                    is_excel = any(x in ct for x in
-                        ["excel", "spreadsheet", "openxmlformats", "xls"])
-                    has_attach = "attachment" in cd and ("xls" in cd or "xlsx" in cd or "excel" in cd)
-                    if is_excel or has_attach:
-                        body = resp.body()
-                        if len(body) > 500:
-                            excel_bytes.append(body)
-                            print(f"  [{pass_label}] HTTP excel: {len(body):,} bytes")
-                except Exception as _ie:
-                    print(f"  [{pass_label}] intercept err: {_ie}")
-
-            page.on("download", _on_download)
-            context.on("response", _on_response)
-
-            try:
-                # Debug étendu
-                try:
-                    dbg = page.evaluate('''() => {
-                        function vis(el) { const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1; }
-                        const tabs = [...document.querySelectorAll(".webix_item_tab")];
-                        const viewIds = [...document.querySelectorAll("[view_id]")].filter(vis).slice(0, 20).map(el => {
-                            const vid = el.getAttribute("view_id");
-                            let cfg = {};
-                            try {
-                                if (typeof webix !== "undefined") {
-                                    const v = webix.$$(vid);
-                                    if (v) cfg = { tooltip: v.config?.tooltip, label: v.config?.label, type: v.name };
-                                }
-                            } catch(e) {}
-                            return { vid, tag: el.tagName, cfg };
-                        });
-                        return {
-                            url: location.href,
-                            tabItems: tabs.map(t => t.textContent.trim()).slice(0, 10),
-                            viewIds,
-                            webix: typeof webix !== "undefined" ? {
-                                toExcel: typeof webix.toExcel,
-                                dollar:  typeof webix.$$,
-                            } : "absent",
-                        };
-                    }''')
-                    print(f"  [{pass_label}] tabs={dbg.get('tabItems')} webix={dbg.get('webix')}")
-                except Exception as _dbg_err:
-                    dbg = {}
-                    print(f"  [{pass_label}] dbg skipped ({_dbg_err})")
-
-                kw_export = ["excel", "export", "exporter", "xls", "format", "fomat", "télécharger"]
-                try:
-                    exported = page.evaluate('''(kw) => {
-                        function vis(el) {
-                            const r = el.getBoundingClientRect();
-                            return r.width > 0 && r.height > 0;
-                        }
-                        function strTip(v) {
-                            const raw = v.config?.tooltip || v.config?.label || "";
-                            return (typeof raw === "string" ? raw : "").toLowerCase();
-                        }
-                        // M0 : webix.toExcel direct sur datatable_sellout
-                        if (typeof webix !== "undefined" && typeof webix.toExcel === "function") {
-                            const direct = webix.$$("datatable_sellout");
-                            if (direct) { webix.toExcel(direct); return "M0:datatable_sellout"; }
-                            for (const el of document.querySelectorAll(".webix_dtable[view_id]")) {
-                                if (!vis(el)) continue;
-                                const grid = webix.$$(el.getAttribute("view_id"));
-                                if (grid) { webix.toExcel(grid); return "M0:dtable:" + el.getAttribute("view_id"); }
-                            }
-                        }
-                        // M1a : view_id tooltip/label contenant un mot-clé export
-                        if (typeof webix !== "undefined" && typeof webix.$$ === "function") {
-                            for (const el of document.querySelectorAll("[view_id]")) {
-                                if (!vis(el)) continue;
-                                const v = webix.$$(el.getAttribute("view_id"));
-                                if (!v) continue;
-                                const tip = strTip(v);
-                                if (kw.some(k => tip.includes(k))) { el.click(); return "M1a:view_id:" + tip.slice(0,40); }
-                            }
-                        }
-                        // M2 : boutons à droite de la bande d'onglets ventes
-                        const tabNames = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
-                        let maxRight = 0, bandTop = 0, bandBottom = 0;
-                        for (const el of document.querySelectorAll(".webix_item_tab")) {
-                            const txt = el.textContent.trim();
-                            if (!tabNames.has(txt)) continue;
-                            const r = el.getBoundingClientRect();
-                            if (r.width < 4 || r.height < 4) continue;
-                            if (r.right > maxRight) { maxRight = r.right; bandTop = r.top; bandBottom = r.bottom; }
-                        }
-                        if (maxRight > 0) {
-                            const midY = (bandTop + bandBottom) / 2;
-                            const halfH = (bandBottom - bandTop) / 2 + 10;
-                            const cands = [];
-                            for (const el of document.querySelectorAll("[view_id], button, .webix_el_icon, .webix_el_button")) {
-                                const r = el.getBoundingClientRect();
-                                if (r.left <= maxRight + 2 || r.top > midY + halfH || r.bottom < midY - halfH) continue;
-                                if (r.width < 8 || r.height < 8 || r.width > 200 || r.height > 100) continue;
-                                cands.push(el);
-                            }
-                            cands.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-                            if (cands.length) {
-                                const target = cands[0].querySelector("button,.webix_template") || cands[0];
-                                target.click();
-                                return "M2:pos:" + cands[0].tagName + "@x" + Math.round(cands[0].getBoundingClientRect().left);
-                            }
-                            for (const xOff of [50, 80, 110, 140]) {
-                                const el = document.elementFromPoint(window.innerWidth - xOff, midY);
-                                if (el && vis(el) && el.getBoundingClientRect().width < 200) {
-                                    el.click(); return "M2:efp@" + xOff + ":" + el.tagName;
-                                }
-                            }
-                        }
-                        // M3 : webix_tooltip
-                        for (const el of document.querySelectorAll("[webix_tooltip]")) {
-                            if (!vis(el)) continue;
-                            const tip = (el.getAttribute("webix_tooltip") || "").toLowerCase();
-                            if (kw.some(k => tip.includes(k))) {
-                                (el.querySelector("button") || el).click();
-                                return "M3:tooltip:" + tip.slice(0,40);
-                            }
-                        }
-                        // M4 : texte/title/aria
-                        for (const el of document.querySelectorAll("button,a,[role=button],.webix_el_button")) {
-                            if (!vis(el)) continue;
-                            const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"")).toLowerCase();
-                            if (kw.some(k => hay.includes(k))) { el.click(); return "M4:kw:" + hay.slice(0,40); }
-                        }
-                        // M5 : icône de téléchargement par forme/position
-                        const allVis = [...document.querySelectorAll("button,.webix_el_icon,[role=button]")].filter(vis);
-                        for (const el of allVis) {
-                            const r = el.getBoundingClientRect();
-                            if (r.right > window.innerWidth * 0.6 && r.top < window.innerHeight * 0.3) {
-                                const inner = el.innerHTML.toLowerCase();
-                                if (inner.includes("download") || inner.includes("arrow") || inner.includes("↓")) {
-                                    el.click(); return "M5:icon:" + el.tagName + "@" + Math.round(r.left);
-                                }
-                            }
-                        }
-                        return false;
-                    }''', kw_export)
-                except Exception as _eval_err:
-                    if "context" in str(_eval_err).lower() or "destroyed" in str(_eval_err).lower():
-                        exported = "context-destroyed-ok"
-                        print(f"  [{pass_label}] context destroyed au clic — download en route")
-                    else:
-                        raise RuntimeError(f"Export {pass_label} : evaluate échoué : {_eval_err}")
-
-                if not exported:
-                    raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
-
-                # Poll Valider
-                print(f"  [{pass_label}] bouton cliqué ({exported}), poll Valider…")
-                _val_clicked = False
-                for _attempt in range(10):
-                    page.wait_for_timeout(2_500)
-                    if excel_bytes:
-                        print(f"  [{pass_label}] fichier reçu avant/pendant Valider — ok")
-                        break
-                    try:
-                        _loc = page.locator(
-                            ".webix_window button, .webix_popup button, .webix_modal button,"
-                            " .webix_win_body button, button"
-                        ).filter(has_text="Valider").first
-                        if _loc.is_visible(timeout=400):
-                            _loc.click(timeout=3_000)
-                            _val_clicked = True
-                            print(f"  [{pass_label}] Valider cliqué (locator, attempt {_attempt+1})")
-                            break
-                    except Exception:
-                        pass
-                    try:
-                        if _js_click(page, "Valider"):
-                            _val_clicked = True
-                            print(f"  [{pass_label}] Valider cliqué (js, attempt {_attempt+1})")
-                            break
-                    except Exception as _je:
-                        if "context" in str(_je).lower() or "destroyed" in str(_je).lower():
-                            print(f"  [{pass_label}] context destroyed pendant poll Valider — ok")
-                            break
-                if not _val_clicked and not excel_bytes:
-                    print(f"  [{pass_label}] Valider non trouvé après 25s")
-
-                # Attente réception fichier Excel (jusqu'à 3 min)
-                progress(f"Attente fichier Excel {pass_label}…")
-                for _w in range(72):
-                    if excel_bytes:
-                        break
-                    page.wait_for_timeout(2_500)
-                    if (_w + 1) % 4 == 0:
-                        print(f"  [{pass_label}] attente... {(_w+1)*2.5:.0f}s")
-
-                if not excel_bytes:
-                    raise RuntimeError(f"Export {pass_label} : aucun fichier reçu en 3 min. Debug: {dbg}")
-
-            finally:
-                try:
-                    page.remove_listener("download", _on_download)
-                    context.remove_listener("response", _on_response)
-                except Exception:
-                    pass
-
-            print(f"  [{pass_label}] fichier capturé ({len(excel_bytes[0]):,} bytes)")
-            with open(tmp, "wb") as f:
-                f.write(excel_bytes[0])
-
-            # Lecture Excel
-            def _strip_html(v):
-                if isinstance(v, str) and "<" in v:
-                    return _re.sub(r"<[^>]+>", "", v).strip()
-                return v
-
-            progress(f"Lecture Excel {pass_label}…")
-            wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
-            ws = wb.active
-            rows_iter = ws.iter_rows(values_only=True)
-            headers = [str(h or "").strip() for h in next(rows_iter)]
-            rows_raw = []
-            for row in rows_iter:
-                if any(v is not None for v in row):
-                    rows_raw.append({h: _strip_html(v) for h, v in zip(headers, row)})
-            wb.close()
-
-            return rows_raw, ps, pe
-
-        # ── 1. Login ───────────────────────────────────────────────────────────
-        progress("Connexion OSPHARM…")
-        page.goto(OSPHARM_URL, wait_until="networkidle", timeout=30_000)
-
-        if "accounts" in page.url or "login" in page.url:
-            _login(page, creds)
-
-        if "datastat.ospharm.org" not in page.url or "accounts" in page.url:
-            raise RuntimeError("Identifiants OSPHARM incorrects")
-
-        progress("Connecté — chargement…")
-        _wait_webix(page)
-        _snap("1_apres_login")
-
-        # ── 2. Navigation vers la section ventes ──────────────────────────────
+        # 2. Navigation vers la section ventes
         progress("Navigation vers Toutes mes ventes…")
         if not _ventes_tabs_visible():
+            # Attendre que le SPA ait fini d'initialiser son router (dashboard + API calls)
             try:
                 page.wait_for_load_state("networkidle", timeout=20_000)
             except Exception:
                 pass
-            page.wait_for_timeout(5_000)
+            page.wait_for_timeout(5_000)  # 5s pour que Webix Jet enregistre les listeners
             _snap("2_avant_nav")
 
             if not _goto_sellout():
                 _snap("2_nav_echec")
+                # Capture les textes visibles et l'URL dans le message d'erreur
                 _nav_visible = []
                 try:
                     _nav_visible = page.evaluate('''() => {
@@ -797,69 +415,444 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
             print(f"  [nav] url après ventes: {page.url[:80]}")
             _snap("2_apres_nav_ok")
 
-        # ── Passe 1 : Année précédente (2025) ─────────────────────────────────
-        rows_25_raw, ps_25, pe_25 = _do_export_pass(
-            "Année 2025", "précédente", 2025
-        )
+        print(f"  [step3] url={page.url[:80]}")
+        # 3. Sélection "Année lissée" — ouvrir le date picker puis cliquer l'option
+        progress("Sélection Année lissée…")
+        _reauth_if_needed(page, creds, "avant Année lissée")
+        try:
+            # Cliquer le bouton date picker pour ouvrir le popup
+            _date_clicked = page.evaluate('''() => {
+                const el = document.querySelector("[view_id='button_date_picker']");
+                if (!el) return "no-el";
+                const btn = el.querySelector("button") || el;
+                btn.click();
+                return "clicked:" + btn.tagName;
+            }''')
+            print(f"  [step3] date picker: {_date_clicked}")
+            page.wait_for_timeout(1_500)
 
-        # Re-naviguer vers ventes avant la passe 2
-        progress("Retour ventes pour passe 2026…")
+            # Cliquer "Année lissée" dans le popup
+            _lissee_clicked = page.evaluate('''() => {
+                for (const el of document.querySelectorAll("*")) {
+                    if (el.children.length > 0) continue;
+                    if (!el.textContent.trim().toLowerCase().includes("liss")) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 2 || r.height < 2) continue;
+                    el.click();
+                    return el.textContent.trim();
+                }
+                return null;
+            }''')
+            print(f"  [step3] lissée: {_lissee_clicked}")
+            page.wait_for_timeout(800)
+
+            # Cliquer "Valider"
+            _val = page.evaluate('''() => {
+                for (const el of document.querySelectorAll("button")) {
+                    if (el.textContent.trim().toLowerCase() === "valider") {
+                        el.click(); return "clicked";
+                    }
+                }
+                return "not-found";
+            }''')
+            print(f"  [step3] valider: {_val}")
+            page.wait_for_timeout(3_000)
+        except Exception as _e3:
+            print(f"  [step3] err: {_e3}")
+
+        # Si on est revenu sur le dashboard, retourner sur ventes
         if not _ventes_tabs_visible():
+            print(f"  [warn] Année lissée a redirigé → {page.url[:60]} — retour ventes…")
             _goto_sellout()
-        page.wait_for_timeout(2_000)
 
-        # ── Passe 2 : Année en cours (2026) ───────────────────────────────────
-        # "cours" matche "Année en cours" ; fallback "liss" si absent
-        rows_26_raw, ps_26, pe_26 = _do_export_pass(
-            "Année 2026", "cours", 2026, fallback_kw="liss"
-        )
+        _url_post3 = page.url
+        print(f"  [step3-done] url={_url_post3[:80]}")
+        period_start, period_end = _extract_period(page)
 
-        # Upload fichier Excel combiné
-        file_url = ""
-        if user_id:
+        # 4. Onglet Produits
+        print(f"  [step4] url={page.url[:80]}")
+        progress("Sélection onglet Produits…")
+        try:
+            _prod_clicked = page.evaluate('''() => {
+                for (const el of document.querySelectorAll(
+                    ".webix_segment_0, .webix_segment_1, .webix_segment_N, button"
+                )) {
+                    if (el.textContent.trim() !== "Produits") continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 2 || r.height < 2) continue;
+                    el.click();
+                    return el.className.slice(0, 50);
+                }
+                return null;
+            }''')
+            print(f"  [step4] Produits: {_prod_clicked}")
+            page.wait_for_timeout(3_000)
+        except Exception as _e4:
+            print(f"  [step4] err: {_e4}")
+        _snap("4_apres_produits")
+        print(f"  [step4-done] url={page.url[:80]}")
+
+        # 4b. Reauth check — la session peut expirer pendant les étapes précédentes
+        if "accounts" in page.url:
+            print(f"  [warn] Session expirée avant export — reconnexion…")
+            _reauth_if_needed(page, creds, "avant export")
+            _wait_webix(page)
+            progress("Re-navigation après reconnexion…")
+            if not _goto_sellout():
+                raise RuntimeError("Re-navigation ventes après reauth échouée")
+            # Re-select Année lissée
             try:
-                progress("Sauvegarde du fichier combiné en ligne…")
-                from supabase_client import upload_file_sync, get_signed_url_sync
-                import datetime, tempfile as _tf2, os as _os2
+                page.evaluate('''() => {
+                    const el = document.querySelector("[view_id='button_date_picker']");
+                    if (!el) return;
+                    (el.querySelector("button") || el).click();
+                }''')
+                page.wait_for_timeout(1_500)
+                page.evaluate('''() => {
+                    for (const el of document.querySelectorAll("*")) {
+                        if (el.children.length > 0) continue;
+                        if (!el.textContent.trim().toLowerCase().includes("liss")) continue;
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 2 || r.height < 2) continue;
+                        el.click(); return;
+                    }
+                }''')
+                page.wait_for_timeout(800)
+                page.evaluate('''() => {
+                    for (const el of document.querySelectorAll("button")) {
+                        if (el.textContent.trim().toLowerCase() === "valider") {
+                            el.click(); return;
+                        }
+                    }
+                }''')
+                page.wait_for_timeout(3_000)
+                period_start, period_end = _extract_period(page)
+            except Exception as _e_ra3:
+                print(f"  [reauth] step3 err: {_e_ra3}")
+            # Re-select Produits
+            try:
+                page.evaluate('''() => {
+                    for (const el of document.querySelectorAll(
+                        ".webix_segment_0, .webix_segment_1, .webix_segment_N, button"
+                    )) {
+                        if (el.textContent.trim() !== "Produits") continue;
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 2 || r.height < 2) continue;
+                        el.click(); return;
+                    }
+                }''')
+                page.wait_for_timeout(3_000)
+            except Exception as _e_ra4:
+                print(f"  [reauth] step4 err: {_e_ra4}")
+            print(f"  [reauth] setup terminé — url={page.url[:80]}")
 
-                # Construire un Excel combiné avec colonne Année
-                _tmp_comb_fd, _tmp_comb = _tf2.mkstemp(suffix=".xlsx")
-                _os2.close(_tmp_comb_fd)
-                wb_out = openpyxl.Workbook()
-                ws_out = wb_out.active
-                ws_out.title = "Ventes OSPHARM"
+        # 4c. Attente chargement données — la datatable affiche "Chargement en cours..."
+        # après sélection de l'onglet Produits ; l'export ne doit se faire qu'une fois
+        # les lignes effectivement présentes dans le DOM (sinon Excel = 1 ligne vide).
+        progress("Chargement des données produits…")
+        try:
+            page.wait_for_function('''() => {
+                // "Chargement en cours..." ou tout spinner doit avoir disparu
+                for (const el of document.querySelectorAll("*")) {
+                    if (el.children.length > 0) continue;
+                    const t = el.textContent.trim();
+                    if ((t.includes("Chargement") || t.includes("loading") || t.includes("Loading"))
+                            && el.getBoundingClientRect().width > 0) {
+                        return false;
+                    }
+                }
+                // Et au moins une ligne de données visible dans la datatable
+                const rows = document.querySelectorAll(
+                    ".webix_dtable .webix_row, .webix_ss_body .webix_column .webix_cell"
+                );
+                return rows.length > 0;
+            }''', timeout=360_000)
+            print("  [step4c] données chargées")
+        except Exception as _e4c:
+            print(f"  [step4c] timeout attente données ({_e4c}) — export quand même")
+        _snap("4c_donnees_chargees")
 
-                all_raw = [dict(r, **{"Année": 2025}) for r in rows_25_raw] + \
-                          [dict(r, **{"Année": 2026}) for r in rows_26_raw]
+        # 5. Export Excel
+        # Deux mécanismes de capture complémentaires :
+        # - page.on("download") → blob côté client (webix.toExcel, lien <a download>, etc.)
+        # - context.on("response") → réponse HTTP serveur avec Content-Disposition: attachment
+        progress("Export Excel…")
+        import tempfile as _tf
+        _tmp_fd, tmp = _tf.mkstemp(suffix=".xlsx")
+        import os as _os; _os.close(_tmp_fd)
+        _tmp_dl_fd, _tmp_dl = _tf.mkstemp(suffix=".xlsx")
+        _os.close(_tmp_dl_fd)
+        _excel_bytes = []
 
-                if all_raw:
-                    hdrs = list(all_raw[0].keys())
-                    ws_out.append(hdrs)
-                    for r in all_raw:
-                        ws_out.append([r.get(h) for h in hdrs])
+        def _on_download(dl):
+            if _excel_bytes:
+                return
+            try:
+                dl.save_as(_tmp_dl)
+                with open(_tmp_dl, "rb") as _f:
+                    body = _f.read()
+                if len(body) > 500:
+                    _excel_bytes.append(body)
+                    print(f"  [export] download event: '{dl.suggested_filename}' ({len(body):,} bytes)")
+                else:
+                    print(f"  [export] download event trop petit ({len(body)} bytes) — ignoré")
+            except Exception as _de:
+                print(f"  [export] download event erreur: {_de}")
 
-                wb_out.save(_tmp_comb)
-                with open(_tmp_comb, "rb") as f:
-                    file_bytes = f.read()
+        page.on("download", _on_download)
 
-                date_str = datetime.date.today().strftime("%Y-%m-%d")
-                filename  = f"ospharm_{date_str}.xlsx"
-                path = upload_file_sync(user_id, "ospharm", filename, file_bytes,
-                                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                file_url = get_signed_url_sync(path)
-            except Exception as e:
-                print(f"  [warn] Storage upload failed: {e}")
+        def _on_response(resp):
+            if _excel_bytes:
+                return
+            try:
+                ct = resp.headers.get("content-type", "").lower()
+                cd = resp.headers.get("content-disposition", "").lower()
+                is_excel = any(x in ct for x in
+                    ["excel", "spreadsheet", "openxmlformats", "xls"])
+                has_attach = "attachment" in cd and ("xls" in cd or "xlsx" in cd or "excel" in cd)
+                if is_excel or has_attach:
+                    body = resp.body()
+                    if len(body) > 500:
+                        _excel_bytes.append(body)
+                        print(f"  [export] HTTP response: {len(body):,} bytes — ct={ct[:60]}")
+            except Exception as _ie:
+                print(f"  [export-intercept] {_ie}")
+
+        context.on("response", _on_response)
+
+        # ── Debug étendu ───────────────────────────────────────────────────────
+        try:
+            dbg = page.evaluate('''() => {
+                function vis(el) { const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1; }
+                const tabs = [...document.querySelectorAll(".webix_item_tab")];
+                const tips = [...document.querySelectorAll("[webix_tooltip]")].filter(vis);
+                const viewIds = [...document.querySelectorAll("[view_id]")].filter(vis).slice(0, 20).map(el => {
+                    const vid = el.getAttribute("view_id");
+                    let cfg = {};
+                    try {
+                        if (typeof webix !== "undefined") {
+                            const v = webix.$$(vid);
+                            if (v) cfg = { tooltip: v.config?.tooltip, label: v.config?.label, type: v.name };
+                        }
+                    } catch(e) {}
+                    return { vid, tag: el.tagName, cfg };
+                });
+                return {
+                    url: location.href,
+                    tabItems: tabs.map(t => t.textContent.trim()).slice(0, 10),
+                    tooltipEls: tips.slice(0, 10).map(e => e.getAttribute("webix_tooltip")),
+                    viewIds,
+                    webix: typeof webix !== "undefined" ? {
+                        toExcel: typeof webix.toExcel,
+                        dollar:  typeof webix.$$,
+                    } : "absent",
+                };
+            }''')
+            print(f"  [export-dbg] tabs={dbg.get('tabItems')} webix={dbg.get('webix')}")
+            print(f"  [export-dbg] tooltips={dbg.get('tooltipEls')}")
+            print(f"  [export-dbg] viewIds={dbg.get('viewIds')}")
+        except Exception as _dbg_err:
+            dbg = {}
+            print(f"  [export-dbg] skipped ({_dbg_err})")
+
+        # ── Clic bouton export (M0→M5) ─────────────────────────────────────────
+        kw_export = ["excel", "export", "exporter", "xls", "format", "fomat", "télécharger"]
+        try:
+            exported = page.evaluate('''(kw) => {
+                function vis(el) {
+                    const r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                }
+                function strTip(v) {
+                    // Certaines configs Webix ont tooltip/label en tant que fonction ou objet
+                    const raw = v.config?.tooltip || v.config?.label || "";
+                    return (typeof raw === "string" ? raw : "").toLowerCase();
+                }
+
+                // M0 : webix.toExcel direct sur datatable_sellout (confirmé par tests)
+                if (typeof webix !== "undefined" && typeof webix.toExcel === "function") {
+                    const direct = webix.$$("datatable_sellout");
+                    if (direct) { webix.toExcel(direct); return "M0:datatable_sellout"; }
+                    // Fallback: première datatable visible
+                    for (const el of document.querySelectorAll(".webix_dtable[view_id]")) {
+                        if (!vis(el)) continue;
+                        const grid = webix.$$(el.getAttribute("view_id"));
+                        if (grid) { webix.toExcel(grid); return "M0:dtable:" + el.getAttribute("view_id"); }
+                    }
+                }
+
+                // M1a : view_id avec tooltip/label contenant un mot-clé export
+                if (typeof webix !== "undefined" && typeof webix.$$ === "function") {
+                    for (const el of document.querySelectorAll("[view_id]")) {
+                        if (!vis(el)) continue;
+                        const v = webix.$$(el.getAttribute("view_id"));
+                        if (!v) continue;
+                        const tip = strTip(v);
+                        if (kw.some(k => tip.includes(k))) { el.click(); return "M1a:view_id:" + tip.slice(0,40); }
+                    }
+                }
+                // M2 : boutons à droite de la bande d'onglets ventes
+                const tabNames = new Set(["Laboratoires", "Familles", "Produits", "Marques"]);
+                let maxRight = 0, bandTop = 0, bandBottom = 0;
+                for (const el of document.querySelectorAll(".webix_item_tab")) {
+                    const txt = el.textContent.trim();
+                    if (!tabNames.has(txt)) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 4 || r.height < 4) continue;
+                    if (r.right > maxRight) { maxRight = r.right; bandTop = r.top; bandBottom = r.bottom; }
+                }
+                if (maxRight > 0) {
+                    const midY = (bandTop + bandBottom) / 2;
+                    const halfH = (bandBottom - bandTop) / 2 + 10;
+                    const cands = [];
+                    for (const el of document.querySelectorAll("[view_id], button, .webix_el_icon, .webix_el_button")) {
+                        const r = el.getBoundingClientRect();
+                        if (r.left <= maxRight + 2 || r.top > midY + halfH || r.bottom < midY - halfH) continue;
+                        if (r.width < 8 || r.height < 8 || r.width > 200 || r.height > 100) continue;
+                        cands.push(el);
+                    }
+                    cands.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+                    if (cands.length) {
+                        const target = cands[0].querySelector("button,.webix_template") || cands[0];
+                        target.click();
+                        return "M2:pos:" + cands[0].tagName + "@x" + Math.round(cands[0].getBoundingClientRect().left);
+                    }
+                    // fallback elementFromPoint
+                    for (const xOff of [50, 80, 110, 140]) {
+                        const el = document.elementFromPoint(window.innerWidth - xOff, midY);
+                        if (el && vis(el) && el.getBoundingClientRect().width < 200) {
+                            el.click(); return "M2:efp@" + xOff + ":" + el.tagName;
+                        }
+                    }
+                }
+                // M3 : webix_tooltip
+                for (const el of document.querySelectorAll("[webix_tooltip]")) {
+                    if (!vis(el)) continue;
+                    const tip = (el.getAttribute("webix_tooltip") || "").toLowerCase();
+                    if (kw.some(k => tip.includes(k))) {
+                        (el.querySelector("button") || el).click();
+                        return "M3:tooltip:" + tip.slice(0,40);
+                    }
+                }
+                // M4 : texte/title/aria
+                for (const el of document.querySelectorAll("button,a,[role=button],.webix_el_button")) {
+                    if (!vis(el)) continue;
+                    const hay = (el.textContent + " " + (el.title||"") + " " + (el.getAttribute("aria-label")||"")).toLowerCase();
+                    if (kw.some(k => hay.includes(k))) { el.click(); return "M4:kw:" + hay.slice(0,40); }
+                }
+                // M5 : icône de téléchargement par forme/position (dernier recours)
+                const allVis = [...document.querySelectorAll("button,.webix_el_icon,[role=button]")].filter(vis);
+                for (const el of allVis) {
+                    const r = el.getBoundingClientRect();
+                    if (r.right > window.innerWidth * 0.6 && r.top < window.innerHeight * 0.3) {
+                        const inner = el.innerHTML.toLowerCase();
+                        if (inner.includes("download") || inner.includes("arrow") || inner.includes("↓")) {
+                            el.click(); return "M5:icon:" + el.tagName + "@" + Math.round(r.left);
+                        }
+                    }
+                }
+                return false;
+            }''', kw_export)
+        except Exception as _eval_err:
+            if "context" in str(_eval_err).lower() or "destroyed" in str(_eval_err).lower():
+                exported = "context-destroyed-ok"
+                print(f"  [export] context destroyed au clic — download en route")
+            else:
+                browser.close()
+                raise RuntimeError(f"Export Excel : evaluate échoué : {_eval_err}")
+
+        if not exported:
+            browser.close()
+            raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
+
+        # ── Poll Valider (popup OSPHARM, jusqu'à 25s) ──────────────────────────
+        print(f"  [export] bouton cliqué ({exported}), poll Valider…")
+        _val_clicked = False
+        for _attempt in range(10):
+            page.wait_for_timeout(2_500)
+            if _excel_bytes:
+                print(f"  [export] fichier reçu avant/pendant Valider — ok")
+                break
+            try:
+                _loc = page.locator(
+                    ".webix_window button, .webix_popup button, .webix_modal button,"
+                    " .webix_win_body button, button"
+                ).filter(has_text="Valider").first
+                if _loc.is_visible(timeout=400):
+                    _loc.click(timeout=3_000)
+                    _val_clicked = True
+                    print(f"  [export] Valider cliqué (locator, attempt {_attempt+1})")
+                    break
+            except Exception:
+                pass
+            try:
+                if _js_click(page, "Valider"):
+                    _val_clicked = True
+                    print(f"  [export] Valider cliqué (js, attempt {_attempt+1})")
+                    break
+            except Exception as _je:
+                if "context" in str(_je).lower() or "destroyed" in str(_je).lower():
+                    print(f"  [export] context destroyed pendant poll Valider — ok")
+                    break
+        if not _val_clicked and not _excel_bytes:
+            print(f"  [export] Valider non trouvé après 25s")
+
+        # ── Attente réception fichier Excel jusqu'à 3 min (gros fichiers > 20 MB) ──
+        progress("Attente du fichier Excel…")
+        for _w in range(72):
+            if _excel_bytes:
+                break
+            page.wait_for_timeout(2_500)
+            if (_w + 1) % 4 == 0:
+                print(f"  [export] attente... {(_w+1)*2.5:.0f}s")
+
+        if not _excel_bytes:
+            browser.close()
+            raise RuntimeError(f"Export Excel : aucun fichier reçu en 3 min. Debug: {dbg}")
+
+        print(f"  [export] fichier capturé ({len(_excel_bytes[0]):,} bytes) — fermeture navigateur")
+        with open(tmp, "wb") as f:
+            f.write(_excel_bytes[0])
 
         _upload_screenshots()
         browser.close()
 
-    # Compacter les deux passes avec leur année
-    compact_25 = _compact_osp_rows(rows_25_raw, 2025)
-    compact_26 = _compact_osp_rows(rows_26_raw, 2026)
-    print(f"  [compact] 2025: {len(rows_25_raw)} → {len(compact_25)} lignes")
-    print(f"  [compact] 2026: {len(rows_26_raw)} → {len(compact_26)} lignes")
+    # Lecture Excel
+    import re as _re
+    def _strip_html(v):
+        if isinstance(v, str) and "<" in v:
+            return _re.sub(r"<[^>]+>", "", v).strip()
+        return v
 
-    return compact_25 + compact_26, file_url, ps_25, pe_25, ps_26, pe_26
+    progress("Lecture du fichier Excel…")
+    wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    headers = [str(h or "").strip() for h in next(rows_iter)]
+    rows = []
+    for row in rows_iter:
+        if any(v is not None for v in row):
+            rows.append({h: _strip_html(v) for h, v in zip(headers, row)})
+    wb.close()
+
+    # Upload vers Supabase Storage
+    file_url = ""
+    if user_id:
+        try:
+            progress("Sauvegarde du fichier en ligne…")
+            from supabase_client import upload_file_sync, get_signed_url_sync
+            import datetime
+            date_str = datetime.date.today().strftime("%Y-%m-%d")
+            filename  = f"ospharm_{date_str}.xlsx"
+            with open(tmp, "rb") as f:
+                file_bytes = f.read()
+            path     = upload_file_sync(user_id, "ospharm", filename, file_bytes,
+                                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            file_url = get_signed_url_sync(path)
+        except Exception as e:
+            print(f"  [warn] Storage upload failed: {e}")
+
+    return rows, file_url, period_start, period_end
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -882,26 +875,12 @@ def main():
         _update_job("running", msg)
 
     try:
-        all_rows, file_url, ps_25, pe_25, ps_26, pe_26 = run_ospharm(
-            creds, progress, user_id=USER_ID
-        )
-        n25 = sum(1 for r in all_rows if r.get("year") == 2025)
-        n26 = sum(1 for r in all_rows if r.get("year") == 2026)
-        print(f"  [total] {len(all_rows)} lignes — 2025: {n25}, 2026: {n26}")
-        _update_job(
-            "done",
-            f"{len(all_rows)} lignes extraites ({n25} en 2025, {n26} en 2026)",
-            all_rows,
-            blocking=True,
-            period_start=ps_25,
-            period_end=pe_25,
-            period_start_2026=ps_26,
-            period_end_2026=pe_26,
-            rows_2025=n25,
-            rows_2026=n26,
-            file_url=file_url,
-        )
-        print(f"\n✅  {len(all_rows)} lignes OSPHARM sauvegardées dans Supabase. ({time.time()-t0:.1f}s total)")
+        rows, file_url, ps, pe = run_ospharm(creds, progress, user_id=USER_ID)
+        stored_rows = _compact_osp_rows(rows)
+        print(f"  [compact] {len(rows)} → {len(stored_rows)} lignes ({len(stored_rows)/max(len(rows),1)*100:.0f}%)")
+        _update_job("done", f"{len(stored_rows)} lignes extraites", stored_rows, blocking=True,
+                    period_start=ps, period_end=pe, file_url=file_url)
+        print(f"\n✅  {len(stored_rows)} lignes OSPHARM sauvegardées dans Supabase. ({time.time()-t0:.1f}s total)")
     except Exception as e:
         _update_job("error", error=str(e), blocking=True)
         print(f"\n❌  {e}")
