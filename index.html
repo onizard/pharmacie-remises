@@ -1378,7 +1378,7 @@ function serializeState() {
         remiseGlobale: c.remiseGlobale,
         caCondition: c.caCondition,
         rsfValues: c.rsfValues.map(r => ({
-          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept,
+          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept, custom: r.custom || false,
         })),
         exceptions: c.exceptions,
         remise2Except: c.remise2Except,
@@ -1392,7 +1392,7 @@ function serializeState() {
         remiseGlobale: c.remiseGlobale,
         caCondition: c.caCondition,
         rsfValues: c.rsfValues.map(r => ({
-          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept,
+          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept, custom: r.custom || false,
         })),
         exceptions: c.exceptions,
         remise2Except: c.remise2Except,
@@ -2021,6 +2021,15 @@ function initLabPage(conf) {
             </table>
           </div>
           <div id="excpts-${uid}-${cond.uid}" class="row-except-blocks"></div>
+          ${isAdmin ? `<div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button class="r3-toggle" id="addPalierBtn-${uid}-${cond.uid}" style="font-size:11px;padding:2px 8px">+ PALIER</button>
+            <span id="addPalierForm-${uid}-${cond.uid}" style="display:none;align-items:center;gap:6px">
+              <input type="number" id="addPalierInp-${uid}-${cond.uid}" step="0.01" placeholder="ex: -15.00" class="rsf-input" style="width:90px" />
+              <span style="color:var(--text-dim);font-size:12px">%</span>
+              <button id="addPalierOk-${uid}-${cond.uid}" class="r3-toggle" style="font-size:11px;padding:2px 8px;color:var(--green);border-color:var(--green)">OK</button>
+              <button id="addPalierCancel-${uid}-${cond.uid}" style="font-size:11px;padding:2px 6px;background:none;border:1px solid #444;color:#aaa;border-radius:4px;cursor:pointer">✕</button>
+            </span>
+          </div>` : ''}
         </div>
       </div>
     `;
@@ -2083,6 +2092,39 @@ function initLabPage(conf) {
           cgvDrop.classList.add('cgv-loaded');
           cgvDrop.title = cond.cgvPdf.name;
         }
+      }
+      // ── Ajout de paliers supplémentaires ──────────────────────────────────────
+      const addPalierBtn    = document.getElementById(`addPalierBtn-${uid}-${cond.uid}`);
+      const addPalierForm   = document.getElementById(`addPalierForm-${uid}-${cond.uid}`);
+      const addPalierInp    = document.getElementById(`addPalierInp-${uid}-${cond.uid}`);
+      const addPalierOk     = document.getElementById(`addPalierOk-${uid}-${cond.uid}`);
+      const addPalierCancel = document.getElementById(`addPalierCancel-${uid}-${cond.uid}`);
+      if (addPalierBtn && addPalierForm) {
+        const showForm = () => {
+          addPalierBtn.style.display = 'none';
+          addPalierForm.style.display = 'flex';
+          addPalierInp.focus();
+        };
+        const hideForm = () => {
+          addPalierBtn.style.display = '';
+          addPalierForm.style.display = 'none';
+          addPalierInp.value = '';
+          addPalierInp.style.borderColor = '';
+        };
+        const doAdd = () => {
+          const v = parseFloat(addPalierInp.value.replace(',', '.'));
+          if (isNaN(v)) { addPalierInp.style.borderColor = '#ff3366'; return; }
+          if (cond.rsfValues.some(r => String(r.rsf_pct) === String(v))) { addPalierInp.style.borderColor = '#ff3366'; return; }
+          cond.rsfValues.push({ rsf_pct: v, remise2: '', remise3: '', excluded: false, hasExcept: false, custom: true });
+          cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
+          renderCondTable(cond);
+          hideForm();
+          saveState();
+        };
+        addPalierBtn.addEventListener('click', showForm);
+        addPalierCancel.addEventListener('click', hideForm);
+        addPalierOk.addEventListener('click', doAdd);
+        addPalierInp.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); else if (e.key === 'Escape') hideForm(); });
       }
     }
   }
@@ -2274,6 +2316,18 @@ function initLabPage(conf) {
       } else {
         tdRsf.textContent = `${Math.abs(row.rsf_pct).toFixed(2)} %`;
       }
+      if (row.custom && isAdmin) {
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '×';
+        delBtn.title = 'Supprimer ce palier';
+        delBtn.style.cssText = 'background:none;border:none;color:#ff3366;cursor:pointer;font-size:15px;padding:0;margin-left:6px;line-height:1;vertical-align:middle;opacity:.7';
+        delBtn.addEventListener('click', () => {
+          cond.rsfValues.splice(idx, 1);
+          renderCondTable(cond);
+          saveState();
+        });
+        tdRsf.appendChild(delBtn);
+      }
       tr.appendChild(tdRsf);
 
       const inp2 = document.createElement('input');
@@ -2381,6 +2435,11 @@ function initLabPage(conf) {
           const p = prev[String(r.rsf_pct)];
           return p ? { ...r, remise2: p.remise2, remise3: p.remise3, excluded: p.excluded, hasExcept: p.hasExcept } : r;
         });
+        Object.values(prev).filter(r => r.custom).forEach(cr => {
+          if (!cond.rsfValues.some(r => String(r.rsf_pct) === String(cr.rsf_pct)))
+            cond.rsfValues.push({ ...cr, custom: true });
+        });
+        cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
         applyRsf25Default(cond);
         renderCondTable(cond);
         if (cond.remiseGlobale !== null) autoFillCond(cond);
@@ -2419,6 +2478,11 @@ function initLabPage(conf) {
             ? { rsf_pct: v, remise2: sv.excluded && !sv.remise2 ? '0' : sv.remise2, remise3: sv.remise3, excluded: sv.excluded, hasExcept: sv.hasExcept || false }
             : { rsf_pct: v, remise2: '', remise3: '', excluded: lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v)), hasExcept: false };
         });
+        (sc.rsfValues || []).filter(r => r.custom).forEach(cr => {
+          if (!cond.rsfValues.some(r => String(r.rsf_pct) === String(cr.rsf_pct)))
+            cond.rsfValues.push({ rsf_pct: cr.rsf_pct, remise2: cr.remise2 || '', remise3: cr.remise3 || '', excluded: cr.excluded || false, hasExcept: cr.hasExcept || false, custom: true });
+        });
+        cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
         if (idx === 0) applyDefaultExcepts(cond, lab);
         s[condKey].push(cond);
         const panel = buildCondPanel(cond);
