@@ -9,26 +9,11 @@ on:
 
 jobs:
   scrape:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: self-hosted
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Cache camoufox Firefox binary
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/share/camoufox
-          key: camoufox-${{ runner.os }}-v1
-
-      - name: Install dependencies
-        run: |
-          pip install --quiet camoufox[geoip] pdfplumber
-          python -m camoufox fetch
 
       - name: Run scraper
         env:
