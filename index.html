@@ -3505,6 +3505,8 @@ async function launchSimulation() {
     function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false, forcedConds = null, prorataRatios = null } = {}) {
       const labMap = new Map();
       // Phase 1 : CA par labo
+      // Le PUHT utilisé pour le CA BRUT est toujours celui du CIP réellement acheté
+      // (OSPHARM > Supabase CIP acheté > ref assignée) — cohérence entre scénarios.
       csvData.forEach(row => {
         const ref = assignment.get(row.cip13);
         if (!ref) return;
@@ -3513,9 +3515,10 @@ async function launchSimulation() {
           labMap.set(ref.labo, { ca: 0, remise: 0, qty: 0, lp, isSelected: !!lp, rows: [] });
         }
         const e = labMap.get(ref.labo);
-        e.ca  += row.qty * (ref.puht || 0);
+        const puht = row.puht || refMap.get(row.cip13)?.puht || ref.puht || 0;
+        e.ca  += row.qty * puht;
         e.qty += row.qty;
-        e.rows.push({ row, ref, price: ref.puht || 0 });
+        e.rows.push({ row, ref, price: puht });
       });
       // Phase 2 : remise par labo (après CA connu → meilleur palier atteignable ou palier forcé)
       labMap.forEach(e => {
