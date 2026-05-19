@@ -179,6 +179,26 @@
   .save-badge { font-size: 10px; color: var(--green); opacity: 0; transition: opacity 0.4s; font-family: 'Share Tech Mono', monospace; letter-spacing: 1px; white-space: nowrap; pointer-events: none; }
   .save-badge.visible { opacity: 1; }
 
+  /* ── Recap tables ── */
+  .recap-section { margin-bottom: 36px; }
+  .recap-section-title { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--cyan); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,229,255,.15); display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  .recap-section-title .recap-kpi { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); font-weight: 400; letter-spacing: 1px; }
+  .recap-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .recap-table { width: 100%; border-collapse: collapse; font-family: 'Share Tech Mono', monospace; font-size: 12px; }
+  .recap-table th { text-align: left; font-size: 10px; letter-spacing: 2px; color: var(--text-dim); border-bottom: 1px solid var(--border); padding: 6px 8px; white-space: nowrap; }
+  .recap-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; white-space: nowrap; }
+  .recap-table tr:hover td { background: rgba(0,229,255,.03); }
+  .recap-table .num { text-align: right; }
+  .recap-table .labo-col { color: var(--cyan); font-size: 11px; }
+  .recap-table .panet-col { color: var(--green); font-weight: 700; }
+  .recap-table .libelle-col { white-space: normal; font-size: 11px; color: var(--text-dim); max-width: 240px; }
+  /* Reset button hold */
+  .btn-reset-hold { position: relative; overflow: hidden; border-color: var(--red); color: var(--red); user-select: none; -webkit-user-select: none; transition: color .15s; }
+  .btn-reset-hold::after { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: var(--red); opacity: .15; transition: none; }
+  .btn-reset-hold.holding::after { width: 100%; transition: width 3s linear; }
+  /* Btn conditions labo */
+  .btn-cond-labo { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; letter-spacing: 2px; padding: 10px 20px; background: none; border: 1px solid var(--border); color: var(--cyan); cursor: pointer; transition: border-color .2s, color .2s; }
+  .btn-cond-labo:hover { border-color: var(--cyan); }
 
   /* ── Main tabs ── */
   .main-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 32px; gap: 0; overflow-x: auto; }
@@ -1001,7 +1021,7 @@
 
   <header class="site-header">
     <div>
-      <a href="#" class="logo" onclick="event.preventDefault();goTo('labs')">BREAK-PHARMA</a>
+      <a href="#" class="logo" onclick="event.preventDefault();goTo('recap')">BREAK-PHARMA</a>
       <div class="header-sub">comparateur de génériques</div>
     </div>
     <div class="header-right">
@@ -1124,8 +1144,8 @@
   </div>
 
   <nav class="main-tabs" id="mainTabs">
-    <button class="main-tab" data-page="labs">CONDITIONS DES LABORATOIRES</button>
-    <button class="main-tab" data-page="comparateur">COMPARATEUR</button>
+    <button class="main-tab" data-page="recap">RÉCAP ACHATS/VENTES</button>
+    <button class="main-tab admin-only" data-page="comparateur" style="display:none">COMPARATEUR</button>
     <button class="main-tab" data-page="verificateur">VÉRIFICATEUR DE REMISE</button>
   </nav>
 
@@ -1137,15 +1157,41 @@
     </div>
   </div>
 
+  <!-- ── PAGE RÉCAP ACHATS/VENTES ── -->
+  <div id="page-recap" class="page">
+    <div class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+        <div>
+          <div class="panel-title" style="margin-bottom:4px">◈ Récap Achats / Ventes</div>
+          <div class="panel-sub">// Données OSPHARM — ventes en cours et plan d'achats optimal</div>
+        </div>
+        <button class="btn-cond-labo" id="btnConditionsLabo">⚙ CONDITIONS LABO</button>
+      </div>
+      <div id="recapContainer">
+        <div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:13px;padding:60px 0;text-align:center;letter-spacing:2px">
+          // Connectez-vous à OSPHARM pour charger vos données de ventes
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── PAGE LABS : Conditions ── -->
   <div id="page-labs" class="page">
     <div class="panel">
-      <div class="panel-title">◈ Conditions du laboratoire</div>
-      <div class="panel-sub">// Sélectionner le laboratoire — puis entrer toutes ses conditions</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+        <div>
+          <div class="panel-title" style="margin-bottom:4px">◈ Conditions du laboratoire</div>
+          <div class="panel-sub">// Sélectionner le laboratoire — puis entrer toutes ses conditions</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn btn-reset-hold" id="btnResetConditions" title="Maintenir 3 secondes pour réinitialiser">↺ RESET</button>
+          <button class="btn" id="btnRetourRecap">← RETOUR</button>
+        </div>
+      </div>
       <div class="lab-grid" id="labGridMain"></div>
       <div id="labsContainer"></div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="btnImporter" disabled>IMPORTER MES FICHIERS &nbsp;›</button>
+        <button class="btn btn-primary admin-only" id="btnImporter" disabled style="display:none">IMPORTER MES FICHIERS &nbsp;›</button>
       </div>
     </div>
   </div>
@@ -1602,7 +1648,11 @@ function goTo(pageId) {
 }
 
 function updateMainTabs() {
-  const activeTab = { labs: 'labs', csv: 'comparateur', results: 'comparateur', verificateur: 'verificateur' }[state.currentPageId] || 'labs';
+  const activeTab = {
+    recap: 'recap', labs: 'recap',
+    csv: 'comparateur', results: 'comparateur',
+    verificateur: 'verificateur',
+  }[state.currentPageId] || 'recap';
   document.querySelectorAll('.main-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.page === activeTab);
   });
@@ -1637,8 +1687,6 @@ document.querySelectorAll('.main-tab').forEach(btn => {
         return;
       }
       await launchComparateur();
-    } else if (page === 'verificateur') {
-      goTo(page);
     } else {
       goTo(page);
     }
@@ -1805,7 +1853,58 @@ function renderStepBar() {
   const btnImp = document.getElementById('btnImporter');
   if (!btnImp) return;
   if (!isAdmin) { btnImp.style.display = 'none'; return; }
+  btnImp.style.display = '';
   btnImp.disabled = !state.labPages.some(lp => lp.selectedLab);
+}
+
+// ── Récap achats/ventes ────────────────────────────────────────────────────────
+function renderRecapTable(rows, title) {
+  const fmtN = n => (n || 0).toLocaleString('fr', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!rows || !rows.length) {
+    return `<div class="recap-section"><div class="recap-section-title">${title}</div><div style="color:var(--text-dim);font-size:12px;font-family:'Share Tech Mono',monospace;padding:12px 0">Aucune donnée</div></div>`;
+  }
+  const totalPaNet = rows.reduce((s, r) => s + (r.paNet || 0), 0);
+  const totalQty   = rows.reduce((s, r) => s + (r.qty   || 0), 0);
+  return `<div class="recap-section">
+    <div class="recap-section-title">${title}
+      <span class="recap-kpi">${rows.length} références &nbsp;·&nbsp; QTÉ : ${totalQty.toLocaleString('fr')} &nbsp;·&nbsp; PA NET : ${fmtN(totalPaNet)} €</span>
+    </div>
+    <div class="recap-table-wrap">
+      <table class="recap-table">
+        <thead><tr>
+          <th>LABO</th><th>CIP</th><th>LIBELLÉ</th>
+          <th class="num">QTÉ</th><th class="num">PU HT</th>
+          <th class="num">RSF%</th><th class="num">REMISE2</th><th class="num">REMISE3</th>
+          <th class="num">PA NET</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(r => `<tr>
+          <td class="labo-col">${r.labo || '—'}</td>
+          <td>${r.cip13}</td>
+          <td class="libelle-col">${r.libelle}</td>
+          <td class="num">${(r.qty || 0).toLocaleString('fr')}</td>
+          <td class="num">${r.puht ? r.puht.toFixed(2) : '—'}</td>
+          <td class="num">${r.rsf_pct != null ? Math.abs(r.rsf_pct).toFixed(0) + '%' : '—'}</td>
+          <td class="num">${r.remise2 ? r.remise2 + '%' : '—'}</td>
+          <td class="num">${r.remise3 ? r.remise3 + '%' : '—'}</td>
+          <td class="num panet-col">${fmtN(r.paNet)} €</td>
+        </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function renderRecap() {
+  const el = document.getElementById('recapContainer');
+  if (!el) return;
+  const ventes = state._recapVentes || [];
+  const achats = state._recapAchats || [];
+  if (!ventes.length && !achats.length) {
+    el.innerHTML = `<div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:13px;padding:60px 0;text-align:center;letter-spacing:2px">// Connectez-vous à OSPHARM pour charger vos données de ventes</div>`;
+    return;
+  }
+  el.innerHTML = renderRecapTable(ventes, '◇ RÉCAP VENTES') + renderRecapTable(achats, '◇ RÉCAP ACHATS OPTIMISÉS');
 }
 
 function renderLabGrid() {
@@ -2399,9 +2498,7 @@ function initLabPage(conf) {
       inp2.placeholder = 'ex : 5.00'; inp2.value = row.remise2;
       if (row.remise2) inp2.classList.add('auto-c');
       if (row.excluded) inp2.classList.add('excl-r2');
-      if (!isAdmin) inp2.readOnly = true;
       inp2.addEventListener('input', e => {
-        if (!isAdmin) return;
         cond.rsfValues[idx].remise2 = e.target.value;
         inp2.classList.remove('auto-c');
         cond.rsfValues[idx].excluded = false;
@@ -4037,6 +4134,31 @@ async function launchSimulation() {
     const winnerSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
     const totalScenarios = 1 + allOptScenarios.length;
 
+    // ── Récap par CIP ─────────────────────────────────────────────────────────
+    function buildRecapRows(assignment) {
+      const rows = [];
+      for (const row of csvData) {
+        const ref = assignment.get(row.cip13);
+        if (!ref) continue;
+        const lp = state.labPages.find(l => l.selectedLab === ref.labo);
+        const cond = lp ? getBestCond(lp, Infinity, false) : null;
+        let remise2 = '', remise3 = '';
+        if (cond) {
+          const rv = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
+          if (rv && !rv.excluded) { remise2 = rv.remise2 || ''; remise3 = rv.remise3 || ''; }
+        }
+        const puht = row.puht || ref.puht || 0;
+        const net = (parseFloat(remise2) || 0) + (parseFloat(remise3) || 0);
+        const paNet = row.qty * puht * (1 - net / 100);
+        rows.push({ labo: ref.labo, cip13: row.cip13, libelle: row.libelle || ref.libelle || '', qty: row.qty, puht, rsf_pct: ref.rsf_pct, remise2, remise3, paNet });
+      }
+      rows.sort((a, b) => a.labo.localeCompare(b.labo) || b.qty - a.qty);
+      return rows;
+    }
+    state._recapVentes = buildRecapRows(naturalAssignment);
+    state._recapAchats = buildRecapRows(winnerEntry.assignment);
+    renderRecap();
+
     let html = '';
 
     // ── KPIs ──────────────────────────────────────────────────────────────────
@@ -4828,7 +4950,45 @@ async function saveProfile() {
   renderLabGrid();
   renderStepBar();
 
-  document.getElementById('btnImporter').addEventListener('click', () => goTo('csv'));
+  document.getElementById('btnImporter')?.addEventListener('click', () => goTo('csv'));
+
+  // ── CONDITIONS LABO button ────────────────────────────────────────────────────
+  document.getElementById('btnConditionsLabo')?.addEventListener('click', () => goTo('labs'));
+  document.getElementById('btnRetourRecap')?.addEventListener('click', () => goTo('recap'));
+
+  // ── RESET CONDITIONS (maintenir 3 secondes) ───────────────────────────────────
+  const btnReset = document.getElementById('btnResetConditions');
+  if (btnReset) {
+    let _resetTimer = null;
+    const startReset = () => {
+      btnReset.classList.add('holding');
+      _resetTimer = setTimeout(async () => {
+        btnReset.classList.remove('holding');
+        await loadRsfDefaults();
+        state.labPages.forEach(lp => {
+          if (!lp.selectedLab) return;
+          const defs = window._rsfDefaults?.[lp.selectedLab];
+          const exc  = window._labExceptions?.[lp.selectedLab];
+          if (!defs && !exc) return;
+          [...(lp.conditions || []), ...(lp.conditions2025 || [])].forEach(cond => {
+            if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
+            if (exc) { Object.assign(cond.exceptions, exc.exceptions); Object.assign(cond.remise2Except, exc.remise2Except); }
+          });
+          if (lp._reRenderCondTables)     lp._reRenderCondTables();
+          if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();
+        });
+        saveState();
+        showToast('✓ Conditions réinitialisées aux valeurs par défaut');
+      }, 3000);
+    };
+    const cancelReset = () => { clearTimeout(_resetTimer); _resetTimer = null; btnReset.classList.remove('holding'); };
+    btnReset.addEventListener('mousedown',   startReset);
+    btnReset.addEventListener('touchstart',  startReset, { passive: true });
+    btnReset.addEventListener('mouseup',     cancelReset);
+    btnReset.addEventListener('mouseleave',  cancelReset);
+    btnReset.addEventListener('touchend',    cancelReset);
+    btnReset.addEventListener('touchcancel', cancelReset);
+  }
 
   if (saved && saved.labPages) {
     for (const sp of saved.labPages) {
@@ -4844,7 +5004,7 @@ async function saveProfile() {
     renderLabGrid();
     const firstConfigured = state.labPages.find(lp => lp.selectedLab);
     if (firstConfigured) { switchToLab(firstConfigured.uid); renderLabGrid(); }
-    // Restaure la dropzone après que le DOM est prêt
+    // Restaure la dropzone après que le DOM est prêt (admin)
     if (isAdmin && saved.csvData && saved.csvData.length) {
       const fname = saved.csvFileName || 'Fichier restauré';
       const fnLabel = document.getElementById('dropzone-filename');
@@ -4857,11 +5017,19 @@ async function saveProfile() {
       if (fst) fst.textContent = `FICHIER : ${fname}  —  ${state.csvRows.toLocaleString('fr')} références détectées`;
       btn1Next.disabled = false;
     }
-    const targetPage = ['csv', 'results'].includes(saved.currentPageId) ? saved.currentPageId : 'labs';
+    // Page cible : admin peut voir csv/results, sinon par défaut recap
+    let targetPage = saved.currentPageId || 'recap';
+    if (!['csv', 'results', 'labs', 'recap', 'verificateur'].includes(targetPage)) targetPage = 'recap';
+    if (!isAdmin && ['csv', 'results', 'labs'].includes(targetPage)) targetPage = 'recap';
     goTo(targetPage);
     if (targetPage === 'results') launchSimulation();
   } else {
-    goTo('labs');
+    goTo('recap');
+  }
+
+  // Admin : afficher le tab COMPARATEUR
+  if (isAdmin) {
+    document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
   }
 
   initConnecteurModal();
