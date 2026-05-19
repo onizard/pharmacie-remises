@@ -5361,7 +5361,15 @@ function initConnecteurModal() {
     bar?.classList.add('active');
     // Phases : serveur 0→25, envoi 25→50, test 50→75, job 75→98 (lent), ready →100 (fixe)
     const phases = { serveur: [0, 25, 60, 300], envoi: [25, 50, 60, 300], test: [50, 75, 60, 300], job: [75, 98, 800, 300] };
-    if (action === 'ready') { set(100); return; }
+    if (action === 'ready') {
+      set(100);
+      setTimeout(() => {
+        bar?.classList.remove('active');
+        set(0);
+        _stopRunningTicker();
+      }, 600);
+      return;
+    }
     const [from, to, steps, ms] = phases[action] || [0, 0, 60, 300];
     let cur = from;
     set(cur);
