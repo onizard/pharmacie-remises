@@ -19,16 +19,29 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-playwright-openpyxl-${{ runner.os }}-v1
+
       - name: Cache Playwright browsers
+        id: pw-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-v1
+          key: playwright-chromium-${{ runner.os }}-v2
 
       - name: Install dependencies
+        run: pip install --quiet playwright openpyxl
+
+      - name: Install Playwright browser (+ system deps on cache miss)
         run: |
-          pip install --quiet playwright openpyxl
-          playwright install chromium --with-deps
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            playwright install chromium
+          else
+            playwright install chromium --with-deps
+          fi
 
       - name: Run scraper OSPHARM
         env:

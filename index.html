@@ -754,8 +754,30 @@
   }
 
   /* ── Toast notification ── */
-  .bp-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--bg2); border: 1px solid var(--red); color: var(--red); font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: .8px; padding: 13px 22px; z-index: 99999; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 88vw; text-align: center; line-height: 1.5; }
+  .bp-toast { position: fixed; bottom: 46px; left: 50%; transform: translateX(-50%); background: var(--bg2); border: 1px solid var(--red); color: var(--red); font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: .8px; padding: 13px 22px; z-index: 99999; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 88vw; text-align: center; line-height: 1.5; }
   .bp-toast.show { opacity: 1; }
+
+  /* ── Footer ── */
+  .site-footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); border-top: 1px solid var(--border); padding: 7px 24px; display: flex; justify-content: center; gap: 28px; z-index: 1000; font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: .8px; }
+  .site-footer a { color: var(--text-dim); text-decoration: none; transition: color .15s; cursor: pointer; }
+  .site-footer a:hover { color: var(--cyan); }
+
+  /* ── Feedback & CGU modals ── */
+  .bp-modal { display: none; position: fixed; inset: 0; z-index: 9500; background: rgba(4,6,15,.88); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
+  .bp-modal.open { display: flex; }
+  .bp-modal-box { background: var(--bg2); border: 1px solid var(--border); padding: 32px; width: min(540px, 94vw); position: relative; max-height: 88vh; overflow-y: auto; }
+  .bp-modal-title { font-family: 'Orbitron', monospace; font-size: 14px; font-weight: 900; color: var(--cyan); letter-spacing: 3px; margin-bottom: 18px; text-align: center; }
+  .bp-modal-close { position: absolute; top: 14px; right: 18px; background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; line-height: 1; }
+  .bp-modal-close:hover { color: var(--red); }
+  #feedbackText { width: 100%; box-sizing: border-box; min-height: 130px; resize: vertical; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 13px; padding: 10px 12px; outline: none; margin-bottom: 14px; }
+  #feedbackText:focus { border-color: var(--cyan); }
+  #feedbackSend { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; letter-spacing: 2px; padding: 9px 22px; cursor: pointer; background: transparent; border: 1px solid var(--cyan); color: var(--cyan); transition: all .2s; }
+  #feedbackSend:hover { background: var(--cyan); color: var(--bg); }
+  #feedbackSend:disabled { opacity: .5; cursor: default; }
+  #feedbackStatus { margin-top: 10px; font-family: 'Share Tech Mono', monospace; font-size: 12px; min-height: 18px; }
+  .cgu-body { font-family: 'Share Tech Mono', monospace; font-size: 12px; line-height: 1.7; color: var(--text); }
+  .cgu-body h3 { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; color: var(--cyan); letter-spacing: 2px; margin: 20px 0 8px; }
+  .cgu-body p { margin: 0 0 8px; color: var(--text-dim); }
 
 </style>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -2420,6 +2442,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   const remInp = document.createElement('input');
   remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '100px';
   remInp.placeholder = 'ex : 3.00'; remInp.value = exc.remise2;
+  if (!isAdmin) remInp.readOnly = true;
   remInp.addEventListener('input', e => { exc.remise2 = e.target.value; saveState(); });
   const unit = document.createElement('span');
   unit.className = 'rg-unit'; unit.textContent = '%';
@@ -2467,6 +2490,7 @@ function buildExceptionContent(exc, rsf_pct = null, labName = '') {
   const remInp = document.createElement('input');
   remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '100px';
   remInp.placeholder = 'ex : 10.00'; remInp.value = exc.remiseCible;
+  if (!isAdmin) remInp.readOnly = true;
   remInp.addEventListener('input', e => { exc.remiseCible = e.target.value; });
   const unit = document.createElement('span');
   unit.className = 'rg-unit'; unit.textContent = '%';
@@ -3110,27 +3134,26 @@ async function launchSimulation() {
 
     // Second fetch: selected labs may have different CIPs for same molecules (not in CSV).
     // Query by libellé + selected lab to find all their equivalents.
+    // All lab×chunk combinations are fetched in parallel.
     if (ourLabs.size > 0) {
       const allLibelles = [...new Set(refRows.map(r => r.libelle))];
       const LIB_CHUNK = 30;
+      const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+      const tasks = [];
       for (const lab of ourLabs) {
         for (let i = 0; i < allLibelles.length; i += LIB_CHUNK) {
           const chunk = allLibelles.slice(i, i + LIB_CHUNK);
           const libStr = chunk.map(l => `"${l.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
           const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&libelle=in.(${libStr})&limit=2000`;
-          let res;
-          try { res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }); }
-          catch(_) { continue; } // réseau momentanément indisponible → on passe au chunk suivant
-          if (res.ok) {
-            const rows = await res.json();
-            rows.forEach(r => {
-              if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
-              if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
-                libelleMap.get(r.libelle).push(r);
-            });
-          }
+          tasks.push(fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []));
         }
       }
+      const results = await Promise.all(tasks);
+      results.forEach(rows => rows.forEach(r => {
+        if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
+        if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
+          libelleMap.get(r.libelle).push(r);
+      }));
     }
 
     // 3b. Form-agnostic libelle map : "AMLODIPINE 5MG 30CP" ≡ "AMLODIPINE 5MG 30GELULE"
@@ -4780,7 +4803,7 @@ function initConnecteurModal() {
   async function _pollOspJobAndLaunch(prefix) {
     const deadline = Date.now() + 600_000; // 10 min max
     while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 5_000));
+      await new Promise(r => setTimeout(r, 2_500));
       try {
         const { data: { session } } = await window._sbClient.auth.getSession();
         if (!session) break;
@@ -5062,6 +5085,132 @@ function initConnecteurModal() {
     if (e.key === 'Enter' && input.value.trim()) tryAuth(input.value.trim());
   });
 })();
+
+// ── Footer modals ──────────────────────────────────────────────────────────
+(function() {
+  const ADMIN_MAIL = 'oliviernizard@gmail.com';
+
+  // helpers
+  const openModal  = id => document.getElementById(id)?.classList.add('open');
+  const closeModal = id => document.getElementById(id)?.classList.remove('open');
+  ['feedbackModal','cguModal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', e => { if (e.target === el) closeModal(id); });
+  });
+
+  document.getElementById('footerFeedback')?.addEventListener('click', () => {
+    document.getElementById('feedbackText').value = '';
+    document.getElementById('feedbackStatus').textContent = '';
+    document.getElementById('feedbackSend').disabled = false;
+    openModal('feedbackModal');
+  });
+  document.getElementById('feedbackClose')?.addEventListener('click', () => closeModal('feedbackModal'));
+  document.getElementById('footerCgu')?.addEventListener('click', () => openModal('cguModal'));
+  document.getElementById('cguClose')?.addEventListener('click', () => closeModal('cguModal'));
+
+  document.getElementById('feedbackSend')?.addEventListener('click', async () => {
+    const msg = document.getElementById('feedbackText').value.trim();
+    if (!msg) return;
+    const statusEl = document.getElementById('feedbackStatus');
+    const btn = document.getElementById('feedbackSend');
+    btn.disabled = true;
+    statusEl.style.color = 'var(--text-dim)';
+    statusEl.textContent = 'Envoi en cours…';
+
+    // Récupère l'email de l'utilisateur connecté
+    let userEmail = '';
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      userEmail = session?.user?.email || '';
+    } catch(_) {}
+
+    // Ouvre le client mail avec message pré-rempli
+    const subject = encodeURIComponent(`Break-Pharma — Message de ${userEmail || 'utilisateur'}`);
+    const body = encodeURIComponent(`De : ${userEmail}\n\n${msg}`);
+    window.open(`mailto:${ADMIN_MAIL}?subject=${subject}&body=${body}`, '_blank');
+
+    statusEl.style.color = 'var(--green)';
+    statusEl.textContent = '✓ Votre client mail a été ouvert. Cliquez sur Envoyer pour transmettre le message.';
+  });
+})();
 </script>
+
+<!-- ── Footer ────────────────────────────────────────────────────────────── -->
+<footer class="site-footer">
+  <a id="footerFeedback">✉ une question, une suggestion ?</a>
+  <a id="footerCgu">CGU</a>
+</footer>
+
+<!-- ── Modale Feedback ────────────────────────────────────────────────────── -->
+<div id="feedbackModal" class="bp-modal">
+  <div class="bp-modal-box">
+    <button class="bp-modal-close" id="feedbackClose">✕</button>
+    <div class="bp-modal-title">UNE QUESTION, UNE SUGGESTION ?</div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);margin-bottom:16px;line-height:1.6">
+      Votre message sera envoyé à l'équipe Break-Pharma.<br>
+      Votre adresse email sera incluse afin que nous puissions vous répondre.
+    </div>
+    <textarea id="feedbackText" placeholder="Décrivez votre question ou suggestion…"></textarea>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <button id="feedbackSend">ENVOYER</button>
+      <div id="feedbackStatus"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modale CGU ─────────────────────────────────────────────────────────── -->
+<div id="cguModal" class="bp-modal">
+  <div class="bp-modal-box">
+    <button class="bp-modal-close" id="cguClose">✕</button>
+    <div class="bp-modal-title">CONDITIONS GÉNÉRALES D'UTILISATION</div>
+    <div class="cgu-body">
+      <p style="color:var(--text-dim);font-size:11px">Version en vigueur au 19 mai 2026</p>
+
+      <h3>1. PRÉSENTATION ET OBJET</h3>
+      <p>Break-Pharma (ci-après « le Service ») est un outil professionnel de simulation de remises sur médicaments génériques, accessible à l'adresse <strong>break-pharma.fr</strong>. Il est édité et exploité à titre personnel par Olivier Nizard (ci-après « l'Éditeur »).</p>
+      <p>Le Service est exclusivement destiné aux pharmaciens titulaires d'officine ou à leurs collaborateurs habilités, dans le cadre de leur activité professionnelle. Toute utilisation à d'autres fins est interdite.</p>
+      <p>L'utilisation du Service vaut acceptation pleine et entière des présentes CGU.</p>
+
+      <h3>2. ACCÈS AU SERVICE</h3>
+      <p>L'accès est conditionné à la création d'un compte (adresse email et mot de passe). L'Éditeur se réserve le droit de refuser ou de résilier tout accès sans justification.</p>
+      <p>Le Service est accessible 24h/24, 7j/7, sous réserve de maintenance ou de cas de force majeure. Aucune disponibilité garantie n'est assurée.</p>
+
+      <h3>3. UTILISATION ET RESPONSABILITÉ</h3>
+      <p>Les simulations produites par le Service sont fournies à titre indicatif. Elles ne constituent pas un conseil commercial, financier ou réglementaire. L'Éditeur ne saurait être tenu responsable des décisions d'achat prises sur la base de ces simulations.</p>
+      <p>L'utilisateur est seul responsable de la conformité de ses achats avec la réglementation pharmaceutique en vigueur (prix, remises légales, obligations de service public).</p>
+      <p>Les données de remises affichées sont issues des PDF de conditions communiqués par les laboratoires via la centrale CERP/Astera. L'Éditeur ne garantit pas leur exactitude ni leur mise à jour en temps réel.</p>
+
+      <h3>4. DONNÉES PERSONNELLES ET RGPD</h3>
+      <p>Le Service collecte et traite les données suivantes :</p>
+      <p>• <strong>Données d'identification :</strong> adresse email (nécessaire à l'authentification)<br>
+         • <strong>Données fonctionnelles :</strong> paramètres des conditions de remise saisis par l'utilisateur, sauvegardés pour assurer la continuité du service<br>
+         • <strong>Données d'achat :</strong> fichiers CSV importés via les connecteurs OSPHARM/Digipharmacie — ces données sont traitées en mémoire et stockées temporairement pour la durée de la session</p>
+      <p>Base légale : exécution du contrat (art. 6.1.b RGPD) et intérêt légitime (art. 6.1.f RGPD) pour les données fonctionnelles.</p>
+      <p>Les données sont hébergées par <strong>Supabase</strong> (infrastructure AWS, région eu-west-3 Paris) et par <strong>GitHub Pages</strong> (infrastructure Microsoft Azure). Ces prestataires sont conformes au RGPD et disposent de garanties adéquates (clauses contractuelles types).</p>
+      <p>Durée de conservation : données d'authentification conservées jusqu'à suppression du compte ; données fonctionnelles conservées jusqu'à désinscription ou demande de suppression ; fichiers CSV non stockés de manière permanente.</p>
+      <p>Conformément au RGPD et à la loi Informatique et Libertés, vous disposez des droits suivants : accès, rectification, suppression, portabilité, limitation et opposition. Pour exercer ces droits, contactez l'Éditeur à : <strong>oliviernizard@gmail.com</strong>. En cas de réclamation non résolue, vous pouvez saisir la CNIL (www.cnil.fr).</p>
+      <p>Aucune donnée n'est vendue ou transmise à des tiers à des fins commerciales.</p>
+
+      <h3>5. COOKIES ET TRACEURS</h3>
+      <p>Le Service utilise uniquement un cookie de session technique nécessaire à l'authentification (Supabase Auth). Aucun cookie publicitaire ni de traçage marketing n'est utilisé. Ce cookie ne nécessite pas de consentement préalable (art. 82 loi Informatique et Libertés).</p>
+
+      <h3>6. PROPRIÉTÉ INTELLECTUELLE</h3>
+      <p>L'ensemble des éléments du Service (code, interface, algorithmes de simulation) est la propriété exclusive de l'Éditeur. Toute reproduction, même partielle, est interdite sans autorisation écrite préalable.</p>
+      <p>Les données de remises et conditions laboratoires restent la propriété des laboratoires concernés.</p>
+
+      <h3>7. MODIFICATIONS ET RÉSILIATION</h3>
+      <p>L'Éditeur se réserve le droit de modifier les présentes CGU à tout moment. Les utilisateurs seront informés par tout moyen approprié. La poursuite de l'utilisation du Service vaut acceptation des nouvelles CGU.</p>
+      <p>L'Éditeur peut interrompre ou supprimer le Service à tout moment sans préavis.</p>
+
+      <h3>8. DROIT APPLICABLE</h3>
+      <p>Les présentes CGU sont soumises au droit français. Tout litige sera soumis à la compétence des tribunaux français.</p>
+
+      <h3>9. CONTACT</h3>
+      <p>Pour toute question relative aux présentes CGU ou au traitement de vos données : <strong>oliviernizard@gmail.com</strong></p>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
