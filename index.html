@@ -3343,17 +3343,25 @@ async function launchSimulation() {
 
     // 3a. Overlay PUHT depuis OSPHARM (plus fiable que Supabase pour les refs présentes)
     //     Priorité à l'année 2026 (plus récente) ; fallback 2025.
+    //     Propagé ensuite à tous les équivalents par libellé : même molécule = même PUHT de base.
     {
-      const ospharmPuhtMap = new Map();
+      const ospharmPuhtMap = new Map(); // cip13 → puht
       for (const row of csvData) {
         if (!row.puht) continue;
         if (!ospharmPuhtMap.has(row.cip13) || row.year === 2026)
           ospharmPuhtMap.set(row.cip13, row.puht);
       }
       if (ospharmPuhtMap.size > 0) {
+        // Passe 1 : appliquer sur les CIPs connus
         const applyPuht = ref => { const p = ospharmPuhtMap.get(ref.cip13); if (p) ref.puht = p; };
         refMap.forEach(applyPuht);
         libelleMap.forEach(refs => refs.forEach(applyPuht));
+        // Passe 2 : propager par libellé — les refs alternatives (autre lab, même molécule)
+        // reçoivent le même PUHT brut de référence pour que la comparaison inter-labs soit équitable.
+        libelleMap.forEach(refs => {
+          const srcPuht = refs.reduce((p, r) => p || ospharmPuhtMap.get(r.cip13), null);
+          if (srcPuht) refs.forEach(r => { r.puht = srcPuht; });
+        });
       }
     }
 
