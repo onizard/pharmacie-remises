@@ -2187,15 +2187,6 @@ function initLabPage(conf) {
             </table>
           </div>
           <div id="excpts-${uid}-${cond.uid}" class="row-except-blocks"></div>
-          ${isAdmin ? `<div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <button class="r3-toggle" id="addPalierBtn-${uid}-${cond.uid}" style="font-size:11px;padding:2px 8px">+ PALIER</button>
-            <span id="addPalierForm-${uid}-${cond.uid}" style="display:none;align-items:center;gap:6px">
-              <input type="number" id="addPalierInp-${uid}-${cond.uid}" step="0.01" placeholder="ex: -15.00" class="rsf-input" style="width:90px" />
-              <span style="color:var(--text-dim);font-size:12px">%</span>
-              <button id="addPalierOk-${uid}-${cond.uid}" class="r3-toggle" style="font-size:11px;padding:2px 8px;color:var(--green);border-color:var(--green)">OK</button>
-              <button id="addPalierCancel-${uid}-${cond.uid}" style="font-size:11px;padding:2px 6px;background:none;border:1px solid #444;color:#aaa;border-radius:4px;cursor:pointer">✕</button>
-            </span>
-          </div>` : ''}
         </div>
       </div>
     `;
@@ -2258,39 +2249,6 @@ function initLabPage(conf) {
           cgvDrop.classList.add('cgv-loaded');
           cgvDrop.title = cond.cgvPdf.name;
         }
-      }
-      // ── Ajout de paliers supplémentaires ──────────────────────────────────────
-      const addPalierBtn    = document.getElementById(`addPalierBtn-${uid}-${cond.uid}`);
-      const addPalierForm   = document.getElementById(`addPalierForm-${uid}-${cond.uid}`);
-      const addPalierInp    = document.getElementById(`addPalierInp-${uid}-${cond.uid}`);
-      const addPalierOk     = document.getElementById(`addPalierOk-${uid}-${cond.uid}`);
-      const addPalierCancel = document.getElementById(`addPalierCancel-${uid}-${cond.uid}`);
-      if (addPalierBtn && addPalierForm) {
-        const showForm = () => {
-          addPalierBtn.style.display = 'none';
-          addPalierForm.style.display = 'flex';
-          addPalierInp.focus();
-        };
-        const hideForm = () => {
-          addPalierBtn.style.display = '';
-          addPalierForm.style.display = 'none';
-          addPalierInp.value = '';
-          addPalierInp.style.borderColor = '';
-        };
-        const doAdd = () => {
-          const v = parseFloat(addPalierInp.value.replace(',', '.'));
-          if (isNaN(v)) { addPalierInp.style.borderColor = '#ff3366'; return; }
-          if (cond.rsfValues.some(r => String(r.rsf_pct) === String(v))) { addPalierInp.style.borderColor = '#ff3366'; return; }
-          cond.rsfValues.push({ rsf_pct: v, remise2: '', remise3: '', excluded: false, hasExcept: false, custom: true });
-          cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
-          renderCondTable(cond);
-          hideForm();
-          saveState();
-        };
-        addPalierBtn.addEventListener('click', showForm);
-        addPalierCancel.addEventListener('click', hideForm);
-        addPalierOk.addEventListener('click', doAdd);
-        addPalierInp.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); else if (e.key === 'Escape') hideForm(); });
       }
     }
   }
