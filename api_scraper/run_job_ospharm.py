@@ -749,10 +749,14 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 exported = "context-destroyed-ok"
                 print(f"  [export] context destroyed au clic — download en route")
             else:
+                _snap("export_evaluate_error")
+                _upload_screenshots()
                 browser.close()
                 raise RuntimeError(f"Export Excel : evaluate échoué : {_eval_err}")
 
         if not exported:
+            _snap("export_bouton_introuvable")
+            _upload_screenshots()
             browser.close()
             raise RuntimeError(f"Aucun bouton export trouvé — debug={dbg}")
 
@@ -798,6 +802,8 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                 print(f"  [export] attente... {(_w+1)*2.5:.0f}s")
 
         if not _excel_bytes:
+            _snap("export_fichier_timeout")
+            _upload_screenshots()
             browser.close()
             raise RuntimeError(f"Export Excel : aucun fichier reçu en 3 min. Debug: {dbg}")
 
