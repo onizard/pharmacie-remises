@@ -91,7 +91,8 @@ def _get_creds() -> dict:
 # ── Row compaction ────────────────────────────────────────────────────────────
 
 def _compact_osp_rows(rows: list[dict]) -> list[dict]:
-    """Convertit les lignes OSPHARM brutes en {cip13, qty, libelle, year}.
+    """Convertit les lignes OSPHARM brutes en {cip13, qty, libelle, year, puht}.
+    puht = montant_catalogue_total / qty (prix unitaire brut).
     Réduit ~5 Mo → ~400 Ko pour le stockage dans Supabase.
     """
     import re as _re
@@ -113,6 +114,17 @@ def _compact_osp_rows(rows: list[dict]) -> list[dict]:
     lib_k = next((k for k in keys if _n(k) == "libelleproduit"), None) or \
             next((k for k in keys if "produit" in _n(k)), None) or \
             next((k for k in keys if "libelle" in _n(k)), None)
+    # Colonne montant catalogue (total brut = qty × PUHT) — priorité catalogue > HT générique
+    _cat_candidates = [
+        next((k for k in keys if _n(k) in ("montantcatalogue", "catotalht", "montantpfht", "totalcatalogue", "catht")), None),
+        next((k for k in keys if "catalogue" in _n(k) and any(x in _n(k) for x in ("montant", "ca", "total", "ht"))), None),
+        next((k for k in keys if "pfht" in _n(k) and "montant" in _n(k)), None),
+        next((k for k in keys if _n(k) in ("montantht", "caht")), None),
+        next((k for k in keys if "montant" in _n(k) and "ht" in _n(k)
+              and "n1" not in _n(k) and "evo" not in _n(k)), None),
+    ]
+    cat_k = next((c for c in _cat_candidates if c), None)
+    print(f"  [compact] colonnes: cip={cip_k!r} qty={qty_k!r} lib={lib_k!r} cat={cat_k!r}")
 
     if not cip_k or not qty_k:
         return rows
@@ -127,17 +139,30 @@ def _compact_osp_rows(rows: list[dict]) -> list[dict]:
             qty = 0.0
         if not cip13 or qty <= 0:
             continue
+        try:
+            cat_val = float(str(r.get(cat_k) or 0).replace(",", ".")) if cat_k else 0.0
+        except (ValueError, TypeError):
+            cat_val = 0.0
         year = r.get("_year", 0)
         k = (cip13, year)
         if k not in compact:
             compact[k] = {
-                "cip13":   cip13,
-                "qty":     0.0,
-                "libelle": str(r.get(lib_k) or "").strip() if lib_k else "",
-                "year":    year,
+                "cip13":      cip13,
+                "qty":        0.0,
+                "libelle":    str(r.get(lib_k) or "").strip() if lib_k else "",
+                "year":       year,
+                "_cat_total": 0.0,
             }
-        compact[k]["qty"] += qty
-    return list(compact.values())
+        compact[k]["qty"]        += qty
+        compact[k]["_cat_total"] += cat_val
+
+    result = []
+    for entry in compact.values():
+        cat_total = entry.pop("_cat_total", 0.0)
+        if cat_total > 0 and entry["qty"] > 0:
+            entry["puht"] = round(cat_total / entry["qty"], 4)
+        result.append(entry)
+    return result
 
 
 # ── OSPHARM scraper ────────────────────────────────────────────────────────────

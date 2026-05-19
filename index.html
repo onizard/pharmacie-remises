@@ -1648,7 +1648,8 @@ function ospharmRowsToCsvData(rows) {
     const cip13  = rawCip.length === 13 ? rawCip : rawCip.length === 7 ? rawCip.padStart(13, '340000') : null;
     const qty    = parseFloat(String(r[qtyKey] || '0').replace(',', '.')) || 0;
     if (!cip13 || qty <= 0) continue;
-    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '').trim() : '', year: r._year || r.year || null });
+    const puht = (typeof r.puht === 'number' && r.puht > 0) ? r.puht : null;
+    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '').trim() : '', year: r._year || r.year || null, puht });
   }
   return result;
 }
@@ -3305,6 +3306,22 @@ async function launchSimulation() {
         if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
           libelleMap.get(r.libelle).push(r);
       }));
+    }
+
+    // 3a. Overlay PUHT depuis OSPHARM (plus fiable que Supabase pour les refs présentes)
+    //     Priorité à l'année 2026 (plus récente) ; fallback 2025.
+    {
+      const ospharmPuhtMap = new Map();
+      for (const row of csvData) {
+        if (!row.puht) continue;
+        if (!ospharmPuhtMap.has(row.cip13) || row.year === 2026)
+          ospharmPuhtMap.set(row.cip13, row.puht);
+      }
+      if (ospharmPuhtMap.size > 0) {
+        const applyPuht = ref => { const p = ospharmPuhtMap.get(ref.cip13); if (p) ref.puht = p; };
+        refMap.forEach(applyPuht);
+        libelleMap.forEach(refs => refs.forEach(applyPuht));
+      }
     }
 
     // 3b. Form-agnostic libelle map : "AMLODIPINE 5MG 30CP" ≡ "AMLODIPINE 5MG 30GELULE"
