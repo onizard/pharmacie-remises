@@ -1614,9 +1614,20 @@ function ospharmRowsToCsvData(rows) {
     const cip13  = rawCip.length === 13 ? rawCip : rawCip.length === 7 ? rawCip.padStart(13, '340000') : null;
     const qty    = parseFloat(String(r[qtyKey] || '0').replace(',', '.')) || 0;
     if (!cip13 || qty <= 0) continue;
-    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '').trim() : '' });
+    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '').trim() : '', year: r.year || null });
   }
   return result;
+}
+
+function computeProrataRatiosFromData(csvData) {
+  if (!csvData || !csvData.length) return null;
+  const hasYear = csvData.some(r => r.year);
+  if (!hasYear) return null;
+  const n25 = csvData.reduce((s, r) => s + (r.year === 2025 ? r.qty : 0), 0);
+  const n26 = csvData.reduce((s, r) => s + (r.year === 2026 ? r.qty : 0), 0);
+  const total = n25 + n26;
+  if (total === 0) return null;
+  return { ratio2025: n25 / total, ratio2026: n26 / total, exact: true };
 }
 
 function computeProrataRatios(periodStart, periodEnd) {
@@ -1661,7 +1672,8 @@ async function autoRunOspharm() {
           try {
             const csvData = ospharmRowsToCsvData(job.rows || []);
             if (csvData.length) {
-              state.prorataRatios = computeProrataRatios(job.period_start || null, job.period_end || null);
+              state.prorataRatios = computeProrataRatiosFromData(csvData)
+                || computeProrataRatios(job.period_start || null, job.period_end || null);
               state.csvData  = csvData;
               state.csvRows  = csvData.length;
               saveState();
@@ -1718,7 +1730,8 @@ async function launchComparateur() {
       return false;
     }
 
-    state.prorataRatios = computeProrataRatios(job.period_start || null, job.period_end || null);
+    state.prorataRatios = computeProrataRatiosFromData(csvData)
+      || computeProrataRatios(job.period_start || null, job.period_end || null);
     state.csvData = csvData;
     state.csvRows = csvData.length;
     saveState();
@@ -2034,6 +2047,8 @@ function initLabPage(conf) {
             cgvDrop.classList.add('cgv-loaded');
             cgvDrop.title = file.name;
             saveState();
+            // Tenter l'extraction automatique des paliers RSF → RDP
+            extractCgvConditions(file, cond, uid, cgvDrop, cgvLabel, renderCondTable);
           };
           reader.readAsDataURL(file);
         };
@@ -4339,56 +4354,74 @@ btn1Next.addEventListener('click', launchSimulation);
 
 document.addEventListener('input', saveState);
 
-// ── Account dropdown + profile modal ──────────────────────────────────────────
+// ── Extraction CGV PDF → paliers RSF/RDP ──────────────────────────────────────
+async function extractCgvConditions(file, cond, labUid, cgvDrop, cgvLabel, renderFn) {
+  const label = cgvLabel;
+  label.textContent = ' ⟳ extraction…';
+  cgvDrop.classList.remove('cgv-loaded');
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const resp = await fetch(`${PDF_SERVER}/extract-cgv`, { method: 'POST', body: fd, signal: AbortSignal.timeout(30_000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    const paliers = data.paliers || [];
+    let applied = 0;
+    paliers.forEach(({ rsf_pct, rdp_pct }) => {
+      const row = cond.rsfValues.find(r => Math.abs(parseFloat(r.rsf_pct) - Math.abs(rsf_pct)) < 0.01);
+      if (!row || row.excluded) return;
+      row.remise2 = rdp_pct > 0 ? rdp_pct.toFixed(2) : '0';
+      applied++;
+    });
+
+    if (data.ca_condition && !cond.caCondition) {
+      cond.caCondition = data.ca_condition;
+      // Mettre à jour l'input CA si visible
+      const caInp = document.getElementById(`caInp-${labUid}-${cond.uid}`);
+      if (caInp) caInp.value = data.ca_condition;
+    }
+
+    // Rafraîchir le tableau RSF
+    if (typeof renderFn === 'function') renderFn(cond);
+
+    label.textContent = ` ✓ ${applied} paliers extraits`;
+    cgvDrop.classList.add('cgv-loaded');
+    saveState();
+  } catch(err) {
+    if (err.name === 'TimeoutError' || err.message.includes('fetch') || err.message.includes('Failed')) {
+      label.textContent = ' ⚠ Serveur PDF indisponible — lancez serveur_pdf.py';
+    } else {
+      label.textContent = ` ⚠ ${err.message}`;
+    }
+    cgvDrop.classList.add('cgv-loaded');
+  }
+}
+
+// ── Account dropdown (éléments dans le header, dispo immédiatement) ──────────
 (function() {
   const accountBtn = document.getElementById('btnAccount');
   const dropdown   = document.getElementById('accountDropdown');
 
-  // Toggle dropdown
   accountBtn?.addEventListener('click', e => {
     e.stopPropagation();
     dropdown.classList.toggle('open');
   });
   document.addEventListener('click', () => dropdown?.classList.remove('open'));
 
-  // Déconnexion
   document.getElementById('menuLogout')?.addEventListener('click', async () => {
     if (window._sbClient) await window._sbClient.auth.signOut();
     if (window._authLock) window._authLock();
   });
 
-  // Ouvrir paramètres
   document.getElementById('menuParams')?.addEventListener('click', () => {
     dropdown.classList.remove('open');
     openProfileModal();
   });
-
-  // Fermer modale profil
-  document.getElementById('profileClose')?.addEventListener('click', closeProfileModal);
-  document.getElementById('profileModal')?.addEventListener('click', e => {
-    if (e.target === document.getElementById('profileModal')) closeProfileModal();
-  });
-
-  // RIB dropzone
-  const dropzone  = document.getElementById('ribDropzone');
-  const fileInput = document.getElementById('ribFile');
-  dropzone?.addEventListener('click', () => fileInput.click());
-  dropzone?.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
-  dropzone?.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
-  dropzone?.addEventListener('drop', e => {
-    e.preventDefault();
-    dropzone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file) handleRibFile(file);
-  });
-  fileInput?.addEventListener('change', () => { if (fileInput.files[0]) handleRibFile(fileInput.files[0]); });
-
-  // Mise à jour display IBAN en temps réel
-  document.getElementById('profileIban')?.addEventListener('input', updateIbanDisplay);
-
-  // Enregistrer
-  document.getElementById('profileSave')?.addEventListener('click', saveProfile);
 })();
+// ── Profile modal (éléments après </script>, câblés dans DOMContentLoaded) ──
+// → voir bloc DOMContentLoaded en fin de fichier
 
 function openProfileModal() {
   const profile = state.userProfile || {};
@@ -5309,6 +5342,29 @@ document.addEventListener('DOMContentLoaded', function() {
     statusEl.style.color = 'var(--green)';
     statusEl.textContent = '✓ Votre client mail a été ouvert. Cliquez sur Envoyer pour transmettre le message.';
   });
+
+  // ── Profile modal (éléments dans #profileModal, après </script>) ────────────
+  document.getElementById('profileClose')?.addEventListener('click', closeProfileModal);
+  document.getElementById('profileModal')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('profileModal')) closeProfileModal();
+  });
+
+  // RIB dropzone
+  const ribDz   = document.getElementById('ribDropzone');
+  const ribFile = document.getElementById('ribFile');
+  ribDz?.addEventListener('click', () => ribFile.click());
+  ribDz?.addEventListener('dragover',  e => { e.preventDefault(); ribDz.classList.add('drag-over'); });
+  ribDz?.addEventListener('dragleave', () => ribDz.classList.remove('drag-over'));
+  ribDz?.addEventListener('drop', e => {
+    e.preventDefault();
+    ribDz.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) handleRibFile(file);
+  });
+  ribFile?.addEventListener('change', () => { if (ribFile.files[0]) handleRibFile(ribFile.files[0]); });
+
+  document.getElementById('profileIban')?.addEventListener('input', updateIbanDisplay);
+  document.getElementById('profileSave')?.addEventListener('click', saveProfile);
 });
 </script>
 

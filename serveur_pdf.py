@@ -689,6 +689,96 @@ def extract_achats():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/extract-cgv', methods=['POST'])
+def extract_cgv():
+    """
+    Extrait les paliers RSF → RDP depuis un CGV PDF labo (ex: Biogaran).
+    Retourne { paliers: [{rsf_pct, rdp_pct}], ca_condition: int|null, warnings: [...] }.
+    """
+    if 'file' not in request.files:
+        return jsonify({'error': 'Champ "file" manquant'}), 400
+    f = request.files['file']
+    if not f.filename.lower().endswith('.pdf'):
+        return jsonify({'error': 'Le fichier doit être un PDF (.pdf)'}), 400
+    print(f"  ⚙️  Extraction CGV : {f.filename}")
+    try:
+        result = extraire_conditions_cgv(io.BytesIO(f.read()))
+        print(f"  ✓   {len(result['paliers'])} paliers RSF extraits")
+        return jsonify(result)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+def extraire_conditions_cgv(pdf_fp) -> dict:
+    """
+    Parcourt toutes les pages d'un CGV PDF labo.
+    Extrait depuis le texte brut les paires RSF% / RDP* par ligne produit (CIP13).
+    Construit mapping rsf_pct → valeur RDP la plus fréquente.
+    Extrait aussi le CA minimum global (ex: 15 000 euros).
+    """
+    warnings_list = []
+    palier_counter: dict = defaultdict(Counter)  # rsf_neg → Counter(rdp_pos)
+    ca_min = None
+
+    # Pattern : CIP13 puis, plus loin sur la même ligne, RSF% suivi de RDP% ou "-"
+    # Exemple : "3400930076972 ... 20% 10%" ou "3400930241301 ... 30% -"
+    _PRODUCT_LINE = re.compile(
+        r'\d{13}'              # CIP13
+        r'.{5,120}?'           # libellé / prix (non-greedy)
+        r'(\d+(?:[.,]\d+)?)\s*%\s*'   # RSF% (capture group 1)
+        r'(-|(\d+(?:[.,]\d+)?)\s*%)'  # RDP : "-" ou "xx%" (groups 2,3)
+    )
+
+    with pdfplumber.open(pdf_fp) as pdf:
+        all_text = '\n'.join(page.extract_text() or '' for page in pdf.pages)
+
+        # ── CA minimum ────────────────────────────────────────────────────────
+        ca_patterns = [
+            r'minimum\s+de\s+(\d[\d\s.]*\d)\s*euros?',
+            r'(\d[\d\s.]*\d)\s*euros?\s+(?:brut\s+)?minimum',
+            r'chiffre\s+d.affaires?\s+(?:brut\s+)?(?:minimum\s+de\s+)?(\d[\d\s.]*\d)\s*euros?',
+        ]
+        for pat in ca_patterns:
+            m = re.search(pat, all_text, re.IGNORECASE)
+            if m:
+                raw = m.group(1).replace(' ', '').replace('.', '')
+                try:
+                    ca_min = int(raw); break
+                except ValueError:
+                    pass
+
+        # ── Paliers RSF → RDP depuis le texte brut ────────────────────────────
+        for page in pdf.pages:
+            text = page.extract_text() or ''
+            for line in text.splitlines():
+                m = _PRODUCT_LINE.search(line)
+                if not m:
+                    continue
+                rsf_raw = m.group(1)
+                rdp_raw = m.group(3)   # None si "-"
+                try:
+                    rsf_val = float(rsf_raw.replace(',', '.'))
+                    rdp_val = float(rdp_raw.replace(',', '.')) if rdp_raw else 0.0
+                except (ValueError, AttributeError):
+                    continue
+                if rsf_val == 0:
+                    continue
+                palier_counter[-abs(rsf_val)][rdp_val] += 1
+
+    if not palier_counter:
+        warnings_list.append('Aucune correspondance RSF/RDP trouvée dans le PDF.')
+        return {'paliers': [], 'ca_condition': ca_min, 'warnings': warnings_list}
+
+    paliers = []
+    for rsf_pct in sorted(palier_counter.keys()):
+        rdp_pct = palier_counter[rsf_pct].most_common(1)[0][0]
+        paliers.append({'rsf_pct': rsf_pct, 'rdp_pct': rdp_pct})
+
+    warnings_list.insert(0, f"{len(paliers)} paliers RSF extraits · CA min détecté : {ca_min} €")
+    return {'paliers': paliers, 'ca_condition': ca_min, 'warnings': warnings_list}
+
+
 @app.route('/extract-pdf', methods=['POST'])
 def extract_pdf():
     if 'file' not in request.files:
