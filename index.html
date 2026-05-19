@@ -1365,10 +1365,10 @@ function serializeState() {
     connectors: state.connectors,
     currentPageId: state.currentPageId,
     changementGeneriqueur: state.changementGeneriqueur,
-    csvData:       state.csvData       || null,
-    csvRows:       state.csvRows       || 0,
-    csvFileName:   state.csvFile?.name || null,
-    prorataRatios: state.prorataRatios || null,
+    csvData:       isAdmin ? (state.csvData       || null) : null,
+    csvRows:       isAdmin ? (state.csvRows       || 0)    : 0,
+    csvFileName:   isAdmin ? (state.csvFile?.name || null) : null,
+    prorataRatios: isAdmin ? (state.prorataRatios || null) : null,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -4547,7 +4547,12 @@ async function saveProfile() {
           const { data: cloud } = await sb.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           if (cloud?.state_json) {
-            localStorage.setItem(LS_KEY, JSON.stringify(cloud.state_json));
+            const cs = cloud.state_json;
+            if (!isAdmin) { cs.csvData = null; cs.csvRows = 0; cs.csvFileName = null; cs.prorataRatios = null; }
+            localStorage.setItem(LS_KEY, JSON.stringify(cs));
+          } else if (!isAdmin) {
+            // Pas de cloud state : effacer toute donnée ospharm héritée d'un autre utilisateur
+            try { const ls = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); ls.csvData = null; ls.csvRows = 0; ls.csvFileName = null; ls.prorataRatios = null; localStorage.setItem(LS_KEY, JSON.stringify(ls)); } catch(_) {}
           }
         }
       }
@@ -4565,8 +4570,8 @@ async function saveProfile() {
       state.connectors.ospharm      = { user: osp.user  || '', pass: osp.pass  || '', connected: !!osp.connected };
       state.connectors.digipharmacie = { user: digi.user || '', pass: digi.pass || '', connected: !!digi.connected };
     }
-    if (saved.prorataRatios) state.prorataRatios = saved.prorataRatios;
-    if (saved.csvData && saved.csvData.length) {
+    if (isAdmin && saved.prorataRatios) state.prorataRatios = saved.prorataRatios;
+    if (isAdmin && saved.csvData && saved.csvData.length) {
       state.csvData = saved.csvData;
       state.csvRows = saved.csvRows || saved.csvData.length;
     }
@@ -4670,7 +4675,7 @@ async function saveProfile() {
     const firstConfigured = state.labPages.find(lp => lp.selectedLab);
     if (firstConfigured) { switchToLab(firstConfigured.uid); renderLabGrid(); }
     // Restaure la dropzone après que le DOM est prêt
-    if (saved.csvData && saved.csvData.length) {
+    if (isAdmin && saved.csvData && saved.csvData.length) {
       const fname = saved.csvFileName || 'Fichier restauré';
       const fnLabel = document.getElementById('dropzone-filename');
       if (fnLabel) fnLabel.textContent = `${fname}  —  ${state.csvRows.toLocaleString('fr')} références`;
