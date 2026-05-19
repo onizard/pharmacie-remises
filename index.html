@@ -5342,7 +5342,7 @@ document.addEventListener('DOMContentLoaded', function() {
     statusEl.textContent = '✓ Votre client mail a été ouvert. Cliquez sur Envoyer pour transmettre le message.';
   });
 
-  // ── Profile modal (éléments dans #profileModal, après </script>) ────────────
+  // ── Profile modal (éléments hors script, dans #profileModal) ─────────────────
   document.getElementById('profileClose')?.addEventListener('click', closeProfileModal);
   document.getElementById('profileModal')?.addEventListener('click', e => {
     if (e.target === document.getElementById('profileModal')) closeProfileModal();
