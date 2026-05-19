@@ -2094,7 +2094,7 @@ function initLabPage(conf) {
       const tab = document.createElement('div');
       tab.className = 'cond-tab' + (i === s[aciKey] ? ' active' : '');
       const label = document.createElement('span');
-      label.textContent = `P${i + 1}`;
+      label.textContent = i === 0 ? 'PALIER 1' : `P${i + 1}`;
       tab.appendChild(label);
       if (i > 0) {
         const x = document.createElement('span');
