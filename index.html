@@ -1648,9 +1648,18 @@ function ospharmRowsToCsvData(rows) {
     const cip13  = rawCip.length === 13 ? rawCip : rawCip.length === 7 ? rawCip.padStart(13, '340000') : null;
     const qty    = parseFloat(String(r[qtyKey] || '0').replace(',', '.')) || 0;
     if (!cip13 || qty <= 0) continue;
-    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '').trim() : '' });
+    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '').trim() : '', year: r._year || r.year || null });
   }
   return result;
+}
+
+// Ratios exacts depuis les données year-tagged (remplace l'estimation par dates)
+function computeProrataRatiosFromData(csvData) {
+  const n25 = csvData.reduce((s, r) => s + (r.year === 2025 ? r.qty : 0), 0);
+  const n26 = csvData.reduce((s, r) => s + (r.year === 2026 ? r.qty : 0), 0);
+  const total = n25 + n26;
+  if (total === 0 || (!n25 && !n26)) return null;
+  return { ratio2025: n25 / total, ratio2026: n26 / total, exact: true };
 }
 
 function computeProrataRatios(periodStart, periodEnd) {
@@ -1695,7 +1704,8 @@ async function autoRunOspharm() {
           try {
             const csvData = ospharmRowsToCsvData(job.rows || []);
             if (csvData.length) {
-              state.prorataRatios = computeProrataRatios(job.period_start || null, job.period_end || null);
+              state.prorataRatios = computeProrataRatiosFromData(csvData)
+                                 || computeProrataRatios(job.period_start || null, job.period_end || null);
               state.csvData  = csvData;
               state.csvRows  = csvData.length;
               saveState();
@@ -1752,7 +1762,8 @@ async function launchComparateur() {
       return false;
     }
 
-    state.prorataRatios = computeProrataRatios(job.period_start || null, job.period_end || null);
+    state.prorataRatios = computeProrataRatiosFromData(csvData)
+                       || computeProrataRatios(job.period_start || null, job.period_end || null);
     state.csvData = csvData;
     state.csvRows = csvData.length;
     saveState();
