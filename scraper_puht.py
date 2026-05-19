@@ -80,8 +80,8 @@ def parser_page(html: str) -> dict:
             elif "cat" in label:
                 pu_cat = prix
 
-        # Priorité : PU net (prix négocié) > PU cat
-        prix_final = pu_net if pu_net is not None else pu_cat
+        # Priorité : PU catalogue (brut) > PU net — le brut est la base de calcul du CA
+        prix_final = pu_cat if pu_cat is not None else pu_net
         if prix_final is not None:
             resultats[cip] = prix_final
 
