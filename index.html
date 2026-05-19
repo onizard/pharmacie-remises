@@ -5167,47 +5167,59 @@ function initConnecteurModal() {
     <div class="cgu-body">
       <p style="color:var(--text-dim);font-size:11px">Version en vigueur au 19 mai 2026</p>
 
-      <h3>1. PRÉSENTATION ET OBJET</h3>
-      <p>Break-Pharma (ci-après « le Service ») est un outil professionnel de simulation de remises sur médicaments génériques, accessible à l'adresse <strong>break-pharma.fr</strong>. Il est édité et exploité à titre personnel par Olivier Nizard (ci-après « l'Éditeur »).</p>
-      <p>Le Service est exclusivement destiné aux pharmaciens titulaires d'officine ou à leurs collaborateurs habilités, dans le cadre de leur activité professionnelle. Toute utilisation à d'autres fins est interdite.</p>
-      <p>L'utilisation du Service vaut acceptation pleine et entière des présentes CGU.</p>
+      <h3>1. ÉDITEUR ET PRÉSENTATION DU SERVICE</h3>
+      <p>Break-Pharma (ci-après « le Service ») est un outil professionnel de simulation et d'optimisation de remises sur médicaments génériques, accessible à l'adresse <strong>break-pharma.fr</strong>.</p>
+      <p>Le Service est édité et exploité par une société en cours d'immatriculation, représentée par Olivier Nizard (ci-après « l'Éditeur »). Le numéro SIRET sera communiqué dès l'immatriculation officielle de la société. Contact : <strong>oliviernizard@gmail.com</strong>.</p>
+      <p>Le Service est exclusivement destiné aux pharmaciens titulaires d'officine et à leurs collaborateurs habilités, dans le cadre de leur activité professionnelle. Toute utilisation à d'autres fins est interdite.</p>
+      <p>L'accès au Service et son utilisation valent acceptation pleine et entière des présentes Conditions Générales d'Utilisation (CGU).</p>
 
-      <h3>2. ACCÈS AU SERVICE</h3>
-      <p>L'accès est conditionné à la création d'un compte (adresse email et mot de passe). L'Éditeur se réserve le droit de refuser ou de résilier tout accès sans justification.</p>
-      <p>Le Service est accessible 24h/24, 7j/7, sous réserve de maintenance ou de cas de force majeure. Aucune disponibilité garantie n'est assurée.</p>
+      <h3>2. ACCÈS ET CONDITIONS D'ABONNEMENT</h3>
+      <p>L'accès au Service est conditionné à la création d'un compte (adresse email professionnelle et mot de passe) et à la souscription d'un abonnement payant.</p>
+      <p><strong>Tarifs :</strong><br>
+         • Abonnement mensuel : 19,00 € HT/mois (soit 22,80 € TTC/mois au taux de TVA de 20 %)<br>
+         • Abonnement annuel : 199,00 € HT/an (soit 238,80 € TTC/an), représentant une économie d'environ 12 % par rapport à l'abonnement mensuel</p>
+      <p>Les tarifs s'entendent hors taxes et pourront être révisés. L'utilisateur sera informé de toute modification tarifaire avec un préavis d'au moins 30 jours.</p>
+      <p>L'Éditeur se réserve le droit de refuser ou de résilier tout accès, notamment en cas de manquement aux présentes CGU ou de non-paiement.</p>
+      <p>Le Service est accessible 24h/24, 7j/7, sous réserve d'opérations de maintenance ou de cas de force majeure. Aucune garantie de disponibilité continue n'est assurée.</p>
 
-      <h3>3. UTILISATION ET RESPONSABILITÉ</h3>
-      <p>Les simulations produites par le Service sont fournies à titre indicatif. Elles ne constituent pas un conseil commercial, financier ou réglementaire. L'Éditeur ne saurait être tenu responsable des décisions d'achat prises sur la base de ces simulations.</p>
-      <p>L'utilisateur est seul responsable de la conformité de ses achats avec la réglementation pharmaceutique en vigueur (prix, remises légales, obligations de service public).</p>
-      <p>Les données de remises affichées sont issues des PDF de conditions communiqués par les laboratoires via la centrale CERP/Astera. L'Éditeur ne garantit pas leur exactitude ni leur mise à jour en temps réel.</p>
+      <h3>3. UTILISATION DU SERVICE ET LIMITATIONS DE RESPONSABILITÉ</h3>
+      <p>Les simulations produites par le Service sont fournies à titre purement indicatif, sur la base des données de remises communiquées par les laboratoires pharmaceutiques via la centrale CERP Rouen / Astera. Ces simulations ne constituent en aucun cas un conseil commercial, financier, juridique ou réglementaire.</p>
+      <p>L'Éditeur ne saurait être tenu responsable :</p>
+      <p>• Des décisions d'achat prises sur la base des simulations fournies ;<br>
+         • De l'inexactitude ou du manque d'actualisation des données de remises (l'Éditeur s'efforce de maintenir les données à jour sans pouvoir le garantir) ;<br>
+         • De toute interruption de service, perte de données ou dommage indirect résultant de l'utilisation du Service.</p>
+      <p>L'utilisateur est seul responsable de la conformité de ses pratiques d'achat avec la réglementation pharmaceutique en vigueur (prix, remises légalement applicables, obligations de service public, etc.).</p>
 
       <h3>4. DONNÉES PERSONNELLES ET RGPD</h3>
-      <p>Le Service collecte et traite les données suivantes :</p>
-      <p>• <strong>Données d'identification :</strong> adresse email (nécessaire à l'authentification)<br>
-         • <strong>Données fonctionnelles :</strong> paramètres des conditions de remise saisis par l'utilisateur, sauvegardés pour assurer la continuité du service<br>
-         • <strong>Données d'achat :</strong> fichiers CSV importés via les connecteurs OSPHARM/Digipharmacie — ces données sont traitées en mémoire et stockées temporairement pour la durée de la session</p>
-      <p>Base légale : exécution du contrat (art. 6.1.b RGPD) et intérêt légitime (art. 6.1.f RGPD) pour les données fonctionnelles.</p>
-      <p>Les données sont hébergées par <strong>Supabase</strong> (infrastructure AWS, région eu-west-3 Paris) et par <strong>GitHub Pages</strong> (infrastructure Microsoft Azure). Ces prestataires sont conformes au RGPD et disposent de garanties adéquates (clauses contractuelles types).</p>
-      <p>Durée de conservation : données d'authentification conservées jusqu'à suppression du compte ; données fonctionnelles conservées jusqu'à désinscription ou demande de suppression ; fichiers CSV non stockés de manière permanente.</p>
-      <p>Conformément au RGPD et à la loi Informatique et Libertés, vous disposez des droits suivants : accès, rectification, suppression, portabilité, limitation et opposition. Pour exercer ces droits, contactez l'Éditeur à : <strong>oliviernizard@gmail.com</strong>. En cas de réclamation non résolue, vous pouvez saisir la CNIL (www.cnil.fr).</p>
-      <p>Aucune donnée n'est vendue ou transmise à des tiers à des fins commerciales.</p>
+      <p><strong>Responsable du traitement :</strong> Olivier Nizard / société en cours d'immatriculation — oliviernizard@gmail.com</p>
+      <p><strong>Données collectées et finalités :</strong></p>
+      <p>• <strong>Données d'identification</strong> (adresse email, mot de passe chiffré) : nécessaires à l'authentification et à la gestion de l'abonnement — base légale : exécution du contrat (art. 6.1.b RGPD)<br>
+         • <strong>Données de configuration</strong> (paramètres des conditions de remise, laboratoires sélectionnés) : sauvegardées pour assurer la continuité du service entre les sessions — base légale : exécution du contrat (art. 6.1.b RGPD)<br>
+         • <strong>Données de ventes pharmaceutiques</strong> importées via les connecteurs OSPHARM et Digipharmacie : ces données sont traitées exclusivement en mémoire, le temps de l'analyse, et ne sont pas conservées en base de données après la fermeture de la session — base légale : consentement explicite de l'utilisateur (art. 6.1.a RGPD)</p>
+      <p><strong>Hébergement :</strong> Les données sont hébergées par <strong>Supabase Inc.</strong> (prestataire SaaS, infrastructure Amazon Web Services) et, pour les fichiers statiques de l'application, par <strong>GitHub Pages</strong> (Microsoft Azure). Ces prestataires disposent de garanties adéquates au sens du RGPD (Clauses Contractuelles Types adoptées par la Commission Européenne). Pour tout renseignement sur la localisation exacte des données, contactez l'Éditeur.</p>
+      <p><strong>Durée de conservation :</strong> données d'authentification et de configuration conservées pendant toute la durée de l'abonnement puis supprimées dans un délai maximum de 12 mois après résiliation ; données de ventes non stockées de manière permanente.</p>
+      <p><strong>Vos droits :</strong> Conformément au RGPD et à la loi n° 78-17 du 6 janvier 1978 modifiée, vous disposez d'un droit d'accès, de rectification, d'effacement, de portabilité, de limitation du traitement et d'opposition. Pour exercer ces droits, adressez votre demande à <strong>oliviernizard@gmail.com</strong>. En cas de réclamation non résolue, vous pouvez saisir la Commission Nationale de l'Informatique et des Libertés (CNIL) — <strong>www.cnil.fr</strong>.</p>
+      <p>Aucune donnée personnelle n'est vendue, louée ou cédée à des tiers à des fins commerciales.</p>
 
       <h3>5. COOKIES ET TRACEURS</h3>
-      <p>Le Service utilise uniquement un cookie de session technique nécessaire à l'authentification (Supabase Auth). Aucun cookie publicitaire ni de traçage marketing n'est utilisé. Ce cookie ne nécessite pas de consentement préalable (art. 82 loi Informatique et Libertés).</p>
+      <p>Le Service utilise exclusivement un cookie de session technique, strictement nécessaire au fonctionnement de l'authentification (Supabase Auth). Aucun cookie publicitaire, analytique tiers ou de traçage marketing n'est déposé. Ce cookie étant indispensable au fonctionnement du Service, il ne requiert pas de consentement préalable en application de l'article 82 de la loi Informatique et Libertés.</p>
 
       <h3>6. PROPRIÉTÉ INTELLECTUELLE</h3>
-      <p>L'ensemble des éléments du Service (code, interface, algorithmes de simulation) est la propriété exclusive de l'Éditeur. Toute reproduction, même partielle, est interdite sans autorisation écrite préalable.</p>
-      <p>Les données de remises et conditions laboratoires restent la propriété des laboratoires concernés.</p>
+      <p>L'ensemble des éléments constitutifs du Service — code source, interface graphique, algorithmes de simulation, contenus éditoriaux — est la propriété exclusive de l'Éditeur ou de ses ayants droit et est protégé par les lois françaises et internationales relatives à la propriété intellectuelle.</p>
+      <p>Toute reproduction, représentation, modification, distribution ou exploitation, même partielle, est strictement interdite sans autorisation écrite préalable de l'Éditeur.</p>
+      <p>Les données de remises et conditions commerciales des laboratoires partenaires restent la propriété intellectuelle de ces derniers.</p>
 
-      <h3>7. MODIFICATIONS ET RÉSILIATION</h3>
-      <p>L'Éditeur se réserve le droit de modifier les présentes CGU à tout moment. Les utilisateurs seront informés par tout moyen approprié. La poursuite de l'utilisation du Service vaut acceptation des nouvelles CGU.</p>
-      <p>L'Éditeur peut interrompre ou supprimer le Service à tout moment sans préavis.</p>
+      <h3>7. RÉSILIATION ET MODIFICATIONS</h3>
+      <p>L'utilisateur peut résilier son abonnement à tout moment en contactant l'Éditeur. Aucun remboursement n'est dû pour la période d'abonnement en cours.</p>
+      <p>L'Éditeur se réserve le droit de modifier les présentes CGU à tout moment. En cas de modification substantielle, l'utilisateur en sera informé par email avec un préavis de 15 jours. La poursuite de l'utilisation du Service après ce délai vaut acceptation des nouvelles CGU.</p>
+      <p>L'Éditeur se réserve le droit d'interrompre, suspendre ou supprimer le Service, avec un préavis raisonnable sauf en cas d'urgence ou de force majeure.</p>
 
-      <h3>8. DROIT APPLICABLE</h3>
-      <p>Les présentes CGU sont soumises au droit français. Tout litige sera soumis à la compétence des tribunaux français.</p>
+      <h3>8. DROIT APPLICABLE ET JURIDICTION</h3>
+      <p>Les présentes CGU sont régies et interprétées conformément au droit français. En cas de litige non résolu amiablement, les tribunaux français seront seuls compétents.</p>
 
-      <h3>9. CONTACT</h3>
-      <p>Pour toute question relative aux présentes CGU ou au traitement de vos données : <strong>oliviernizard@gmail.com</strong></p>
+      <h3>9. CONTACT ET MÉDIATION</h3>
+      <p>Pour toute question relative aux présentes CGU, au Service ou au traitement de vos données personnelles : <strong>oliviernizard@gmail.com</strong></p>
+      <p>Conformément à l'article L. 612-1 du Code de la consommation, en cas de litige non résolu avec l'Éditeur, l'utilisateur peut recourir gratuitement à un médiateur de la consommation.</p>
     </div>
   </div>
 </div>
