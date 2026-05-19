@@ -176,6 +176,8 @@
   .logo span { color: var(--amber); }
   .header-sub { font-size: 13px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; }
   .header-right { margin-left: auto; font-size: 13px; color: var(--text-dim); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .save-badge { font-size: 10px; color: var(--green); opacity: 0; transition: opacity 0.4s; font-family: 'Share Tech Mono', monospace; letter-spacing: 1px; white-space: nowrap; pointer-events: none; }
+  .save-badge.visible { opacity: 1; }
 
 
   /* ── Main tabs ── */
@@ -1003,7 +1005,7 @@
       <div class="header-sub">comparateur de génériques</div>
     </div>
     <div class="header-right">
-      <div class="term-line"><span class="prompt">SYS:</span><span class="val">PRÊT</span><span class="cursor"></span></div>
+      <div class="term-line"><span class="prompt">SYS:</span><span class="val">PRÊT</span><span class="cursor"></span><span id="saveBadge" class="save-badge">&nbsp;✓ sauvegardé</span></div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end">
         <span style="font-family:'Orbitron',monospace;font-size:12px;font-weight:700;color:var(--amber);letter-spacing:2px;white-space:nowrap">GERS</span>
         <input type="text" id="gersGlobal" class="rsf-input" style="width:120px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="Entre ton GERS" />
@@ -1404,7 +1406,15 @@ function serializeState() {
   };
 }
 
-let _saveTimer, _cloudSaveTimer;
+let _saveTimer, _cloudSaveTimer, _saveBadgeTimer;
+
+function _showSaveBadge() {
+  const badge = document.getElementById('saveBadge');
+  if (!badge) return;
+  clearTimeout(_saveBadgeTimer);
+  badge.classList.add('visible');
+  _saveBadgeTimer = setTimeout(() => badge.classList.remove('visible'), 2000);
+}
 
 async function saveCloudState(data) {
   try {
@@ -1427,9 +1437,21 @@ async function saveCloudState(data) {
       { user_id: session.user.id, state_json: payload },
       { onConflict: 'user_id' }
     );
+    _showSaveBadge();
     if (isAdmin) saveRsfDefaults();
   } catch(e) {}
 }
+
+// Flush immédiat au cloud quand l'onglet est masqué (fermeture, changement d'onglet)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearTimeout(_saveTimer);
+    clearTimeout(_cloudSaveTimer);
+    const data = serializeState();
+    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
+    saveCloudState(data);
+  }
+});
 
 async function saveRsfDefaults() {
   const sb = window._sbClient;
