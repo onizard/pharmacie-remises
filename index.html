@@ -5087,7 +5087,7 @@ function initConnecteurModal() {
 })();
 
 // ── Footer modals ──────────────────────────────────────────────────────────
-(function() {
+document.addEventListener('DOMContentLoaded', function() {
   const ADMIN_MAIL = 'contact@break-pharma.fr';
 
   // helpers
@@ -5133,7 +5133,7 @@ function initConnecteurModal() {
     statusEl.style.color = 'var(--green)';
     statusEl.textContent = '✓ Votre client mail a été ouvert. Cliquez sur Envoyer pour transmettre le message.';
   });
-})();
+});
 </script>
 
 <!-- ── Footer ────────────────────────────────────────────────────────────── -->
