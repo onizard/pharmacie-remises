@@ -669,17 +669,8 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple[list[dict], s
                     return (typeof raw === "string" ? raw : "").toLowerCase();
                 }
 
-                // M0 : webix.toExcel direct sur datatable_sellout (confirmé par tests)
-                if (typeof webix !== "undefined" && typeof webix.toExcel === "function") {
-                    const direct = webix.$$("datatable_sellout");
-                    if (direct) { webix.toExcel(direct); return "M0:datatable_sellout"; }
-                    // Fallback: première datatable visible
-                    for (const el of document.querySelectorAll(".webix_dtable[view_id]")) {
-                        if (!vis(el)) continue;
-                        const grid = webix.$$(el.getAttribute("view_id"));
-                        if (grid) { webix.toExcel(grid); return "M0:dtable:" + el.getAttribute("view_id"); }
-                    }
-                }
+                // M0 (webix.toExcel) supprimé — n'exporte que les lignes en mémoire (pagination serveur)
+                // → utiliser uniquement le bouton natif OSPHARM qui génère un export complet
 
                 // M1a : view_id avec tooltip/label contenant un mot-clé export
                 if (typeof webix !== "undefined" && typeof webix.$$ === "function") {
