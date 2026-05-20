@@ -2108,7 +2108,7 @@ function _renderOspProgress(el) {
 
   const barPct = pct ?? 5;
   const pctLabel = pct !== null ? `${pct}%` : '…';
-  const statusLabel = m ? `Mois ${current}/${total}` : (msg.slice(0, 50) || 'initialisation…');
+  const statusLabel = m ? `Mois ${current}/${total}` : 'initialisation…';
 
   el.innerHTML = `<div class="osp-loading-wrap">
     ${actHtml}
