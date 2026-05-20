@@ -1032,7 +1032,7 @@
         <span style="font-family:'Orbitron',monospace;font-size:12px;font-weight:700;color:var(--amber);letter-spacing:2px;white-space:nowrap">GERS</span>
         <input type="text" id="gersGlobal" class="rsf-input" style="width:120px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="Entre ton GERS" />
         <span style="font-size:12px;color:var(--text-dim)">€</span>
-        <button class="btn-cond-labo" id="btnConditionsLabo" style="font-size:11px;padding:6px 14px">⚙ CONDITIONS LABO</button>
+        <button class="btn-cond-labo" id="btnConditionsLabo" style="font-size:11px;padding:6px 14px">⚙ MES CONDITIONS LABO</button>
         <button id="btnConnecteur" class="btn-connecteur" title="Gérer les connecteurs OSPHARM / DIGIPHARMACIE">CONNECTEURS<span id="connNotifBadge" class="conn-notif-badge"></span></button>
         <button id="btnTheme" class="btn-theme" title="Thème clair / sombre">☀</button>
 <div class="account-wrap">
@@ -1435,6 +1435,7 @@ function serializeState() {
         rsfOnly: c.rsfOnly,
         showR3: c.showR3,
         forceFirst: c.forceFirst,
+        cgvPdf: c.cgvPdf ? { name: c.cgvPdf.name } : null,
       })),
       activeCondIdx2025: lp.activeCondIdx2025 || 0,
       conditions2025: (lp.conditions2025 || []).map(c => ({
@@ -1449,6 +1450,7 @@ function serializeState() {
         rsfOnly: c.rsfOnly,
         showR3: c.showR3,
         forceFirst: c.forceFirst,
+        cgvPdf: c.cgvPdf ? { name: c.cgvPdf.name } : null,
       })),
     })),
   };
@@ -4675,9 +4677,16 @@ async function extractCgvConditions(file, cond, labUid, cgvDrop, cgvLabel, rende
     // Rafraîchir le tableau RSF
     if (typeof renderFn === 'function') renderFn(cond);
 
-    label.textContent = ` ✓ ${applied} paliers extraits`;
+    label.textContent = ` ✓ ${applied} paliers — diffusion…`;
     cgvDrop.classList.add('cgv-loaded');
     saveState();
+    // Diffuser immédiatement les nouvelles valeurs à tous les utilisateurs
+    try {
+      await saveRsfDefaults();
+      label.textContent = ` ✓ ${applied} paliers — diffusé ✓`;
+    } catch(_) {
+      label.textContent = ` ✓ ${applied} paliers extraits`;
+    }
   } catch(err) {
     if (err.name === 'TimeoutError' || err.message.includes('fetch') || err.message.includes('Failed')) {
       label.textContent = ' ⚠ Serveur PDF indisponible — lancez serveur_pdf.py';
