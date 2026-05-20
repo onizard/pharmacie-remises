@@ -507,119 +507,203 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
 
         # ── Sélection d'un mois précis via date picker ────────────────────────
 
+        def _click_valider():
+            """Clique Valider dans un popup/overlay Webix ou bouton HTML visible."""
+            page.evaluate('''() => {
+                const kws = ["valider", "ok", "appliquer", "apply", "confirmer"];
+                // Boutons HTML visibles
+                for (const el of document.querySelectorAll("button,.webix_button")) {
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 1 || r.height < 1) continue;
+                    const t = (el.textContent || "").trim().toLowerCase();
+                    if (kws.some(k => t === k || t.startsWith(k))) { el.click(); return; }
+                }
+                // Éléments webix avec label
+                if (typeof webix !== "undefined") {
+                    for (const el of document.querySelectorAll("[view_id]")) {
+                        const vid = el.getAttribute("view_id");
+                        try {
+                            const v = webix.$$(vid);
+                            if (!v) continue;
+                            const lbl = ((v.config && v.config.label) || "").toLowerCase();
+                            if (kws.some(k => lbl.includes(k))) { v.callEvent("onItemClick",[]); return; }
+                        } catch(e) {}
+                    }
+                }
+            }''')
+
         def _select_month_in_picker(year: int, month: int) -> tuple[str, str]:
             """Sélectionne un mois via le date picker OSPHARM.
             Retourne (start_iso, end_iso).
             """
-            last_day = calendar.monthrange(year, month)[1]
+            last_day  = calendar.monthrange(year, month)[1]
             start_fr  = f"01/{month:02d}/{year:04d}"
             end_fr    = f"{last_day:02d}/{month:02d}/{year:04d}"
             start_iso = f"{year:04d}-{month:02d}-01"
             end_iso   = f"{year:04d}-{month:02d}-{last_day:02d}"
             lbl       = f"{year}-{month:02d}"
 
-            # 1. Ouvrir le date picker
-            dp = page.evaluate('''() => {
-                const el = document.querySelector("[view_id='button_date_picker']");
-                if (!el) return "no-el";
-                (el.querySelector("button") || el).click();
-                return "ok";
-            }''')
-            print(f"  [{lbl}] picker open: {dp}")
-            page.wait_for_timeout(400)
+            def _try_open_picker():
+                return page.evaluate('''() => {
+                    // Chercher le bouton date picker par view_id ou attribut
+                    const selectors = [
+                        "[view_id='button_date_picker']",
+                        "[view_id*='date'][view_id*='picker']",
+                        "[view_id*='datepicker']",
+                    ];
+                    for (const sel of selectors) {
+                        const el = document.querySelector(sel);
+                        if (el) { (el.querySelector("button,.webix_button") || el).click(); return "ok:" + sel; }
+                    }
+                    // Fallback : chercher par texte (calendrier, période, date)
+                    for (const el of document.querySelectorAll("button,.webix_button,[view_id]")) {
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 1 || r.height < 1) continue;
+                        const t = (el.textContent || "").trim().toLowerCase();
+                        if (/^(période|periode|date|calendrier|filtre)/.test(t)) {
+                            el.click(); return "text:" + t.slice(0,20);
+                        }
+                    }
+                    return "no-picker";
+                }''')
 
-            # 2. Essai Webix API (le plus fiable si daterange component existe)
+            # ── Approche 1 : Webix API via scan DOM [view_id] ────────────────
             api_ok = page.evaluate(f'''() => {{
                 try {{
                     if (typeof webix === "undefined") return "no-webix";
                     const start = new Date({year}, {month - 1}, 1);
                     const end   = new Date({year}, {month - 1}, {last_day});
-                    // chercher composant daterange ou daterangepicker
-                    const views = webix.ui.views || {{}};
-                    for (const id in views) {{
-                        const v = views[id];
-                        if (!v || !v.config) continue;
-                        const name = v.name || v.config?.view || "";
-                        if (["daterange","daterangepicker"].includes(name) && typeof v.setValue === "function") {{
-                            v.setValue({{start, end}});
-                            return "api-daterange:" + id;
-                        }}
-                        if (["calendar","calendarrange"].includes(name) && typeof v.selectDate === "function") {{
-                            v.selectDate(start); return "api-calendar:" + id;
-                        }}
+                    const DR_NAMES = ["daterange","daterangepicker","daterangefilter"];
+                    const CAL_NAMES = ["calendar","calendarrange","datepicker"];
+                    // Scan tous les éléments [view_id] du DOM
+                    for (const el of document.querySelectorAll("[view_id]")) {{
+                        const vid = el.getAttribute("view_id");
+                        try {{
+                            const v = webix.$$(vid);
+                            if (!v || !v.config) continue;
+                            const name = (v.name || v.config.view || "").toLowerCase();
+                            if (DR_NAMES.some(n => name.includes(n)) && typeof v.setValue === "function") {{
+                                v.setValue({{start, end}});
+                                if (v.callEvent) v.callEvent("onChange", [{{start, end}}]);
+                                return "api-dr:" + vid;
+                            }}
+                            if (CAL_NAMES.some(n => name.includes(n)) && typeof v.setValue === "function") {{
+                                // Essai daterange object d'abord
+                                try {{ v.setValue({{start, end}}); return "api-cal-dr:" + vid; }} catch(_) {{}}
+                                v.setValue(start); return "api-cal:" + vid;
+                            }}
+                            // Essai générique : getValue retourne un objet avec start/end
+                            if (typeof v.getValue === "function" && typeof v.setValue === "function") {{
+                                try {{
+                                    const cur = v.getValue();
+                                    if (cur && typeof cur === "object" && ("start" in cur || "end" in cur)) {{
+                                        v.setValue({{start, end}});
+                                        return "api-generic:" + vid;
+                                    }}
+                                }} catch(_) {{}}
+                            }}
+                        }} catch(_) {{}}
                     }}
-                    return "no-daterange";
+                    return "no-dr-found";
                 }} catch(e) {{ return "err:" + e.message; }}
             }}''')
             print(f"  [{lbl}] webix-api: {api_ok}")
 
             if str(api_ok).startswith("api-"):
-                page.wait_for_timeout(200)
-                # Valider
-                page.evaluate('''() => {
-                    for (const el of document.querySelectorAll("button")) {
-                        if (el.textContent.trim().toLowerCase() === "valider") { el.click(); return; }
-                    }
-                }''')
+                page.wait_for_timeout(300)
+                _click_valider()
                 page.wait_for_timeout(800)
                 return start_iso, end_iso
 
-            # 3. Option "Personnalisé" dans la liste
+            # ── Approche 2 : ouvrir le picker puis remplir les inputs ─────────
+            dp = _try_open_picker()
+            print(f"  [{lbl}] picker open: {dp}")
+            page.wait_for_timeout(500)
+
+            # 2a. Option "Personnalisé" / "Custom" dans la liste déroulante
             custom_found = page.evaluate(f'''() => {{
-                const kws = ["personnalis", "custom", "saisir", "libre", "autre"];
+                const kws = ["personnalis", "custom", "saisir", "libre", "plage", "range"];
                 for (const el of document.querySelectorAll("*")) {{
                     if (el.children.length > 0) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 1 || r.height < 1) continue;
                     const t = el.textContent.trim().toLowerCase();
-                    if (kws.some(k => t.includes(k))) {{
-                        const r = el.getBoundingClientRect();
-                        if (r.width > 1 && r.height > 1) {{ el.click(); return t; }}
-                    }}
+                    if (kws.some(k => t.includes(k))) {{ el.click(); return t.slice(0,30); }}
                 }}
                 return null;
             }}''')
-            print(f"  [{lbl}] custom option: {custom_found}")
-
+            print(f"  [{lbl}] custom-opt: {custom_found}")
             if custom_found:
-                page.wait_for_timeout(300)
-                # Remplir les champs de date
-                filled = page.evaluate(f'''(s, e) => {{
-                    const setVal = (el, val) => {{
-                        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+                page.wait_for_timeout(400)
+
+            # 2b. Remplir les champs de date (inputs Webix ou HTML)
+            filled = page.evaluate(f'''(sf, ef) => {{
+                const setVal = (el, val) => {{
+                    // Playwright-style native setter pour déclencher les listeners React/Webix
+                    try {{
+                        const setter = Object.getOwnPropertyDescriptor(
+                            Object.getPrototypeOf(el), "value"
+                        )?.set || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
                         setter.call(el, val);
-                        el.dispatchEvent(new Event("input",  {{bubbles: true}}));
-                        el.dispatchEvent(new Event("change", {{bubbles: true}}));
-                        el.dispatchEvent(new KeyboardEvent("keyup", {{bubbles: true}}));
-                    }};
-                    const vis = el => {{ const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1; }};
-                    const all = [...document.querySelectorAll("input")].filter(vis);
-                    // Essai 1 : placeholder contenant "de"/"du"/"from"
-                    const starts = all.filter(el => /de|du|début|from|start/i.test(el.placeholder));
-                    const ends   = all.filter(el => /au|à|fin|to|end/i.test(el.placeholder));
-                    if (starts.length && ends.length) {{
-                        setVal(starts[0], s); setVal(ends[0], e);
-                        return "ph:" + starts[0].placeholder + "→" + ends[0].placeholder;
-                    }}
-                    // Essai 2 : deux premiers inputs visibles
-                    if (all.length >= 2) {{ setVal(all[0], s); setVal(all[1], e); return "fallback-2"; }}
-                    return "no-inputs";
-                }}''', start_fr, end_fr)
-                print(f"  [{lbl}] fill: {filled}")
-                page.wait_for_timeout(200)
-                page.evaluate('''() => {
-                    for (const el of document.querySelectorAll("button")) {
-                        if (el.textContent.trim().toLowerCase() === "valider") { el.click(); return; }
-                    }
-                }''')
+                    }} catch(_) {{ el.value = val; }}
+                    ["input","change","keyup","blur"].forEach(ev =>
+                        el.dispatchEvent(new Event(ev, {{bubbles:true}}))
+                    );
+                }};
+                const vis = el => {{ const r = el.getBoundingClientRect(); return r.width > 4 && r.height > 4; }};
+                const inputs = [...document.querySelectorAll("input[type=text],input:not([type]),input[type=date]")].filter(vis);
+                if (!inputs.length) return "no-inputs";
+
+                // Essai 1 : placeholder ou name contenant "start/début/de" et "end/fin/au"
+                const starts = inputs.filter(el =>
+                    /de|du|déb|from|start/i.test(el.placeholder + el.name + el.id)
+                );
+                const ends = inputs.filter(el =>
+                    /au|à|fin|to|end/i.test(el.placeholder + el.name + el.id)
+                );
+                if (starts.length && ends.length) {{
+                    setVal(starts[0], sf); setVal(ends[0], ef);
+                    return "ph:" + inputs.length + "i";
+                }}
+                // Essai 2 : deux premiers inputs visibles
+                if (inputs.length >= 2) {{
+                    setVal(inputs[0], sf); setVal(inputs[1], ef);
+                    return "fallback-2:" + inputs.length + "i";
+                }}
+                // Un seul input : mettre la date de début
+                setVal(inputs[0], sf); return "single:" + inputs[0].placeholder;
+            }}''', start_fr, end_fr)
+            print(f"  [{lbl}] fill: {filled}")
+
+            if "no-inputs" not in str(filled):
+                page.wait_for_timeout(300)
+                _click_valider()
                 page.wait_for_timeout(800)
                 return start_iso, end_iso
 
-            # 4. Fallback : fermer le picker, on continue quand même
-            print(f"  [{lbl}] WARN: impossible de sélectionner la période exacte — fermeture picker")
+            # ── Approche 3 : Playwright locator fill sur inputs visibles ──────
+            try:
+                vis_inputs = page.locator(
+                    "input[type=text]:visible, input:not([type]):visible"
+                ).all()
+                if len(vis_inputs) >= 2:
+                    vis_inputs[0].fill(start_fr)
+                    vis_inputs[1].fill(end_fr)
+                    page.wait_for_timeout(200)
+                    _click_valider()
+                    page.wait_for_timeout(800)
+                    print(f"  [{lbl}] playwright-fill: ok ({len(vis_inputs)} inputs)")
+                    return start_iso, end_iso
+            except Exception as _pf_err:
+                print(f"  [{lbl}] playwright-fill err: {_pf_err}")
+
+            # ── Fallback : fermer le picker, données du mois courant ──────────
+            print(f"  [{lbl}] WARN: picker inchangé — données potentiellement hors période")
             try:
                 page.keyboard.press("Escape")
             except Exception:
                 pass
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(300)
             return start_iso, end_iso
 
         # ── Export d'un mois ──────────────────────────────────────────────────
@@ -852,6 +936,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 if any(v is not None for v in row):
                     raw_rows.append({h: _strip_html(v) for h, v in zip(headers, row)})
             wb.close()
+            print(f"  [{lbl}] colonnes Excel: {headers}")
 
             print(f"  [{lbl}] {len(raw_rows)} lignes brutes, {ps} → {pe}")
             return raw_rows, ps, pe, _file_url
