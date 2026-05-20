@@ -1176,11 +1176,7 @@
           <div class="panel-sub">// Données OSPHARM — ventes en cours et plan d'achats optimal</div>
         </div>
       </div>
-      <div id="recapContainer">
-        <div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:13px;padding:60px 0;text-align:center;letter-spacing:2px">
-          // Connectez-vous à OSPHARM pour charger vos données de ventes
-        </div>
-      </div>
+      <div id="recapContainer"></div>
     </div>
   </div>
 
@@ -2021,7 +2017,11 @@ function renderRecap() {
   const ventes = state._recapVentes || [];
 
   if (!hasMonthly && !ventes.length) {
-    el.innerHTML = `<div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:13px;padding:60px 0;text-align:center;letter-spacing:2px">// Connectez-vous à OSPHARM pour charger vos données de ventes</div>`;
+    const ospConnected = state.connectors?.ospharm?.connected;
+    const msg = ospConnected
+      ? '// Données OSPHARM en cours de chargement — veuillez patienter…'
+      : '// Connectez-vous à OSPHARM pour charger vos données de ventes';
+    el.innerHTML = `<div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:13px;padding:60px 0;text-align:center;letter-spacing:2px">${msg}</div>`;
     return;
   }
 
@@ -5104,8 +5104,10 @@ async function saveProfile() {
     if (!isAdmin && ['csv', 'results', 'labs'].includes(targetPage)) targetPage = 'recap';
     goTo(targetPage);
     if (targetPage === 'results') launchSimulation();
+    setTimeout(() => renderRecap(), 0);
   } else {
     goTo('recap');
+    setTimeout(() => renderRecap(), 0);
   }
 
   // Admin : afficher le bouton IMPORTER (non-admins n'ont pas de CSV manuel)
