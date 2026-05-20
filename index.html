@@ -2202,11 +2202,11 @@ function _renderOspProgress(el) {
         Revenez dans <span class="osp-act-time">${act.label}</span>
         — le temps ${act.text}
        </div>`
-    : `<div class="osp-activity-line">// Récupération des données OSPHARM en cours…</div>`;
+    : `<div class="osp-activity-line">// Chargement en cours…</div>`;
 
   const barPct = pct ?? 5;
   const pctLabel = pct !== null ? `${pct}%` : '…';
-  const statusLabel = m ? `Mois ${current}/${total}` : 'initialisation…';
+  const statusLabel = '';
 
   // Ne remplacer le DOM que si la canvas n'est pas déjà présente (évite de tuer l'animation)
   if (!el.querySelector('#ospBreakoutCanvas')) {
@@ -5701,7 +5701,7 @@ function initConnecteurModal() {
         const job = row?.state_json?.ospharm_job;
         if (!job) continue;
         if (job.status === 'running') {
-          _setJobStatusEl('ospJobStatus', 'running', job.message || '');
+          _setJobStatusEl('ospJobStatus', 'running', '');
           const _m = (job.message || '').match(/Mois\s+(\d+)\/(\d+)/i);
           if (_m) _setConnProgressPct(prefix, Math.round(parseInt(_m[1]) / parseInt(_m[2]) * 100));
           continue;

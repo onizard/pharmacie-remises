@@ -154,7 +154,7 @@ async def _dispatch_gh_ospharm(user_id: str):
     """Déclenche le workflow GitHub Actions scraper_ospharm.yml."""
     # Marque immédiatement le job comme "running" dans Supabase
     await patch_job_status(user_id, "ospharm_job", "running",
-                           "Scraping OSPHARM en cours via GitHub Actions…", [])
+                           "Chargement des données en cours…", [])
 
     if not GH_TOKEN:
         await patch_job_status(user_id, "ospharm_job", "error",
