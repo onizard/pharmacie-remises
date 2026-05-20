@@ -5555,8 +5555,25 @@ function initConnecteurModal() {
     document.getElementById('digiTestResult').textContent = '';
     document.getElementById('ospReqStatus').textContent   = '';
     document.getElementById('digiReqStatus').textContent  = '';
-    _setConnProgress('osp',  'reset');
     _setConnProgress('digi', 'reset');
+    if (state._ospJobRunning) {
+      // Job en cours : restaurer barre + canvas sans réinitialiser
+      const bar  = document.getElementById('ospProgBar');
+      const fill = document.getElementById('ospProgFill');
+      const lbl  = document.getElementById('ospProgPct');
+      if (bar) bar.classList.add('active');
+      if (fill) fill.style.width = _connCurPct + '%';
+      if (lbl)  lbl.textContent  = Math.round(_connCurPct) + '%';
+      if (bar && !document.getElementById('ospModalCanvas')) {
+        const cvs = document.createElement('canvas');
+        cvs.id = 'ospModalCanvas'; cvs.width = 120; cvs.height = 90;
+        cvs.style.cssText = 'display:block;margin:10px auto 6px;border:1px solid rgba(0,229,255,.18);background:#04060f;image-rendering:pixelated';
+        bar.insertAdjacentElement('beforebegin', cvs);
+        _startOspBreakoutCanvas('ospModalCanvas');
+      }
+    } else {
+      _setConnProgress('osp', 'reset');
+    }
     showView('osp',  c.ospharm.connected);
     showView('digi', c.digipharmacie.connected);
     modal.classList.add('open');
