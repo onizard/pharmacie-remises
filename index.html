@@ -1984,22 +1984,28 @@ function _renderMonthTable(mk) {
         <th class="num">QTÉ BOITES</th>
         <th class="num">CA BRUT</th>
         <th class="num">POND %</th>
+        <th class="num">REMISE %</th>
         <th class="num">REMISE TOTALE</th>
         <th class="num">PA NET</th>
       </tr></thead>
       <tbody>
-      ${stats.map(r => `<tr>
+      ${stats.map(r => {
+        const remPct = r.ca_brut > 0 ? r.remise_totale / r.ca_brut * 100 : 0;
+        return `<tr>
         <td class="labo-col">${r.labo}</td>
         <td class="num">${fmtN(r.qty)}</td>
         <td class="num">${fmtE(r.ca_brut)}</td>
         <td class="num pond-col">${r.pond_pct.toFixed(1)} %</td>
+        <td class="num pond-col">${remPct.toFixed(1)} %</td>
         <td class="num rem-col">${fmtE(r.remise_totale)}</td>
         <td class="num panet-col">${fmtE(r.pa_net)}</td>
-      </tr>`).join('')}
+      </tr>`;
+      }).join('')}
       ${stats.length > 1 ? `<tr style="border-top:1px solid var(--border);font-weight:700">
         <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
         <td class="num">${fmtN(totQty)}</td>
         <td class="num">${fmtE(totCa)}</td>
+        <td class="num pond-col">${totPond.toFixed(1)} %</td>
         <td class="num pond-col">${totPond.toFixed(1)} %</td>
         <td class="num rem-col">${fmtE(totRem)}</td>
         <td class="num panet-col">${fmtE(totPa)}</td>
@@ -2047,12 +2053,13 @@ function renderMonthlySection(container) {
 
   container.appendChild(wrap);
 
-  wrap.querySelectorAll('.month-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _selectedMonth = btn.dataset.mk;
-      wrap.querySelectorAll('.month-btn').forEach(b => b.classList.toggle('active', b.dataset.mk === _selectedMonth));
-      document.getElementById('monthTableWrap').innerHTML = _renderMonthTable(_selectedMonth);
-    });
+  wrap.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-mk]');
+    if (!btn) return;
+    _selectedMonth = btn.dataset.mk;
+    wrap.querySelectorAll('.month-btn').forEach(b => b.classList.toggle('active', b.dataset.mk === _selectedMonth));
+    const tableWrap = wrap.querySelector('#monthTableWrap');
+    if (tableWrap) tableWrap.innerHTML = _renderMonthTable(_selectedMonth);
   });
 }
 
