@@ -749,6 +749,73 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                         print(f"  [{lbl}] xhr-urls: {_xhr_log[xhr_before:xhr_before+5]}")
                     return start_iso, end_iso
 
+                # ── Approche A2 : clic cellules calendrier (picker ouvert, pas d'inputs) ──
+                # Navigue mois par mois dans le calendrier Webix puis clique J1 et Jdernier.
+                _cal_ok = False
+                for _cal_try in range(30):
+                    _cal_nav = page.evaluate(r'''([yr, mo, lastDay]) => {
+                        const FR=['janvier','février','mars','avril','mai','juin',
+                                  'juillet','août','septembre','octobre','novembre','décembre'];
+                        const EN=['january','february','march','april','may','june',
+                                  'july','august','september','october','november','december'];
+                        function vis(el){const r=el.getBoundingClientRect();return r.width>4&&r.height>4;}
+                        function parseHdr(el){
+                            const txt=(el.textContent||'').toLowerCase();
+                            for(let i=0;i<12;i++) if(txt.includes(FR[i])||txt.includes(EN[i])){
+                                const ym=txt.match(/\d{4}/);if(ym) return{m:i+1,y:+ym[0]};
+                            }
+                            const m2=txt.match(/(\d{1,2})[\/\-](\d{4})/);
+                            if(m2) return{m:+m2[1],y:+m2[2]};
+                            return null;
+                        }
+                        const hdrs=[...document.querySelectorAll(
+                            '.webix_cal_month_name,[class*="cal_month_name"]'
+                        )].filter(vis);
+                        if(!hdrs.length) return{done:false,nav:null,err:'no-hdr'};
+                        for(const hdr of hdrs){
+                            const info=parseHdr(hdr);
+                            if(!info||info.y!==yr||info.m!==mo) continue;
+                            const cal=hdr.closest('[class*="webix_cal"],[class*="calendar"]')||hdr.parentElement;
+                            const days=[...cal.querySelectorAll('.webix_cal_day,[class*="cal_day"]')]
+                                .filter(el=>{const t=el.textContent.trim();return vis(el)&&/^\d{1,2}$/.test(t);});
+                            const d1=days.find(el=>el.textContent.trim()==='1');
+                            const dN=days.find(el=>el.textContent.trim()===String(lastDay));
+                            if(d1) d1.click();
+                            if(dN) dN.click();
+                            return{done:true,d1:!!d1,dN:!!dN};
+                        }
+                        const firstInfo=parseHdr(hdrs[0]);
+                        if(!firstInfo) return{done:false,nav:null,err:'no-parse'};
+                        const diff=(yr-firstInfo.y)*12+(mo-firstInfo.m);
+                        const dir=diff>0?'next':'prev';
+                        const cal0=hdrs[0].closest('[class*="webix_cal"],[class*="calendar"]')||hdrs[0].parentElement;
+                        const btn=cal0.querySelector(dir==='next'
+                            ?'.webix_cal_next_button,[class*="cal_next"]'
+                            :'.webix_cal_prev_button,[class*="cal_prev"]');
+                        if(!btn||!vis(btn)) return{done:false,nav:null,err:'no-btn'};
+                        btn.click();
+                        return{done:false,nav:dir};
+                    }''', [year, month, last_day])
+                    if isinstance(_cal_nav, dict) and _cal_nav.get('done'):
+                        _cal_ok = True
+                        break
+                    _nav_dir = _cal_nav.get('nav') if isinstance(_cal_nav, dict) else None
+                    if not _nav_dir:
+                        print(f"  [{lbl}] cal-nav stop: {_cal_nav}")
+                        break
+                    page.wait_for_timeout(250)
+
+                if _cal_ok:
+                    print(f"  [{lbl}] cal-click: ok ({_cal_try + 1} pas)")
+                    page.wait_for_timeout(600)
+                    _click_valider()
+                    _wait_data_reload()
+                    cnt_after = _dt_row_count()
+                    xhr_delta = len(_xhr_log) - xhr_before
+                    print(f"  [{lbl}] dt: {cnt_before}→{cnt_after} | xhr-delta: {xhr_delta}")
+                    return start_iso, end_iso
+                print(f"  [{lbl}] cal-click: échec — fallback API")
+
             # ── Approche B : Webix API (daterange.setValue + filterByAll) ─────
             # Utilisé si le picker UI n'a pas pu être ouvert.
             # Note : setValue seul ne recharge pas les données — il faut filterByAll.
@@ -911,107 +978,110 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             _snap(f"4c_data_{lbl}")
 
             # Export Excel
+            # On ouvre expect_download AVANT de cliquer le bouton export pour capter
+            # aussi bien les téléchargements directs que ceux nécessitant un popup Valider.
             progress(f"Export Excel ({lbl})…")
             _tmp_fd, _tmp_dl = tempfile.mkstemp(suffix=".xlsx")
             _os.close(_tmp_fd)
-
-            kw_export = ["excel", "export", "exporter", "xls", "télécharger"]
-            try:
-                exported = page.evaluate('''(kw) => {
-                    function vis(el) { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
-                    function strTip(v) {
-                        const raw = v.config?.tooltip || v.config?.label || "";
-                        return (typeof raw === "string" ? raw : "").toLowerCase();
-                    }
-                    if (typeof webix !== "undefined") {
-                        for (const el of document.querySelectorAll("[view_id]")) {
-                            if (!vis(el)) continue;
-                            const vid = el.getAttribute("view_id");
-                            const v = webix.$$(vid);
-                            if (!v || v.name !== "button") continue;
-                            const icon = (typeof v.config?.icon === "string" ? v.config.icon : "").toLowerCase();
-                            if (["excel","xls","export","exporter","download","télécharger","file-"]
-                                    .some(k => icon.includes(k) || el.innerHTML.toLowerCase().includes(k))) {
-                                el.click(); return "M1b:" + icon.slice(0,30);
-                            }
-                        }
-                        for (const el of document.querySelectorAll("[view_id]")) {
-                            if (!vis(el)) continue;
-                            const v = webix.$$(el.getAttribute("view_id"));
-                            if (!v) continue;
-                            if (kw.some(k => strTip(v).includes(k))) { el.click(); return "M1a:" + strTip(v).slice(0,30); }
-                        }
-                    }
-                    const tabNames = new Set(["Laboratoires","Familles","Produits","Marques"]);
-                    let maxRight=0, bandTop=0, bandBottom=0;
-                    for (const el of document.querySelectorAll(".webix_item_tab,.webix_segment_0,.webix_segment_1,.webix_segment_N")) {
-                        if (!tabNames.has(el.textContent.trim())) continue;
-                        const r = el.getBoundingClientRect();
-                        if (r.width<4||r.height<4) continue;
-                        if (r.right>maxRight){ maxRight=r.right; bandTop=r.top; bandBottom=r.bottom; }
-                    }
-                    if (maxRight > 0) {
-                        const midY=(bandTop+bandBottom)/2, halfH=(bandBottom-bandTop)/2+10;
-                        const cands = [...document.querySelectorAll("[view_id],button,.webix_el_icon,.webix_el_button")]
-                            .filter(el => {
-                                const r=el.getBoundingClientRect();
-                                return r.left>maxRight+2 && r.top<midY+halfH && r.bottom>midY-halfH && r.width>8 && r.height>8 && r.width<200;
-                            });
-                        cands.sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left);
-                        if (cands.length) { (cands[0].querySelector("button,.webix_template")||cands[0]).click(); return "M2:pos"; }
-                    }
-                    for (const el of document.querySelectorAll("[webix_tooltip]")) {
-                        if (!vis(el)) continue;
-                        const tip=(el.getAttribute("webix_tooltip")||"").toLowerCase();
-                        if (kw.some(k=>tip.includes(k))) { (el.querySelector("button")||el).click(); return "M3:"+tip.slice(0,30); }
-                    }
-                    for (const el of document.querySelectorAll("button,a,[role=button],.webix_el_button")) {
-                        if (!vis(el)) continue;
-                        const hay=(el.textContent+(el.title||"")+(el.getAttribute("aria-label")||"")).toLowerCase();
-                        if (kw.some(k=>hay.includes(k))) { el.click(); return "M4:"+hay.slice(0,30); }
-                    }
-                    return false;
-                }''', kw_export)
-            except Exception as _ev_err:
-                if "context" in str(_ev_err).lower() or "destroyed" in str(_ev_err).lower():
-                    exported = "context-destroyed-ok"
-                else:
-                    raise RuntimeError(f"Export evaluate err ({lbl}): {_ev_err}")
-
-            if not exported:
-                raise RuntimeError(f"Bouton export introuvable ({lbl})")
-            print(f"  [{lbl}] export btn: {exported}, attente Valider…")
-
-            _val_loc = None
-            try:
-                _loc = page.locator(
-                    ".webix_window button,.webix_popup button,.webix_modal button,.webix_win_body button"
-                ).filter(has_text="Valider").first
-                _loc.wait_for(state="visible", timeout=16_000)
-                _val_loc = _loc
-                print(f"  [{lbl}] Valider visible")
-            except Exception:
-                pass
-
             _excel_bytes = None
 
-            if _val_loc:
-                try:
-                    with page.expect_download(timeout=300_000) as _dl_info:
-                        _val_loc.click(timeout=5_000)
-                    _dl = _dl_info.value
-                    _dl.save_as(_tmp_dl)
-                    with open(_tmp_dl, "rb") as _f:
-                        _body = _f.read()
-                    if len(_body) > 500:
-                        _excel_bytes = _body
-                        print(f"  [{lbl}] download: {len(_body):,} bytes")
-                    else:
-                        print(f"  [{lbl}] download trop petit: {len(_body)}")
-                except Exception as _edd:
-                    print(f"  [{lbl}] expect_download err: {_edd}")
-            else:
-                print(f"  [{lbl}] Valider non trouvé — fallback webix.toExcel")
+            kw_export = ["excel", "export", "exporter", "xls", "télécharger"]
+            _snap(f"5_avant_export_{lbl}")
+
+            try:
+                with page.expect_download(timeout=180_000) as _dl_ctx:
+                    try:
+                        exported = page.evaluate('''(kw) => {
+                            function vis(el) { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+                            function strTip(v) {
+                                const raw = v.config?.tooltip || v.config?.label || "";
+                                return (typeof raw === "string" ? raw : "").toLowerCase();
+                            }
+                            if (typeof webix !== "undefined") {
+                                for (const el of document.querySelectorAll("[view_id]")) {
+                                    if (!vis(el)) continue;
+                                    const vid = el.getAttribute("view_id");
+                                    const v = webix.$$(vid);
+                                    if (!v || v.name !== "button") continue;
+                                    const icon = (typeof v.config?.icon === "string" ? v.config.icon : "").toLowerCase();
+                                    if (["excel","xls","export","exporter","download","télécharger","file-"]
+                                            .some(k => icon.includes(k) || el.innerHTML.toLowerCase().includes(k))) {
+                                        el.click(); return "M1b:" + icon.slice(0,30);
+                                    }
+                                }
+                                for (const el of document.querySelectorAll("[view_id]")) {
+                                    if (!vis(el)) continue;
+                                    const v = webix.$$(el.getAttribute("view_id"));
+                                    if (!v) continue;
+                                    if (kw.some(k => strTip(v).includes(k))) { el.click(); return "M1a:" + strTip(v).slice(0,30); }
+                                }
+                            }
+                            const tabNames = new Set(["Laboratoires","Familles","Produits","Marques"]);
+                            let maxRight=0, bandTop=0, bandBottom=0;
+                            for (const el of document.querySelectorAll(".webix_item_tab,.webix_segment_0,.webix_segment_1,.webix_segment_N")) {
+                                if (!tabNames.has(el.textContent.trim())) continue;
+                                const r = el.getBoundingClientRect();
+                                if (r.width<4||r.height<4) continue;
+                                if (r.right>maxRight){ maxRight=r.right; bandTop=r.top; bandBottom=r.bottom; }
+                            }
+                            if (maxRight > 0) {
+                                const midY=(bandTop+bandBottom)/2, halfH=(bandBottom-bandTop)/2+10;
+                                const cands = [...document.querySelectorAll("[view_id],button,.webix_el_icon,.webix_el_button")]
+                                    .filter(el => {
+                                        const r=el.getBoundingClientRect();
+                                        return r.left>maxRight+2 && r.top<midY+halfH && r.bottom>midY-halfH && r.width>8 && r.height>8 && r.width<200;
+                                    });
+                                cands.sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left);
+                                if (cands.length) { (cands[0].querySelector("button,.webix_template")||cands[0]).click(); return "M2:pos"; }
+                            }
+                            for (const el of document.querySelectorAll("[webix_tooltip]")) {
+                                if (!vis(el)) continue;
+                                const tip=(el.getAttribute("webix_tooltip")||"").toLowerCase();
+                                if (kw.some(k=>tip.includes(k))) { (el.querySelector("button")||el).click(); return "M3:"+tip.slice(0,30); }
+                            }
+                            for (const el of document.querySelectorAll("button,a,[role=button],.webix_el_button")) {
+                                if (!vis(el)) continue;
+                                const hay=(el.textContent+(el.title||"")+(el.getAttribute("aria-label")||"")).toLowerCase();
+                                if (kw.some(k=>hay.includes(k))) { el.click(); return "M4:"+hay.slice(0,30); }
+                            }
+                            return false;
+                        }''', kw_export)
+                    except Exception as _ev_err:
+                        if "context" in str(_ev_err).lower() or "destroyed" in str(_ev_err).lower():
+                            exported = "context-destroyed-ok"
+                        else:
+                            raise RuntimeError(f"Export evaluate err ({lbl}): {_ev_err}")
+
+                    if not exported:
+                        raise RuntimeError(f"Bouton export introuvable ({lbl})")
+                    print(f"  [{lbl}] export btn: {exported}")
+                    _snap(f"5b_apres_click_{lbl}")
+
+                    # Si un popup Valider apparaît, le cliquer
+                    try:
+                        _val = page.locator(
+                            ".webix_window button,.webix_popup button,"
+                            ".webix_modal button,.webix_win_body button"
+                        ).filter(has_text="Valider").first
+                        _val.wait_for(state="visible", timeout=12_000)
+                        print(f"  [{lbl}] Valider → click")
+                        _val.click(timeout=5_000)
+                    except Exception:
+                        print(f"  [{lbl}] pas de Valider — téléchargement direct attendu")
+
+                _dl = _dl_ctx.value
+                _dl.save_as(_tmp_dl)
+                with open(_tmp_dl, "rb") as _f:
+                    _body = _f.read()
+                if len(_body) > 500:
+                    _excel_bytes = _body
+                    print(f"  [{lbl}] ✓ download {len(_body):,} bytes")
+                else:
+                    print(f"  [{lbl}] download trop petit {len(_body)} → fallback")
+            except PWTimeout:
+                print(f"  [{lbl}] timeout download — fallback webix.toExcel")
+            except Exception as _edd:
+                print(f"  [{lbl}] download err: {str(_edd)[:100]} — fallback webix.toExcel")
 
             if not _excel_bytes:
                 try:
