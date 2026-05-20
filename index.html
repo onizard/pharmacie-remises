@@ -5512,7 +5512,7 @@ function initConnecteurModal() {
     if (action === 'ready') {
       fill?.classList.remove('waiting');
       set(100);
-      setTimeout(() => { bar?.classList.remove('active'); set(0); _stopRunningTicker(); }, 600);
+      setTimeout(() => { bar?.classList.remove('active'); set(0); }, 600);
       return;
     }
     bar?.classList.add('active');
@@ -5556,40 +5556,6 @@ function initConnecteurModal() {
 
   const _jobRefreshMap = { ospJobStatus: 'ospRefreshBtn', digiJobStatus: 'digiRefreshBtn' };
 
-  const _tickerLabels = [
-    'AMOXICILLINE 500MG 24GELULE','METFORMINE 850MG 90CP','AMLODIPINE 5MG 30GELULE',
-    'ATORVASTATINE 20MG 30CP','OMEPRAZOLE 20MG 28GELULE','RAMIPRIL 5MG 30CP',
-    'BISOPROLOL 5MG 30CP','SERTRALINE 50MG 30CP','LOSARTAN 50MG 28CP',
-    'LEVOTHYROXINE 100MCG 30CP','PANTOPRAZOLE 40MG 28CP','PERINDOPRIL 5MG 30CP',
-    'ESOMEPRAZOLE 20MG 14GELULE','VALSARTAN 80MG 28CP','DOXYCYCLINE 100MG 10GELULE',
-    'CLOPIDOGREL 75MG 30CP','FLUOXETINE 20MG 28GELULE','IRBESARTAN 150MG 28CP',
-    'TRAMADOL 100MG 30CP LP','METOPROLOL 50MG 30CP','ATENOLOL 100MG 30CP',
-    'SIMVASTATINE 40MG 30CP','FUROSEMIDE 40MG 30CP','AMLODIPINE 10MG 30GELULE',
-    'PARACETAMOL 500MG 100CP','IBUPROFENE 400MG 30CP','CETIRIZINE 10MG 30CP',
-    'AMOXICILLINE 1G 24CP','AZITHROMYCINE 250MG 6GELULE','METFORMINE 500MG 90CP',
-    'LISINOPRIL 10MG 30CP','CANDESARTAN 8MG 28CP','ANASTROZOLE 1MG 30CP',
-    'PROGESTERONE 200MG 30GELULE','SPIRONOLACTONE 25MG 30CP','ZOLPIDEM 10MG 14CP',
-  ];
-  let _tickerTimer = null;
-  let _tickerIdx   = Math.floor(Math.random() * _tickerLabels.length);
-
-  function _startRunningTicker(elId) {
-    clearInterval(_tickerTimer);
-    const el = document.getElementById(elId);
-    if (!el) return;
-    function tick() {
-      _tickerIdx = (_tickerIdx + 1) % _tickerLabels.length;
-      if (el.className.includes('running')) el.textContent = _tickerLabels[_tickerIdx];
-    }
-    tick();
-    _tickerTimer = setInterval(tick, 900);
-  }
-
-  function _stopRunningTicker() {
-    clearInterval(_tickerTimer);
-    _tickerTimer = null;
-  }
-
   function _setJobStatusEl(elId, cls, text) {
     const el = document.getElementById(elId);
     if (!el) return;
@@ -5597,9 +5563,8 @@ function initConnecteurModal() {
     const refreshBtn = document.getElementById(_jobRefreshMap[elId]);
     if (refreshBtn) refreshBtn.style.display = cls === 'error' ? '' : 'none';
     if (cls === 'running') {
-      _startRunningTicker(elId);
+      el.textContent = text || '⏳ en cours…';
     } else {
-      _stopRunningTicker();
       if (cls === 'error') {
         el.innerHTML = '';
         const wrap = document.createElement('div');
