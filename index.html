@@ -2181,43 +2181,47 @@ function _renderOspProgress(el) {
     const cur = m ? parseInt(m[1]) : 0;
     const tot = m ? parseInt(m[2]) : 0;
     const elapsed = Date.now() - (state._ospJobStartedAt || Date.now());
-    const pct = (tot > 0 && cur > 0) ? cur / tot * 100 : 0;
-    let remainMin = null;
+    const pct = (tot > 0 && cur > 0) ? Math.min(95, cur / tot * 100) : 0;
+    let remainMin = 10; // défaut 10 min avant la première estimation
     if (pct > 0 && elapsed > 0) {
       remainMin = Math.ceil(Math.max(0, elapsed / (pct / 100) - elapsed) / 60000);
     }
-    const status = `// Analyse en cours — initialisation…`;
-    const act = remainMin !== null
-      ? (_OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1])
-      : null;
-    const actHtml = act
-      ? `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`
-      : '';
-    return { status, actHtml };
+    const barPct = pct > 0 ? Math.round(pct) : Math.min(8, Math.round(elapsed / 60000 / 10 * 8));
+    const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
+    const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
+    return { actHtml, barPct };
   }
 
-  const { status, actHtml } = _compute();
+  const { actHtml, barPct } = _compute();
 
   if (!el.querySelector('#ospStatusLine')) {
-    el.innerHTML = `<div class="osp-loading-wrap" style="padding:40px 0 32px;text-align:left">
-      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:18px">${status}</div>
-      <div id="ospActivityLine" class="osp-activity-line">${actHtml}</div>
+    el.innerHTML = `<div class="osp-loading-wrap" style="padding:40px 0 32px">
+      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:18px">// Analyse en cours — initialisation…</div>
+      <div id="ospActivityLine" class="osp-activity-line" style="margin-bottom:18px">${actHtml}</div>
+      <div class="osp-bar-row">
+        <div class="osp-bar-bg"><div class="osp-bar-fill" id="ospBarFill" style="width:${barPct}%"></div></div>
+        <div class="osp-bar-pct" id="ospBarPct">${barPct}%</div>
+      </div>
     </div>`;
   } else {
-    const statusEl = el.querySelector('#ospStatusLine');
     const actLine  = el.querySelector('#ospActivityLine');
-    if (statusEl) statusEl.textContent = status;
-    if (actLine)  actLine.innerHTML    = actHtml;
+    const fill     = el.querySelector('#ospBarFill');
+    const pctEl    = el.querySelector('#ospBarPct');
+    if (actLine) actLine.innerHTML   = actHtml;
+    if (fill)    fill.style.width    = `${barPct}%`;
+    if (pctEl)   pctEl.textContent   = `${barPct}%`;
   }
 
-  // Rafraîchir l'estimation toutes les 30s (le temps restant diminue indépendamment des polls)
+  // Rafraîchir toutes les 30s pour mettre à jour la phrase et la barre
   _ospProgressTimer = setInterval(() => {
-    const statusEl = document.getElementById('ospStatusLine');
-    if (!statusEl) { clearInterval(_ospProgressTimer); return; }
-    const { status: s, actHtml: a } = _compute();
-    statusEl.textContent = s;
+    const fill = document.getElementById('ospBarFill');
+    if (!fill) { clearInterval(_ospProgressTimer); return; }
+    const { actHtml: a, barPct: p } = _compute();
     const actLine = document.getElementById('ospActivityLine');
+    const pctEl   = document.getElementById('ospBarPct');
     if (actLine) actLine.innerHTML = a;
+    fill.style.width = `${p}%`;
+    if (pctEl) pctEl.textContent = `${p}%`;
   }, 30_000);
 }
 
