@@ -5557,10 +5557,22 @@ function initConnecteurModal() {
       if (bar && !document.getElementById('ospModalActivity')) {
         const div = document.createElement('div');
         div.id = 'ospModalActivity';
-        div.style.cssText = 'padding:10px 0 4px;font-family:"Share Tech Mono",monospace;font-size:12px;color:var(--text-dim);letter-spacing:.8px;line-height:1.7';
+        div.className = 'osp-activity-line';
+        div.style.cssText = 'padding:10px 0 4px';
         const _pick = () => {
-          const a = _OSP_ACTIVITIES[Math.floor(Math.random() * _OSP_ACTIVITIES.length)];
-          div.innerHTML = `<span style="font-size:15px;margin-right:6px">${a.emoji}</span>${a.text}`;
+          const elapsed = Date.now() - (state._ospJobStartedAt || Date.now());
+          const pct = _connCurPct;
+          let remainMin = null;
+          if (pct > 0) {
+            const remainMs = Math.max(0, elapsed / (pct / 100) - elapsed);
+            remainMin = Math.ceil(remainMs / 60000);
+          }
+          const a = remainMin !== null
+            ? (_OSP_ACTIVITIES.find(x => x.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1])
+            : null;
+          div.innerHTML = a
+            ? `<span class="osp-act-emoji">${a.emoji}</span>Revenez dans <span class="osp-act-time">${a.label}</span>— le temps ${a.text}`
+            : `// Chargement en cours…`;
         };
         _pick();
         bar.insertAdjacentElement('beforebegin', div);
@@ -5802,14 +5814,26 @@ function initConnecteurModal() {
     void fill?.offsetHeight; // force reflow
     if (fill) fill.style.transition = '';
     if (action === 'job') {
-      // Suggestion ironique rotative dans la modale pendant le job OSPHARM
+      // Suggestion ironique basée sur le temps restant estimé (même logique que la page récap)
       if (prefix === 'osp' && bar && !document.getElementById('ospModalActivity')) {
         const div = document.createElement('div');
         div.id = 'ospModalActivity';
-        div.style.cssText = 'padding:10px 0 4px;font-family:"Share Tech Mono",monospace;font-size:12px;color:var(--text-dim);letter-spacing:.8px;line-height:1.7';
+        div.className = 'osp-activity-line';
+        div.style.cssText = 'padding:10px 0 4px';
         const _pick = () => {
-          const a = _OSP_ACTIVITIES[Math.floor(Math.random() * _OSP_ACTIVITIES.length)];
-          div.innerHTML = `<span style="font-size:15px;margin-right:6px">${a.emoji}</span>${a.text}`;
+          const elapsed = Date.now() - (state._ospJobStartedAt || Date.now());
+          const pct = _connCurPct;
+          let remainMin = null;
+          if (pct > 0) {
+            const remainMs = Math.max(0, elapsed / (pct / 100) - elapsed);
+            remainMin = Math.ceil(remainMs / 60000);
+          }
+          const a = remainMin !== null
+            ? (_OSP_ACTIVITIES.find(x => x.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1])
+            : null;
+          div.innerHTML = a
+            ? `<span class="osp-act-emoji">${a.emoji}</span>Revenez dans <span class="osp-act-time">${a.label}</span>— le temps ${a.text}`
+            : `// Chargement en cours…`;
         };
         _pick();
         bar.insertAdjacentElement('beforebegin', div);
