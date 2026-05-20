@@ -5358,27 +5358,24 @@ function initConnecteurModal() {
       if (lbl)  lbl.textContent  = r + '%';
     };
     if (action === 'reset') { bar?.classList.remove('active'); set(0); return; }
-    bar?.classList.add('active');
-    // Phases : serveur 0→25, envoi 25→50, test 50→75, job 75→98 (lent), ready →100 (fixe)
-    const phases = { serveur: [0, 25, 60, 300], envoi: [25, 50, 60, 300], test: [50, 75, 60, 300], job: [75, 98, 800, 300] };
     if (action === 'ready') {
       set(100);
-      setTimeout(() => {
-        bar?.classList.remove('active');
-        set(0);
-        _stopRunningTicker();
-      }, 600);
+      setTimeout(() => { bar?.classList.remove('active'); set(0); _stopRunningTicker(); }, 600);
       return;
     }
-    const [from, to, steps, ms] = phases[action] || [0, 0, 60, 300];
-    let cur = from;
-    set(cur);
-    const inc = (to - from) / steps;
+    bar?.classList.add('active');
+    // Plafond par phase — la barre ne dépasse pas ce seuil avant la phase suivante
+    const ceilings = { serveur: 25, envoi: 50, test: 75, job: 98 };
+    const ceiling = ceilings[action] ?? 98;
+    // Continue depuis la valeur actuelle (évite tout saut)
+    let cur = Math.min(fill ? (parseFloat(fill.style.width) || 0) : 0, ceiling);
+    // Vitesse constante : ~1 %/s (0.25 % par tick de 250 ms)
+    const INC = 0.25;
     _connProgTimer = setInterval(() => {
-      cur = Math.min(to, cur + inc);
+      cur = Math.min(ceiling, cur + INC);
       set(cur);
-      if (cur >= to) clearInterval(_connProgTimer);
-    }, ms);
+      if (cur >= ceiling) clearInterval(_connProgTimer);
+    }, 250);
   }
   window._setConnProgress = (prefix, action) => _setConnProgress(prefix, action);
 
