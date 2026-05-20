@@ -2125,7 +2125,6 @@ function renderRecap() {
   if (!el) return;
 
   const hasMonthly = Object.keys(state._monthStats || {}).length > 0;
-  const ventes = state._recapVentes || [];
 
   // Barre de progression si job OSPHARM en cours
   if (state._ospJobRunning) {
@@ -2134,7 +2133,7 @@ function renderRecap() {
     return;
   }
 
-  if (!hasMonthly && !ventes.length) {
+  if (!hasMonthly) {
     clearInterval(_ospProgressTimer);
     const ospConnected = state.connectors?.ospharm?.connected;
     let msg;
@@ -2151,13 +2150,8 @@ function renderRecap() {
 
   el.innerHTML = '';
 
-  // Section mensuelle en premier
+  // Section mensuelle
   if (hasMonthly) renderMonthlySection(el);
-
-  // Récap ventes global (issu de la simulation)
-  if (ventes.length) {
-    el.insertAdjacentHTML('beforeend', renderRecapTable(ventes, '◇ RÉCAP VENTES GLOBAL'));
-  }
 
   const achatPlaceholder = `<div class="recap-section">
     <div class="recap-section-title">◇ RÉCAP ACHATS</div>
