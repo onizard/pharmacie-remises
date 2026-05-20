@@ -23,4 +23,4 @@ jobs:
           USER_ID:              ${{ inputs.user_id }}
           CONNECTOR:            ${{ inputs.connector }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python api_scraper/test_connector.py
+        run: python3 api_scraper/test_connector.py

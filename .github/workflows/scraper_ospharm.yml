@@ -19,4 +19,4 @@ jobs:
         env:
           USER_ID: ${{ inputs.user_id }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python api_scraper/run_job_ospharm.py
+        run: python3 api_scraper/run_job_ospharm.py
