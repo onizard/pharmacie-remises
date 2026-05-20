@@ -193,11 +193,11 @@
   .recap-table .panet-col { color: var(--green); font-weight: 700; }
   .recap-table .libelle-col { white-space: normal; font-size: 11px; color: var(--text-dim); max-width: 240px; }
   /* Monthly recap */
-  .month-btns { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--border); }
-  .month-btn { font-family:'Orbitron',monospace; font-size:10px; font-weight:700; letter-spacing:1px; padding:5px 10px; background:none; border:1px solid var(--border); color:var(--text-dim); cursor:pointer; transition:border-color .15s,color .15s,background .15s; white-space:nowrap; }
+  .month-btns { display:grid; grid-template-columns:repeat(12,auto); gap:4px 6px; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+  .month-btn { font-family:'Orbitron',monospace; font-size:10px; font-weight:700; letter-spacing:1px; padding:5px 10px; background:none; border:1px solid var(--border); color:var(--text-dim); cursor:pointer; transition:border-color .15s,color .15s,background .15s; white-space:nowrap; text-align:center; }
   .month-btn:hover { border-color:var(--cyan-dim); color:var(--text); }
   .month-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,.07); }
-  .month-btn.year-sep { margin-left:10px; border-left:2px solid rgba(0,229,255,.25); padding-left:14px; }
+  .month-btn-empty { display:block; }
   [data-theme="light"] .month-btn { border-color:#ccd6e0; color:#7a8a99; }
   [data-theme="light"] .month-btn.active { border-color:#0066cc; color:#0066cc; background:#e8f0fb; }
   .month-recap-table .pond-col { color:var(--amber); }
@@ -1842,6 +1842,7 @@ async function autoRunOspharm() {
               state._monthSavedAt = Date.now();
             }
             saveState();
+            goTo('recap');
             renderRecap();
             if (['csv', 'results'].includes(state.currentPageId)) launchSimulation();
           } catch(_) {}
@@ -2016,17 +2017,26 @@ function renderMonthlySection(container) {
     _selectedMonth = keys[keys.length - 1];
   }
 
-  let lastYear = null;
-  const btnsHtml = keys.map(mk => {
+  // Group by year → grid of 12 columns per year row
+  const byYear = {};
+  keys.forEach(mk => {
     const [y, mo] = mk.split('-').map(Number);
-    const cls = [
-      'month-btn',
-      mk === _selectedMonth ? 'active' : '',
-      lastYear !== null && y !== lastYear ? 'year-sep' : '',
-    ].filter(Boolean).join(' ');
-    lastYear = y;
-    return `<button class="${cls}" data-mk="${mk}">${_MONTH_LABELS[mo-1]} ${String(y).slice(2)}</button>`;
-  }).join('');
+    if (!byYear[y]) byYear[y] = {};
+    byYear[y][mo] = mk;
+  });
+  const years = Object.keys(byYear).map(Number).sort();
+  let btnsHtml = '';
+  years.forEach(y => {
+    for (let mo = 1; mo <= 12; mo++) {
+      const mk = byYear[y][mo];
+      if (mk) {
+        const cls = ['month-btn', mk === _selectedMonth ? 'active' : ''].filter(Boolean).join(' ');
+        btnsHtml += `<button class="${cls}" data-mk="${mk}">${_MONTH_LABELS[mo-1]} ${String(y).slice(2)}</button>`;
+      } else {
+        btnsHtml += `<span class="month-btn-empty"></span>`;
+      }
+    }
+  });
 
   const wrap = document.createElement('div');
   wrap.className = 'recap-section';
@@ -2059,6 +2069,108 @@ const _OSP_ACTIVITIES = [
 ];
 
 let _ospProgressTimer = null;
+
+function _startOspBreakoutCanvas(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const BW = 20, BH = 11, GAP = 4;
+  const CX = Math.floor(W / 2 - BW / 2);
+  const CY = Math.floor(H / 2 - BH / 2);
+
+  function makeBricks(offsetY) {
+    return [
+      { x: CX,          y: CY - BH - GAP + offsetY },  // top
+      { x: CX - BW - GAP, y: CY + offsetY },            // left
+      { x: CX,          y: CY + offsetY },               // center
+      { x: CX + BW + GAP, y: CY + offsetY },            // right
+      { x: CX,          y: CY + BH + GAP + offsetY },   // bottom
+    ].map(b => ({ ...b, alive: true }));
+  }
+
+  let bricks = makeBricks(0);
+  let ball = { x: W * 0.28, y: H * 0.28, vx: 1.9, vy: 1.6, r: 3.5 };
+  let phase = 'playing'; // 'playing' | 'pause' | 'descend'
+  let pauseTicks = 0;
+  let descendBricks = null;
+  let rafId;
+
+  function drawBrick(b) {
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillRect(b.x, b.y, BW, BH);
+    ctx.fillStyle = 'rgba(4,6,15,0.45)';
+    ctx.fillRect(b.x + 2, b.y + BH - 4, BW - 4, 3);
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(b.x + 0.5, b.y + 0.5, BW - 1, BH - 1);
+  }
+
+  function moveBall() {
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    if (ball.x - ball.r < 0)  { ball.x = ball.r;     ball.vx =  Math.abs(ball.vx); }
+    if (ball.x + ball.r > W)   { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); }
+    if (ball.y - ball.r < 0)  { ball.y = ball.r;     ball.vy =  Math.abs(ball.vy); }
+    if (ball.y + ball.r > H)   { ball.y = H - ball.r; ball.vy = -Math.abs(ball.vy); }
+  }
+
+  function checkBrickCollisions(bs) {
+    bs.forEach(b => {
+      if (!b.alive) return;
+      if (ball.x + ball.r > b.x && ball.x - ball.r < b.x + BW &&
+          ball.y + ball.r > b.y && ball.y - ball.r < b.y + BH) {
+        b.alive = false;
+        const overlapH = Math.min(ball.x + ball.r - b.x, b.x + BW - (ball.x - ball.r));
+        const overlapV = Math.min(ball.y + ball.r - b.y, b.y + BH - (ball.y - ball.r));
+        if (overlapH < overlapV) ball.vx *= -1;
+        else                      ball.vy *= -1;
+      }
+    });
+  }
+
+  function tick() {
+    if (!canvas.isConnected) { cancelAnimationFrame(rafId); return; }
+    ctx.clearRect(0, 0, W, H);
+
+    if (phase === 'playing') {
+      moveBall();
+      checkBrickCollisions(bricks);
+      bricks.forEach(b => b.alive && drawBrick(b));
+      // Ball
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffab00';
+      ctx.fill();
+      if (bricks.every(b => !b.alive)) { phase = 'pause'; pauseTicks = 35; }
+
+    } else if (phase === 'pause') {
+      pauseTicks--;
+      if (pauseTicks <= 0) {
+        phase = 'descend';
+        descendBricks = makeBricks(-H);
+      }
+
+    } else if (phase === 'descend') {
+      const speed = H / 38;
+      descendBricks.forEach(b => b.y += speed);
+      descendBricks.forEach(b => drawBrick(b));
+      // Ball still bouncing (ghost, no collision)
+      moveBall();
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,171,0,0.35)';
+      ctx.fill();
+      if (descendBricks[2].y >= CY) {
+        bricks = makeBricks(0);
+        phase = 'playing';
+      }
+    }
+
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+}
 
 function _renderOspProgress(el) {
   const startedAt = state._ospJobStartedAt || Date.now();
@@ -2096,22 +2208,40 @@ function _renderOspProgress(el) {
   const pctLabel = pct !== null ? `${pct}%` : '…';
   const statusLabel = m ? `Mois ${current}/${total}` : 'initialisation…';
 
-  el.innerHTML = `<div class="osp-loading-wrap">
-    ${actHtml}
-    <div class="osp-bar-row">
-      <div class="osp-bar-bg"><div class="osp-bar-fill" id="ospBarFill" style="width:${barPct}%"></div></div>
-      <div class="osp-bar-pct">${pctLabel}</div>
-    </div>
-    <div class="osp-status-msg" id="ospStatusMsg">${statusLabel}</div>
-  </div>`;
+  // Ne remplacer le DOM que si la canvas n'est pas déjà présente (évite de tuer l'animation)
+  if (!el.querySelector('#ospBreakoutCanvas')) {
+    el.innerHTML = `<div class="osp-loading-wrap">
+      <div style="display:flex;align-items:center;gap:24px;margin-bottom:18px">
+        <canvas id="ospBreakoutCanvas" width="120" height="90"
+          style="flex-shrink:0;border:1px solid rgba(0,229,255,.18);background:#04060f;image-rendering:pixelated"></canvas>
+        <div id="ospActivityLine">${actHtml}</div>
+      </div>
+      <div class="osp-bar-row">
+        <div class="osp-bar-bg"><div class="osp-bar-fill" id="ospBarFill" style="width:${barPct}%"></div></div>
+        <div class="osp-bar-pct" id="ospBarPct">${pctLabel}</div>
+      </div>
+      <div class="osp-status-msg" id="ospStatusMsg">${statusLabel}</div>
+    </div>`;
+    _startOspBreakoutCanvas('ospBreakoutCanvas');
+  } else {
+    // Mise à jour légère des éléments texte uniquement
+    const actLine = el.querySelector('#ospActivityLine');
+    const fill    = el.querySelector('#ospBarFill');
+    const pctEl   = el.querySelector('#ospBarPct');
+    const lbl     = el.querySelector('#ospStatusMsg');
+    if (actLine) actLine.innerHTML = actHtml;
+    if (fill)    fill.style.width = `${barPct}%`;
+    if (pctEl)   pctEl.textContent = pctLabel;
+    if (lbl)     lbl.textContent = statusLabel;
+  }
 
-  // Timer pour mettre à jour la barre seconde par seconde (sans re-render complet)
+  // Timer pour affiner l'estimation du temps restant
   clearInterval(_ospProgressTimer);
   _ospProgressTimer = setInterval(() => {
     const fill = document.getElementById('ospBarFill');
     const lbl  = document.getElementById('ospStatusMsg');
     if (!fill) { clearInterval(_ospProgressTimer); return; }
-    const el2 = (Date.now() - startedAt);
+    const el2 = Date.now() - startedAt;
     const estimated = (pct && pct > 0) ? el2 / (pct / 100) : null;
     const left = estimated ? Math.max(0, Math.ceil((estimated - el2) / 60000)) : null;
     if (lbl && left !== null) {
@@ -5582,7 +5712,8 @@ function initConnecteurModal() {
           _setConnProgress(prefix, 'ready');
           _setJobStatusEl('ospJobStatus', 'done', '✓');
           const ok = await launchComparateur();
-          if (ok) document.getElementById('connecteurModal').classList.remove('open');
+          document.getElementById('connecteurModal')?.classList.remove('open');
+          goTo('recap');
           break;
         }
         if (job.status === 'error') {
