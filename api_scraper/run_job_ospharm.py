@@ -574,11 +574,10 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     const start = new Date({year}, {month - 1}, 1);
                     const end   = new Date({year}, {month - 1}, {last_day});
                     const DR_NAMES = ["daterange","daterangepicker","daterangefilter"];
-                    const CAL_NAMES = ["calendar","calendarrange","datepicker"];
-                    // Scan tous les éléments [view_id] du DOM
+
+                    // 1a. Chercher un vrai composant daterange (pas un calendrier simple)
                     for (const el of document.querySelectorAll("[view_id]")) {{
                         const vid = el.getAttribute("view_id");
-                        // Ignorer les calendriers d'autocomplétion ($suggest*) — faux positifs
                         if (!vid || vid.startsWith("$suggest")) continue;
                         try {{
                             const v = webix.$$(vid);
@@ -588,11 +587,6 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                                 v.setValue({{start, end}});
                                 if (v.callEvent) v.callEvent("onChange", [{{start, end}}]);
                                 return "api-dr:" + vid;
-                            }}
-                            // Calendrier non-suggest : essai daterange d'abord, sinon date seule
-                            if (CAL_NAMES.some(n => name.includes(n)) && typeof v.setValue === "function") {{
-                                try {{ v.setValue({{start, end}}); return "api-cal-dr:" + vid; }} catch(_) {{}}
-                                v.setValue(start); return "api-cal:" + vid;
                             }}
                             // Essai générique : getValue retourne un objet avec start/end
                             if (typeof v.getValue === "function" && typeof v.setValue === "function") {{
@@ -606,6 +600,24 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                             }}
                         }} catch(_) {{}}
                     }}
+
+                    // 1b. Pas de daterange — essayer startDate + endDate explicitement
+                    const sV = webix.$$("startDate"), eV = webix.$$("endDate");
+                    if (sV && eV && typeof sV.setValue === "function" && typeof eV.setValue === "function") {{
+                        sV.setValue(start);
+                        eV.setValue(end);
+                        if (sV.callEvent) sV.callEvent("onChange", [start]);
+                        if (eV.callEvent) eV.callEvent("onChange", [end]);
+                        return "api-start-end";
+                    }}
+                    // IDs alternatifs courants
+                    for (const [sid, eid] of [["start","end"],["date_from","date_to"],["dateFrom","dateTo"]]) {{
+                        const sv = webix.$$(sid), ev = webix.$$(eid);
+                        if (sv && ev && typeof sv.setValue === "function") {{
+                            sv.setValue(start); ev.setValue(end);
+                            return "api-" + sid + "+" + eid;
+                        }}
+                    }}
                     return "no-dr-found";
                 }} catch(e) {{ return "err:" + e.message; }}
             }}''')
@@ -614,7 +626,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             if str(api_ok).startswith("api-"):
                 page.wait_for_timeout(300)
                 _click_valider()
-                page.wait_for_timeout(800)
+                page.wait_for_timeout(1000)
                 return start_iso, end_iso
 
             # ── Approche 2 : ouvrir le picker puis remplir les inputs ─────────
