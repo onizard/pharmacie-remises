@@ -712,71 +712,157 @@ def extract_cgv():
 
 def extraire_conditions_cgv(pdf_fp) -> dict:
     """
-    Parcourt toutes les pages d'un CGV PDF labo.
-    Extrait depuis le texte brut les paires RSF% / RDP* par ligne produit (CIP13).
-    Construit mapping rsf_pct → valeur RDP la plus fréquente.
-    Extrait aussi le CA minimum global (ex: 15 000 euros).
+    Extrait depuis un CGV PDF labo les données par produit :
+      cip13 | libelle | puht | rsf_pct | remise2 (RDP*)
+    Stratégie 1 : extraction de tableaux pdfplumber (colonnes structurées).
+    Stratégie 2 : parsing texte brut ligne par ligne (fallback).
+    Retourne aussi les paliers agrégés (rsf_pct → mode remise2) et le CA min.
     """
     warnings_list = []
-    palier_counter: dict = defaultdict(Counter)  # rsf_neg → Counter(rdp_pos)
+    palier_counter: dict = defaultdict(Counter)
     ca_min = None
+    product_rows: list[dict] = []
+    seen_cips: set = set()
 
-    # Pattern : CIP13 puis, plus loin sur la même ligne, RSF% suivi de RDP% ou "-"
-    # Exemple : "3400930076972 ... 20% 10%" ou "3400930241301 ... 30% -"
-    _PRODUCT_LINE = re.compile(
-        r'\d{13}'              # CIP13
-        r'.{5,120}?'           # libellé / prix (non-greedy)
-        r'(\d+(?:[.,]\d+)?)\s*%\s*'   # RSF% (capture group 1)
-        r'(-|(\d+(?:[.,]\d+)?)\s*%)'  # RDP : "-" ou "xx%" (groups 2,3)
+    def _flt(s):
+        try:
+            return float(str(s or '').replace(' ', '').replace(',', '.').strip('%'))
+        except (ValueError, TypeError):
+            return None
+
+    def _norm_hdr(cells):
+        return [re.sub(r'\s+', '', str(c or '').lower()
+                       .replace('é', 'e').replace('è', 'e').replace('ê', 'e')
+                       .replace('à', 'a').replace('î', 'i')) for c in cells]
+
+    def _col(headers, *keywords):
+        for kw in keywords:
+            for i, h in enumerate(headers):
+                if kw in h:
+                    return i
+        return None
+
+    # ── Extraction des tableaux structurés ───────────────────────────────────
+    def _parse_table(table):
+        if not table or len(table) < 2:
+            return
+        hdr = _norm_hdr(table[0])
+        c_cip  = _col(hdr, 'cip', 'ean', 'codeart', 'codeacl', 'codeproduit')
+        c_lib  = _col(hdr, 'libelle', 'designation', 'article', 'nomproduit', 'produit')
+        c_puht = _col(hdr, 'pfht', 'puht', 'prixunitaire', 'prix', 'puht', 'tarif')
+        c_rsf  = _col(hdr, 'remise%', 'remise', 'rsf', 'taux')
+        c_rdp  = _col(hdr, 'rdp', 'finde', 'complement', 'add', 'annuel')
+        if c_cip is None or c_rsf is None:
+            return
+        for row in table[1:]:
+            if not row:
+                continue
+            try:
+                cip_raw = re.sub(r'\D', '', str(row[c_cip] or ''))
+                if len(cip_raw) == 7:
+                    cip_raw = '340000' + cip_raw
+                if len(cip_raw) != 13 or cip_raw in seen_cips:
+                    continue
+                rsf_val = _flt(row[c_rsf])
+                if not rsf_val:
+                    continue
+                rdp_val = 0.0
+                if c_rdp is not None:
+                    v = _flt(row[c_rdp])
+                    if v is not None:
+                        rdp_val = v
+                libelle = str(row[c_lib] or '').strip() if c_lib is not None else ''
+                puht    = _flt(row[c_puht]) if c_puht is not None else None
+                seen_cips.add(cip_raw)
+                product_rows.append({
+                    'cip13':   cip_raw,
+                    'libelle': libelle[:100],
+                    'puht':    round(puht, 4) if puht else None,
+                    'rsf_pct': -abs(rsf_val),
+                    'remise2': rdp_val,
+                })
+                palier_counter[-abs(rsf_val)][rdp_val] += 1
+            except (IndexError, TypeError):
+                continue
+
+    # ── Parsing texte brut (fallback) ────────────────────────────────────────
+    # Ligne type : CIP13  Libellé...  colisage  PFHT  RSF%  RDP%|-
+    _TEXT_RE = re.compile(
+        r'\b(\d{13})\b'                              # group 1 : CIP13
+        r'(.*?)'                                     # group 2 : libellé (non-greedy)
+        r'\s+([\d]+(?:[,.]\d{1,2})?)\s+'            # group 3 : PUHT (dernier prix avant RSF)
+        r'(\d+(?:[.,]\d+)?)\s*%\s*'                 # group 4 : RSF%
+        r'(-|(\d+(?:[.,]\d+)?)\s*%)'                # group 5-6 : RDP* ou "-"
     )
+
+    def _parse_text_line(line):
+        m = _TEXT_RE.search(line)
+        if not m:
+            return
+        cip13 = m.group(1)
+        if cip13 in seen_cips:
+            return
+        rsf_val = _flt(m.group(4))
+        if not rsf_val:
+            return
+        rdp_raw  = m.group(6)
+        rdp_val  = _flt(rdp_raw) if rdp_raw else 0.0
+        libelle  = m.group(2).strip()
+        # Supprimer colisage (dernier entier seul en fin de libellé)
+        libelle  = re.sub(r'\s+\d+\s*$', '', libelle).strip()
+        puht     = _flt(m.group(3))
+        seen_cips.add(cip13)
+        product_rows.append({
+            'cip13':   cip13,
+            'libelle': libelle[:100],
+            'puht':    round(puht, 4) if puht else None,
+            'rsf_pct': -abs(rsf_val),
+            'remise2': rdp_val or 0.0,
+        })
+        palier_counter[-abs(rsf_val)][rdp_val or 0.0] += 1
 
     with pdfplumber.open(pdf_fp) as pdf:
         all_text = '\n'.join(page.extract_text() or '' for page in pdf.pages)
 
         # ── CA minimum ────────────────────────────────────────────────────────
-        ca_patterns = [
+        for pat in [
             r'minimum\s+de\s+(\d[\d\s.]*\d)\s*euros?',
             r'(\d[\d\s.]*\d)\s*euros?\s+(?:brut\s+)?minimum',
             r'chiffre\s+d.affaires?\s+(?:brut\s+)?(?:minimum\s+de\s+)?(\d[\d\s.]*\d)\s*euros?',
-        ]
-        for pat in ca_patterns:
+        ]:
             m = re.search(pat, all_text, re.IGNORECASE)
             if m:
-                raw = m.group(1).replace(' ', '').replace('.', '')
                 try:
-                    ca_min = int(raw); break
+                    ca_min = int(m.group(1).replace(' ', '').replace('.', ''))
+                    break
                 except ValueError:
                     pass
 
-        # ── Paliers RSF → RDP depuis le texte brut ────────────────────────────
         for page in pdf.pages:
-            text = page.extract_text() or ''
-            for line in text.splitlines():
-                m = _PRODUCT_LINE.search(line)
-                if not m:
-                    continue
-                rsf_raw = m.group(1)
-                rdp_raw = m.group(3)   # None si "-"
-                try:
-                    rsf_val = float(rsf_raw.replace(',', '.'))
-                    rdp_val = float(rdp_raw.replace(',', '.')) if rdp_raw else 0.0
-                except (ValueError, AttributeError):
-                    continue
-                if rsf_val == 0:
-                    continue
-                palier_counter[-abs(rsf_val)][rdp_val] += 1
+            # Stratégie 1 : tableaux structurés
+            for table in (page.extract_tables() or []):
+                _parse_table(table)
+            # Stratégie 2 : texte brut (CIPs non encore vus)
+            for line in (page.extract_text() or '').splitlines():
+                if re.search(r'\d{13}', line):
+                    _parse_text_line(line)
 
     if not palier_counter:
-        warnings_list.append('Aucune correspondance RSF/RDP trouvée dans le PDF.')
-        return {'paliers': [], 'ca_condition': ca_min, 'warnings': warnings_list}
+        warnings_list.append('Aucune référence CIP/RSF trouvée dans le PDF.')
+        return {'rows': [], 'paliers': [], 'ca_condition': ca_min, 'warnings': warnings_list}
 
-    paliers = []
-    for rsf_pct in sorted(palier_counter.keys()):
-        rdp_pct = palier_counter[rsf_pct].most_common(1)[0][0]
-        paliers.append({'rsf_pct': rsf_pct, 'rdp_pct': rdp_pct})
-
-    warnings_list.insert(0, f"{len(paliers)} paliers RSF extraits · CA min détecté : {ca_min} €")
-    return {'paliers': paliers, 'ca_condition': ca_min, 'warnings': warnings_list}
+    paliers = [
+        {'rsf_pct': rsf, 'rdp_pct': ctr.most_common(1)[0][0]}
+        for rsf, ctr in sorted(palier_counter.items())
+    ]
+    warnings_list.insert(0,
+        f"{len(product_rows)} produits · {len(paliers)} paliers RSF · CA min : {ca_min} €")
+    return {
+        'rows':         product_rows,
+        'paliers':      paliers,
+        'ca_condition': ca_min,
+        'warnings':     warnings_list,
+    }
 
 
 @app.route('/extract-pdf', methods=['POST'])

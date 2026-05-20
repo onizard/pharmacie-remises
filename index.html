@@ -4645,44 +4645,62 @@ btn1Next.addEventListener('click', launchSimulation);
 
 document.addEventListener('input', saveState);
 
-// ── Popup vérification paliers CGV ────────────────────────────────────────────
-function showCgvVerifPopup(paliers, ca_condition) {
+// ── Popup vérification CGV — aperçu des produits extraits ─────────────────────
+function showCgvVerifPopup(data) {
   return new Promise(resolve => {
-    const overlay = document.createElement('div');
-    overlay.className = 'col-map-overlay';
+    const rows     = data.rows     || [];
+    const paliers  = data.paliers  || [];
+    const ca       = data.ca_condition;
+    const PREVIEW  = 8;
 
-    const tdRows = paliers.map(({ rsf_pct, rdp_pct }) => {
-      const rsf = Math.abs(parseFloat(rsf_pct));
-      const rdp = parseFloat(rdp_pct) || 0;
-      return `<tr>
-        <td style="text-align:center;color:var(--amber);font-weight:700">−${rsf}%</td>
-        <td style="text-align:center;color:${rdp > 0 ? 'var(--green)' : 'var(--text-dim)'};font-weight:700">${rdp > 0 ? '+' + rdp + '%' : '—'}</td>
-      </tr>`;
-    }).join('');
+    const fmtPct = v => v != null ? Math.abs(parseFloat(v)).toFixed(0) + ' %' : '—';
+    const fmtPuht = v => v ? parseFloat(v).toFixed(2) + ' €' : '—';
+    const fmtRem  = v => parseFloat(v) > 0 ? '+' + parseFloat(v).toFixed(0) + ' %' : '—';
 
-    const caHtml = ca_condition
-      ? `<p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);margin:4px 0 0;letter-spacing:.8px">
-           CA minimum détecté : <span style="color:var(--cyan);font-weight:700">${Number(ca_condition).toLocaleString('fr-FR')} €</span>
-         </p>`
+    const previewRows = rows.slice(0, PREVIEW).map(r => `
+      <tr>
+        <td style="color:var(--text-dim);font-size:11px">${r.cip13}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${r.libelle || '—'}</td>
+        <td style="text-align:right;color:var(--cyan)">${fmtPuht(r.puht)}</td>
+        <td style="text-align:center;color:var(--amber);font-weight:700">${fmtPct(r.rsf_pct)}</td>
+        <td style="text-align:center;color:${parseFloat(r.remise2)>0?'var(--green)':'var(--text-dim)'};font-weight:700">${fmtRem(r.remise2)}</td>
+      </tr>`).join('');
+
+    const moreHtml = rows.length > PREVIEW
+      ? `<tr><td colspan="5" style="text-align:center;color:var(--text-dim);font-size:11px;padding:6px">… et ${rows.length - PREVIEW} autres produits</td></tr>`
       : '';
 
+    const paliersHtml = paliers.map(p => {
+      const rdp = parseFloat(p.rdp_pct) || 0;
+      return `<span style="display:inline-block;padding:2px 8px;margin:2px;border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:11px">
+        −${Math.abs(p.rsf_pct)}% → <span style="color:${rdp>0?'var(--green)':'var(--text-dim)'}">${rdp>0?'+'+rdp+'%':'—'}</span>
+      </span>`;
+    }).join('');
+
+    const caHtml = ca
+      ? `<span style="margin-left:12px;color:var(--text-dim);font-size:11px">CA min : <strong style="color:var(--cyan)">${Number(ca).toLocaleString('fr-FR')} €</strong></span>`
+      : '';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'col-map-overlay';
     overlay.innerHTML = `
-      <div class="col-map-panel" style="max-width:440px">
+      <div class="col-map-panel" style="max-width:720px">
         <div class="col-map-title">◈ VÉRIFICATION DES CONDITIONS LABO</div>
-        <div class="col-map-sub">${paliers.length} palier${paliers.length > 1 ? 's' : ''} RSF détecté${paliers.length > 1 ? 's' : ''} — vérifiez avant d'appliquer&nbsp;:</div>
-        <div style="overflow-x:auto;margin-bottom:10px">
+        <div class="col-map-sub">${rows.length} produit${rows.length>1?'s':''} extraits — aperçu des premières lignes :</div>
+        <div style="overflow-x:auto;margin-bottom:14px">
           <table class="col-map-preview">
             <thead><tr class="col-map-hl">
-              <th>RSF %</th>
-              <th>REMISE ADDITIONNELLE</th>
+              <th>CIP 13</th><th>LIBELLÉ</th><th>PUHT</th><th>RSF %</th><th>REM. ADD.</th>
             </tr></thead>
-            <tbody>${tdRows}</tbody>
+            <tbody>${previewRows}${moreHtml}</tbody>
           </table>
         </div>
-        ${caHtml}
-        <div class="col-map-btns" style="margin-top:20px">
+        <div style="margin-bottom:6px;font-family:'Orbitron',monospace;font-size:10px;color:var(--text-dim);letter-spacing:2px">PALIERS AGRÉGÉS</div>
+        <div style="margin-bottom:14px">${paliersHtml}${caHtml}</div>
+        <div class="col-map-err" id="cgvVerifErr" style="min-height:0"></div>
+        <div class="col-map-btns" style="margin-top:16px">
           <button class="col-map-cancel" id="cgvVerifCancel">ANNULER</button>
-          <button class="col-map-ok" id="cgvVerifOk">APPLIQUER →</button>
+          <button class="col-map-ok" id="cgvVerifOk">IMPORTER →</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -4692,10 +4710,33 @@ function showCgvVerifPopup(paliers, ca_condition) {
   });
 }
 
-// ── Extraction CGV PDF → paliers RSF/RDP ──────────────────────────────────────
+// ── Upsert produits CGV → references_pharmacie ────────────────────────────────
+async function _upsertCgvRows(rows, labName) {
+  const sb = window._sbClient;
+  if (!sb || !rows.length) return 0;
+  const BATCH = 200;
+  let done = 0;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH).map(r => ({
+      cip13:   r.cip13,
+      labo:    labName,
+      libelle: r.libelle || '',
+      puht:    r.puht    || null,
+      rsf_pct: r.rsf_pct,
+    }));
+    const { error } = await sb.from('references_pharmacie')
+      .upsert(batch, { onConflict: 'cip13' });
+    if (error) throw new Error(`Supabase upsert: ${error.message}`);
+    done += batch.length;
+  }
+  return done;
+}
+
+// ── Extraction CGV PDF → upsert DB + re-render ─────────────────────────────────
 async function extractCgvConditions(file, cond, labUid, cgvDrop, cgvLabel, renderFn) {
-  const label = cgvLabel;
+  const label   = cgvLabel;
   const prevName = cond.cgvPdf?.name || null;
+  const labName  = state.labPages.find(lp => lp.uid === labUid)?.selectedLab || '';
   label.textContent = ' ⟳ analyse…';
   cgvDrop.classList.remove('cgv-loaded');
   try {
@@ -4706,44 +4747,67 @@ async function extractCgvConditions(file, cond, labUid, cgvDrop, cgvLabel, rende
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
 
+    const rows    = data.rows    || [];
     const paliers = data.paliers || [];
-    if (!paliers.length) throw new Error('Aucun palier RSF/RDP détecté dans le PDF');
+    if (!rows.length && !paliers.length) throw new Error('Aucun produit RSF trouvé dans le PDF');
 
-    // Popup de vérification — l'utilisateur peut annuler
-    const confirmed = await showCgvVerifPopup(paliers, data.ca_condition);
+    // Popup de vérification — aperçu par produit
+    const confirmed = await showCgvVerifPopup(data);
     if (!confirmed) {
-      // Restaurer l'état précédent de la dropzone
       if (prevName) { label.textContent = ' ' + prevName; cgvDrop.classList.add('cgv-loaded'); }
       else { label.textContent = ''; }
       return;
     }
 
-    // Appliquer les paliers validés
-    let applied = 0;
-    paliers.forEach(({ rsf_pct, rdp_pct }) => {
-      const row = cond.rsfValues.find(r => Math.abs(parseFloat(r.rsf_pct) - Math.abs(rsf_pct)) < 0.01);
-      if (!row || row.excluded) return;
-      row.remise2 = parseFloat(rdp_pct) > 0 ? parseFloat(rdp_pct).toFixed(2) : '0';
-      applied++;
-    });
+    label.textContent = ` ⟳ import ${rows.length} produits…`;
 
+    // 1. Upsert vers references_pharmacie (cip13, labo, libelle, puht, rsf_pct)
+    let upserted = 0;
+    if (rows.length && labName) {
+      try {
+        upserted = await _upsertCgvRows(rows, labName);
+      } catch(e) {
+        console.warn('CGV upsert references_pharmacie:', e.message);
+      }
+    }
+
+    // 2. Upsert paliers agrégés vers rsf_defaults (remise2 par palier)
+    if (paliers.length && labName) {
+      const sb = window._sbClient;
+      if (sb) {
+        const defRows = paliers.map(p => ({
+          lab:     labName,
+          rsf_pct: String(p.rsf_pct),
+          remise2: parseFloat(p.rdp_pct) > 0 ? String(parseFloat(p.rdp_pct)) : '',
+          remise3: '',
+        }));
+        try {
+          await sb.from('rsf_defaults').upsert(defRows, { onConflict: 'lab,rsf_pct' });
+        } catch(e) {
+          console.warn('CGV upsert rsf_defaults:', e.message);
+        }
+      }
+    }
+
+    // 3. CA condition
     if (data.ca_condition && !cond.caCondition) {
       cond.caCondition = data.ca_condition;
       const caInp = document.getElementById(`caInp-${labUid}-${cond.uid}`);
       if (caInp) caInp.value = data.ca_condition;
     }
 
-    if (typeof renderFn === 'function') renderFn(cond);
+    // 4. Recharger les defaults depuis la DB → adapter le tableau des remises
+    await loadRsfDefaults();
+    state.labPages.forEach(lp => {
+      if (lp.selectedLab === labName) {
+        lp._reRenderCondTables?.();
+        lp._reRenderCondTables2025?.();
+      }
+    });
 
-    label.textContent = ` ✓ ${applied} paliers — diffusion…`;
+    label.textContent = ` ✓ ${upserted || rows.length} produits — diffusé ✓`;
     cgvDrop.classList.add('cgv-loaded');
     saveState();
-    try {
-      await saveRsfDefaults();
-      label.textContent = ` ✓ ${applied} paliers — diffusé ✓`;
-    } catch(_) {
-      label.textContent = ` ✓ ${applied} paliers extraits`;
-    }
   } catch(err) {
     if (err.name === 'TimeoutError' || err.message.includes('fetch') || err.message.includes('Failed')) {
       label.textContent = ' ⚠ Serveur PDF indisponible — lancez serveur_pdf.py';
