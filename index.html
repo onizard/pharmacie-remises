@@ -2270,7 +2270,7 @@ function renderRecap() {
     if (!ospConnected) {
       msg = '// Connectez-vous à OSPHARM pour charger vos données de ventes';
     } else if (isAdmin) {
-      msg = '// Lancez le job OSPHARM depuis le connecteur pour charger les données';
+      msg = '// Lancez le connecteur pour charger les données';
     } else {
       msg = '// Données OSPHARM en cours de chargement — veuillez patienter…';
     }
@@ -5757,11 +5757,13 @@ function initConnecteurModal() {
 
   let _connProgTimer = null;
   let _connReadyTimer = null;
+  let _connCurPct = 0; // suivi de la valeur affichée pour éviter tout recul
 
   function _setConnProgress(prefix, action) {
     if (!prefix) return;
     clearInterval(_connProgTimer);
     clearTimeout(_connReadyTimer);
+    _connCurPct = 0;
     const bar  = document.getElementById(prefix + 'ProgBar');
     const fill = document.getElementById(prefix + 'ProgFill');
     const lbl  = document.getElementById(prefix + 'ProgPct');
@@ -5773,8 +5775,8 @@ function initConnecteurModal() {
     if (action === 'reset') { bar?.classList.remove('active'); fill?.classList.remove('waiting'); set(0); return; }
     if (action === 'ready') {
       fill?.classList.remove('waiting');
-      set(100);
-      _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); set(0); }, 600);
+      set(100); _connCurPct = 100;
+      _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); set(0); _connCurPct = 0; }, 600);
       return;
     }
     bar?.classList.add('active');
@@ -5784,24 +5786,37 @@ function initConnecteurModal() {
     if (lbl) lbl.textContent = '0%';
     void fill?.offsetHeight; // force reflow
     if (fill) fill.style.transition = '';
-    if (action !== 'job') {
-      // Phases courtes (test, connexion) : remplissage animé ~2.5s
+    if (action === 'job') {
+      // Phase longue OSPHARM : animation lente 0→8% sur ~3 min (login + navigation)
+      // puis _setConnProgressPct prend le relais avec les mois
+      let cur = 0;
+      _connProgTimer = setInterval(() => {
+        cur = Math.min(8, cur + 0.2);
+        if (cur > _connCurPct) { _connCurPct = cur; set(cur); }
+        if (cur >= 8) clearInterval(_connProgTimer);
+      }, 5000);
+    } else {
+      // Phases courtes (test, connexion) : remplissage animé ~2.5s → 100%
       let cur = 0;
       _connProgTimer = setInterval(() => {
         cur = Math.min(100, cur + 2);
+        _connCurPct = cur;
         set(cur);
         if (cur >= 100) clearInterval(_connProgTimer);
       }, 50);
     }
-    // action === 'job' : pas de faux remplissage — mis à jour par _setConnProgressPct()
   }
   window._setConnProgress = (prefix, action) => _setConnProgress(prefix, action);
 
   function _setConnProgressPct(prefix, pct) {
+    // Map 0-100% (mois X/Y) → 10-92% affichés — les 8% restants pour le post-traitement
+    const displayPct = Math.min(92, Math.round(10 + pct * 0.82));
+    const next = Math.max(_connCurPct, displayPct);
+    _connCurPct = next;
     const fill = document.getElementById(prefix + 'ProgFill');
     const lbl  = document.getElementById(prefix + 'ProgPct');
-    if (fill) fill.style.width = Math.round(pct) + '%';
-    if (lbl)  lbl.textContent  = Math.round(pct) + '%';
+    if (fill) fill.style.width = next + '%';
+    if (lbl)  lbl.textContent  = next + '%';
   }
   window._setConnProgressPct = _setConnProgressPct;
 
