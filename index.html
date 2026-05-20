@@ -2051,15 +2051,7 @@ function renderMonthlySection(container) {
     <div id="monthTableWrap">${_renderMonthTable(_selectedMonth)}</div>`;
 
   container.appendChild(wrap);
-
-  wrap.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-mk]');
-    if (!btn) return;
-    _selectedMonth = btn.dataset.mk;
-    wrap.querySelectorAll('.month-btn').forEach(b => b.classList.toggle('active', b.dataset.mk === _selectedMonth));
-    const tableWrap = wrap.querySelector('#monthTableWrap');
-    if (tableWrap) tableWrap.innerHTML = _renderMonthTable(_selectedMonth);
-  });
+  // listener global dans DOMContentLoaded — pas de listener par wrap
 }
 
 // ── Activités pharmacien pendant chargement OSPHARM ──────────────────────────
@@ -5887,6 +5879,20 @@ function initConnecteurModal() {
 // ── Footer modals ──────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
   const ADMIN_MAIL = 'contact@break-pharma.fr';
+
+  // ── Sélecteur de mois (délégation persistante sur recapContainer) ──────────
+  document.getElementById('recapContainer')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.month-btn[data-mk]');
+    if (!btn) return;
+    _selectedMonth = btn.dataset.mk;
+    const section = document.getElementById('monthlyRecapSection');
+    if (!section) return;
+    section.querySelectorAll('.month-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.mk === _selectedMonth)
+    );
+    const tw = section.querySelector('[id="monthTableWrap"]');
+    if (tw) tw.innerHTML = _renderMonthTable(_selectedMonth);
+  });
 
   // helpers
   const openModal  = id => document.getElementById(id)?.classList.add('open');
