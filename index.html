@@ -1425,6 +1425,9 @@ function serializeState() {
     csvRows:       isAdmin ? (state.csvRows       || 0)    : 0,
     csvFileName:   isAdmin ? (state.csvFile?.name || null) : null,
     prorataRatios: isAdmin ? (state.prorataRatios || null) : null,
+    monthStats:   state._monthStats   || null,
+    monthMeta:    state._monthMeta    || null,
+    monthSavedAt: state._monthSavedAt || null,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -1795,8 +1798,9 @@ async function autoRunOspharm() {
               state.csvRows  = csvData.length;
             }
             if (job.month_stats && Object.keys(job.month_stats).length) {
-              state._monthStats = job.month_stats;
-              state._monthMeta  = job.month_meta || [];
+              state._monthStats   = job.month_stats;
+              state._monthMeta    = job.month_meta || [];
+              state._monthSavedAt = Date.now();
               renderRecap();
             }
             saveState();
@@ -1857,8 +1861,9 @@ async function launchComparateur() {
     state.csvData = csvData;
     state.csvRows = csvData.length;
     if (job.month_stats && Object.keys(job.month_stats).length) {
-      state._monthStats = job.month_stats;
-      state._monthMeta  = job.month_meta || [];
+      state._monthStats   = job.month_stats;
+      state._monthMeta    = job.month_meta || [];
+      state._monthSavedAt = Date.now();
     }
     saveState();
     launchSimulation();
@@ -4922,18 +4927,28 @@ async function saveProfile() {
       state.csvData = saved.csvData;
       state.csvRows = saved.csvRows || saved.csvData.length;
     }
-    // Charger month_stats/meta depuis le dernier job complété (pour affichage immédiat)
-    const _savedJob = saved.ospharm_job;
-    if (_savedJob?.status === 'done' && _savedJob?.month_stats &&
-        Object.keys(_savedJob.month_stats).length) {
-      state._monthStats = _savedJob.month_stats;
-      state._monthMeta  = _savedJob.month_meta || [];
-      setTimeout(() => renderRecap(), 0);
+    // Charger month_stats depuis localStorage (chargement instantané)
+    if (saved.monthStats && Object.keys(saved.monthStats).length) {
+      state._monthStats   = saved.monthStats;
+      state._monthMeta    = saved.monthMeta  || [];
+      state._monthSavedAt = saved.monthSavedAt || null;
+    } else {
+      // Fallback : ancien format — month_stats dans ospharm_job
+      const _savedJob = saved.ospharm_job;
+      if (_savedJob?.status === 'done' && _savedJob?.month_stats &&
+          Object.keys(_savedJob.month_stats).length) {
+        state._monthStats   = _savedJob.month_stats;
+        state._monthMeta    = _savedJob.month_meta || [];
+        state._monthSavedAt = null;
+      }
     }
-    if (!isAdmin && saved.connectors?.ospharm?.connected) {
-      // Relancer le scrape OSPHARM à chaque connexion pour avoir les données à jour.
-      // Les données en cache sont déjà chargées ci-dessus et restent affichées pendant le scrape.
-      setTimeout(() => autoRunOspharm().catch(() => {}), 1500);
+    if (saved.connectors?.ospharm?.connected) {
+      // Re-scrape uniquement si données absentes ou âgées de plus de 24h
+      const ageMs = state._monthSavedAt ? Date.now() - state._monthSavedAt : Infinity;
+      const needsRefresh = !Object.keys(state._monthStats || {}).length || ageMs > 24 * 3600 * 1000;
+      if (!isAdmin && needsRefresh) {
+        setTimeout(() => autoRunOspharm().catch(() => {}), 1500);
+      }
     }
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 1) {
