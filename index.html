@@ -2208,31 +2208,21 @@ function _renderOspProgress(el) {
   const pctLabel = pct !== null ? `${pct}%` : '…';
   const statusLabel = '';
 
-  // Ne remplacer le DOM que si la canvas n'est pas déjà présente (évite de tuer l'animation)
-  if (!el.querySelector('#ospBreakoutCanvas')) {
+  if (!el.querySelector('#ospActivityLine')) {
     el.innerHTML = `<div class="osp-loading-wrap">
-      <div style="display:flex;align-items:center;gap:24px;margin-bottom:18px">
-        <canvas id="ospBreakoutCanvas" width="120" height="90"
-          style="flex-shrink:0;border:1px solid rgba(0,229,255,.18);background:#04060f;image-rendering:pixelated"></canvas>
-        <div id="ospActivityLine">${actHtml}</div>
-      </div>
+      <div id="ospActivityLine" style="margin-bottom:18px">${actHtml}</div>
       <div class="osp-bar-row">
         <div class="osp-bar-bg"><div class="osp-bar-fill" id="ospBarFill" style="width:${barPct}%"></div></div>
         <div class="osp-bar-pct" id="ospBarPct">${pctLabel}</div>
       </div>
-      <div class="osp-status-msg" id="ospStatusMsg">${statusLabel}</div>
     </div>`;
-    _startOspBreakoutCanvas('ospBreakoutCanvas');
   } else {
-    // Mise à jour légère des éléments texte uniquement
     const actLine = el.querySelector('#ospActivityLine');
     const fill    = el.querySelector('#ospBarFill');
     const pctEl   = el.querySelector('#ospBarPct');
-    const lbl     = el.querySelector('#ospStatusMsg');
     if (actLine) actLine.innerHTML = actHtml;
     if (fill)    fill.style.width = `${barPct}%`;
     if (pctEl)   pctEl.textContent = pctLabel;
-    if (lbl)     lbl.textContent = statusLabel;
   }
 
   // Timer pour affiner l'estimation du temps restant
@@ -5564,12 +5554,17 @@ function initConnecteurModal() {
       if (bar) bar.classList.add('active');
       if (fill) fill.style.width = _connCurPct + '%';
       if (lbl)  lbl.textContent  = Math.round(_connCurPct) + '%';
-      if (bar && !document.getElementById('ospModalCanvas')) {
-        const cvs = document.createElement('canvas');
-        cvs.id = 'ospModalCanvas'; cvs.width = 120; cvs.height = 90;
-        cvs.style.cssText = 'display:block;margin:10px auto 6px;border:1px solid rgba(0,229,255,.18);background:#04060f;image-rendering:pixelated';
-        bar.insertAdjacentElement('beforebegin', cvs);
-        _startOspBreakoutCanvas('ospModalCanvas');
+      if (bar && !document.getElementById('ospModalActivity')) {
+        const div = document.createElement('div');
+        div.id = 'ospModalActivity';
+        div.style.cssText = 'padding:10px 0 4px;font-family:"Share Tech Mono",monospace;font-size:12px;color:var(--text-dim);letter-spacing:.8px;line-height:1.7';
+        const _pick = () => {
+          const a = _OSP_ACTIVITIES[Math.floor(Math.random() * _OSP_ACTIVITIES.length)];
+          div.innerHTML = `<span style="font-size:15px;margin-right:6px">${a.emoji}</span>${a.text}`;
+        };
+        _pick();
+        bar.insertAdjacentElement('beforebegin', div);
+        _ospModalActivityTimer = setInterval(_pick, 10_000);
       }
     } else {
       _setConnProgress('osp', 'reset');
@@ -5772,7 +5767,8 @@ function initConnecteurModal() {
 
   let _connProgTimer = null;
   let _connReadyTimer = null;
-  let _connCurPct = 0; // suivi de la valeur affichée pour éviter tout recul
+  let _connCurPct = 0;
+  let _ospModalActivityTimer = null;
 
   function _setConnProgress(prefix, action) {
     if (!prefix) return;
@@ -5787,12 +5783,15 @@ function initConnecteurModal() {
       if (fill) fill.style.width = r + '%';
       if (lbl)  lbl.textContent  = r + '%';
     };
-    const _removeModalCanvas = () => document.getElementById(prefix + 'ModalCanvas')?.remove();
-    if (action === 'reset') { bar?.classList.remove('active'); fill?.classList.remove('waiting'); set(0); _removeModalCanvas(); return; }
+    const _removeModalActivity = () => {
+      clearInterval(_ospModalActivityTimer);
+      document.getElementById(prefix + 'ModalActivity')?.remove();
+    };
+    if (action === 'reset') { bar?.classList.remove('active'); fill?.classList.remove('waiting'); set(0); _removeModalActivity(); return; }
     if (action === 'ready') {
       fill?.classList.remove('waiting');
       set(100); _connCurPct = 100;
-      _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); set(0); _connCurPct = 0; _removeModalCanvas(); }, 600);
+      _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); set(0); _connCurPct = 0; _removeModalActivity(); }, 600);
       return;
     }
     bar?.classList.add('active');
@@ -5803,14 +5802,18 @@ function initConnecteurModal() {
     void fill?.offsetHeight; // force reflow
     if (fill) fill.style.transition = '';
     if (action === 'job') {
-      // Canvas breakout dans la modale pendant le job
-      if (bar && !document.getElementById(prefix + 'ModalCanvas')) {
-        const cvs = document.createElement('canvas');
-        cvs.id = prefix + 'ModalCanvas';
-        cvs.width = 120; cvs.height = 90;
-        cvs.style.cssText = 'display:block;margin:10px auto 6px;border:1px solid rgba(0,229,255,.18);background:#04060f;image-rendering:pixelated';
-        bar.insertAdjacentElement('beforebegin', cvs);
-        if (prefix === 'osp') _startOspBreakoutCanvas(prefix + 'ModalCanvas');
+      // Suggestion ironique rotative dans la modale pendant le job OSPHARM
+      if (prefix === 'osp' && bar && !document.getElementById('ospModalActivity')) {
+        const div = document.createElement('div');
+        div.id = 'ospModalActivity';
+        div.style.cssText = 'padding:10px 0 4px;font-family:"Share Tech Mono",monospace;font-size:12px;color:var(--text-dim);letter-spacing:.8px;line-height:1.7';
+        const _pick = () => {
+          const a = _OSP_ACTIVITIES[Math.floor(Math.random() * _OSP_ACTIVITIES.length)];
+          div.innerHTML = `<span style="font-size:15px;margin-right:6px">${a.emoji}</span>${a.text}`;
+        };
+        _pick();
+        bar.insertAdjacentElement('beforebegin', div);
+        _ospModalActivityTimer = setInterval(_pick, 10_000);
       }
       // Phase longue OSPHARM : animation lente 0→8% sur ~3 min (login + navigation)
       // puis _setConnProgressPct prend le relais avec les mois
