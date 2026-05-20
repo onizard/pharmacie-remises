@@ -685,35 +685,35 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     page.wait_for_timeout(400)
 
                 # Remplir les inputs de date visibles
-                filled = page.evaluate(f'''(sf, ef) => {{
-                    const setVal = (el, val) => {{
-                        try {{
+                filled = page.evaluate('''([sf, ef]) => {
+                    const setVal = (el, val) => {
+                        try {
                             const setter = Object.getOwnPropertyDescriptor(
                                 Object.getPrototypeOf(el), "value"
                             )?.set || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
                             setter.call(el, val);
-                        }} catch(_) {{ el.value = val; }}
+                        } catch(_) { el.value = val; }
                         ["input","change","keyup","blur"].forEach(t =>
-                            el.dispatchEvent(new Event(t, {{bubbles:true}}))
+                            el.dispatchEvent(new Event(t, {bubbles:true}))
                         );
-                    }};
-                    const vis = el => {{ const r = el.getBoundingClientRect(); return r.width > 4 && r.height > 4; }};
+                    };
+                    const vis = el => { const r = el.getBoundingClientRect(); return r.width > 4 && r.height > 4; };
                     const inputs = [...document.querySelectorAll(
                         "input[type=text],input:not([type]),input[type=date]"
                     )].filter(vis);
                     if (!inputs.length) return "no-inputs";
                     const starts = inputs.filter(e => /de|du|déb|from|start|début/i.test(e.placeholder+e.name+e.id));
                     const ends   = inputs.filter(e => /au|à|fin|to|end/i.test(e.placeholder+e.name+e.id));
-                    if (starts.length && ends.length) {{
+                    if (starts.length && ends.length) {
                         setVal(starts[0], sf); setVal(ends[0], ef);
                         return "named:" + inputs.length;
-                    }}
-                    if (inputs.length >= 2) {{
+                    }
+                    if (inputs.length >= 2) {
                         setVal(inputs[0], sf); setVal(inputs[1], ef);
                         return "pos2:" + inputs.length;
-                    }}
+                    }
                     setVal(inputs[0], sf); return "single";
-                }}''', start_fr, end_fr)
+                }''', [start_fr, end_fr])
                 print(f"  [{lbl}] fill: {filled}")
 
                 if "no-inputs" not in str(filled):
