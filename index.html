@@ -4429,9 +4429,8 @@ async function launchSimulation() {
     </div>`;
 
     // ── Simulateur personnalisé ─────────────────────────────────────────────────
-    const _availLabs = state.labPages.map(lp => lp.selectedLab).filter(Boolean);
     const _labOpts = `<option value="">— Aucun —</option>` +
-      _availLabs.map(l => `<option value="${l.replace(/"/g,'&quot;')}">${l}</option>`).join('');
+      LABS_SORTED.map(l => `<option value="${l.replace(/"/g,'&quot;')}">${l}</option>`).join('');
     html += `<div class="sim-section" id="customSimSection">
       <div class="sim-title">◈ SIMULATEUR PERSONNALISÉ</div>
       <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:4px">
@@ -4449,21 +4448,17 @@ async function launchSimulation() {
 
     container.innerHTML = html;
 
-    // ── Simulateur personnalisé — exclusion mutuelle + téléchargement catalogue ─
-    function syncLabSelects() {
-      const vals = [1,2,3,4].map(n => (document.getElementById(`customLabSel${n}`) || {}).value || '');
-      [1,2,3,4].forEach((n, i) => {
-        const sel = document.getElementById(`customLabSel${n}`);
-        if (!sel) return;
-        const others = vals.filter((v, j) => j !== i && v);
-        Array.from(sel.options).forEach(opt => {
-          if (!opt.value) return;
-          opt.disabled = opt.hidden = others.includes(opt.value);
+    // ── Simulateur personnalisé — exclusion mutuelle (reset l'autre slot) ────────
+    [1,2,3,4].forEach(n => {
+      document.getElementById(`customLabSel${n}`)?.addEventListener('change', function() {
+        const chosen = this.value;
+        if (!chosen) return;
+        [1,2,3,4].forEach(other => {
+          if (other === n) return;
+          const sel = document.getElementById(`customLabSel${other}`);
+          if (sel && sel.value === chosen) sel.value = '';
         });
       });
-    }
-    [1,2,3,4].forEach(n => {
-      document.getElementById(`customLabSel${n}`)?.addEventListener('change', syncLabSelects);
     });
 
     function calcCustomScenario(priorities) {
