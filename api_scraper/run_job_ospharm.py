@@ -556,6 +556,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 return -1
 
         _webix_views_logged = False
+        _filter_items_logged = False
 
         def _log_webix_views(lbl: str):
             nonlocal _webix_views_logged
@@ -586,6 +587,25 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             except Exception as _lve:
                 print(f"  [{lbl}] webix-views-err: {_lve}")
 
+        def _log_filter_items(lbl: str):
+            nonlocal _filter_items_logged
+            if _filter_items_logged:
+                return
+            _filter_items_logged = True
+            try:
+                items = page.evaluate('''() => {
+                    if (typeof webix === "undefined") return ["no-webix"];
+                    const fl = webix.$$("filters");
+                    if (!fl) return ["no-filters"];
+                    const ser = fl.serialize ? fl.serialize()
+                              : (fl.data?.serialize ? fl.data.serialize() : []);
+                    return ser.slice(0, 30).map(i =>
+                        (i.id || "?") + ":" + (i.value || i.label || i.$value || "").slice(0, 40));
+                }''')
+                print(f"  [{lbl}] filter-items: {items}")
+            except Exception as _fie:
+                print(f"  [{lbl}] filter-items-err: {_fie}")
+
         def _wait_data_reload(timeout_ms: int = 25_000):
             """Attend que les données aient fini de se charger (networkidle ou spinner)."""
             try:
@@ -605,6 +625,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             lbl       = f"{year}-{month:02d}"
 
             _log_webix_views(lbl)
+            _log_filter_items(lbl)
 
             cnt_before = _dt_row_count()
             xhr_before = len(_xhr_log)
@@ -658,31 +679,98 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 return "no-picker";
             }}''')
             print(f"  [{lbl}] picker-open: {picker_res}")
-            page.wait_for_timeout(700)
+            # Attente adaptative : jusqu'à 2s pour que le panel/popup se rende
+            page.wait_for_timeout(1500)
+
+            # Log vues webix après ouverture du picker (diagnostic, 1 seul appel)
+            if not _webix_views_logged or True:
+                try:
+                    _pv = page.evaluate('''() => {
+                        if (typeof webix === "undefined") return [];
+                        const out = [];
+                        for (const el of document.querySelectorAll("[view_id]")) {
+                            const vid = el.getAttribute("view_id");
+                            if (!vid || vid.startsWith("$")) continue;
+                            try {
+                                const v = webix.$$(vid);
+                                if (!v) continue;
+                                const r = el.getBoundingClientRect();
+                                if (r.width < 1 || r.height < 1) continue;
+                                out.push(vid + "[" + (v.name||"?") + "]");
+                            } catch(_) {}
+                        }
+                        return out;
+                    }''')
+                    print(f"  [{lbl}] picker-views: {_pv}")
+                except Exception:
+                    pass
 
             if picker_res != "no-picker":
                 # Chercher option "Personnalisé" / "Custom"
+                # Priorité : (1) Webix API sur filters, (2) DOM de filters.$view, (3) page entière
                 custom = page.evaluate('''() => {
                     const kws = ["personnalis","custom","saisir","libre","plage","choisir","manuel"];
-                    // D'abord dans les popups/windows ouverts
-                    for (const scope of [
-                        ".webix_popup *,.webix_window *,.webix_modal *",
-                        "*"
-                    ]) {
-                        for (const el of document.querySelectorAll(scope)) {
-                            if (el.children.length > 0) continue;
-                            const r = el.getBoundingClientRect();
-                            if (r.width < 1 || r.height < 1) continue;
-                            const t = el.textContent.trim().toLowerCase();
-                            if (kws.some(k => t.includes(k))) { el.click(); return t.slice(0, 30); }
+                    // 1. Webix API sur le composant filters
+                    if (typeof webix !== "undefined") {
+                        const fl = webix.$$("filters");
+                        if (fl) {
+                            const items = fl.serialize ? fl.serialize()
+                                        : (fl.data?.serialize ? fl.data.serialize() : []);
+                            for (const item of items) {
+                                const t = (item.value || item.label || item.$value || String(item.id||"")).toLowerCase();
+                                if (kws.some(k => t.includes(k))) {
+                                    try { fl.select(item.id); } catch(_) {}
+                                    try { fl.callEvent("onItemClick", [item.id]); } catch(_) {}
+                                    try {
+                                        const node = fl.getItemNode ? fl.getItemNode(item.id) : null;
+                                        if (node) node.click();
+                                    } catch(_) {}
+                                    return "fl-api:" + t.slice(0, 25);
+                                }
+                            }
+                            // 2. DOM de filters.$view
+                            if (fl.$view) {
+                                for (const el of fl.$view.querySelectorAll("*")) {
+                                    if (el.children.length > 0) continue;
+                                    const r = el.getBoundingClientRect();
+                                    if (r.width < 1 || r.height < 1) continue;
+                                    const t = el.textContent.trim().toLowerCase();
+                                    if (kws.some(k => t.includes(k))) { el.click(); return "fl-dom:" + t.slice(0, 25); }
+                                }
+                            }
                         }
-                        break;  // on sort après la 1re itération si un élément a été cliqué
+                    }
+                    // 3. Popups/windows ouverts
+                    for (const el of document.querySelectorAll(
+                        ".webix_popup *,.webix_window *,.webix_modal *"
+                    )) {
+                        if (el.children.length > 0) continue;
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 1 || r.height < 1) continue;
+                        const t = el.textContent.trim().toLowerCase();
+                        if (kws.some(k => t.includes(k))) { el.click(); return "popup:" + t.slice(0, 25); }
+                    }
+                    // 4. Page entière en dernier recours
+                    for (const el of document.querySelectorAll("*")) {
+                        if (el.children.length > 0) continue;
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 1 || r.height < 1) continue;
+                        const t = el.textContent.trim().toLowerCase();
+                        if (kws.some(k => t.includes(k))) { el.click(); return "page:" + t.slice(0, 25); }
                     }
                     return null;
                 }''')
                 if custom:
                     print(f"  [{lbl}] custom: {custom}")
-                    page.wait_for_timeout(400)
+                    # Attendre que le calendrier ou des inputs apparaissent
+                    try:
+                        page.wait_for_selector(
+                            '.webix_cal_month_name,[class*="cal_month"],'
+                            'input[type=date],input[placeholder*="date" i]',
+                            timeout=3_000,
+                        )
+                    except Exception:
+                        page.wait_for_timeout(800)
 
                 # Remplir les inputs de date visibles
                 filled = page.evaluate('''([sf, ef]) => {
