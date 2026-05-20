@@ -3576,6 +3576,22 @@ async function launchSimulation() {
       return baseRSF + (parseFloat(rsfRow.remise2) || 0) + (parseFloat(rsfRow.remise3) || 0);
     }
 
+    function getRemiseSansR3(ref, cond, firstMet = false) {
+      const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
+      const baseRSF = Math.abs(parseFloat(baseRSFPct) || 0);
+      if (!cond) return baseRSF;
+      if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
+      const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
+      if (!rsfRow) return baseRSF;
+      if (rsfRow.hasExcept && cond.remise2Except) {
+        const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
+        if (exc && exc.libelles.some(l => l.text === ref.libelle)) {
+          return baseRSF + (parseFloat(exc.remise2) || 0);
+        }
+      }
+      return baseRSF + (parseFloat(rsfRow.remise2) || 0);
+    }
+
     // 4. Helper: RSF de base sans conditions négociées
     function getRSFBase(ref, firstMet = false) {
       const pct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
@@ -3596,7 +3612,7 @@ async function launchSimulation() {
         if (!ref) return;
         if (!labMap.has(ref.labo)) {
           const lp = state.labPages.find(l => l.selectedLab === ref.labo);
-          labMap.set(ref.labo, { ca: 0, remise: 0, qty: 0, lp, isSelected: !!lp, rows: [] });
+          labMap.set(ref.labo, { ca: 0, remise: 0, remiseSansR3: 0, qty: 0, lp, isSelected: !!lp, rows: [] });
         }
         const e = labMap.get(ref.labo);
         const puht = row.puht || refMap.get(row.cip13)?.puht || ref.puht || 0;
@@ -3629,6 +3645,9 @@ async function launchSimulation() {
             const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25) : 0;
             const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26) : 0;
             e.remise += row.qty * price * (r25 + r26) / 100;
+            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25) : 0;
+            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26) : 0;
+            e.remiseSansR3 += row.qty * price * (s25 + s26) / 100;
           });
           e.bestCond    = cond26 || cond25;
           e.firstMet    = fm25 || fm26;
@@ -3680,6 +3699,10 @@ async function launchSimulation() {
               ? getRSFBase(ref, firstMet)
               : getRemise(ref, effectiveCond, firstMet);
             e.remise += row.qty * price * remisePct / 100;
+            const remiseSansR3Pct = (rsfOnly || !e.isSelected)
+              ? getRSFBase(ref, firstMet)
+              : getRemiseSansR3(ref, effectiveCond, firstMet);
+            e.remiseSansR3 += row.qty * price * remiseSansR3Pct / 100;
           });
         }
       });
@@ -3687,7 +3710,8 @@ async function launchSimulation() {
         .filter(([name]) => !LABS_BRAND_EXCL.has(name))
         .map(([name, e]) => ({
           name, ca: e.ca, remise: e.remise, qty: e.qty,
-          pondere: e.ca > 0 ? e.remise / e.ca * 100 : 0,
+          pondere:      e.ca > 0 ? e.remiseSansR3 / e.ca * 100 : 0,
+          pondereTotal: e.ca > 0 ? e.remise       / e.ca * 100 : 0,
           caThreshold: e.caThreshold, met: e.met, firstMet: e.firstMet, isSelected: e.isSelected,
         })).sort((a, b) => b.ca - a.ca);
       const totalRemise = labResults.reduce((s, l) => s + l.remise, 0);
@@ -3979,8 +4003,8 @@ async function launchSimulation() {
     const fmtE = n => n.toLocaleString('fr', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
     const fmtP = n => n.toFixed(2) + ' %';
 
-    const hdrsBase   = ['Laboratoire', 'QTÉ', 'CA BRUT', 'REMISE €', 'PA NET', 'POND. %'];
-    const hdrsMarket = ['Laboratoire', 'QTÉ', 'CA BRUT', 'CA CIBLE', 'SEUIL', 'REMISE €', 'PA NET', 'POND. %'];
+    const hdrsBase   = ['Laboratoire', 'QTÉ', 'CA BRUT', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
+    const hdrsMarket = ['Laboratoire', 'QTÉ', 'CA BRUT', 'CA CIBLE', 'SEUIL', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
 
     // One row of a scenario table
     const mkLabRow = (l, withMarket = false, withGainCol = false) => {
@@ -3990,21 +4014,24 @@ async function launchSimulation() {
         : withMarket ? `<td>—</td><td>—</td>` : '';
       const gainCol = withGainCol ? '<td></td>' : '';
       const paNet = l.ca - l.remise;
-      return `<tr class="${cls}"><td>${l.name}</td><td>${l.qty ?? 0}</td><td>${fmtE(l.ca)}</td>${marketCells}<td>${fmtE(l.remise)}</td><td>${fmtE(paNet)}</td><td>${fmtP(l.pondere)}</td>${gainCol}</tr>`;
+      const totCol = `<td>${fmtP(l.pondereTotal ?? l.pondere)}</td>`;
+      return `<tr class="${cls}"><td>${l.name}</td><td>${l.qty ?? 0}</td><td>${fmtE(l.ca)}</td>${marketCells}<td>${fmtE(l.remise)}</td><td>${fmtE(paNet)}</td><td>${fmtP(l.pondere)}</td>${totCol}${gainCol}</tr>`;
     };
 
     // Total row with gain at far right
     const mkTotalRow = (results, withMarket, gain) => {
-      const tCA  = results.reduce((s, l) => s + l.ca, 0);
-      const tR   = results.reduce((s, l) => s + l.remise, 0);
-      const tQty = results.reduce((s, l) => s + (l.qty ?? 0), 0);
-      const tP   = tCA > 0 ? tR / tCA * 100 : 0;
+      const tCA    = results.reduce((s, l) => s + l.ca, 0);
+      const tR     = results.reduce((s, l) => s + l.remise, 0);
+      const tQty   = results.reduce((s, l) => s + (l.qty ?? 0), 0);
       const tPaNet = tCA - tR;
+      // tP = pondéré SANS remise3 ; tPTot = remise totale (avec remise3)
+      const tP    = tCA > 0 ? results.reduce((s, l) => s + l.pondere * l.ca / 100, 0) / tCA * 100 : 0;
+      const tPTot = tCA > 0 ? tR / tCA * 100 : 0;
       const mPad = withMarket ? '<td>—</td><td>—</td>' : '';
       const gainTd = gain != null
         ? `<td style="text-align:right;font-weight:700;color:var(--red)">PERTE : +${fmtE(gain)}</td>`
         : '';
-      return `<tr class="sim-total-row"><td>TOTAL</td><td>${tQty}</td><td>${fmtE(tCA)}</td>${mPad}<td>${fmtE(tR)}</td><td>${fmtE(tPaNet)}</td><td>${fmtP(tP)}</td>${gainTd}</tr>`;
+      return `<tr class="sim-total-row"><td>TOTAL</td><td>${tQty}</td><td>${fmtE(tCA)}</td>${mPad}<td>${fmtE(tR)}</td><td>${fmtE(tPaNet)}</td><td>${fmtP(tP)}</td><td>${fmtP(tPTot)}</td>${gainTd}</tr>`;
     };
 
     // Full scenario table
