@@ -2173,71 +2173,52 @@ function _startOspBreakoutCanvas(canvasId) {
 }
 
 function _renderOspProgress(el) {
-  const startedAt = state._ospJobStartedAt || Date.now();
-  const msg       = state._ospJobMessage  || '';
+  clearInterval(_ospProgressTimer);
 
-  // Parsing "Mois X/Y" dans le message
-  const m = msg.match(/Mois\s+(\d+)\/(\d+)/i);
-  const current = m ? parseInt(m[1]) : 0;
-  const total   = m ? parseInt(m[2]) : 0;
-  const pct     = (total > 0 && current > 0) ? Math.min(95, Math.round(current / total * 100)) : null;
-
-  // Estimation temps restant
-  const elapsed = Date.now() - startedAt;
-  let remainMs  = null;
-  if (pct !== null && pct > 0) {
-    remainMs = Math.max(0, elapsed / (pct / 100) - elapsed);
+  function _compute() {
+    const msg = state._ospJobMessage || '';
+    const m   = msg.match(/Mois\s+(\d+)\/(\d+)/i);
+    const cur = m ? parseInt(m[1]) : 0;
+    const tot = m ? parseInt(m[2]) : 0;
+    const elapsed = Date.now() - (state._ospJobStartedAt || Date.now());
+    const pct = (tot > 0 && cur > 0) ? cur / tot * 100 : 0;
+    let remainMin = null;
+    if (pct > 0 && elapsed > 0) {
+      remainMin = Math.ceil(Math.max(0, elapsed / (pct / 100) - elapsed) / 60000);
+    }
+    const status = `// Analyse en cours — initialisation…`;
+    const act = remainMin !== null
+      ? (_OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1])
+      : null;
+    const actHtml = act
+      ? `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`
+      : '';
+    return { status, actHtml };
   }
-  const remainMin = remainMs !== null ? Math.ceil(remainMs / 60000) : null;
 
-  // Choisir l'activité
-  const act = remainMin !== null
-    ? (_OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1])
-    : null;
+  const { status, actHtml } = _compute();
 
-  // Rendu de la section "revenez dans..."
-  const actHtml = act
-    ? `<div class="osp-activity-line">
-        <span class="osp-act-emoji">${act.emoji}</span>
-        Revenez dans <span class="osp-act-time">${act.label}</span>
-        — le temps ${act.text}
-       </div>`
-    : `<div class="osp-activity-line">// Chargement en cours…</div>`;
-
-  const barPct = pct ?? 5;
-  const pctLabel = pct !== null ? `${pct}%` : '…';
-  const statusLabel = '';
-
-  if (!el.querySelector('#ospActivityLine')) {
-    el.innerHTML = `<div class="osp-loading-wrap">
-      <div id="ospActivityLine" style="margin-bottom:18px">${actHtml}</div>
-      <div class="osp-bar-row">
-        <div class="osp-bar-bg"><div class="osp-bar-fill" id="ospBarFill" style="width:${barPct}%"></div></div>
-        <div class="osp-bar-pct" id="ospBarPct">${pctLabel}</div>
-      </div>
+  if (!el.querySelector('#ospStatusLine')) {
+    el.innerHTML = `<div class="osp-loading-wrap" style="padding:40px 0 32px;text-align:left">
+      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:18px">${status}</div>
+      <div id="ospActivityLine" class="osp-activity-line">${actHtml}</div>
     </div>`;
   } else {
-    const actLine = el.querySelector('#ospActivityLine');
-    const fill    = el.querySelector('#ospBarFill');
-    const pctEl   = el.querySelector('#ospBarPct');
-    if (actLine) actLine.innerHTML = actHtml;
-    if (fill)    fill.style.width = `${barPct}%`;
-    if (pctEl)   pctEl.textContent = pctLabel;
+    const statusEl = el.querySelector('#ospStatusLine');
+    const actLine  = el.querySelector('#ospActivityLine');
+    if (statusEl) statusEl.textContent = status;
+    if (actLine)  actLine.innerHTML    = actHtml;
   }
 
-  // Timer pour affiner l'estimation du temps restant
-  clearInterval(_ospProgressTimer);
+  // Rafraîchir l'estimation toutes les 30s (le temps restant diminue indépendamment des polls)
   _ospProgressTimer = setInterval(() => {
-    const fill = document.getElementById('ospBarFill');
-    const lbl  = document.getElementById('ospStatusMsg');
-    if (!fill) { clearInterval(_ospProgressTimer); return; }
-    const el2 = Date.now() - startedAt;
-    const estimated = (pct && pct > 0) ? el2 / (pct / 100) : null;
-    const left = estimated ? Math.max(0, Math.ceil((estimated - el2) / 60000)) : null;
-    if (lbl && left !== null) {
-      lbl.textContent = `${statusLabel} — encore ~${left} min`;
-    }
-  }, 10_000);
+    const statusEl = document.getElementById('ospStatusLine');
+    if (!statusEl) { clearInterval(_ospProgressTimer); return; }
+    const { status: s, actHtml: a } = _compute();
+    statusEl.textContent = s;
+    const actLine = document.getElementById('ospActivityLine');
+    if (actLine) actLine.innerHTML = a;
+  }, 30_000);
 }
 
 function renderRecap() {
@@ -5859,7 +5840,7 @@ function initConnecteurModal() {
     const refreshBtn = document.getElementById(_jobRefreshMap[elId]);
     if (refreshBtn) refreshBtn.style.display = cls === 'error' ? '' : 'none';
     if (cls === 'running') {
-      el.textContent = text || '⏳ en cours…';
+      el.textContent = text ?? '';
     } else {
       if (cls === 'error') {
         el.innerHTML = '';
