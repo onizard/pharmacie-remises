@@ -1724,6 +1724,18 @@ document.querySelectorAll('.main-tab').forEach(btn => {
 });
 
 // Convertit les lignes OSPHARM (Webix normalisé) en csvData {cip13, qty, libelle}
+function filterLast12Months(rows) {
+  // Garde uniquement les 12 derniers mois (mois courant inclus)
+  const cutoff = new Date();
+  cutoff.setDate(1);
+  cutoff.setMonth(cutoff.getMonth() - 11);
+  cutoff.setHours(0, 0, 0, 0);
+  return rows.filter(r => {
+    if (!r.year || !r.month) return true;
+    return new Date(r.year, r.month - 1, 1) >= cutoff;
+  });
+}
+
 function ospharmRowsToCsvData(rows) {
   if (!rows || !rows.length) return [];
   const keys = Object.keys(rows[0]);
@@ -1816,7 +1828,7 @@ async function autoRunOspharm() {
         if (job.status === 'done') {
           window._setConnProgress?.('osp', 'ready');
           try {
-            const csvData = ospharmRowsToCsvData(job.rows || []);
+            const csvData = ospharmRowsToCsvData(filterLast12Months(job.rows || []));
             if (csvData.length) {
               state.prorataRatios = computeProrataRatiosFromData(csvData)
                                  || computeProrataRatios(job.period_start || null, job.period_end || null);
@@ -1878,7 +1890,7 @@ async function launchComparateur() {
       return;
     }
 
-    const csvData = ospharmRowsToCsvData(job.rows);
+    const csvData = ospharmRowsToCsvData(filterLast12Months(job.rows));
     if (!csvData.length) {
       showCompError('Colonnes OSPHARM non reconnues — vérifiez le format des données.');
       return false;
