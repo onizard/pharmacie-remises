@@ -11,9 +11,11 @@ Pas de framework, pas de build. On édite `index.html` et on `git push`.
 
 ## Stack
 - Frontend : HTML/CSS/JS vanilla, polices Orbitron + Share Tech Mono
-- Base de données : **Supabase** (table `references_pharmacie`, table `synonymes_libelles`)
+- Base de données : **Supabase** (table `references_pharmacie`, table `synonymes_libelles`, table `user_state`, table `rsf_defaults`)
 - Authentification : Supabase Auth (email/password)
-- Scraping : Python + Playwright + BeautifulSoup
+- Scraping : Python + Playwright (sync_api) + openpyxl
+- API scraper : FastAPI sur Render (`api_scraper/main.py`), service ID `srv-d81ktm3tqb8s73ehk7mg`
+- OSPHARM scraping : GitHub Actions (`scraper_ospharm.yml`), 7 GB RAM, user_id=`1c371798-c33e-475c-84de-224f5559fee7`
 
 ## Déploiement
 ```bash
@@ -29,7 +31,9 @@ Alias disponible : `git wip` (add + commit "wip" + push en une commande)
 | `scraper_puht.py` | Scrape les prix PU HT depuis webuy.astera.coop/ART412 |
 | `extraire_excel.py` | Extrait les données de remise des PDFs → Excel normalisé |
 | `sync_supabase.py` | Pousse les données Excel vers Supabase |
-| `serveur_pdf.py` | Serveur local pour servir les PDFs |
+| `serveur_pdf.py` | Serveur local (port 5050) pour servir les PDFs et extraire CGV |
+| `api_scraper/main.py` | API FastAPI — endpoints /connect, /run, /status par connecteur |
+| `api_scraper/run_job_ospharm.py` | Scraper OSPHARM mensuel (GitHub Actions) |
 
 Credentials dans `.env` (non versionné) :
 ```
@@ -57,12 +61,21 @@ SUPABASE_KEY=...
 - **RSF First** : bouton ☆ dans le thead RSF% pour forcer l'application du taux first
 - **Jeu Breakout** : animation pendant le chargement, labos en pixel art 5×7, niveaux triés par nb de références croissant, sauvegarde localStorage `bp_game_v2`
 - **PDA** : toggle pour inclure/exclure les références PDA dans les paliers RSF
+- **Page Recap OSPHARM** : tableau mensuel par labo (qty, CA, remise pondérée). Chargement avec barre de progression `osp-bar-*`, puis START button → brick game 10s → résultats
+- **Page Comparaison** : analyse de scénarios. Même pattern de chargement que Recap (barre `osp-bar-*`, START button, brick game 10s)
+
+## Architecture OSPHARM scraper (run_job_ospharm.py)
+- Boucle Jan N-1 → mois courant, scraping incrémental (mois déjà en base réutilisés)
+- Interface Webix 6 — pas d'inputs texte dans le date picker → navigation par clic cellules calendrier (Approche A2)
+- Export via `page.expect_download(timeout=30_000)` — si pas de download en 30s, fallback `webix.toExcel()`
+- Données compactées : `{cip13, qty, puht, year, month}` stockées dans `user_state.ospharm_job.rows`
+- `month_meta` : liste `{year, month, period_start, period_end, rows, file_url}` par mois
+- `month_stats` : agrégats par `{year-MM: [{labo, qty, ca_brut, pond_pct, remise_totale, pa_net}]}`
+- PUHT calculé depuis montant catalogue / quantité, synchronisé vers `references_pharmacie`
 
 ## Identité visuelle
 Thème rétro-terminal sombre : fond `#04060f`, cyan `#00e5ff`, amber `#ffab00`, vert `#00ff88`, rouge `#ff3366`. Police Orbitron pour les titres.
 
-## WIP — 2026-05-13 07:43 (master)
-```
- .gitignore | 1 +
- 1 file changed, 1 insertion(+)
-```
+## WIP — 2026-05-20
+- Fix timeout `expect_download` : 180s → 30s (évitait blocage 3min/mois si pas de download)
+- Page comparaison : ajout barre de chargement + START button + brick game 10s
