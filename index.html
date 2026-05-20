@@ -5692,6 +5692,7 @@ function initConnecteurModal() {
 
   async function _triggerWorkflow(connKey, prefix) {
     const statusId = connKey === 'digipharmacie' ? 'digiJobStatus' : 'ospJobStatus';
+    if (connKey === 'ospharm') { state._ospJobRunning = true; state._ospJobStartedAt = Date.now(); }
     _setJobStatusEl(statusId, 'running', '');
     _setConnProgress(prefix, 'job');
     try {
