@@ -3,6 +3,7 @@ test_connector.py — Teste uniquement le login sur OSPHARM ou DIGIPHARMACIE.
 Écrit le résultat dans Supabase : state_json.conn_test.{connector}
 """
 
+import asyncio
 import json
 import os
 import sys
@@ -60,12 +61,10 @@ def test_ospharm(creds: dict):
 
         page.goto(OSPHARM_URL, wait_until="networkidle", timeout=30_000)
 
-        # SSO silencieux réussi — déjà sur le dashboard
         if "datastat.ospharm.org" in page.url and "login" not in page.url and "accounts" not in page.url:
             browser.close()
             return
 
-        # Formulaire de login classique
         try:
             page.locator("input[type='email'],input[name='username'],input[name='email']").first.fill(creds["user"], timeout=15_000)
             page.locator("input[type='password'],input[name='password']").first.fill(creds["pass"], timeout=5_000)
@@ -87,27 +86,27 @@ def test_ospharm(creds: dict):
 
 # ── Test DIGIPHARMACIE ─────────────────────────────────────────────────────────
 
-def test_digipharmacie(creds: dict):
-    from camoufox.sync_api import Camoufox
+async def _test_digipharmacie_async(creds: dict):
+    from camoufox.async_api import AsyncCamoufox
 
-    with Camoufox(headless=True, geoip=True) as browser:
-        page = browser.new_page()
-        page.goto("https://app.digipharmacie.fr/login/", timeout=60_000)
+    async with AsyncCamoufox(headless=True, geoip=True) as browser:
+        page = await browser.new_page()
+        await page.goto("https://app.digipharmacie.fr/login/", timeout=60_000)
 
         try:
-            page.wait_for_selector("input[type='email']", timeout=40_000)
+            await page.wait_for_selector("input[type='email']", timeout=40_000)
         except Exception:
             raise RuntimeError("Formulaire de login DIGIPHARMACIE introuvable (Cloudflare ?)")
 
-        page.locator("input[type='email']").first.fill(creds["user"])
-        page.locator("input[type='password']").first.fill(creds["pass"])
-        page.locator("input[type='password']").first.press("Enter")
+        await page.locator("input[type='email']").first.fill(creds["user"])
+        await page.locator("input[type='password']").first.fill(creds["pass"])
+        await page.locator("input[type='password']").first.press("Enter")
 
         try:
-            page.wait_for_url("**/dashboard**", timeout=20_000)
+            await page.wait_for_url("**/dashboard**", timeout=20_000)
         except Exception:
             try:
-                page.wait_for_function(
+                await page.wait_for_function(
                     "() => !window.location.pathname.includes('/login')",
                     timeout=15_000,
                 )
@@ -116,10 +115,14 @@ def test_digipharmacie(creds: dict):
 
         ok  = "/login" not in page.url
         url = page.url
-        page.close()
+        await page.close()
 
     if not ok:
         raise RuntimeError(f"Identifiants DIGIPHARMACIE incorrects (URL finale : {url})")
+
+
+def test_digipharmacie(creds: dict):
+    asyncio.run(_test_digipharmacie_async(creds))
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────

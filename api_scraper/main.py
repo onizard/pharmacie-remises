@@ -201,13 +201,13 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
 # ── Test connector (synchronous, called from executor) ─────────────────────────
 
 def _test_connector(connector: str, creds: dict):
-    # Playwright sync API interdit si une event loop asyncio tourne dans le thread.
-    # On isole le thread en lui assignant une loop neuve (non démarrée).
-    asyncio.set_event_loop(asyncio.new_event_loop())
     if connector == "ospharm":
+        # sync_playwright nécessite une boucle non-démarrée dans le thread
+        asyncio.set_event_loop(asyncio.new_event_loop())
         from test_connector import test_ospharm
         test_ospharm(creds)
     elif connector == "digipharmacie":
+        # async camoufox — asyncio.run() crée sa propre boucle
         from test_connector import test_digipharmacie
         test_digipharmacie(creds)
 
@@ -297,11 +297,12 @@ def _compact_osp_rows(rows: list[dict]) -> list[dict]:
 
 
 def _scrape(connector: str, user_id: str, creds: dict, progress):
-    asyncio.set_event_loop(asyncio.new_event_loop())
     if connector == "digipharmacie":
+        # async camoufox — asyncio.run() crée sa propre boucle
         from scraper import run_scraper
         return run_scraper(creds, progress)
     elif connector == "ospharm":
+        asyncio.set_event_loop(asyncio.new_event_loop())
         from run_job_ospharm import run_ospharm
         return run_ospharm(creds, progress, user_id=user_id)
     raise RuntimeError(f"Connecteur inconnu : {connector}")

@@ -1,5 +1,5 @@
 """
-Scraper DIGIPHARMACIE — login camoufox + interception réseau
+Scraper DIGIPHARMACIE — login camoufox async + interception réseau
 
 Stratégie :
 1. Login camoufox (contourne Cloudflare)
@@ -7,14 +7,13 @@ Stratégie :
 3. Pour la pagination : fetch() JS depuis le contexte /factures/
 """
 
+import asyncio
 import base64
 import json
 import tempfile
 import time
 from pathlib import Path
 from typing import Callable
-
-from camoufox.sync_api import Camoufox
 
 from pdf_extractor import extract_invoice_lines
 
@@ -48,10 +47,9 @@ def _get_csrf(page) -> str:
 
 # ── Récupération des factures ──────────────────────────────────────────────────
 
-def _fetch_invoices(page, progress: Callable) -> list[dict]:
+async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     progress("Navigation vers les factures…")
 
-    # Capturer la première réponse API que la SPA fait elle-même
     first_data = {}
     first_api_url = [None]
 
@@ -69,27 +67,24 @@ def _fetch_invoices(page, progress: Callable) -> list[dict]:
                 pass
 
     page.on("response", on_response)
-    page.goto(f"{BASE_URL}/factures/", wait_until="networkidle", timeout=60_000)
-    page.wait_for_timeout(4000)
+    await page.goto(f"{BASE_URL}/factures/", wait_until="networkidle", timeout=60_000)
+    await page.wait_for_timeout(4000)
     page.off("response", on_response)
 
-    # Si la SPA a fait un appel API, on a la vraie URL et le vrai format
     if first_data and first_api_url[0]:
         progress(f"API détectée : {first_api_url[0]}")
-        return _paginate_from_browser(page, first_data, first_api_url[0], progress)
+        return await _paginate_from_browser(page, first_data, first_api_url[0], progress)
 
-    # Fallback : tenter l'URL standard depuis le contexte /factures/
     progress("Tentative API directe depuis /factures/…")
     csrf = _get_csrf(page)
     api_url = (
         f"{BASE_URL}/api/v1/invoices/"
         f"?ordering=-billing_date&page_size={PAGE_SIZE}&page=1"
     )
-    return _paginate_fetch(page, api_url, csrf, progress)
+    return await _paginate_fetch(page, api_url, csrf, progress)
 
 
-def _paginate_from_browser(page, first_data: dict, first_url: str, progress: Callable) -> list[dict]:
-    """Parcourt toutes les pages en partant des données interceptées."""
+async def _paginate_from_browser(page, first_data: dict, first_url: str, progress: Callable) -> list[dict]:
     invoices    = []
     total_seen  = 0
     page_num    = 1
@@ -120,19 +115,18 @@ def _paginate_from_browser(page, first_data: dict, first_url: str, progress: Cal
             break
 
         page_num += 1
-        data = _js_fetch_json(page, next_url, csrf)
-        time.sleep(0.3)
+        data = await _js_fetch_json(page, next_url, csrf)
+        await page.wait_for_timeout(300)
 
     return invoices
 
 
-def _paginate_fetch(page, start_url: str, csrf: str, progress: Callable) -> list[dict]:
-    """Appels fetch() JS depuis le contexte navigateur courant."""
+async def _paginate_fetch(page, start_url: str, csrf: str, progress: Callable) -> list[dict]:
     invoices, page_num, total_seen = [], 1, 0
     url = start_url
 
     while True:
-        data    = _js_fetch_json(page, url, csrf)
+        data    = await _js_fetch_json(page, url, csrf)
         results = data.get("results", data if isinstance(data, list) else [])
         if not results:
             break
@@ -157,13 +151,13 @@ def _paginate_fetch(page, start_url: str, csrf: str, progress: Callable) -> list
 
         page_num += 1
         url = next_url
-        time.sleep(0.3)
+        await page.wait_for_timeout(300)
 
     return invoices
 
 
-def _js_fetch_json(page, url: str, csrf: str) -> dict:
-    result = page.evaluate("""
+async def _js_fetch_json(page, url: str, csrf: str) -> dict:
+    result = await page.evaluate("""
         async ([url, csrf]) => {
             const resp = await fetch(url, {
                 credentials: 'include',
@@ -189,7 +183,7 @@ def _js_fetch_json(page, url: str, csrf: str) -> dict:
 
 # ── PDF download + extraction ──────────────────────────────────────────────────
 
-def _process_pdf(page, inv: dict) -> list[dict]:
+async def _process_pdf(page, inv: dict) -> list[dict]:
     file_url = inv.get("file") or inv.get("file_url") or ""
     if not file_url:
         return []
@@ -197,7 +191,7 @@ def _process_pdf(page, inv: dict) -> list[dict]:
     provider     = inv.get("provider_ref") or inv.get("provider_name") or ""
     billing_date = inv.get("billing_date", "")
 
-    b64 = page.evaluate("""
+    b64 = await page.evaluate("""
         async ([url]) => {
             try {
                 const resp = await fetch(url, { credentials: 'include' });
@@ -231,31 +225,32 @@ def _process_pdf(page, inv: dict) -> list[dict]:
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
-def run_scraper(creds: dict, progress: Callable) -> list[dict]:
+async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
+    from camoufox.async_api import AsyncCamoufox
+
     username = creds["user"]
     password = creds["pass"]
 
-    with Camoufox(headless=True, geoip=True) as browser:
-        page = browser.new_page()
+    async with AsyncCamoufox(headless=True, geoip=True) as browser:
+        page = await browser.new_page()
 
-        # 1. Login
         progress("Connexion à DIGIPHARMACIE (Cloudflare ~8s)…")
-        page.goto(f"{BASE_URL}/login/", timeout=60_000)
+        await page.goto(f"{BASE_URL}/login/", timeout=60_000)
 
         try:
-            page.wait_for_selector("input[type='email']", timeout=40_000)
+            await page.wait_for_selector("input[type='email']", timeout=40_000)
         except Exception:
             raise RuntimeError("Formulaire de login DIGIPHARMACIE introuvable")
 
-        page.locator("input[type='email']").first.fill(username)
-        page.locator("input[type='password']").first.fill(password)
-        page.locator("input[type='password']").first.press("Enter")
+        await page.locator("input[type='email']").first.fill(username)
+        await page.locator("input[type='password']").first.fill(password)
+        await page.locator("input[type='password']").first.press("Enter")
 
         try:
-            page.wait_for_url("**/dashboard**", timeout=20_000)
+            await page.wait_for_url("**/dashboard**", timeout=20_000)
         except Exception:
             try:
-                page.wait_for_function(
+                await page.wait_for_function(
                     "() => !window.location.pathname.includes('/login')",
                     timeout=15_000,
                 )
@@ -265,22 +260,24 @@ def run_scraper(creds: dict, progress: Callable) -> list[dict]:
         if "/login" in page.url:
             raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
 
-        # 2. Factures (avec détection automatique de l'URL API)
-        invoices = _fetch_invoices(page, progress)
+        invoices = await _fetch_invoices(page, progress)
         if not invoices:
             progress("Aucune facture générique 2025 trouvée")
             return []
 
         progress(f"{len(invoices)} factures trouvées — extraction PDF…")
 
-        # 3. PDFs
         all_lines = []
         for i, inv in enumerate(invoices, 1):
             progress(f"PDF {i}/{len(invoices)} — {inv.get('provider_ref', '?')}")
-            lines = _process_pdf(page, inv)
+            lines = await _process_pdf(page, inv)
             all_lines.extend(lines)
-            time.sleep(0.15)
+            await page.wait_for_timeout(150)
 
         progress(f"Extraction terminée — {len(all_lines)} lignes produits")
 
     return all_lines
+
+
+def run_scraper(creds: dict, progress: Callable) -> list[dict]:
+    return asyncio.run(_run_scraper_async(creds, progress))
