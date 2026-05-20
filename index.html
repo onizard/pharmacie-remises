@@ -570,6 +570,12 @@
   ::-webkit-scrollbar-thumb:hover { background: var(--cyan-dim); }
 
   .sim-loading { padding: 0; background: var(--bg); border: 1px solid var(--border); overflow: hidden; }
+  .sim-start-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; gap:28px; }
+  .sim-start-hint  { font-family:'Share Tech Mono',monospace; font-size:12px; color:var(--text-dim); letter-spacing:3px; text-transform:uppercase; }
+  .sim-start-sub   { font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim); letter-spacing:1px; opacity:.5; }
+  .sim-start-btn   { font-family:'Orbitron',monospace; font-size:32px; font-weight:900; letter-spacing:10px; padding:22px 72px; cursor:pointer; background:transparent; border:3px solid var(--cyan); color:var(--cyan); text-shadow:0 0 18px var(--cyan); box-shadow:0 0 30px rgba(0,229,255,.2),inset 0 0 24px rgba(0,229,255,.05); transition:all .2s; animation:simStartPulse 2.2s ease-in-out infinite; }
+  .sim-start-btn:hover { background:var(--cyan); color:var(--bg); box-shadow:0 0 60px rgba(0,229,255,.7); animation:none; }
+  @keyframes simStartPulse { 0%,100%{box-shadow:0 0 30px rgba(0,229,255,.2),inset 0 0 24px rgba(0,229,255,.05)} 50%{box-shadow:0 0 55px rgba(0,229,255,.4),inset 0 0 40px rgba(0,229,255,.12)} }
   #brickCanvas, #verifCanvas { display: block; width: 100%; image-rendering: pixelated; cursor: none; }
   .brick-status { font-family: 'Orbitron', monospace; font-size: 12px; color: var(--text-dim); letter-spacing: 4px; text-align: center; padding: 10px 0 14px; animation: blink 1.2s step-end infinite; }
 
@@ -3685,11 +3691,25 @@ function startBrickGame(canvasId = 'brickCanvas') {
 async function launchSimulation() {
   goTo('results');
   const container = document.getElementById('simResults');
-  container.innerHTML = `<div class="sim-loading" id="brickLoader">
-    <canvas id="brickCanvas"></canvas>
-    <div class="brick-status">◈ ANALYSE EN COURS ◈</div>
+  container.innerHTML = `<div class="osp-loading-wrap" style="padding:40px 0 32px">
+    <div id="simLoadStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:18px">// Initialisation…</div>
+    <div id="simLoadActivity" class="osp-activity-line" style="margin-bottom:18px">Chargement des références produits…</div>
+    <div class="osp-bar-row">
+      <div class="osp-bar-bg"><div class="osp-bar-fill" id="simLoadBar" style="width:0%;transition:width .6s ease"></div></div>
+      <div class="osp-bar-pct" id="simLoadPct">0%</div>
+    </div>
   </div>`;
-  startBrickGame();
+
+  const _sp = (pct, status, activity) => {
+    const bar = document.getElementById('simLoadBar');
+    const pctEl = document.getElementById('simLoadPct');
+    const st  = document.getElementById('simLoadStatus');
+    const act = document.getElementById('simLoadActivity');
+    if (bar) bar.style.width = Math.round(pct) + '%';
+    if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+    if (status   && st)  st.textContent  = status;
+    if (activity && act) act.textContent = activity;
+  };
 
   try {
     // 1. Parse CSV
@@ -3704,6 +3724,7 @@ async function launchSimulation() {
 
     // 2. Fetch reference data from Supabase (batch by 200)
     const allCips = [...new Set(csvData.map(r => r.cip13))];
+    _sp(8, `// ${allCips.length} produits identifiés`, 'Chargement des références pharmacie…');
     const CHUNK = 200;
     const refRows = [];
     for (let i = 0; i < allCips.length; i += CHUNK) {
@@ -3711,7 +3732,9 @@ async function launchSimulation() {
       const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&cip13=in.(${chunk.join(',')})&limit=1000`;
       const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
       if (res.ok) refRows.push(...await res.json());
+      _sp(8 + Math.round((i + chunk.length) / allCips.length * 37), null, null);
     }
+    _sp(45, '// Références chargées', 'Analyse des équivalences moléculaires…');
 
     // refMap: cip13 -> ref (keep first match per cip, prefer refs from our labs)
     const refMap = new Map();
@@ -3750,6 +3773,7 @@ async function launchSimulation() {
           libelleMap.get(r.libelle).push(r);
       }));
     }
+    _sp(70, '// Équivalences identifiées', 'Calcul des scénarios d\'optimisation…');
 
     // 3a. Overlay PUHT depuis OSPHARM (plus fiable que Supabase pour les refs présentes)
     //     Priorité à l'année 2026 (plus récente) ; fallback 2025.
@@ -4539,7 +4563,11 @@ async function launchSimulation() {
       <div id="customSimResult" class="sim-custom-result" style="display:none"></div>
     </div>`;
 
-    container.innerHTML = html;
+    _sp(100, '// Analyse complète', `${allCips.length} références — scénarios prêts`);
+
+    // ── Phase finale : bouton START → brick 10s → résultats ──────────────────────
+    const _wireAndRender = () => {
+      container.innerHTML = html;
 
     // ── Simulateur personnalisé — exclusion mutuelle (reset l'autre slot) ────────
     [1,2,3,4].forEach(n => {
@@ -4680,6 +4708,23 @@ async function launchSimulation() {
     document.getElementById('tolBtn')?.addEventListener('click', () => {
       state.condTolerance = (state.condTolerance ?? 1.0) < 1 ? 1.0 : 0.95;
       launchSimulation();
+    });
+    }; // fin _wireAndRender
+
+    // Afficher l'écran START
+    const _labCount = new Set(refRows.map(r => r.labo).filter(Boolean)).size;
+    container.innerHTML = `<div class="sim-start-screen">
+      <div class="sim-start-hint">// ${allCips.length} produits · ${_labCount} labos analysés</div>
+      <button class="sim-start-btn" id="simStartBtn">START</button>
+      <div class="sim-start-sub">// cliquez pour visualiser les résultats</div>
+    </div>`;
+    document.getElementById('simStartBtn')?.addEventListener('click', () => {
+      container.innerHTML = `<div class="sim-loading" id="brickLoader">
+        <canvas id="brickCanvas"></canvas>
+        <div class="brick-status">◈ ANALYSE EN COURS ◈</div>
+      </div>`;
+      startBrickGame();
+      setTimeout(_wireAndRender, 10_000);
     });
 
   } catch(err) {
