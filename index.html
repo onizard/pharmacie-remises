@@ -377,7 +377,7 @@
   .year-label-toggle:hover { text-shadow: var(--glow-a); }
   [data-theme="light"] .year-label { color: #0066cc; }
   [data-theme="light"] .year-label-toggle { color: #b07000; }
-  .cgv-led { display:inline-block; width:8px; height:8px; border-radius:50%; background:transparent; margin-left:8px; vertical-align:middle; cursor:pointer; transition:background .3s,box-shadow .3s; flex-shrink:0; }
+  .cgv-led { display:inline-block; width:8px; height:8px; border-radius:50%; background:transparent; margin-left:8px; vertical-align:middle; cursor:default; transition:background .3s,box-shadow .3s; flex-shrink:0; }
   .cgv-led.on { background:var(--green); box-shadow:0 0 6px var(--green); }
   [data-theme="light"] .cgv-led.on { background:#00b05a; box-shadow:0 0 5px #00b05a; }
 
@@ -792,8 +792,7 @@
     table.rsf-table th, table.rsf-table td { padding: 8px 10px; font-size: 12px; }
     .lab-btn { font-size: 12px; padding: 6px 10px; letter-spacing: 1px; }
     .r3-toggle { font-size: 10px; padding: 2px 5px; }
-    #gersGlobal { width: 90px !important; }
-    .sim-winner-title { font-size: 16px; letter-spacing: 3px; }
+.sim-winner-title { font-size: 16px; letter-spacing: 3px; }
     .sim-kpi { min-width: 120px; padding: 10px 12px; }
     .sim-winner-dl { position: static; margin-top: 12px; justify-content: flex-start; max-width: 100%; }
     .col-map-overlay { padding-top: 20px; padding-left: 10px; padding-right: 10px; }
@@ -1029,9 +1028,6 @@
     <div class="header-right">
       <div class="term-line"><span class="prompt">SYS:</span><span class="val">PRÊT</span><span class="cursor"></span><span id="saveBadge" class="save-badge">&nbsp;✓ sauvegardé</span></div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end">
-        <span style="font-family:'Orbitron',monospace;font-size:12px;font-weight:700;color:var(--amber);letter-spacing:2px;white-space:nowrap">GERS</span>
-        <input type="text" id="gersGlobal" class="rsf-input" style="width:120px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="Entre ton GERS" />
-        <span style="font-size:12px;color:var(--text-dim)">€</span>
         <button class="btn-cond-labo" id="btnConditionsLabo" style="font-size:11px;padding:6px 14px">⚙ MES CONDITIONS LABO</button>
         <button id="btnConnecteur" class="btn-connecteur" title="Gérer les connecteurs OSPHARM / DIGIPHARMACIE">CONNECTEURS<span id="connNotifBadge" class="conn-notif-badge"></span></button>
         <button id="btnTheme" class="btn-theme" title="Thème clair / sombre">☀</button>
@@ -1185,9 +1181,12 @@
           <div class="panel-title" style="margin-bottom:4px">◈ Conditions du laboratoire</div>
           <div class="panel-sub">// Sélectionner le laboratoire — puis entrer toutes ses conditions</div>
         </div>
-        <div style="display:flex;gap:10px;align-items:center">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <span style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:2px;white-space:nowrap">GERS</span>
+          <input type="text" id="gersGlobal" class="rsf-input" style="width:100px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="Entre ton GERS" />
+          <span style="font-size:12px;color:var(--text-dim)">€</span>
           <button class="btn btn-reset-hold" id="btnResetConditions" title="Maintenir 3 secondes pour réinitialiser">↺ RESET</button>
-          <button class="btn" id="btnRetourRecap">← RETOUR</button>
+          <button class="btn btn-secondary" id="btnRetourRecap">← RETOUR</button>
         </div>
       </div>
       <div class="lab-grid" id="labGridMain"></div>
@@ -1423,7 +1422,6 @@ function serializeState() {
       uid: lp.uid,
       selectedLab: lp.selectedLab,
       activeCondIdx: lp.activeCondIdx,
-      cgvUpdated: lp.cgvUpdated || {},
       conditions: lp.conditions.map(c => ({
         uid: c.uid,
         remiseGlobale: c.remiseGlobale,
@@ -1659,6 +1657,12 @@ function updateMainTabs() {
   document.querySelectorAll('.main-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.page === activeTab);
   });
+  const btnCL = document.getElementById('btnConditionsLabo');
+  if (btnCL) {
+    const onLabs = state.currentPageId === 'labs';
+    btnCL.style.borderColor = onLabs ? 'var(--cyan)' : '';
+    btnCL.style.color       = onLabs ? 'var(--cyan)' : '';
+  }
 }
 
 let _toastTimer;
@@ -2008,25 +2012,6 @@ function createLabContDom(lp) {
       const open = _body25.style.display === 'none';
       _body25.style.display = open ? '' : 'none';
       _toggle25.textContent = open ? '2025 ▼' : '2025 ▶';
-    });
-  }
-  if (isAdmin) {
-    const _led26 = document.getElementById(`cgvLed26-${uid}`);
-    const _led25 = document.getElementById(`cgvLed25-${uid}`);
-    const _syncLed = (led, year) => { if (led) led.classList.toggle('on', !!(lp.cgvUpdated?.[year])); };
-    _syncLed(_led26, '2026');
-    _syncLed(_led25, '2025');
-    if (_led26) _led26.addEventListener('click', () => {
-      lp.cgvUpdated = lp.cgvUpdated || {};
-      lp.cgvUpdated['2026'] = !lp.cgvUpdated['2026'];
-      _syncLed(_led26, '2026');
-      saveState();
-    });
-    if (_led25) _led25.addEventListener('click', () => {
-      lp.cgvUpdated = lp.cgvUpdated || {};
-      lp.cgvUpdated['2025'] = !lp.cgvUpdated['2025'];
-      _syncLed(_led25, '2025');
-      saveState();
     });
   }
   const _copy26to25 = document.getElementById(`copy26to25-${uid}`);
@@ -2571,7 +2556,6 @@ function initLabPage(conf) {
     const lab = savedLabData.selectedLab;
     if (!lab) return;
     s.selectedLab = lab;
-    s.cgvUpdated  = savedLabData.cgvUpdated || s.cgvUpdated || {};
     s.rsfPaliers = [];
     s[condKey] = [];
     s[aciKey] = 0;
@@ -2615,12 +2599,7 @@ function initLabPage(conf) {
       renderCondTabs();
     } catch(err) { console.error(err); }
     finally { el.loading.classList.remove('visible'); }
-    if (isAdmin) {
-      const _l26 = document.getElementById(`cgvLed26-${uid}`);
-      const _l25 = document.getElementById(`cgvLed25-${uid}`);
-      if (_l26) _l26.classList.toggle('on', !!(s.cgvUpdated?.['2026']));
-      if (_l25) _l25.classList.toggle('on', !!(s.cgvUpdated?.['2025']));
-    }
+    window._syncCgvLeds?.(uid, s.selectedLab);
     // Pendant la restauration, ne pas déclencher onLabSelected (qui appellerait _selectLab2025
     // sans await, créant une race condition avec _restoreFromSave2025 qui suit).
     // On appelle uniquement les mises à jour visuelles nécessaires.
@@ -4903,9 +4882,26 @@ async function saveProfile() {
 
   document.getElementById('btnImporter')?.addEventListener('click', () => goTo('csv'));
 
-  // ── CONDITIONS LABO button ────────────────────────────────────────────────────
-  document.getElementById('btnConditionsLabo')?.addEventListener('click', () => goTo('labs'));
+  // ── CONDITIONS LABO button (toggle : aller/revenir) ───────────────────────────
+  document.getElementById('btnConditionsLabo')?.addEventListener('click', () => {
+    if (state.currentPageId === 'labs') goTo('recap');
+    else goTo('labs');
+  });
   document.getElementById('btnRetourRecap')?.addEventListener('click', () => goTo('recap'));
+
+  // ── LED verte CGV — pilotée par rsf_defaults sentinelles __cgv_2026/__cgv_2025
+  window._syncCgvLeds = function(uid, labName) {
+    if (!isAdmin || !labName) return;
+    const l26 = document.getElementById(`cgvLed26-${uid}`);
+    const l25 = document.getElementById(`cgvLed25-${uid}`);
+    const ts26 = window._rsfDefaults?.[labName]?.['__cgv_2026']?.remise2;
+    const ts25 = window._rsfDefaults?.[labName]?.['__cgv_2025']?.remise2;
+    if (l26) { l26.classList.toggle('on', !!ts26); l26.title = ts26 ? `DB mise à jour 2026 : ${new Date(ts26).toLocaleString('fr-FR')}` : 'DB non mise à jour pour 2026'; }
+    if (l25) { l25.classList.toggle('on', !!ts25); l25.title = ts25 ? `DB mise à jour 2025 : ${new Date(ts25).toLocaleString('fr-FR')}` : 'DB non mise à jour pour 2025'; }
+  };
+  window.syncAllCgvLeds = function() {
+    state.labPages.forEach(lp => { if (lp.selectedLab) window._syncCgvLeds(lp.uid, lp.selectedLab); });
+  };
 
   // ── RESET CONDITIONS (maintenir 3 secondes) ───────────────────────────────────
   const btnReset = document.getElementById('btnResetConditions');
@@ -4928,6 +4924,7 @@ async function saveProfile() {
           if (lp._reRenderCondTables)     lp._reRenderCondTables();
           if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();
         });
+        window.syncAllCgvLeds?.();
         saveState();
         showToast('✓ Conditions réinitialisées aux valeurs par défaut');
       }, 3000);
@@ -4981,6 +4978,7 @@ async function saveProfile() {
   // Admin : afficher le bouton IMPORTER (non-admins n'ont pas de CSV manuel)
   if (isAdmin) {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
+    window.syncAllCgvLeds?.();
   }
 
   initConnecteurModal();
