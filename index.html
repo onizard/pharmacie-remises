@@ -4645,10 +4645,58 @@ btn1Next.addEventListener('click', launchSimulation);
 
 document.addEventListener('input', saveState);
 
+// ── Popup vérification paliers CGV ────────────────────────────────────────────
+function showCgvVerifPopup(paliers, ca_condition) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'col-map-overlay';
+
+    const tdRows = paliers.map(({ rsf_pct, rdp_pct }) => {
+      const rsf = Math.abs(parseFloat(rsf_pct));
+      const rdp = parseFloat(rdp_pct) || 0;
+      return `<tr>
+        <td style="text-align:center;color:var(--amber);font-weight:700">−${rsf}%</td>
+        <td style="text-align:center;color:${rdp > 0 ? 'var(--green)' : 'var(--text-dim)'};font-weight:700">${rdp > 0 ? '+' + rdp + '%' : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    const caHtml = ca_condition
+      ? `<p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);margin:4px 0 0;letter-spacing:.8px">
+           CA minimum détecté : <span style="color:var(--cyan);font-weight:700">${Number(ca_condition).toLocaleString('fr-FR')} €</span>
+         </p>`
+      : '';
+
+    overlay.innerHTML = `
+      <div class="col-map-panel" style="max-width:440px">
+        <div class="col-map-title">◈ VÉRIFICATION DES CONDITIONS LABO</div>
+        <div class="col-map-sub">${paliers.length} palier${paliers.length > 1 ? 's' : ''} RSF détecté${paliers.length > 1 ? 's' : ''} — vérifiez avant d'appliquer&nbsp;:</div>
+        <div style="overflow-x:auto;margin-bottom:10px">
+          <table class="col-map-preview">
+            <thead><tr class="col-map-hl">
+              <th>RSF %</th>
+              <th>REMISE ADDITIONNELLE</th>
+            </tr></thead>
+            <tbody>${tdRows}</tbody>
+          </table>
+        </div>
+        ${caHtml}
+        <div class="col-map-btns" style="margin-top:20px">
+          <button class="col-map-cancel" id="cgvVerifCancel">ANNULER</button>
+          <button class="col-map-ok" id="cgvVerifOk">APPLIQUER →</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#cgvVerifCancel').addEventListener('click', () => { overlay.remove(); resolve(false); });
+    overlay.querySelector('#cgvVerifOk').addEventListener('click',    () => { overlay.remove(); resolve(true);  });
+  });
+}
+
 // ── Extraction CGV PDF → paliers RSF/RDP ──────────────────────────────────────
 async function extractCgvConditions(file, cond, labUid, cgvDrop, cgvLabel, renderFn) {
   const label = cgvLabel;
-  label.textContent = ' ⟳ extraction…';
+  const prevName = cond.cgvPdf?.name || null;
+  label.textContent = ' ⟳ analyse…';
   cgvDrop.classList.remove('cgv-loaded');
   try {
     const fd = new FormData();
@@ -4659,28 +4707,37 @@ async function extractCgvConditions(file, cond, labUid, cgvDrop, cgvLabel, rende
     if (data.error) throw new Error(data.error);
 
     const paliers = data.paliers || [];
+    if (!paliers.length) throw new Error('Aucun palier RSF/RDP détecté dans le PDF');
+
+    // Popup de vérification — l'utilisateur peut annuler
+    const confirmed = await showCgvVerifPopup(paliers, data.ca_condition);
+    if (!confirmed) {
+      // Restaurer l'état précédent de la dropzone
+      if (prevName) { label.textContent = ' ' + prevName; cgvDrop.classList.add('cgv-loaded'); }
+      else { label.textContent = ''; }
+      return;
+    }
+
+    // Appliquer les paliers validés
     let applied = 0;
     paliers.forEach(({ rsf_pct, rdp_pct }) => {
       const row = cond.rsfValues.find(r => Math.abs(parseFloat(r.rsf_pct) - Math.abs(rsf_pct)) < 0.01);
       if (!row || row.excluded) return;
-      row.remise2 = rdp_pct > 0 ? rdp_pct.toFixed(2) : '0';
+      row.remise2 = parseFloat(rdp_pct) > 0 ? parseFloat(rdp_pct).toFixed(2) : '0';
       applied++;
     });
 
     if (data.ca_condition && !cond.caCondition) {
       cond.caCondition = data.ca_condition;
-      // Mettre à jour l'input CA si visible
       const caInp = document.getElementById(`caInp-${labUid}-${cond.uid}`);
       if (caInp) caInp.value = data.ca_condition;
     }
 
-    // Rafraîchir le tableau RSF
     if (typeof renderFn === 'function') renderFn(cond);
 
     label.textContent = ` ✓ ${applied} paliers — diffusion…`;
     cgvDrop.classList.add('cgv-loaded');
     saveState();
-    // Diffuser immédiatement les nouvelles valeurs à tous les utilisateurs
     try {
       await saveRsfDefaults();
       label.textContent = ` ✓ ${applied} paliers — diffusé ✓`;
