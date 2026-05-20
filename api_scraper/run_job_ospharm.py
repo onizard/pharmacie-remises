@@ -578,6 +578,8 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     // Scan tous les éléments [view_id] du DOM
                     for (const el of document.querySelectorAll("[view_id]")) {{
                         const vid = el.getAttribute("view_id");
+                        // Ignorer les calendriers d'autocomplétion ($suggest*) — faux positifs
+                        if (!vid || vid.startsWith("$suggest")) continue;
                         try {{
                             const v = webix.$$(vid);
                             if (!v || !v.config) continue;
@@ -587,8 +589,8 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                                 if (v.callEvent) v.callEvent("onChange", [{{start, end}}]);
                                 return "api-dr:" + vid;
                             }}
+                            // Calendrier non-suggest : essai daterange d'abord, sinon date seule
                             if (CAL_NAMES.some(n => name.includes(n)) && typeof v.setValue === "function") {{
-                                // Essai daterange object d'abord
                                 try {{ v.setValue({{start, end}}); return "api-cal-dr:" + vid; }} catch(_) {{}}
                                 v.setValue(start); return "api-cal:" + vid;
                             }}
