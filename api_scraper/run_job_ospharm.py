@@ -20,6 +20,21 @@ SERVICE_KEY  = os.environ.get("SUPABASE_SERVICE_KEY", "")
 USER_ID      = os.environ.get("USER_ID", "")
 
 OSPHARM_URL  = "https://datastat.ospharm.org/"
+SESSION_DIR  = "/tmp"
+SESSION_TTL  = 10 * 3600  # 10h
+
+
+def _session_path(uid: str) -> str:
+    safe = (uid or "anon").replace("-", "")[:20]
+    return f"{SESSION_DIR}/ospharm_sess_{safe}.json"
+
+
+def _session_fresh(path: str) -> bool:
+    import os as _os, time as _time
+    try:
+        return (_time.time() - _os.path.getmtime(path)) < SESSION_TTL
+    except OSError:
+        return False
 
 
 # ── Supabase helpers ───────────────────────────────────────────────────────────
@@ -271,18 +286,40 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             return _re.sub(r"<[^>]+>", "", v).strip()
         return v
 
+    sess_path = _session_path(user_id)
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(accept_downloads=True,
-                                      viewport={"width": 1440, "height": 900})
+        ctx_kwargs = dict(accept_downloads=True, viewport={"width": 1440, "height": 900})
+        if _session_fresh(sess_path):
+            ctx_kwargs["storage_state"] = sess_path
+            progress("Session OSPHARM restaurée — connexion rapide…")
+            print(f"  [session] chargement {sess_path}")
+        else:
+            progress("Connexion OSPHARM…")
+
+        context = browser.new_context(**ctx_kwargs)
         page    = context.new_page()
 
-        # 1. Login
-        progress("Connexion OSPHARM…")
+        # 1. Login (sauté si session valide)
         page.goto(OSPHARM_URL, wait_until="networkidle", timeout=30_000)
 
         if "accounts" in page.url or "login" in page.url:
+            progress("Authentification OSPHARM…")
             _login(page, creds)
+            # Sauvegarder la session pour les prochains runs
+            try:
+                context.storage_state(path=sess_path)
+                print(f"  [session] sauvegardée → {sess_path}")
+            except Exception as _se:
+                print(f"  [session] save err: {_se}")
+        else:
+            print("  [session] session restaurée ✓ — login ignoré")
+            # Rafraîchir le TTL
+            try:
+                context.storage_state(path=sess_path)
+            except Exception:
+                pass
 
         if "datastat.ospharm.org" not in page.url or "accounts" in page.url:
             raise RuntimeError("Identifiants OSPHARM incorrects")
@@ -346,9 +383,9 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 }''')
                 print(f"  [nav] M0: {_r0}")
                 if _r0 not in ("no-webix", "no-sb"):
-                    page.wait_for_timeout(5_000)
+                    page.wait_for_timeout(2_000)
                     if _ventes_tabs_visible(): return True
-                    if _wait_sellout(5_000) and _ventes_tabs_visible(): return True
+                    if _wait_sellout(4_000) and _ventes_tabs_visible(): return True
             except Exception as _e:
                 print(f"  [nav] M0 err: {_e}")
 
@@ -359,9 +396,9 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     return location.href;
                 }""")
                 print(f"  [nav] M1 href: {str(_r1)[:80]}")
-                page.wait_for_timeout(5_000)
+                page.wait_for_timeout(2_000)
                 if _ventes_tabs_visible(): return True
-                if _wait_sellout(8_000) and _ventes_tabs_visible(): return True
+                if _wait_sellout(6_000) and _ventes_tabs_visible(): return True
             except Exception as _e:
                 print(f"  [nav] M1 err: {_e}")
 
@@ -378,9 +415,9 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 if _loc_t.is_visible(timeout=3_000):
                     _loc_t.click(force=True, timeout=5_000)
                     print(f"  [nav] M2 clicked 'Toutes les ventes'")
-                    page.wait_for_timeout(3_000)
+                    page.wait_for_timeout(1_500)
                     if _ventes_tabs_visible(): return True
-                    if _wait_sellout(6_000) and _ventes_tabs_visible(): return True
+                    if _wait_sellout(5_000) and _ventes_tabs_visible(): return True
             except Exception as _e:
                 print(f"  [nav] M2b err: {_e}")
 
@@ -388,9 +425,9 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 page.goto("https://datastat.ospharm.org/#!/top/sellout.all",
                           wait_until="domcontentloaded", timeout=25_000)
                 _wait_webix(page)
-                page.wait_for_timeout(6_000)
+                page.wait_for_timeout(3_000)
                 if _ventes_tabs_visible(): return True
-                if _wait_sellout(10_000) and _ventes_tabs_visible(): return True
+                if _wait_sellout(8_000) and _ventes_tabs_visible(): return True
             except Exception as _e:
                 print(f"  [nav] M3 goto err: {_e}")
 
@@ -405,7 +442,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 page.wait_for_load_state("networkidle", timeout=20_000)
             except Exception:
                 pass
-            page.wait_for_timeout(5_000)
+            page.wait_for_timeout(2_000)
             _snap("2_avant_nav")
 
             if not _goto_sellout():
@@ -461,7 +498,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     return "clicked:" + btn.tagName;
                 }''')
                 print(f"  [{label}] date picker: {_dc}")
-                page.wait_for_timeout(1_500)
+                page.wait_for_timeout(800)
 
                 _pc = page.evaluate(f'''() => {{
                     const kw = {repr(kw_lower)};
@@ -476,7 +513,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     return null;
                 }}''')
                 print(f"  [{label}] option sélectionnée: {_pc}")
-                page.wait_for_timeout(800)
+                page.wait_for_timeout(400)
 
                 _val = page.evaluate('''() => {
                     for (const el of document.querySelectorAll("button")) {
@@ -487,7 +524,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     return "not-found";
                 }''')
                 print(f"  [{label}] valider: {_val}")
-                page.wait_for_timeout(3_000)
+                page.wait_for_timeout(1_500)
             except Exception as _e3:
                 print(f"  [{label}] step3 err: {_e3}")
 
@@ -515,7 +552,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     return null;
                 }''')
                 print(f"  [{label}] Produits: {_pc2}")
-                page.wait_for_timeout(3_000)
+                page.wait_for_timeout(1_500)
             except Exception as _e4:
                 print(f"  [{label}] step4 err: {_e4}")
             _snap(f"4_produits_{year_tag}")
@@ -790,7 +827,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 print(f"  [export-{year_tag}] bouton cliqué ({exported}), poll Valider…")
                 _val_clicked = False
                 for _attempt in range(10):
-                    page.wait_for_timeout(2_500)
+                    page.wait_for_timeout(1_500)
                     if _eb:
                         print(f"  [export-{year_tag}] fichier reçu avant/pendant Valider — ok")
                         break
@@ -820,12 +857,12 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
 
                 # Attente réception fichier Excel jusqu'à 10 min
                 progress(f"Attente fichier Excel ({label})…")
-                for _w in range(240):
+                for _w in range(400):
                     if _eb:
                         break
-                    page.wait_for_timeout(2_500)
+                    page.wait_for_timeout(1_500)
                     if (_w + 1) % 4 == 0:
-                        print(f"  [export-{year_tag}] attente... {(_w+1)*2.5:.0f}s")
+                        print(f"  [export-{year_tag}] attente... {(_w+1)*1.5:.0f}s")
 
                 if not _eb:
                     _snap(f"export_timeout_{year_tag}")
