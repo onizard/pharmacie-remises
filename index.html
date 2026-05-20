@@ -203,6 +203,19 @@
   .month-recap-table .pond-col { color:var(--amber); }
   .month-recap-table .rem-col  { color:var(--red); }
   .month-recap-table td.panet-col { color:var(--green); font-weight:700; }
+  /* OSPHARM job progress */
+  .osp-loading-wrap { padding:28px 0 24px; }
+  .osp-activity-line { font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:.8px; color:var(--text-dim); margin-bottom:18px; line-height:1.7; }
+  .osp-activity-line .osp-act-time { font-family:'Orbitron',monospace; font-size:13px; font-weight:700; color:var(--amber); margin-right:6px; }
+  .osp-activity-line .osp-act-emoji { margin-right:6px; font-size:14px; }
+  .osp-bar-row { display:flex; align-items:center; gap:12px; }
+  .osp-bar-bg { flex:1; height:3px; background:var(--border); border-radius:2px; overflow:hidden; }
+  .osp-bar-fill { height:100%; background:var(--cyan); border-radius:2px; box-shadow:0 0 6px rgba(0,229,255,.4); transition:width 4s linear; min-width:2px; }
+  .osp-bar-pct { font-family:'Orbitron',monospace; font-size:10px; color:var(--cyan); white-space:nowrap; min-width:32px; text-align:right; }
+  .osp-status-msg { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--text-dim); opacity:.5; letter-spacing:.5px; margin-top:8px; }
+  [data-theme="light"] .osp-activity-line { color:#556677; }
+  [data-theme="light"] .osp-activity-line .osp-act-time { color:#b87000; }
+  [data-theme="light"] .osp-bar-bg { background:#dde4ec; }
   /* Reset button hold */
   .btn-reset-hold { position: relative; overflow: hidden; border-color: var(--red); color: var(--red); user-select: none; -webkit-user-select: none; transition: color .15s; }
   .btn-reset-hold::after { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: var(--red); opacity: .15; transition: none; }
@@ -1776,6 +1789,13 @@ async function autoRunOspharm() {
       headers: { 'Authorization': `Bearer ${session.access_token}` },
     });
     if (!resp.ok) { window._setConnProgress?.('osp', 'reset'); return; }
+
+    // Démarrage : marquer le job en cours + afficher la barre de progression
+    state._ospJobRunning   = true;
+    state._ospJobStartedAt = Date.now();
+    state._ospJobMessage   = '';
+    if (state.currentPageId === 'recap') renderRecap();
+
     // Polling toutes les 5 s, 10 min max
     const deadline = Date.now() + 600_000;
     while (Date.now() < deadline) {
@@ -1784,11 +1804,17 @@ async function autoRunOspharm() {
         const { data: row } = await window._sbClient.from('user_state')
           .select('state_json').eq('user_id', session.user.id).maybeSingle();
         const job = row?.state_json?.ospharm_job;
-        if (!job || job.status === 'running') continue;
+        if (!job || job.status === 'running') {
+          // Mettre à jour le message de progression
+          if (job?.message) {
+            state._ospJobMessage = job.message;
+            if (state.currentPageId === 'recap') renderRecap();
+          }
+          continue;
+        }
+        state._ospJobRunning = false;
         if (job.status === 'done') {
           window._setConnProgress?.('osp', 'ready');
-          // Mettre à jour les données en silence ; naviguer seulement si l'user
-          // est déjà sur le comparateur (sinon on l'arracherait de la page conditions)
           try {
             const csvData = ospharmRowsToCsvData(job.rows || []);
             if (csvData.length) {
@@ -1801,18 +1827,20 @@ async function autoRunOspharm() {
               state._monthStats   = job.month_stats;
               state._monthMeta    = job.month_meta || [];
               state._monthSavedAt = Date.now();
-              renderRecap();
             }
             saveState();
+            renderRecap();
             if (['csv', 'results'].includes(state.currentPageId)) launchSimulation();
           } catch(_) {}
           break;
         }
         window._setConnProgress?.('osp', 'reset');
-        break; // error ou inconnu → stop silencieux
+        renderRecap();
+        break;
       } catch(_) {}
     }
-  } catch(_) {}
+    state._ospJobRunning = false;
+  } catch(_) { state._ospJobRunning = false; }
 }
 
 function showCompError(msg) {
@@ -2014,6 +2042,84 @@ function renderMonthlySection(container) {
   });
 }
 
+// ── Activités pharmacien pendant chargement OSPHARM ──────────────────────────
+const _OSP_ACTIVITIES = [
+  { min: 45, emoji: '👵', label: '~45 min',  text: 'd\'aller vous occuper de votre plus ancienne cliente — elle veut parler de ses genoux, de son fils à Lyon, et du prix du beurre en 1987. Comptez large.' },
+  { min: 30, emoji: '🩺', label: '~30 min',  text: 'de faire un bilan de prévention complet. Si tant est que vous retrouviez le tensiomètre sous les boîtes de Doliprane.' },
+  { min: 20, emoji: '📦', label: '~20 min',  text: 'de ranger cette commande qui traîne sur le comptoir depuis ce matin. Ou depuis hier. On ne juge pas.' },
+  { min: 15, emoji: '🤝', label: '~15 min',  text: 'de honorer ce rendez-vous labo repoussé depuis trois semaines. Il a un nouveau générique Doliprane à vous présenter. Passionnant.' },
+  { min: 12, emoji: '💊', label: '~12 min',  text: 'de passer une commande — ou au moins de fixer l\'écran CERP d\'un air concentré.' },
+  { min: 10, emoji: '🎓', label: '~10 min',  text: 'de faire une formation DPC. Choisissez la plus courte. Personne ne contrôle vraiment.' },
+  { min: 8,  emoji: '😤', label: '~8 min',   text: 'de mettre fin à la carrière de ce collaborateur qui arrive en retard depuis novembre. C\'est le moment.' },
+  { min: 6,  emoji: '💰', label: '~6 min',   text: 'de faire les payes — activité presque aussi réjouissante que regarder cette barre progresser.' },
+  { min: 4,  emoji: '☕', label: '~4 min',   text: 'de prendre un café, de le finir tranquillement, et d\'en envisager sérieusement un deuxième.' },
+  { min: 2,  emoji: '☕☕', label: '~2 min', text: 'de prendre ce deuxième café. Vous le méritez amplement.' },
+  { min: 1,  emoji: '🥱', label: '~1 min',   text: 'de faire semblant d\'être très occupé devant le client qui vous observe depuis le fond de l\'officine.' },
+  { min: 0,  emoji: '🫵', label: '< 1 min',  text: 'à peine le temps de souffler. Restez là, le doigt sur F5.' },
+];
+
+let _ospProgressTimer = null;
+
+function _renderOspProgress(el) {
+  const startedAt = state._ospJobStartedAt || Date.now();
+  const msg       = state._ospJobMessage  || '';
+
+  // Parsing "Mois X/Y" dans le message
+  const m = msg.match(/Mois\s+(\d+)\/(\d+)/i);
+  const current = m ? parseInt(m[1]) : 0;
+  const total   = m ? parseInt(m[2]) : 0;
+  const pct     = (total > 0 && current > 0) ? Math.min(95, Math.round(current / total * 100)) : null;
+
+  // Estimation temps restant
+  const elapsed = Date.now() - startedAt;
+  let remainMs  = null;
+  if (pct !== null && pct > 0) {
+    remainMs = Math.max(0, elapsed / (pct / 100) - elapsed);
+  }
+  const remainMin = remainMs !== null ? Math.ceil(remainMs / 60000) : null;
+
+  // Choisir l'activité
+  const act = remainMin !== null
+    ? (_OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1])
+    : null;
+
+  // Rendu de la section "revenez dans..."
+  const actHtml = act
+    ? `<div class="osp-activity-line">
+        <span class="osp-act-emoji">${act.emoji}</span>
+        Revenez dans <span class="osp-act-time">${act.label}</span>
+        — le temps ${act.text}
+       </div>`
+    : `<div class="osp-activity-line">// Récupération des données OSPHARM en cours…</div>`;
+
+  const barPct = pct ?? 5;
+  const pctLabel = pct !== null ? `${pct}%` : '…';
+  const statusLabel = m ? `Mois ${current}/${total}` : (msg.slice(0, 50) || 'initialisation…');
+
+  el.innerHTML = `<div class="osp-loading-wrap">
+    ${actHtml}
+    <div class="osp-bar-row">
+      <div class="osp-bar-bg"><div class="osp-bar-fill" id="ospBarFill" style="width:${barPct}%"></div></div>
+      <div class="osp-bar-pct">${pctLabel}</div>
+    </div>
+    <div class="osp-status-msg" id="ospStatusMsg">${statusLabel}</div>
+  </div>`;
+
+  // Timer pour mettre à jour la barre seconde par seconde (sans re-render complet)
+  clearInterval(_ospProgressTimer);
+  _ospProgressTimer = setInterval(() => {
+    const fill = document.getElementById('ospBarFill');
+    const lbl  = document.getElementById('ospStatusMsg');
+    if (!fill) { clearInterval(_ospProgressTimer); return; }
+    const el2 = (Date.now() - startedAt);
+    const estimated = (pct && pct > 0) ? el2 / (pct / 100) : null;
+    const left = estimated ? Math.max(0, Math.ceil((estimated - el2) / 60000)) : null;
+    if (lbl && left !== null) {
+      lbl.textContent = `${statusLabel} — encore ~${left} min`;
+    }
+  }, 10_000);
+}
+
 function renderRecap() {
   const el = document.getElementById('recapContainer');
   if (!el) return;
@@ -2021,7 +2127,15 @@ function renderRecap() {
   const hasMonthly = Object.keys(state._monthStats || {}).length > 0;
   const ventes = state._recapVentes || [];
 
+  // Barre de progression si job OSPHARM en cours
+  if (state._ospJobRunning) {
+    clearInterval(_ospProgressTimer);
+    _renderOspProgress(el);
+    return;
+  }
+
   if (!hasMonthly && !ventes.length) {
+    clearInterval(_ospProgressTimer);
     const ospConnected = state.connectors?.ospharm?.connected;
     const msg = ospConnected
       ? '// Données OSPHARM en cours de chargement — veuillez patienter…'
