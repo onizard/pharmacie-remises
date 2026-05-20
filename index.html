@@ -192,6 +192,17 @@
   .recap-table .labo-col { color: var(--cyan); font-size: 11px; }
   .recap-table .panet-col { color: var(--green); font-weight: 700; }
   .recap-table .libelle-col { white-space: normal; font-size: 11px; color: var(--text-dim); max-width: 240px; }
+  /* Monthly recap */
+  .month-btns { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+  .month-btn { font-family:'Orbitron',monospace; font-size:10px; font-weight:700; letter-spacing:1px; padding:5px 10px; background:none; border:1px solid var(--border); color:var(--text-dim); cursor:pointer; transition:border-color .15s,color .15s,background .15s; white-space:nowrap; }
+  .month-btn:hover { border-color:var(--cyan-dim); color:var(--text); }
+  .month-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,.07); }
+  .month-btn.year-sep { margin-left:10px; border-left:2px solid rgba(0,229,255,.25); padding-left:14px; }
+  [data-theme="light"] .month-btn { border-color:#ccd6e0; color:#7a8a99; }
+  [data-theme="light"] .month-btn.active { border-color:#0066cc; color:#0066cc; background:#e8f0fb; }
+  .month-recap-table .pond-col { color:var(--amber); }
+  .month-recap-table .rem-col  { color:var(--red); }
+  .month-recap-table td.panet-col { color:var(--green); font-weight:700; }
   /* Reset button hold */
   .btn-reset-hold { position: relative; overflow: hidden; border-color: var(--red); color: var(--red); user-select: none; -webkit-user-select: none; transition: color .15s; }
   .btn-reset-hold::after { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: var(--red); opacity: .15; transition: none; }
@@ -1786,9 +1797,14 @@ async function autoRunOspharm() {
                                  || computeProrataRatios(job.period_start || null, job.period_end || null);
               state.csvData  = csvData;
               state.csvRows  = csvData.length;
-              saveState();
-              if (['csv', 'results'].includes(state.currentPageId)) launchSimulation();
             }
+            if (job.month_stats && Object.keys(job.month_stats).length) {
+              state._monthStats = job.month_stats;
+              state._monthMeta  = job.month_meta || [];
+              renderRecap();
+            }
+            saveState();
+            if (['csv', 'results'].includes(state.currentPageId)) launchSimulation();
           } catch(_) {}
           break;
         }
@@ -1844,6 +1860,10 @@ async function launchComparateur() {
                        || computeProrataRatios(job.period_start || null, job.period_end || null);
     state.csvData = csvData;
     state.csvRows = csvData.length;
+    if (job.month_stats && Object.keys(job.month_stats).length) {
+      state._monthStats = job.month_stats;
+      state._monthMeta  = job.month_meta || [];
+    }
     saveState();
     launchSimulation();
     return true;
@@ -1902,19 +1922,124 @@ function renderRecapTable(rows, title) {
   </div>`;
 }
 
+// ── Recap mensuel OSPHARM ─────────────────────────────────────────────────────
+const _MONTH_LABELS = ['JANV','FÉVR','MARS','AVRL','MAI','JUIN','JUIL','AOÛT','SEPT','OCT','NOV','DÉC'];
+
+function _renderMonthTable(mk) {
+  const stats  = (state._monthStats || {})[mk] || [];
+  const fmtE   = v => (v || 0).toLocaleString('fr', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+  const fmtN   = v => (v || 0).toLocaleString('fr');
+  const totQty = stats.reduce((s, r) => s + r.qty, 0);
+  const totCa  = stats.reduce((s, r) => s + r.ca_brut, 0);
+  const totRem = stats.reduce((s, r) => s + r.remise_totale, 0);
+  const totPa  = stats.reduce((s, r) => s + r.pa_net, 0);
+  const totPond = totCa > 0 ? totRem / totCa * 100 : 0;
+  return `<div class="recap-table-wrap">
+    <table class="recap-table month-recap-table">
+      <thead><tr>
+        <th>LABO</th>
+        <th class="num">QTÉ BOITES</th>
+        <th class="num">CA BRUT</th>
+        <th class="num">POND %</th>
+        <th class="num">REMISE TOTALE</th>
+        <th class="num">PA NET</th>
+      </tr></thead>
+      <tbody>
+      ${stats.map(r => `<tr>
+        <td class="labo-col">${r.labo}</td>
+        <td class="num">${fmtN(r.qty)}</td>
+        <td class="num">${fmtE(r.ca_brut)}</td>
+        <td class="num pond-col">${r.pond_pct.toFixed(1)} %</td>
+        <td class="num rem-col">${fmtE(r.remise_totale)}</td>
+        <td class="num panet-col">${fmtE(r.pa_net)}</td>
+      </tr>`).join('')}
+      ${stats.length > 1 ? `<tr style="border-top:1px solid var(--border);font-weight:700">
+        <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
+        <td class="num">${fmtN(totQty)}</td>
+        <td class="num">${fmtE(totCa)}</td>
+        <td class="num pond-col">${totPond.toFixed(1)} %</td>
+        <td class="num rem-col">${fmtE(totRem)}</td>
+        <td class="num panet-col">${fmtE(totPa)}</td>
+      </tr>` : ''}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+let _selectedMonth = null;
+
+function renderMonthlySection(container) {
+  const monthStats = state._monthStats || {};
+  const monthMeta  = state._monthMeta  || [];
+  const keys = monthMeta
+    .map(m => `${m.year}-${String(m.month).padStart(2,'0')}`)
+    .filter(k => monthStats[k]?.length);
+  if (!keys.length) return;
+
+  if (!_selectedMonth || !monthStats[_selectedMonth]) {
+    _selectedMonth = keys[keys.length - 1];
+  }
+
+  let lastYear = null;
+  const btnsHtml = keys.map(mk => {
+    const [y, mo] = mk.split('-').map(Number);
+    const cls = [
+      'month-btn',
+      mk === _selectedMonth ? 'active' : '',
+      lastYear !== null && y !== lastYear ? 'year-sep' : '',
+    ].filter(Boolean).join(' ');
+    lastYear = y;
+    return `<button class="${cls}" data-mk="${mk}">${_MONTH_LABELS[mo-1]} ${String(y).slice(2)}</button>`;
+  }).join('');
+
+  const wrap = document.createElement('div');
+  wrap.className = 'recap-section';
+  wrap.id = 'monthlyRecapSection';
+  wrap.innerHTML = `
+    <div class="recap-section-title">◈ VENTES PAR MOIS OSPHARM
+      <span class="recap-kpi">${keys.length} mois disponibles</span>
+    </div>
+    <div class="month-btns" id="monthBtnsRow">${btnsHtml}</div>
+    <div id="monthTableWrap">${_renderMonthTable(_selectedMonth)}</div>`;
+
+  container.appendChild(wrap);
+
+  wrap.querySelectorAll('.month-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _selectedMonth = btn.dataset.mk;
+      wrap.querySelectorAll('.month-btn').forEach(b => b.classList.toggle('active', b.dataset.mk === _selectedMonth));
+      document.getElementById('monthTableWrap').innerHTML = _renderMonthTable(_selectedMonth);
+    });
+  });
+}
+
 function renderRecap() {
   const el = document.getElementById('recapContainer');
   if (!el) return;
+
+  const hasMonthly = Object.keys(state._monthStats || {}).length > 0;
   const ventes = state._recapVentes || [];
-  if (!ventes.length) {
+
+  if (!hasMonthly && !ventes.length) {
     el.innerHTML = `<div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:13px;padding:60px 0;text-align:center;letter-spacing:2px">// Connectez-vous à OSPHARM pour charger vos données de ventes</div>`;
     return;
   }
+
+  el.innerHTML = '';
+
+  // Section mensuelle en premier
+  if (hasMonthly) renderMonthlySection(el);
+
+  // Récap ventes global (issu de la simulation)
+  if (ventes.length) {
+    el.insertAdjacentHTML('beforeend', renderRecapTable(ventes, '◇ RÉCAP VENTES GLOBAL'));
+  }
+
   const achatPlaceholder = `<div class="recap-section">
     <div class="recap-section-title">◇ RÉCAP ACHATS</div>
     <div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:12px;padding:20px 0;letter-spacing:1px">// Disponible prochainement — connecteur DIGIPHARMACIE en cours de développement</div>
   </div>`;
-  el.innerHTML = renderRecapTable(ventes, '◇ RÉCAP VENTES') + achatPlaceholder;
+  el.insertAdjacentHTML('beforeend', achatPlaceholder);
 }
 
 function renderLabGrid() {
@@ -4796,6 +4921,14 @@ async function saveProfile() {
     if (isAdmin && saved.csvData && saved.csvData.length) {
       state.csvData = saved.csvData;
       state.csvRows = saved.csvRows || saved.csvData.length;
+    }
+    // Charger month_stats/meta depuis le dernier job complété (pour affichage immédiat)
+    const _savedJob = saved.ospharm_job;
+    if (_savedJob?.status === 'done' && _savedJob?.month_stats &&
+        Object.keys(_savedJob.month_stats).length) {
+      state._monthStats = _savedJob.month_stats;
+      state._monthMeta  = _savedJob.month_meta || [];
+      setTimeout(() => renderRecap(), 0);
     }
     if (!isAdmin && saved.connectors?.ospharm?.connected) {
       // Relancer le scrape OSPHARM à chaque connexion pour avoir les données à jour.

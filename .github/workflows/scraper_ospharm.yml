@@ -10,7 +10,7 @@ on:
 jobs:
   scrape:
     runs-on: self-hosted
-    timeout-minutes: 20
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
