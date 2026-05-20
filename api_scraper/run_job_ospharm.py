@@ -989,7 +989,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             _snap(f"5_avant_export_{lbl}")
 
             try:
-                with page.expect_download(timeout=180_000) as _dl_ctx:
+                with page.expect_download(timeout=30_000) as _dl_ctx:
                     try:
                         exported = page.evaluate('''(kw) => {
                             function vis(el) { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
