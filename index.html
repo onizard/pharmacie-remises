@@ -4331,7 +4331,7 @@ async function launchSimulation() {
     // 7. Export CSV scénario : CIP;Libellé;Labo;PU HT;Remise totale %;PU NET
     // filterLab : si renseigné, n'exporte que les CIPs de ce laboratoire
     function buildScenarioCSV(assignment, labResults, filterLab = null, forcedConds = null) {
-      const rows = ['CIP à commander;Libellé;Labo;PU HT;Remise totale %;PU NET;CIP d\'origine'];
+      const rows = ['CIP à commander;Libellé;Labo;Quantité;PU HT;Remise totale %;PU NET;CIP d\'origine'];
       csvData.forEach(row => {
         const ref = assignment.get(row.cip13);
         if (!ref) return;
@@ -4347,7 +4347,7 @@ async function launchSimulation() {
         const punet = price * (1 - remise / 100);
         const cipCommander = ref.cip13 || row.cip13;
         const originNote = cipCommander !== row.cip13 ? row.cip13 : '';
-        rows.push(`${cipCommander};"${ref.libelle}";${ref.labo};${price.toFixed(4).replace('.',',')};"${remise.toFixed(2).replace('.',',')} %";${punet.toFixed(4).replace('.',',')};${originNote}`);
+        rows.push(`${cipCommander};"${ref.libelle}";${ref.labo};${row.qty};${price.toFixed(4).replace('.',',')};"${remise.toFixed(2).replace('.',',')} %";${punet.toFixed(4).replace('.',',')};${originNote}`);
       });
       return rows.join('\n');
     }
@@ -4585,10 +4585,8 @@ async function launchSimulation() {
       const cipLocked  = new Set();
 
       active.forEach((labName) => {
-        const lp = state.labPages.find(l => l.selectedLab === labName);
-        if (!lp) return;
-
         // Affecter TOUTES les refs équivalentes disponibles à ce labo (par ordre de priorité)
+        // Fonctionne même sans labPage (conditions non renseignées → RSF de base appliqué)
         csvData.forEach(row => {
           if (cipLocked.has(row.cip13)) return;
           const ref = naturalRefMap.get(row.cip13);
