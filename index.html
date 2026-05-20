@@ -1976,10 +1976,13 @@ function _renderMonthTable(mk) {
   const [mkY, mkM] = (mk || '').split('-').map(Number);
   const mkLabel = (mkM >= 1 && mkM <= 12) ? `${_MONTH_LABELS[mkM-1]} ${String(mkY).slice(2)}` : mk;
   if (!stats.length) return `<div style="color:var(--text-dim);font-size:12px;font-family:'Share Tech Mono',monospace;padding:12px 0">// Aucune donnée pour ${mkLabel}</div>`;
-  return `<div class="recap-table-wrap">
+  return `<div style="margin-bottom:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan)">
+    ▶ ${mkLabel} &nbsp;·&nbsp; ${stats.length} labo${stats.length>1?'s':''} &nbsp;·&nbsp; CA brut : ${fmtE(totCa)}
+  </div>
+  <div class="recap-table-wrap">
     <table class="recap-table month-recap-table">
       <thead><tr>
-        <th>LABO — ${mkLabel}</th>
+        <th>LABO</th>
         <th class="num">BOITES</th>
         <th class="num">PA BRUT HT</th>
       </tr></thead>
@@ -5865,8 +5868,8 @@ function initConnecteurModal() {
 document.addEventListener('DOMContentLoaded', function() {
   const ADMIN_MAIL = 'contact@break-pharma.fr';
 
-  // ── Sélecteur de mois (délégation persistante sur recapContainer) ──────────
-  document.getElementById('recapContainer')?.addEventListener('click', (e) => {
+  // ── Sélecteur de mois (délégation sur document — le plus haut possible) ──────
+  document.addEventListener('click', (e) => {
     const btn = e.target.closest('.month-btn[data-mk]');
     if (!btn) return;
     _selectedMonth = btn.dataset.mk;
@@ -5875,7 +5878,7 @@ document.addEventListener('DOMContentLoaded', function() {
     section.querySelectorAll('.month-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.mk === _selectedMonth)
     );
-    const tw = section.querySelector('[id="monthTableWrap"]');
+    const tw = section.querySelector('#monthTableWrap');
     if (tw) tw.innerHTML = _renderMonthTable(_selectedMonth);
   });
 
