@@ -2137,9 +2137,14 @@ function renderRecap() {
   if (!hasMonthly && !ventes.length) {
     clearInterval(_ospProgressTimer);
     const ospConnected = state.connectors?.ospharm?.connected;
-    const msg = ospConnected
-      ? '// Données OSPHARM en cours de chargement — veuillez patienter…'
-      : '// Connectez-vous à OSPHARM pour charger vos données de ventes';
+    let msg;
+    if (!ospConnected) {
+      msg = '// Connectez-vous à OSPHARM pour charger vos données de ventes';
+    } else if (isAdmin) {
+      msg = '// Lancez le job OSPHARM depuis le connecteur pour charger les données';
+    } else {
+      msg = '// Données OSPHARM en cours de chargement — veuillez patienter…';
+    }
     el.innerHTML = `<div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:13px;padding:60px 0;text-align:center;letter-spacing:2px">${msg}</div>`;
     return;
   }
