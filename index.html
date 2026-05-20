@@ -724,6 +724,8 @@
   .conn-prog-bar.active { display: block; }
   .conn-prog-track { height: 3px; background: var(--border); overflow: hidden; }
   .conn-prog-fill { height: 100%; width: 0%; background: var(--cyan); transition: width .35s ease; box-shadow: 0 0 8px var(--cyan); }
+  @keyframes progWait { 0%,100%{opacity:1;box-shadow:0 0 8px var(--cyan)} 50%{opacity:.45;box-shadow:0 0 2px var(--cyan)} }
+  .conn-prog-fill.waiting { animation: progWait 1.6s ease-in-out infinite; }
   .conn-prog-pct { font-family: 'Orbitron', monospace; font-size: 9px; color: var(--cyan); text-align: right; margin-top: 3px; letter-spacing: 1px; }
 .conn-save { display: block; width: 100%; margin-top: 22px; font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; padding: 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); transition: all .2s; }
   .conn-save:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
@@ -5421,13 +5423,15 @@ function initConnecteurModal() {
       if (fill) fill.style.width = r + '%';
       if (lbl)  lbl.textContent  = r + '%';
     };
-    if (action === 'reset') { bar?.classList.remove('active'); set(0); return; }
+    if (action === 'reset') { bar?.classList.remove('active'); fill?.classList.remove('waiting'); set(0); return; }
     if (action === 'ready') {
+      fill?.classList.remove('waiting');
       set(100);
       setTimeout(() => { bar?.classList.remove('active'); set(0); _stopRunningTicker(); }, 600);
       return;
     }
     bar?.classList.add('active');
+    fill?.classList.remove('waiting');
     // Plafond par phase — la barre ne dépasse pas ce seuil avant la phase suivante
     const ceilings = { serveur: 25, envoi: 50, test: 75, job: 98 };
     const ceiling = ceilings[action] ?? 98;
@@ -5438,7 +5442,10 @@ function initConnecteurModal() {
     _connProgTimer = setInterval(() => {
       cur = Math.min(ceiling, cur + INC);
       set(cur);
-      if (cur >= ceiling) clearInterval(_connProgTimer);
+      if (cur >= ceiling) {
+        clearInterval(_connProgTimer);
+        fill?.classList.add('waiting'); // pulse pour signaler l'attente du job distant
+      }
     }, 250);
   }
   window._setConnProgress = (prefix, action) => _setConnProgress(prefix, action);
