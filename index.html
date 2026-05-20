@@ -225,7 +225,7 @@
   .btn-cond-labo:hover { border-color: var(--cyan); }
 
   /* ── Main tabs ── */
-  .main-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 32px; gap: 0; overflow-x: auto; }
+  .main-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 32px; gap: 0; }
   .main-tab { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; letter-spacing: 2px; padding: 13px 22px; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--text-dim); cursor: pointer; white-space: nowrap; transition: color .2s, border-color .2s; }
   .main-tab:hover { color: var(--cyan); }
   .main-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
@@ -1973,9 +1973,6 @@ function _renderMonthTable(mk) {
   const fmtN   = v => (v || 0).toLocaleString('fr');
   const totQty = stats.reduce((s, r) => s + r.qty, 0);
   const totCa  = stats.reduce((s, r) => s + r.ca_brut, 0);
-  const totRem = stats.reduce((s, r) => s + r.remise_totale, 0);
-  const totPa  = stats.reduce((s, r) => s + r.pa_net, 0);
-  const totPond = totCa > 0 ? totRem / totCa * 100 : 0;
   const [mkY, mkM] = (mk || '').split('-').map(Number);
   const mkLabel = (mkM >= 1 && mkM <= 12) ? `${_MONTH_LABELS[mkM-1]} ${String(mkY).slice(2)}` : mk;
   if (!stats.length) return `<div style="color:var(--text-dim);font-size:12px;font-family:'Share Tech Mono',monospace;padding:12px 0">// Aucune donnée pour ${mkLabel}</div>`;
@@ -1983,34 +1980,19 @@ function _renderMonthTable(mk) {
     <table class="recap-table month-recap-table">
       <thead><tr>
         <th>LABO — ${mkLabel}</th>
-        <th class="num">QTÉ BOITES</th>
-        <th class="num">CA BRUT</th>
-        <th class="num">POND %</th>
-        <th class="num">REMISE %</th>
-        <th class="num">REMISE TOTALE</th>
-        <th class="num">PA NET</th>
+        <th class="num">BOITES</th>
+        <th class="num">PA BRUT HT</th>
       </tr></thead>
       <tbody>
-      ${stats.map(r => {
-        const remPct = r.ca_brut > 0 ? r.remise_totale / r.ca_brut * 100 : 0;
-        return `<tr>
+      ${stats.map(r => `<tr>
         <td class="labo-col">${r.labo}</td>
         <td class="num">${fmtN(r.qty)}</td>
         <td class="num">${fmtE(r.ca_brut)}</td>
-        <td class="num pond-col">${r.pond_pct.toFixed(1)} %</td>
-        <td class="num pond-col">${remPct.toFixed(1)} %</td>
-        <td class="num rem-col">${fmtE(r.remise_totale)}</td>
-        <td class="num panet-col">${fmtE(r.pa_net)}</td>
-      </tr>`;
-      }).join('')}
+      </tr>`).join('')}
       ${stats.length > 1 ? `<tr style="border-top:1px solid var(--border);font-weight:700">
         <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
         <td class="num">${fmtN(totQty)}</td>
         <td class="num">${fmtE(totCa)}</td>
-        <td class="num pond-col">${totPond.toFixed(1)} %</td>
-        <td class="num pond-col">${totPond.toFixed(1)} %</td>
-        <td class="num rem-col">${fmtE(totRem)}</td>
-        <td class="num panet-col">${fmtE(totPa)}</td>
       </tr>` : ''}
       </tbody>
     </table>
