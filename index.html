@@ -5912,10 +5912,16 @@ function initConnecteurModal() {
   document.getElementById('ospRefreshBtn').addEventListener('click',   () => _triggerWorkflow('ospharm', 'osp'));
   document.getElementById('digiRefreshBtn').addEventListener('click',  () => _triggerWorkflow('digipharmacie', 'digi'));
   document.getElementById('ospReconnectBtn').addEventListener('click', () => {
-    _triggerWorkflow('ospharm', 'osp');
+    const c = state.connectors.ospharm;
+    document.getElementById('ospUser').value = c.user;
+    document.getElementById('ospPass').value = c.pass;
+    connectConn('ospharm', 'osp');
   });
   document.getElementById('digiReconnectBtn').addEventListener('click', () => {
-    _triggerWorkflow('digipharmacie', 'digi');
+    const c = state.connectors.digipharmacie;
+    document.getElementById('digiUser').value = c.user;
+    document.getElementById('digiPass').value = c.pass;
+    connectConn('digipharmacie', 'digi');
   });
   document.getElementById('compRefreshBtn').addEventListener('click', () => {
     document.getElementById('connecteurModal').classList.add('open');
