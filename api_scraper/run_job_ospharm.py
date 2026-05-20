@@ -46,8 +46,7 @@ def _supa_patch_state(state: dict):
 
 def _update_job(status: str, message: str = "", rows=None, error: str = "",
                 blocking: bool = False, period_start: str = "", period_end: str = "",
-                file_url: str = "", rows_2025_count: int = 0, rows_2026_count: int = 0,
-                period_start_2026: str = "", period_end_2026: str = ""):
+                file_url: str = ""):
     def _do():
         try:
             state = _supa_get_state()
@@ -62,12 +61,6 @@ def _update_job(status: str, message: str = "", rows=None, error: str = "",
             if period_start:
                 job["period_start"] = period_start
                 job["period_end"]   = period_end
-            if rows_2025_count or rows_2026_count:
-                job["rows_2025"] = rows_2025_count
-                job["rows_2026"] = rows_2026_count
-            if period_start_2026:
-                job["period_start_2026"] = period_start_2026
-                job["period_end_2026"]   = period_end_2026
             state["ospharm_job"] = job
             _supa_patch_state(state)
         except Exception as e:
@@ -91,7 +84,7 @@ def _get_creds() -> dict:
 # ── Row compaction ────────────────────────────────────────────────────────────
 
 def _compact_osp_rows(rows: list[dict]) -> list[dict]:
-    """Convertit les lignes OSPHARM brutes en {cip13, qty, libelle, year, puht}.
+    """Convertit les lignes OSPHARM brutes en {cip13, qty, libelle, puht}.
     puht = montant_catalogue_total / qty (prix unitaire brut).
     Réduit ~5 Mo → ~400 Ko pour le stockage dans Supabase.
     """
@@ -143,18 +136,15 @@ def _compact_osp_rows(rows: list[dict]) -> list[dict]:
             cat_val = float(str(r.get(cat_k) or 0).replace(",", ".")) if cat_k else 0.0
         except (ValueError, TypeError):
             cat_val = 0.0
-        year = r.get("_year", 0)
-        k = (cip13, year)
-        if k not in compact:
-            compact[k] = {
+        if cip13 not in compact:
+            compact[cip13] = {
                 "cip13":      cip13,
                 "qty":        0.0,
                 "libelle":    str(r.get(lib_k) or "").strip() if lib_k else "",
-                "year":       year,
                 "_cat_total": 0.0,
             }
-        compact[k]["qty"]        += qty
-        compact[k]["_cat_total"] += cat_val
+        compact[cip13]["qty"]        += qty
+        compact[cip13]["_cat_total"] += cat_val
 
     result = []
     for entry in compact.values():
@@ -877,9 +867,6 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                         raw_rows.append({h: _strip_html(v) for h, v in zip(headers, row)})
                 wb.close()
 
-                for r in raw_rows:
-                    r["_year"] = year_tag
-
                 print(f"  [{label}] {len(raw_rows)} lignes, période {ps}→{pe}")
                 return raw_rows, ps, pe, _file_url
 
@@ -887,22 +874,14 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 page.remove_listener("download", _on_dl)
                 context.remove_listener("response", _on_resp)
 
-        # 3. Passe 1 : Année précédente (2025)
-        progress("Passe 1/2 : Année précédente (2025)…")
-        rows_2025, ps_25, pe_25, url_25 = _run_export_pass("précédente", 2025, "Année précédente")
-
-        # 4. Passe 2 : Année en cours (2026)
-        progress("Passe 2/2 : Année en cours (2026)…")
-        rows_2026, ps_26, pe_26, url_26 = _run_export_pass("cours", 2026, "Année en cours")
-
-        all_rows = rows_2025 + rows_2026
-        print(f"  [total] {len(rows_2025)} lignes 2025 + {len(rows_2026)} lignes 2026 = {len(all_rows)}")
+        # 3. Export : Année lissée
+        progress("Export Année lissée…")
+        all_rows, ps, pe, file_url = _run_export_pass("lissée", 0, "Année lissée")
 
         _upload_screenshots()
         browser.close()
 
-    file_url = url_26 or url_25
-    return all_rows, file_url, ps_25, pe_25, ps_26, pe_26, len(rows_2025), len(rows_2026)
+    return all_rows, file_url, ps, pe
 
 
 # ── Sync PUHT → references_pharmacie ─────────────────────────────────────────
@@ -968,43 +947,25 @@ def main():
         _update_job("running", msg)
 
     try:
-        rows, file_url, ps_25, pe_25, ps_26, pe_26, n_raw_25, n_raw_26 = \
-            run_ospharm(creds, progress, user_id=USER_ID)
+        rows, file_url, ps, pe = run_ospharm(creds, progress, user_id=USER_ID)
         stored_rows = _compact_osp_rows(rows)
-        n25 = sum(1 for r in stored_rows if r.get("year") == 2025)
-        n26 = sum(1 for r in stored_rows if r.get("year") == 2026)
-        print(f"  [compact] {len(rows)} → {len(stored_rows)} lignes "
-              f"(2025: {n25}, 2026: {n26})")
+        print(f"  [compact] {len(rows)} → {len(stored_rows)} lignes")
         _update_job(
             "done",
-            f"{len(stored_rows)} lignes extraites (2025: {n25}, 2026: {n26})",
+            f"{len(stored_rows)} lignes extraites",
             stored_rows,
             blocking=True,
-            period_start=ps_25,
-            period_end=pe_25,
-            period_start_2026=ps_26,
-            period_end_2026=pe_26,
-            rows_2025_count=n25,
-            rows_2026_count=n26,
+            period_start=ps,
+            period_end=pe,
             file_url=file_url,
         )
         print(f"\n✅  {len(stored_rows)} lignes OSPHARM sauvegardées. ({time.time()-t0:.1f}s total)")
 
-        # Mise à jour PUHT Supabase depuis OSPHARM (priorité année 2026)
-        puht_dict: dict = {}
-        for r in stored_rows:
-            p = r.get("puht")
-            if not p:
-                continue
-            cip = r["cip13"]
-            yr = r.get("year", 0)
-            if cip not in puht_dict or yr == 2026:
-                puht_dict[cip] = p
+        # Mise à jour PUHT Supabase depuis OSPHARM
+        puht_dict: dict = {r["cip13"]: r["puht"] for r in stored_rows if r.get("puht")}
         if puht_dict:
             progress(f"Mise à jour PUHT Supabase ({len(puht_dict)} CIPs)…")
             _sync_puht_supabase(puht_dict)
-        print(f"    2025: {n25} CIP ({ps_25} → {pe_25})")
-        print(f"    2026: {n26} CIP ({ps_26} → {pe_26})")
     except Exception as e:
         _update_job("error", error=str(e), blocking=True)
         print(f"\n❌  {e}")
