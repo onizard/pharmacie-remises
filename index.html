@@ -5306,7 +5306,8 @@ function initConnecteurModal() {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.detail || `Erreur ${resp.status}`);
       }
-      if (connKey === 'ospharm') _pollOspJobAndLaunch(prefix);
+      if (connKey === 'ospharm')       _pollOspJobAndLaunch(prefix);
+      else if (connKey === 'digipharmacie') _pollDigiJobAndLaunch(prefix);
     } catch(e) {
       _setJobStatusEl(statusId, 'error', `❌ ${e.message}`);
       _setConnProgress(prefix, 'reset');
@@ -5337,6 +5338,36 @@ function initConnecteurModal() {
         }
         if (job.status === 'error') {
           _setJobStatusEl('ospJobStatus', 'error', `❌ ${job.error || 'erreur'}`);
+          _setConnProgress(prefix, 'reset');
+          break;
+        }
+      } catch(_) {}
+    }
+  }
+
+  async function _pollDigiJobAndLaunch(prefix) {
+    const deadline = Date.now() + 600_000; // 10 min max
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 2_500));
+      try {
+        const { data: { session } } = await window._sbClient.auth.getSession();
+        if (!session) break;
+        const { data: row } = await window._sbClient.from('user_state')
+          .select('state_json').eq('user_id', session.user.id).maybeSingle();
+        const job = row?.state_json?.verif_job;
+        if (!job) continue;
+        if (job.status === 'running') {
+          _setJobStatusEl('digiJobStatus', 'running', '');
+          continue;
+        }
+        if (job.status === 'done') {
+          _setConnProgress(prefix, 'ready');
+          _setJobStatusEl('digiJobStatus', 'done', '✓');
+          document.getElementById('connecteurModal')?.classList.remove('open');
+          break;
+        }
+        if (job.status === 'error') {
+          _setJobStatusEl('digiJobStatus', 'error', `❌ ${job.error || 'erreur'}`);
           _setConnProgress(prefix, 'reset');
           break;
         }
