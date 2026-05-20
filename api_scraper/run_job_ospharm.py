@@ -102,7 +102,7 @@ def _get_creds() -> dict:
 # ── Supabase références & defaults ────────────────────────────────────────────
 
 def _query_refs(cip_list: list) -> dict:
-    """Retourne {cip13: {labo, rsf_pct}} pour chaque CIP."""
+    """Retourne {cip13: {labo, rsf_pct, puht}} pour chaque CIP."""
     if not cip_list:
         return {}
     result = {}
@@ -111,14 +111,18 @@ def _query_refs(cip_list: list) -> dict:
         batch = cip_list[i:i + batch_size]
         cips_param = "(" + ",".join(batch) + ")"
         url = (f"{SUPA_URL}/rest/v1/references_pharmacie"
-               f"?cip13=in.{cips_param}&select=cip13,labo,rsf_pct&limit=10000")
+               f"?cip13=in.{cips_param}&select=cip13,labo,rsf_pct,puht&limit=10000")
         req = urllib.request.Request(url, headers={
             "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
         })
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 for row in json.loads(r.read()):
-                    result[row["cip13"]] = {"labo": row["labo"], "rsf_pct": row.get("rsf_pct")}
+                    result[row["cip13"]] = {
+                        "labo":    row["labo"],
+                        "rsf_pct": row.get("rsf_pct"),
+                        "puht":    row.get("puht"),
+                    }
         except Exception as e:
             print(f"  [refs-query] batch err: {e}")
     return result
@@ -171,7 +175,7 @@ def _build_month_stats(all_rows: list, refs_by_cip: dict, rsf_defs: dict) -> dic
                 pass
 
         qty  = float(row.get("qty") or 0)
-        puht = float(row.get("puht") or 0)
+        puht = float(row.get("puht") or 0) or float(ref.get("puht") or 0)
         ca   = qty * puht
         rsf_abs = abs(rsf_f)
         remise_ca = ca * (rsf_abs + remise2) / 100.0
