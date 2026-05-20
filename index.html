@@ -5770,11 +5770,12 @@ function initConnecteurModal() {
       if (fill) fill.style.width = r + '%';
       if (lbl)  lbl.textContent  = r + '%';
     };
-    if (action === 'reset') { bar?.classList.remove('active'); fill?.classList.remove('waiting'); set(0); return; }
+    const _removeModalCanvas = () => document.getElementById(prefix + 'ModalCanvas')?.remove();
+    if (action === 'reset') { bar?.classList.remove('active'); fill?.classList.remove('waiting'); set(0); _removeModalCanvas(); return; }
     if (action === 'ready') {
       fill?.classList.remove('waiting');
       set(100); _connCurPct = 100;
-      _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); set(0); _connCurPct = 0; }, 600);
+      _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); set(0); _connCurPct = 0; _removeModalCanvas(); }, 600);
       return;
     }
     bar?.classList.add('active');
@@ -5785,6 +5786,15 @@ function initConnecteurModal() {
     void fill?.offsetHeight; // force reflow
     if (fill) fill.style.transition = '';
     if (action === 'job') {
+      // Canvas breakout dans la modale pendant le job
+      if (bar && !document.getElementById(prefix + 'ModalCanvas')) {
+        const cvs = document.createElement('canvas');
+        cvs.id = prefix + 'ModalCanvas';
+        cvs.width = 120; cvs.height = 90;
+        cvs.style.cssText = 'display:block;margin:10px auto 6px;border:1px solid rgba(0,229,255,.18);background:#04060f;image-rendering:pixelated';
+        bar.insertAdjacentElement('beforebegin', cvs);
+        if (prefix === 'osp') _startOspBreakoutCanvas(prefix + 'ModalCanvas');
+      }
       // Phase longue OSPHARM : animation lente 0→8% sur ~3 min (login + navigation)
       // puis _setConnProgressPct prend le relais avec les mois
       let cur = 0;
