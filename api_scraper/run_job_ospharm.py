@@ -522,7 +522,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 return "ok";
             }''')
             print(f"  [{lbl}] picker open: {dp}")
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(400)
 
             # 2. Essai Webix API (le plus fiable si daterange component existe)
             api_ok = page.evaluate(f'''() => {{
@@ -550,14 +550,14 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             print(f"  [{lbl}] webix-api: {api_ok}")
 
             if str(api_ok).startswith("api-"):
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(200)
                 # Valider
                 page.evaluate('''() => {
                     for (const el of document.querySelectorAll("button")) {
                         if (el.textContent.trim().toLowerCase() === "valider") { el.click(); return; }
                     }
                 }''')
-                page.wait_for_timeout(1_500)
+                page.wait_for_timeout(800)
                 return start_iso, end_iso
 
             # 3. Option "Personnalisé" dans la liste
@@ -576,7 +576,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             print(f"  [{lbl}] custom option: {custom_found}")
 
             if custom_found:
-                page.wait_for_timeout(600)
+                page.wait_for_timeout(300)
                 # Remplir les champs de date
                 filled = page.evaluate(f'''(s, e) => {{
                     const setVal = (el, val) => {{
@@ -600,13 +600,13 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     return "no-inputs";
                 }}''', start_fr, end_fr)
                 print(f"  [{lbl}] fill: {filled}")
-                page.wait_for_timeout(400)
+                page.wait_for_timeout(200)
                 page.evaluate('''() => {
                     for (const el of document.querySelectorAll("button")) {
                         if (el.textContent.trim().toLowerCase() === "valider") { el.click(); return; }
                     }
                 }''')
-                page.wait_for_timeout(1_500)
+                page.wait_for_timeout(800)
                 return start_iso, end_iso
 
             # 4. Fallback : fermer le picker, on continue quand même
@@ -649,7 +649,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     if (r.width > 1 && r.height > 1) { el.click(); return; }
                 }
             }''')
-            page.wait_for_timeout(1_500)
+            page.wait_for_timeout(800)
             _snap(f"4_produits_{lbl}")
 
             if "accounts" in page.url:
@@ -760,18 +760,15 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             print(f"  [{lbl}] export btn: {exported}, attente Valider…")
 
             _val_loc = None
-            for _att in range(8):
-                page.wait_for_timeout(2_000)
-                try:
-                    _loc = page.locator(
-                        ".webix_window button,.webix_popup button,.webix_modal button,.webix_win_body button"
-                    ).filter(has_text="Valider").first
-                    if _loc.is_visible(timeout=300):
-                        _val_loc = _loc
-                        print(f"  [{lbl}] Valider visible après {(_att+1)*2}s")
-                        break
-                except Exception:
-                    pass
+            try:
+                _loc = page.locator(
+                    ".webix_window button,.webix_popup button,.webix_modal button,.webix_win_body button"
+                ).filter(has_text="Valider").first
+                _loc.wait_for(state="visible", timeout=16_000)
+                _val_loc = _loc
+                print(f"  [{lbl}] Valider visible")
+            except Exception:
+                pass
 
             _excel_bytes = None
 
@@ -866,6 +863,17 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
         month_meta: list[dict]       = []
         month_errors: list[str]      = []
 
+        # Scraping incrémental : réutiliser les mois déjà en base (sauf mois courant)
+        try:
+            _ex_job  = _supa_get_state().get("ospharm_job", {})
+            _ex_rows = [r for r in (_ex_job.get("rows", []) or []) if r.get("month")]
+            _ex_meta = {(m["year"], m["month"]): m for m in (_ex_job.get("month_meta", []) or [])}
+            _have_months = {(r["year"], r["month"]) for r in _ex_rows}
+            print(f"  [incr] {len(_have_months)} mois existants en base")
+        except Exception as _ex_err:
+            _ex_rows, _ex_meta, _have_months = [], {}, set()
+            print(f"  [incr] lecture base échouée: {_ex_err}")
+
         total_months = (end_year - start_year) * 12 + (end_month - start_month) + 1
         year, month  = start_year, start_month
         m_idx        = 0
@@ -873,23 +881,33 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
         while (year, month) <= (end_year, end_month):
             m_idx += 1
             lbl = f"{year}-{month:02d}"
-            progress(f"Mois {m_idx}/{total_months} : {lbl}…")
-            try:
-                raw_rows, ps, pe, file_url = _export_one_month(year, month)
-                compact = _compact_month_rows(raw_rows)
-                for r in compact:
-                    r["year"]  = year
-                    r["month"] = month
-                all_compact_rows.extend(compact)
-                month_meta.append({
-                    "year": year, "month": month,
-                    "period_start": ps, "period_end": pe,
-                    "rows": len(compact), "file_url": file_url,
-                })
-                print(f"  [{lbl}] ✓ {len(compact)} lignes compactes")
-            except Exception as _me:
-                print(f"  [{lbl}] ERREUR: {_me}")
-                month_errors.append(f"{lbl}: {_me}")
+            is_current = (year == today.year and month == today.month)
+
+            # Réutiliser le mois s'il est déjà en base et n'est pas le mois courant
+            if (year, month) in _have_months and not is_current:
+                existing = [r for r in _ex_rows if r["year"] == year and r["month"] == month]
+                all_compact_rows.extend(existing)
+                if (year, month) in _ex_meta:
+                    month_meta.append(_ex_meta[(year, month)])
+                print(f"  [{lbl}] ✓ réutilisé ({len(existing)} lignes cache)")
+            else:
+                progress(f"Mois {m_idx}/{total_months} : {lbl}…")
+                try:
+                    raw_rows, ps, pe, file_url = _export_one_month(year, month)
+                    compact = _compact_month_rows(raw_rows)
+                    for r in compact:
+                        r["year"]  = year
+                        r["month"] = month
+                    all_compact_rows.extend(compact)
+                    month_meta.append({
+                        "year": year, "month": month,
+                        "period_start": ps, "period_end": pe,
+                        "rows": len(compact), "file_url": file_url,
+                    })
+                    print(f"  [{lbl}] ✓ {len(compact)} lignes scraper")
+                except Exception as _me:
+                    print(f"  [{lbl}] ERREUR: {_me}")
+                    month_errors.append(f"{lbl}: {_me}")
 
             if month == 12:
                 year += 1
