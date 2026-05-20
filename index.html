@@ -3577,12 +3577,18 @@ async function launchSimulation() {
     }
 
     function getRemiseSansR3(ref, cond, firstMet = false) {
+      // Retourne la remise AVANT la dernière remise active :
+      //   si remise3 existe → RSF + remise2 (sans remise3)
+      //   si remise3 absente → RSF seul (remise2 est la dernière, on l'exclut aussi)
       const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
       const baseRSF = Math.abs(parseFloat(baseRSFPct) || 0);
       if (!cond) return baseRSF;
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
       if (!rsfRow) return baseRSF;
+      const r3 = parseFloat(rsfRow.remise3) || 0;
+      if (r3 === 0) return baseRSF; // pas de remise3 → remise2 est la dernière → on l'exclut
+      // remise3 présente → on inclut remise2 mais pas remise3
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
         if (exc && exc.libelles.some(l => l.text === ref.libelle)) {
