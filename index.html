@@ -1820,6 +1820,8 @@ async function autoRunOspharm() {
           // Mettre à jour le message de progression
           if (job?.message) {
             state._ospJobMessage = job.message;
+            const _m = job.message.match(/Mois\s+(\d+)\/(\d+)/i);
+            if (_m) window._setConnProgressPct?.('osp', Math.round(parseInt(_m[1]) / parseInt(_m[2]) * 100));
             if (state.currentPageId === 'recap') renderRecap();
           }
           continue;
@@ -5585,7 +5587,9 @@ function initConnecteurModal() {
         const job = row?.state_json?.ospharm_job;
         if (!job) continue;
         if (job.status === 'running') {
-          _setJobStatusEl('ospJobStatus', 'running', '');
+          _setJobStatusEl('ospJobStatus', 'running', job.message || '');
+          const _m = (job.message || '').match(/Mois\s+(\d+)\/(\d+)/i);
+          if (_m) _setConnProgressPct(prefix, Math.round(parseInt(_m[1]) / parseInt(_m[2]) * 100));
           continue;
         }
         if (job.status === 'done') {
@@ -5658,24 +5662,31 @@ function initConnecteurModal() {
     }
     bar?.classList.add('active');
     fill?.classList.remove('waiting');
-    // Snap to 0 without CSS transition, then re-enable and animate to 100%
+    // Snap to 0 without CSS transition, then re-enable and animate smoothly
     if (fill) { fill.style.transition = 'none'; fill.style.width = '0%'; }
     if (lbl) lbl.textContent = '0%';
     void fill?.offsetHeight; // force reflow
     if (fill) fill.style.transition = '';
-    // job phase: fills in ~10s (0.5%/50ms); other phases: ~2.5s (2%/50ms)
-    const INC = action === 'job' ? 0.5 : 2;
-    let cur = 0;
-    _connProgTimer = setInterval(() => {
-      cur = Math.min(100, cur + INC);
-      set(cur);
-      if (cur >= 100) {
-        clearInterval(_connProgTimer);
-        if (action === 'job') fill?.classList.add('waiting'); // pulse while waiting for remote job
-      }
-    }, 50);
+    if (action !== 'job') {
+      // Phases courtes (test, connexion) : remplissage animé ~2.5s
+      let cur = 0;
+      _connProgTimer = setInterval(() => {
+        cur = Math.min(100, cur + 2);
+        set(cur);
+        if (cur >= 100) clearInterval(_connProgTimer);
+      }, 50);
+    }
+    // action === 'job' : pas de faux remplissage — mis à jour par _setConnProgressPct()
   }
   window._setConnProgress = (prefix, action) => _setConnProgress(prefix, action);
+
+  function _setConnProgressPct(prefix, pct) {
+    const fill = document.getElementById(prefix + 'ProgFill');
+    const lbl  = document.getElementById(prefix + 'ProgPct');
+    if (fill) fill.style.width = Math.round(pct) + '%';
+    if (lbl)  lbl.textContent  = Math.round(pct) + '%';
+  }
+  window._setConnProgressPct = _setConnProgressPct;
 
   async function _pollConnTest(userId, connKey, statusEl) {
     const deadline = Date.now() + 120_000;
