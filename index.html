@@ -5439,6 +5439,8 @@ function initConnecteurModal() {
     document.getElementById('digiTestResult').textContent = '';
     document.getElementById('ospReqStatus').textContent   = '';
     document.getElementById('digiReqStatus').textContent  = '';
+    _setConnProgress('osp',  'reset');
+    _setConnProgress('digi', 'reset');
     showView('osp',  c.ospharm.connected);
     showView('digi', c.digipharmacie.connected);
     modal.classList.add('open');
@@ -5633,10 +5635,12 @@ function initConnecteurModal() {
   }
 
   let _connProgTimer = null;
+  let _connReadyTimer = null;
 
   function _setConnProgress(prefix, action) {
     if (!prefix) return;
     clearInterval(_connProgTimer);
+    clearTimeout(_connReadyTimer);
     const bar  = document.getElementById(prefix + 'ProgBar');
     const fill = document.getElementById(prefix + 'ProgFill');
     const lbl  = document.getElementById(prefix + 'ProgPct');
@@ -5649,7 +5653,7 @@ function initConnecteurModal() {
     if (action === 'ready') {
       fill?.classList.remove('waiting');
       set(100);
-      setTimeout(() => { bar?.classList.remove('active'); set(0); }, 600);
+      _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); set(0); }, 600);
       return;
     }
     bar?.classList.add('active');
