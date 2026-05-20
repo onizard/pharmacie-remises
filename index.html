@@ -5672,8 +5672,14 @@ function initConnecteurModal() {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.detail || `Erreur ${resp.status}`);
       }
-      if (connKey === 'ospharm')       _pollOspJobAndLaunch(prefix);
-      else if (connKey === 'digipharmacie') _pollDigiJobAndLaunch(prefix);
+      if (connKey === 'ospharm') {
+        document.getElementById('connecteurModal')?.classList.remove('open');
+        goTo('recap');
+        renderRecap();
+        _pollOspJobAndLaunch(prefix);
+      } else if (connKey === 'digipharmacie') {
+        _pollDigiJobAndLaunch(prefix);
+      }
     } catch(e) {
       _setJobStatusEl(statusId, 'error', `❌ ${e.message}`);
       _setConnProgress(prefix, 'reset');
@@ -5700,12 +5706,12 @@ function initConnecteurModal() {
           continue;
         }
         if (job.status === 'done') {
-          state._ospJobRunning = false;
           _setConnProgress(prefix, 'reset');
           _setJobStatusEl('ospJobStatus', 'done', '✓');
-          const ok = await launchComparateur();
-          document.getElementById('connecteurModal')?.classList.remove('open');
+          await launchComparateur();
+          state._ospJobRunning = false;
           goTo('recap');
+          renderRecap();
           break;
         }
         if (job.status === 'error') {
@@ -5778,32 +5784,38 @@ function initConnecteurModal() {
       return;
     }
     if (action === 'job') {
-      // Phase job OSPHARM : progression visible sur la page Récap, pas dans la modale
-      // Maintenir _connCurPct en interne uniquement (pas de barre visible)
+      // Phase job : progression sur la page Récap uniquement, barre modale invisible
       let cur = 0;
       _connProgTimer = setInterval(() => {
         cur = Math.min(8, cur + 0.2);
         if (cur > _connCurPct) _connCurPct = cur;
         if (cur >= 8) clearInterval(_connProgTimer);
       }, 5000);
-    } else if (action === 'test') {
-      // Phase test : remplissage lent ~1.8%/s → 90% max (dure 15-60s côté serveur)
-      let cur = 0;
-      _connProgTimer = setInterval(() => {
-        cur = Math.min(90, cur + 1.8);
-        _connCurPct = cur;
-        set(cur);
-        if (cur >= 90) clearInterval(_connProgTimer);
-      }, 1000);
     } else {
-      // Phases courtes (serveur, envoi) : remplissage animé ~2.5s → 100%
-      let cur = 0;
-      _connProgTimer = setInterval(() => {
-        cur = Math.min(100, cur + 2);
-        _connCurPct = cur;
-        set(cur);
-        if (cur >= 100) clearInterval(_connProgTimer);
-      }, 50);
+      // Phases visibles dans la modale (serveur, envoi, test)
+      bar?.classList.add('active');
+      fill?.classList.remove('waiting');
+      if (fill) { fill.style.transition = 'none'; fill.style.width = '0%'; }
+      if (lbl) lbl.textContent = '0%';
+      void fill?.offsetHeight;
+      if (fill) fill.style.transition = '';
+      if (action === 'test') {
+        // Remplissage lent ~1.8%/s → 90% max (test serveur dure 15-60s)
+        let cur = 0;
+        _connProgTimer = setInterval(() => {
+          cur = Math.min(90, cur + 1.8);
+          _connCurPct = cur; set(cur);
+          if (cur >= 90) clearInterval(_connProgTimer);
+        }, 1000);
+      } else {
+        // Phases courtes (serveur, envoi) : remplissage ~2.5s → 100%
+        let cur = 0;
+        _connProgTimer = setInterval(() => {
+          cur = Math.min(100, cur + 2);
+          _connCurPct = cur; set(cur);
+          if (cur >= 100) clearInterval(_connProgTimer);
+        }, 50);
+      }
     }
   }
   window._setConnProgress = (prefix, action) => _setConnProgress(prefix, action);
