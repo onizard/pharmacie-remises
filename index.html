@@ -5546,41 +5546,7 @@ function initConnecteurModal() {
     document.getElementById('ospReqStatus').textContent   = '';
     document.getElementById('digiReqStatus').textContent  = '';
     _setConnProgress('digi', 'reset');
-    if (state._ospJobRunning) {
-      // Job en cours : restaurer barre + canvas sans réinitialiser
-      const bar  = document.getElementById('ospProgBar');
-      const fill = document.getElementById('ospProgFill');
-      const lbl  = document.getElementById('ospProgPct');
-      if (bar) bar.classList.add('active');
-      if (fill) fill.style.width = _connCurPct + '%';
-      if (lbl)  lbl.textContent  = Math.round(_connCurPct) + '%';
-      if (bar && !document.getElementById('ospModalActivity')) {
-        const div = document.createElement('div');
-        div.id = 'ospModalActivity';
-        div.className = 'osp-activity-line';
-        div.style.cssText = 'padding:10px 0 4px';
-        const _pick = () => {
-          const elapsed = Date.now() - (state._ospJobStartedAt || Date.now());
-          const pct = _connCurPct;
-          let remainMin = null;
-          if (pct > 0) {
-            const remainMs = Math.max(0, elapsed / (pct / 100) - elapsed);
-            remainMin = Math.ceil(remainMs / 60000);
-          }
-          const a = remainMin !== null
-            ? (_OSP_ACTIVITIES.find(x => x.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1])
-            : null;
-          div.innerHTML = a
-            ? `<span class="osp-act-emoji">${a.emoji}</span>Revenez dans <span class="osp-act-time">${a.label}</span>— le temps ${a.text}`
-            : `// Chargement en cours…`;
-        };
-        _pick();
-        bar.insertAdjacentElement('beforebegin', div);
-        _ospModalActivityTimer = setInterval(_pick, 10_000);
-      }
-    } else {
-      _setConnProgress('osp', 'reset');
-    }
+    _setConnProgress('osp', 'reset');
     showView('osp',  c.ospharm.connected);
     showView('digi', c.digipharmacie.connected);
     modal.classList.add('open');
@@ -5727,12 +5693,15 @@ function initConnecteurModal() {
         if (!job) continue;
         if (job.status === 'running') {
           _setJobStatusEl('ospJobStatus', 'running', '');
+          state._ospJobMessage = job.message || '';
           const _m = (job.message || '').match(/Mois\s+(\d+)\/(\d+)/i);
           if (_m) _setConnProgressPct(prefix, Math.round(parseInt(_m[1]) / parseInt(_m[2]) * 100));
+          renderRecap();
           continue;
         }
         if (job.status === 'done') {
-          _setConnProgress(prefix, 'ready');
+          state._ospJobRunning = false;
+          _setConnProgress(prefix, 'reset');
           _setJobStatusEl('ospJobStatus', 'done', '✓');
           const ok = await launchComparateur();
           document.getElementById('connecteurModal')?.classList.remove('open');
@@ -5740,6 +5709,7 @@ function initConnecteurModal() {
           break;
         }
         if (job.status === 'error') {
+          state._ospJobRunning = false;
           _setJobStatusEl('ospJobStatus', 'error', `❌ ${job.error || 'erreur'}`);
           _setConnProgress(prefix, 'reset');
           break;
@@ -5807,45 +5777,13 @@ function initConnecteurModal() {
       _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); set(0); _connCurPct = 0; _removeModalActivity(); }, 600);
       return;
     }
-    bar?.classList.add('active');
-    fill?.classList.remove('waiting');
-    // Snap to 0 without CSS transition, then re-enable and animate smoothly
-    if (fill) { fill.style.transition = 'none'; fill.style.width = '0%'; }
-    if (lbl) lbl.textContent = '0%';
-    void fill?.offsetHeight; // force reflow
-    if (fill) fill.style.transition = '';
     if (action === 'job') {
-      // Suggestion ironique basée sur le temps restant estimé (même logique que la page récap)
-      if (prefix === 'osp' && bar && !document.getElementById('ospModalActivity')) {
-        const div = document.createElement('div');
-        div.id = 'ospModalActivity';
-        div.className = 'osp-activity-line';
-        div.style.cssText = 'padding:10px 0 4px';
-        const _pick = () => {
-          const elapsed = Date.now() - (state._ospJobStartedAt || Date.now());
-          const pct = _connCurPct;
-          let remainMin = null;
-          if (pct > 0) {
-            const remainMs = Math.max(0, elapsed / (pct / 100) - elapsed);
-            remainMin = Math.ceil(remainMs / 60000);
-          }
-          const a = remainMin !== null
-            ? (_OSP_ACTIVITIES.find(x => x.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1])
-            : null;
-          div.innerHTML = a
-            ? `<span class="osp-act-emoji">${a.emoji}</span>Revenez dans <span class="osp-act-time">${a.label}</span>— le temps ${a.text}`
-            : `// Chargement en cours…`;
-        };
-        _pick();
-        bar.insertAdjacentElement('beforebegin', div);
-        _ospModalActivityTimer = setInterval(_pick, 10_000);
-      }
-      // Phase longue OSPHARM : animation lente 0→8% sur ~3 min (login + navigation)
-      // puis _setConnProgressPct prend le relais avec les mois
+      // Phase job OSPHARM : progression visible sur la page Récap, pas dans la modale
+      // Maintenir _connCurPct en interne uniquement (pas de barre visible)
       let cur = 0;
       _connProgTimer = setInterval(() => {
         cur = Math.min(8, cur + 0.2);
-        if (cur > _connCurPct) { _connCurPct = cur; set(cur); }
+        if (cur > _connCurPct) _connCurPct = cur;
         if (cur >= 8) clearInterval(_connProgTimer);
       }, 5000);
     } else if (action === 'test') {
@@ -5957,7 +5895,7 @@ function initConnecteurModal() {
             if (btn) { btn.dataset.fileUrl = job.file_url; btn.style.display = ''; }
           }
         } else if (job.status === 'running') {
-          _setJobStatusEl(elId, 'running', `⏳ ${job.message || 'en cours…'}`);
+          _setJobStatusEl(elId, 'running', '');
         } else if (job.status === 'error') {
           _setJobStatusEl(elId, 'error', `❌ ${job.error || 'erreur'}`);
         }
