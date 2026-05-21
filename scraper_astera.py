@@ -64,7 +64,6 @@ LABO_CODES = {
     "P510": "Correvio",
     "P656": "Abacus",
     "EE04": "Viatris First",
-    "P167": "Wegovy",
     "ZZ":   "Biogaran Depositaire",
 }
 

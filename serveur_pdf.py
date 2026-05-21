@@ -43,7 +43,7 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 ABREV_LABOS = sorted([
     "ARROW","ARR","ARL","BIOGARAN","BIO","BGR","VIATRIS","VIA","MYL","MYP",
     "PFIZER","PFI","SANDOZ","SDZ","SAN","ZENTIVA","ZEN","TEVA","TEV",
-    "CRISTERS","CRI","ZYDUS","ZYD","CORREVIO","CPH","ABACUS","WEGOVY","STA",
+    "CRISTERS","CRI","ZYDUS","ZYD","CORREVIO","CPH","ABACUS","STA",
     "EG","GE","ZTL","REF","SA","QVL","NOR","KS","QIL","SUB",
 ], key=len, reverse=True)
 

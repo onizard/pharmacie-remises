@@ -38,7 +38,7 @@ ABREV_LABOS = sorted([
     "ZYDUS", "ZYD",
     "CORREVIO", "CPH",
     "ABACUS",
-    "WEGOVY", "STA",
+    "STA",
     "EG", "GE", "ZTL", "REF", "SA", "QVL", "NOR", "KS", "QIL", "SUB",
 ], key=len, reverse=True)  # Plus longs d'abord pour éviter les conflits
 
