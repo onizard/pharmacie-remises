@@ -4864,12 +4864,22 @@ async function launchSimulation() {
       <div class="sim-start-sub">// cliquez pour visualiser les résultats</div>
     </div>`;
     document.getElementById('simStartBtn')?.addEventListener('click', () => {
+      let _skipped = false;
+      const _brickTimer = setTimeout(_wireAndRender, 10_000);
+      const _skipHandler = e => {
+        if (e.key !== 's' && e.key !== 'S') return;
+        if (_skipped) return;
+        _skipped = true;
+        clearTimeout(_brickTimer);
+        document.removeEventListener('keydown', _skipHandler);
+        _wireAndRender();
+      };
+      document.addEventListener('keydown', _skipHandler);
       container.innerHTML = `<div class="sim-loading" id="brickLoader">
         <canvas id="brickCanvas"></canvas>
-        <div class="brick-status">◈ ANALYSE EN COURS ◈</div>
+        <div class="brick-status">◈ ANALYSE EN COURS ◈ &nbsp;·&nbsp; <span style="opacity:.5;font-size:.85em">S pour passer</span></div>
       </div>`;
       startBrickGame();
-      setTimeout(_wireAndRender, 10_000);
     });
 
   } catch(err) {
