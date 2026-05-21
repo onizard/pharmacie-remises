@@ -774,9 +774,12 @@
   .conn-connected-view { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px 16px; text-align: center; min-height: 180px; }
   .conn-check-big { display:flex; align-items:center; justify-content:center; width:56px; height:56px; }
   .conn-check-tick { font-size: 52px; color: var(--green); filter: drop-shadow(0 0 10px rgba(0,255,136,.45)); line-height: 1; }
+  .conn-check-cross { display:none; font-size: 52px; color: var(--red); filter: drop-shadow(0 0 10px rgba(255,51,102,.45)); line-height: 1; }
   .conn-check-ring { display:none; width:48px; height:48px; border-radius:50%; border:4px solid rgba(0,255,136,.2); border-top-color:var(--green); animation:spin .9s linear infinite; }
   .conn-check-big.loading .conn-check-ring { display:block; }
-  .conn-check-big.loading .conn-check-tick { display:none; }
+  .conn-check-big.loading .conn-check-tick,  .conn-check-big.loading .conn-check-cross { display:none; }
+  .conn-check-big.error .conn-check-cross { display:block; }
+  .conn-check-big.error .conn-check-tick,  .conn-check-big.error .conn-check-ring { display:none; }
   .conn-connected-name { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--green); }
   .conn-connected-user-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); }
   .conn-job-status { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: .5px; margin-top: 2px; min-height: 16px; }
@@ -1127,7 +1130,7 @@
             </div>
           </div>
           <div class="conn-connected-view" id="digiConnView" style="display:none">
-            <div class="conn-check-big" id="digiCheckBig"><div class="conn-check-ring"></div><span class="conn-check-tick">✓</span></div>
+            <div class="conn-check-big" id="digiCheckBig"><div class="conn-check-ring"></div><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="conn-test-btn" id="digiRefreshBtn" style="display:none">RAFRAÎCHIR</button>
@@ -1161,7 +1164,7 @@
             </div>
           </div>
           <div class="conn-connected-view" id="ospConnView" style="display:none">
-            <div class="conn-check-big" id="ospCheckBig"><div class="conn-check-ring"></div><span class="conn-check-tick">✓</span></div>
+            <div class="conn-check-big" id="ospCheckBig"><div class="conn-check-ring"></div><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
             <button class="conn-test-btn" id="ospRefreshBtn" style="display:none">RAFRAÎCHIR</button>
@@ -4673,63 +4676,54 @@ async function launchSimulation() {
           // et s'additionneraient au CA greedy, dépassant le palier cible.
           [...candidates, ...fallback].forEach(({ row }) => assignment.delete(row.cip13));
 
-          // Phase 1 : refs prioritaires (RSF > 2.5%), triées par économie décroissante
+          // Phase 1 : refs prioritaires (RSF > 2.5%)
+          // Stratégie : sélection complète puis suppression des plus petits items inutiles
+          // → dépassement minimal du palier cible (vs greedy forward qui peut dépasser de 15k+)
           candidates.sort((a, b) => b.savings - a.savings);
           let accCA = 0, assignedCount = 0, fallbackUsed = 0;
-          let _overshotItem = null, _accCABeforeShot = 0;
-          for (const item of candidates) {
-            if (accCA >= targetCA) break;
-            const { row, lab1Ref, rowCA } = item;
-            const prev = accCA;
-            assignment.set(row.cip13, lab1Ref);
-            cipLocked.add(row.cip13);
-            accCA += rowCA;
-            assignedCount++;
-            if (accCA > targetCA && !_overshotItem) { _overshotItem = item; _accCABeforeShot = prev; }
-          }
-
-          // Minimiser le dépassement : remplacer la ref de dépassement par la plus petite
-          // ref non encore sélectionnée qui comble quand même le gap jusqu'au palier.
-          if (_overshotItem && accCA > targetCA) {
-            const _gap = targetCA - _accCABeforeShot;
-            const _betterFit = candidates
-              .filter(c => !cipLocked.has(c.row.cip13) && c.rowCA >= _gap && c.rowCA < _overshotItem.rowCA)
-              .sort((a, b) => a.rowCA - b.rowCA)[0];
-            if (_betterFit) {
-              assignment.delete(_overshotItem.row.cip13);
-              cipLocked.delete(_overshotItem.row.cip13);
-              accCA -= _overshotItem.rowCA; assignedCount--;
-              assignment.set(_betterFit.row.cip13, _betterFit.lab1Ref);
-              cipLocked.add(_betterFit.row.cip13);
-              accCA += _betterFit.rowCA; assignedCount++;
+          {
+            const _totalCA = candidates.reduce((s, c) => s + c.rowCA, 0);
+            if (_totalCA >= targetCA) {
+              const _sel = new Set(candidates.map(c => c.row.cip13));
+              let _selCA = _totalCA;
+              for (const item of [...candidates].sort((a, b) => a.rowCA - b.rowCA)) {
+                if (_selCA - item.rowCA >= targetCA) { _sel.delete(item.row.cip13); _selCA -= item.rowCA; }
+              }
+              for (const item of candidates) {
+                if (!_sel.has(item.row.cip13)) continue;
+                assignment.set(item.row.cip13, item.lab1Ref);
+                cipLocked.add(item.row.cip13);
+              }
+              accCA = _selCA; assignedCount = _sel.size;
+            } else {
+              for (const { row, lab1Ref, rowCA } of candidates) {
+                assignment.set(row.cip13, lab1Ref); cipLocked.add(row.cip13);
+                accCA += rowCA; assignedCount++;
+              }
             }
           }
 
           // Phase 2 : si CA cible pas atteint, compléter avec les refs RSF ≤ 2.5% (secours)
           if (accCA < targetCA) {
             fallback.sort((a, b) => b.savings - a.savings);
-            let _fbOvershot = null, _fbPrev = 0;
-            for (const item of fallback) {
-              if (accCA >= targetCA) break;
-              const { row, lab1Ref, rowCA } = item;
-              const prev = accCA;
-              assignment.set(row.cip13, lab1Ref);
-              cipLocked.add(row.cip13);
-              accCA += rowCA; assignedCount++; fallbackUsed++;
-              if (accCA > targetCA && !_fbOvershot) { _fbOvershot = item; _fbPrev = prev; }
-            }
-            if (_fbOvershot && accCA > targetCA) {
-              const _gap = targetCA - _fbPrev;
-              const _fit = fallback
-                .filter(c => !cipLocked.has(c.row.cip13) && c.rowCA >= _gap && c.rowCA < _fbOvershot.rowCA)
-                .sort((a, b) => a.rowCA - b.rowCA)[0];
-              if (_fit) {
-                assignment.delete(_fbOvershot.row.cip13);
-                cipLocked.delete(_fbOvershot.row.cip13);
-                accCA -= _fbOvershot.rowCA; assignedCount--; fallbackUsed--;
-                assignment.set(_fit.row.cip13, _fit.lab1Ref);
-                cipLocked.add(_fit.row.cip13);
-                accCA += _fit.rowCA; assignedCount++; fallbackUsed++;
+            const _need = targetCA - accCA;
+            const _fbTotal = fallback.reduce((s, c) => s + c.rowCA, 0);
+            if (_fbTotal >= _need) {
+              const _sel = new Set(fallback.map(c => c.row.cip13));
+              let _selCA = _fbTotal;
+              for (const item of [...fallback].sort((a, b) => a.rowCA - b.rowCA)) {
+                if (_selCA - item.rowCA >= _need) { _sel.delete(item.row.cip13); _selCA -= item.rowCA; }
+              }
+              for (const item of fallback) {
+                if (!_sel.has(item.row.cip13)) continue;
+                assignment.set(item.row.cip13, item.lab1Ref);
+                cipLocked.add(item.row.cip13);
+                accCA += item.rowCA; assignedCount++; fallbackUsed++;
+              }
+            } else {
+              for (const { row, lab1Ref, rowCA } of fallback) {
+                assignment.set(row.cip13, lab1Ref); cipLocked.add(row.cip13);
+                accCA += rowCA; assignedCount++; fallbackUsed++;
               }
             }
           }
@@ -5777,7 +5771,10 @@ function initConnecteurModal() {
     const el = document.getElementById(elId);
     if (!el) return;
     const checkEl = document.getElementById(_jobCheckMap[elId]);
-    if (checkEl) checkEl.classList.toggle('loading', cls === 'running');
+    if (checkEl) {
+      checkEl.classList.toggle('loading', cls === 'running');
+      checkEl.classList.toggle('error', cls === 'error');
+    }
     el.className = `conn-job-status ${cls}`;
     const refreshBtn = document.getElementById(_jobRefreshMap[elId]);
     if (refreshBtn) refreshBtn.style.display = cls === 'error' ? '' : 'none';
