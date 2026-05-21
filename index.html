@@ -1220,6 +1220,7 @@
           <input type="text" id="gersGlobal" class="rsf-input" style="width:100px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="Entre ton GERS" />
           <span style="font-size:12px;color:var(--text-dim)">€</span>
           <button class="btn btn-reset-hold" id="btnResetConditions" title="Maintenir 3 secondes pour réinitialiser">↺ RESET</button>
+          <button class="btn btn-primary admin-only" id="btnSaveConditions" style="display:none">↑ SAVE</button>
           <button class="btn btn-secondary" id="btnRetourRecap">← RETOUR</button>
         </div>
       </div>
@@ -4883,6 +4884,16 @@ async function saveProfile() {
     else goTo('labs');
   });
   document.getElementById('btnRetourRecap')?.addEventListener('click', () => goTo('recap'));
+
+  document.getElementById('btnSaveConditions')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnSaveConditions');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '…';
+    await saveRsfDefaults();
+    btn.textContent = '✓ SAUVEGARDÉ';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+  });
 
   // ── LED verte CGV — pilotée par rsf_defaults sentinelles __cgv_2026/__cgv_2025
   window._syncCgvLeds = function(uid, labName) {
