@@ -3713,10 +3713,7 @@ async function launchSimulation() {
     // 1. Parse CSV
     const csvData = state.csvData;
     if (!csvData || !csvData.length) {
-      const diag = state._csvDiag
-        ? `<div style="margin-top:10px;font-size:12px;opacity:.6;letter-spacing:.5px">${state._csvDiag}</div>`
-        : '';
-      container.innerHTML = `<div class="sim-warn">⚠ Colonnes CIP et/ou quantité non reconnues dans le fichier CSV.${diag}</div>`;
+      await launchComparateur();
       return;
     }
 
@@ -5147,7 +5144,7 @@ async function saveProfile() {
     if (!['results', 'labs', 'recap', 'verificateur'].includes(targetPage)) targetPage = 'recap';
     if (!isAdmin && ['results', 'labs'].includes(targetPage)) targetPage = 'recap';
     goTo(targetPage);
-    if (targetPage === 'results') launchSimulation();
+    if (targetPage === 'results') launchComparateur();
     setTimeout(() => renderRecap(), 0);
   } else {
     goTo('recap');
