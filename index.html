@@ -4848,6 +4848,9 @@ async function launchSimulation() {
     });
     }; // fin _wireAndRender
 
+    // Laisser le browser repeindre le cercle à 100% avant de remplacer le container
+    await _yield();
+
     // Afficher l'écran START
     const _labCount = new Set(refRows.map(r => r.labo).filter(Boolean)).size;
     container.innerHTML = `<div class="sim-start-screen">
