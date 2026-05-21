@@ -3710,6 +3710,7 @@ async function launchSimulation() {
   };
 
   try {
+    const _yield = () => new Promise(r => setTimeout(r, 0));
     // 1. Parse CSV
     const csvData = state.csvData;
     if (!csvData || !csvData.length) {
@@ -3761,7 +3762,12 @@ async function launchSimulation() {
           tasks.push(fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []));
         }
       }
-      const results = await Promise.all(tasks);
+      let _done = 0;
+      const results = await Promise.all(tasks.map(t => t.then(r => {
+        _done++;
+        _sp(45 + Math.round(_done / Math.max(tasks.length, 1) * 23), null, null);
+        return r;
+      })));
       results.forEach(rows => rows.forEach(r => {
         if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
         if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
@@ -3857,6 +3863,7 @@ async function launchSimulation() {
       return extra.length ? [...exact, ...extra] : exact;
     }
 
+    await _yield(); _sp(75, '// Équivalences indexées', 'Construction des scénarios…');
     // 3. Natural ref map (no lab preference) + current lab CA breakdown
     const naturalRefMap = new Map();
     refRows.forEach(r => { if (!naturalRefMap.has(r.cip13)) naturalRefMap.set(r.cip13, r); });
@@ -4067,6 +4074,7 @@ async function launchSimulation() {
       return { labResults, totalRemise, totalCA, totalPaNet: totalCA - totalRemise };
     }
 
+    await _yield(); _sp(82, '// Scénario actuel calculé', 'Optimisation des affectations…');
     // 6a. Scénario N-1 : CIP → premier match Supabase, RSF uniquement
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
@@ -4172,6 +4180,7 @@ async function launchSimulation() {
 
       labScenarios.push({ name: labName, scenario: calcScenario(labAssignment), assignment: labAssignment });
     });
+    await _yield(); _sp(90, '// Scénarios par labo', 'Calcul des combinaisons…');
 
     // 6e. Helper : assignment "focus labo principal + meilleur RSF pour le reste"
     function buildFocusAssignment(primaryLab) {
@@ -4468,6 +4477,7 @@ async function launchSimulation() {
     allOptScenarios.length = 0;
     allOptScenarios.push(..._deduped);
     allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
+    await _yield(); _sp(96, '// Classement final', 'Préparation de l\'affichage…');
     const [winnerEntry, ...otherScenarios] = allOptScenarios;
     const winnerSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
     const totalScenarios = 1 + allOptScenarios.length;
