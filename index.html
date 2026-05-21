@@ -1730,6 +1730,7 @@ document.querySelectorAll('.main-tab').forEach(btn => {
         document.getElementById('btnConnecteur').click();
         return;
       }
+      goTo('csv');
       await launchComparateur();
     } else {
       goTo(page);
