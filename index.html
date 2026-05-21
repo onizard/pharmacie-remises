@@ -4662,6 +4662,11 @@ async function launchSimulation() {
           const caAvailable = candidates.reduce((s, c) => s + c.rowCA, 0);
           const caFallback  = fallback.reduce((s, c) => s + c.rowCA, 0);
 
+          // Retirer tous les candidats Lab 1 de l'assignment initial :
+          // les refs déjà achetées chez Lab 1 resteraient sinon assignées par défaut
+          // et s'additionneraient au CA greedy, dépassant le palier cible.
+          [...candidates, ...fallback].forEach(({ row }) => assignment.delete(row.cip13));
+
           // Phase 1 : refs prioritaires (RSF > 2.5%), triées par économie décroissante
           candidates.sort((a, b) => b.savings - a.savings);
           let accCA = 0, assignedCount = 0, fallbackUsed = 0;
