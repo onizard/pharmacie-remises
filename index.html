@@ -2424,6 +2424,7 @@ function initLabPage(conf) {
   const euid         = conf.euid         || s.uid;
   const year         = conf.year         || '2026';
   const savedCondKey = conf.savedCondKey || condKey;
+  const fetchFn      = year === '2025' ? fetchRSF2025 : fetchRSF;
   const uid = euid;
   const el  = {
     condTabs:   document.getElementById(conf.condTabsId),
@@ -2835,7 +2836,7 @@ function initLabPage(conf) {
     el.loading.classList.add('visible');
 
     try {
-      const { paliers, firstMap } = await fetchRSF(lab);
+      const { paliers, firstMap } = await fetchFn(lab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
       s[condKey][0].rsfValues = mkRsfValues(lab, paliers);
@@ -2861,7 +2862,7 @@ function initLabPage(conf) {
     if (!s.selectedLab) return;
     el.loading.classList.add('visible');
     try {
-      const { paliers, firstMap } = await fetchRSF(s.selectedLab);
+      const { paliers, firstMap } = await fetchFn(s.selectedLab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
       s[condKey].forEach(cond => {
@@ -2895,7 +2896,7 @@ function initLabPage(conf) {
     el.condTabs.classList.remove('visible');
     el.loading.classList.add('visible');
     try {
-      const { paliers, firstMap } = await fetchRSF(lab);
+      const { paliers, firstMap } = await fetchFn(lab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
       (savedLabData[savedCondKey] || []).forEach((sc, idx) => {
@@ -2979,6 +2980,23 @@ async function fetchRSF(lab) {
     if (best !== null) firstMap.set(rsf_pct, best);
   });
   return { paliers, firstMap };
+}
+
+async function fetchRSF2025(lab) {
+  const url = `${SUPA_URL}/rest/v1/rpc/get_rsf_paliers`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_labo: lab, p_year: 2025 })
+  });
+  if (!res.ok) {
+    console.warn('get_rsf_paliers non disponible, fallback references_pharmacie');
+    return fetchRSF(lab);
+  }
+  const data = await res.json();
+  if (!data.length) return fetchRSF(lab);
+  const paliers = data.map(r => parseFloat(r.rsf_pct)).sort((a, b) => a - b);
+  return { paliers, firstMap: new Map() };
 }
 
 function buildRowExceptBlock(rsf_pct, exc, labName = '') {
