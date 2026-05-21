@@ -679,11 +679,11 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                 return "no-picker";
             }}''')
             print(f"  [{lbl}] picker-open: {picker_res}")
-            # Attente adaptative : jusqu'à 2s pour que le panel/popup se rende
+            # Attente que le popup se rende (my_datepicker + startDate + endDate)
             page.wait_for_timeout(1500)
 
-            # Log vues webix après ouverture du picker (diagnostic, 1 seul appel)
-            if not _webix_views_logged or True:
+            # Log vues webix après ouverture du picker (1 seul appel)
+            if lbl == f"{start_year}-{start_month:02d}":
                 try:
                     _pv = page.evaluate('''() => {
                         if (typeof webix === "undefined") return [];
@@ -706,71 +706,81 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
                     pass
 
             if picker_res != "no-picker":
-                # Chercher option "Personnalisé" / "Custom"
-                # Priorité : (1) Webix API sur filters, (2) DOM de filters.$view, (3) page entière
-                custom = page.evaluate('''() => {
-                    const kws = ["personnalis","custom","saisir","libre","plage","choisir","manuel"];
-                    // 1. Webix API sur le composant filters
-                    if (typeof webix !== "undefined") {
-                        const fl = webix.$$("filters");
-                        if (fl) {
-                            const items = fl.serialize ? fl.serialize()
-                                        : (fl.data?.serialize ? fl.data.serialize() : []);
-                            for (const item of items) {
-                                const t = (item.value || item.label || item.$value || String(item.id||"")).toLowerCase();
-                                if (kws.some(k => t.includes(k))) {
-                                    try { fl.select(item.id); } catch(_) {}
-                                    try { fl.callEvent("onItemClick", [item.id]); } catch(_) {}
-                                    try {
-                                        const node = fl.getItemNode ? fl.getItemNode(item.id) : null;
-                                        if (node) node.click();
-                                    } catch(_) {}
-                                    return "fl-api:" + t.slice(0, 25);
-                                }
-                            }
-                            // 2. DOM de filters.$view
-                            if (fl.$view) {
-                                for (const el of fl.$view.querySelectorAll("*")) {
-                                    if (el.children.length > 0) continue;
-                                    const r = el.getBoundingClientRect();
-                                    if (r.width < 1 || r.height < 1) continue;
-                                    const t = el.textContent.trim().toLowerCase();
-                                    if (kws.some(k => t.includes(k))) { el.click(); return "fl-dom:" + t.slice(0, 25); }
-                                }
-                            }
-                        }
-                    }
-                    // 3. Popups/windows ouverts
-                    for (const el of document.querySelectorAll(
-                        ".webix_popup *,.webix_window *,.webix_modal *"
-                    )) {
-                        if (el.children.length > 0) continue;
-                        const r = el.getBoundingClientRect();
-                        if (r.width < 1 || r.height < 1) continue;
-                        const t = el.textContent.trim().toLowerCase();
-                        if (kws.some(k => t.includes(k))) { el.click(); return "popup:" + t.slice(0, 25); }
-                    }
-                    // 4. Page entière en dernier recours
-                    for (const el of document.querySelectorAll("*")) {
-                        if (el.children.length > 0) continue;
-                        const r = el.getBoundingClientRect();
-                        if (r.width < 1 || r.height < 1) continue;
-                        const t = el.textContent.trim().toLowerCase();
-                        if (kws.some(k => t.includes(k))) { el.click(); return "page:" + t.slice(0, 25); }
-                    }
-                    return null;
-                }''')
-                if custom:
-                    print(f"  [{lbl}] custom: {custom}")
-                    # Attendre que le calendrier ou des inputs apparaissent
-                    try:
-                        page.wait_for_selector(
-                            '.webix_cal_month_name,[class*="cal_month"],'
-                            'input[type=date],input[placeholder*="date" i]',
-                            timeout=3_000,
-                        )
-                    except Exception:
-                        page.wait_for_timeout(800)
+                # ── Approche A-dp : Webix datepicker startDate/endDate setValue ──
+                # Le popup my_datepicker[popup] contient startDate[datepicker] et
+                # endDate[datepicker]. On set les valeurs via Webix API puis on
+                # tente de fermer le popup pour déclencher onHide → reload serveur.
+                dp_result = page.evaluate(f'''([yr, mo, ld]) => {{
+                    if (typeof webix === "undefined") return "no-webix";
+                    const sd = webix.$$("startDate");
+                    const ed = webix.$$("endDate");
+                    const dp = webix.$$("my_datepicker");
+                    if (!sd || !ed) return "no-sd-ed";
+
+                    const start = new Date(yr, mo - 1, 1);
+                    const end   = new Date(yr, mo - 1, ld);
+
+                    // Setter les valeurs
+                    try {{ sd.setValue(start); }} catch(_) {{}}
+                    try {{ if (sd.callEvent) sd.callEvent("onChange", [start, null]); }} catch(_) {{}}
+                    try {{ ed.setValue(end); }} catch(_) {{}}
+                    try {{ if (ed.callEvent) ed.callEvent("onChange", [end, null]); }} catch(_) {{}}
+
+                    // Chercher bouton Valider/OK/Appliquer dans le popup
+                    const kws = ["valider","ok","appliquer","apply","rechercher","confirmer"];
+                    if (dp && dp.$view) {{
+                        for (const el of dp.$view.querySelectorAll(
+                            "button,[role=button],.webix_button,[view_id]"
+                        )) {{
+                            const r = el.getBoundingClientRect();
+                            if (r.width < 1 || r.height < 1) continue;
+                            const t = (el.textContent || "").trim().toLowerCase();
+                            if (kws.some(k => t === k || t.startsWith(k))) {{
+                                el.click(); return "btn-click:" + t.slice(0, 20);
+                            }}
+                        }}
+                        // Webix button views dans le popup
+                        for (const el of dp.$view.querySelectorAll("[view_id]")) {{
+                            const vid = el.getAttribute("view_id");
+                            if (!vid) continue;
+                            try {{
+                                const v = webix.$$(vid);
+                                if (!v || v.name !== "button") continue;
+                                const lbl_ = (v.config?.label || "").toLowerCase();
+                                const r = el.getBoundingClientRect();
+                                if (r.width < 1 || r.height < 1) continue;
+                                if (kws.some(k => lbl_.includes(k))) {{
+                                    el.click(); return "wx-btn:" + lbl_.slice(0, 20);
+                                }}
+                            }} catch(_) {{}}
+                        }}
+                    }}
+                    // Pas de bouton : fermer le popup pour déclencher onHide
+                    try {{ if (dp && dp.hide) dp.hide(); }} catch(_) {{}}
+                    return "hide-popup";
+                }}''', [year, month, last_day])
+                print(f"  [{lbl}] dp-set: {dp_result}")
+
+                if dp_result not in ("no-webix", "no-sd-ed"):
+                    page.wait_for_timeout(500)
+                    _wait_data_reload()
+                    cnt_after  = _dt_row_count()
+                    xhr_delta  = len(_xhr_log) - xhr_before
+                    print(f"  [{lbl}] dt: {cnt_before}→{cnt_after} | xhr-delta: {xhr_delta}")
+                    if xhr_delta > 0:
+                        print(f"  [{lbl}] xhr-urls: {_xhr_log[xhr_before:xhr_before+3]}")
+                        return start_iso, end_iso
+                    # Pas de XHR : essayer de cliquer l'input startDate pour ouvrir
+                    # le calendrier interne, le naviguer, puis faire pareil pour endDate
+                    print(f"  [{lbl}] dp-set: pas de XHR — tentative clic calendrier interne")
+                    page.evaluate('''() => {
+                        const dp = webix.$$("my_datepicker");
+                        if (dp && dp.show) dp.show();
+                        const sd = webix.$$("startDate");
+                        if (!sd || !sd.$view) return;
+                        (sd.$view.querySelector(".webix_inp_static, input") || sd.$view).click();
+                    }''')
+                    page.wait_for_timeout(600)
 
                 # Remplir les inputs de date visibles
                 filled = page.evaluate('''([sf, ef]) => {
