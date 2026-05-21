@@ -4576,23 +4576,115 @@ async function launchSimulation() {
     });
 
     function calcCustomScenario(priorities) {
-      const active    = priorities.filter(Boolean);
+      const active     = priorities.filter(Boolean);
       const assignment = new Map(naturalAssignment);
       const cipLocked  = new Set();
+      let   lab1Info   = null;
 
-      active.forEach((labName) => {
-        // Affecter TOUTES les refs équivalentes disponibles à ce labo (par ordre de priorité)
-        // Fonctionne même sans labPage (conditions non renseignées → RSF de base appliqué)
-        csvData.forEach(row => {
-          if (cipLocked.has(row.cip13)) return;
-          const ref = naturalRefMap.get(row.cip13);
-          if (!ref) return;
-          const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
-          if (!labRef) return;
-          assignment.set(row.cip13, labRef);
-          cipLocked.add(row.cip13);
+      if (active.length <= 1) {
+        // ── Mode 1 : affecter TOUTES les refs équivalentes du labo choisi ─────
+        active.forEach(labName => {
+          csvData.forEach(row => {
+            if (cipLocked.has(row.cip13)) return;
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
+            if (!labRef) return;
+            assignment.set(row.cip13, labRef);
+            cipLocked.add(row.cip13);
+          });
         });
-      });
+      } else {
+        // ── Mode 2+ : Lab 1 stratégique jusqu'au palier cible, Labs 2+ séquentiels ─
+        const [lab1Name, ...restLabs] = active;
+        const lp1 = state.labPages.find(lp => lp.selectedLab === lab1Name);
+
+        // Palier cible = condition avec remiseGlobale la plus élevée
+        const targetCond = lp1?.conditions?.length
+          ? lp1.conditions.reduce((best, c) =>
+              parseFloat(c.remiseGlobale || 0) > parseFloat(best?.remiseGlobale || 0) ? c : best, null)
+          : null;
+        const targetCA = parseFloat(targetCond?.caCondition || 0);
+
+        if (targetCA > 0) {
+          // Calculer la rentabilité de chaque ref pour Lab 1 vs alternatives
+          const lab1Cond = getBestCond(lp1, Infinity, true);
+          const _ca1 = parseFloat(lab1Cond?.caCondition) || 0;
+          const fm1  = state.gers != null && _ca1 > 0 && _ca1 >= 0.9 * state.gers;
+
+          const candidates = [];
+          csvData.forEach(row => {
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const lab1Ref = mergedAlts(ref.libelle).find(a => a.labo === lab1Name);
+            if (!lab1Ref) return;
+            const lab1Net = (lab1Ref.puht || 0) * (1 - getRemise(lab1Ref, lab1Cond, fm1) / 100);
+            // Meilleur prix net parmi les labos alternatifs configurés
+            let altBestNet = lab1Net;
+            mergedAlts(ref.libelle)
+              .filter(a => a.labo !== lab1Name && ourLabs.has(a.labo))
+              .forEach(altRef => {
+                const altLp  = state.labPages.find(l => l.selectedLab === altRef.labo);
+                if (!altLp) return;
+                const altCond = getBestCond(altLp, Infinity, true);
+                const _altCA  = parseFloat(altCond?.caCondition) || 0;
+                const altFm   = state.gers != null && _altCA > 0 && _altCA >= 0.9 * state.gers;
+                const altNet  = (altRef.puht || 0) * (1 - getRemise(altRef, altCond, altFm) / 100);
+                if (altNet < altBestNet) altBestNet = altNet;
+              });
+            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || lab1Ref.puht || 0;
+            candidates.push({
+              row, lab1Ref,
+              savings: (altBestNet - lab1Net) * row.qty,  // > 0 → Lab 1 moins cher
+              rowCA:   rowPuht * row.qty,
+            });
+          });
+
+          // Trier par économie décroissante (refs où Lab 1 est le plus avantageux en premier)
+          candidates.sort((a, b) => b.savings - a.savings);
+
+          // Greedy : affecter jusqu'à atteindre targetCA
+          let accCA = 0, assignedCount = 0;
+          for (const { row, lab1Ref, rowCA } of candidates) {
+            if (accCA >= targetCA) break;
+            assignment.set(row.cip13, lab1Ref);
+            cipLocked.add(row.cip13);
+            accCA += rowCA;
+            assignedCount++;
+          }
+          lab1Info = {
+            labName:    lab1Name,
+            assignedCount,
+            accCA,
+            targetCA,
+            remiseGlobale: targetCond.remiseGlobale,
+          };
+        } else {
+          // Pas de caCondition → affecter toutes les refs Lab 1 (fallback)
+          csvData.forEach(row => {
+            if (cipLocked.has(row.cip13)) return;
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const labRef = mergedAlts(ref.libelle).find(a => a.labo === lab1Name);
+            if (!labRef) return;
+            assignment.set(row.cip13, labRef);
+            cipLocked.add(row.cip13);
+          });
+        }
+
+        // Labs 2, 3, 4 : toutes les refs restantes en séquence
+        restLabs.forEach(labName => {
+          csvData.forEach(row => {
+            if (cipLocked.has(row.cip13)) return;
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
+            if (!labRef) return;
+            assignment.set(row.cip13, labRef);
+            cipLocked.add(row.cip13);
+          });
+        });
+      }
 
       // Refs non couvertes → meilleur prix net
       csvData.forEach(row => {
@@ -4613,25 +4705,33 @@ async function launchSimulation() {
         assignment.set(row.cip13, bestRef || ref);
       });
 
-      return { scenario: calcScenario(assignment), assignment };
+      return { scenario: calcScenario(assignment), assignment, lab1Info };
     }
 
     document.getElementById('customSimBtn')?.addEventListener('click', () => {
       const priorities = [1,2,3,4].map(n => document.getElementById(`customLabSel${n}`)?.value || '');
       const resDiv = document.getElementById('customSimResult');
       if (!resDiv) return;
-      const { scenario, assignment } = calcCustomScenario(priorities);
+      const { scenario, assignment, lab1Info } = calcCustomScenario(priorities);
       const gain = actuel.totalPaNet - scenario.totalPaNet;
       const key  = 'custom';
       scenarioStore.set(key, { assignment, labResults: scenario.labResults });
       const dlInline = mkScenarioDlBtns(key, scenario, assignment);
 
+      const lab1Banner = lab1Info ? `
+        <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);margin-bottom:10px;padding:6px 10px;border-left:2px solid var(--amber)">
+          // ${lab1Info.labName} : <span style="color:var(--cyan)">${lab1Info.assignedCount} refs</span> sélectionnées
+          &nbsp;·&nbsp; CA affecté : <span style="color:var(--cyan)">${fmtE(lab1Info.accCA)}</span>
+          &nbsp;·&nbsp; Palier cible : <span style="color:var(--green)">${lab1Info.remiseGlobale}%</span> remise globale
+          &nbsp;(seuil ${fmtE(lab1Info.targetCA)})
+        </div>` : '';
 
       resDiv.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
           <span style="font-family:'Orbitron',monospace;font-size:12px;color:var(--amber);letter-spacing:2px">RÉSULTAT — PA NET : ${fmtE(scenario.totalPaNet)} &nbsp;·&nbsp; GAIN vs ACTUEL : <span style="color:${gain>=0?'var(--green)':'var(--red)'}">${gain>=0?'+':''}${fmtE(gain)}</span></span>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${dlInline}</div>
         </div>
+        ${lab1Banner}
         ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}`;
       resDiv.style.display = '';
       resDiv.querySelectorAll('.sim-dl-inline').forEach(btn => {
