@@ -772,7 +772,11 @@
 .conn-save { display: block; width: 100%; margin-top: 22px; font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; padding: 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); transition: all .2s; }
   .conn-save:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
   .conn-connected-view { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px 16px; text-align: center; min-height: 180px; }
-  .conn-check-big { font-size: 52px; color: var(--green); filter: drop-shadow(0 0 10px rgba(0,255,136,.45)); line-height: 1; }
+  .conn-check-big { display:flex; align-items:center; justify-content:center; width:56px; height:56px; }
+  .conn-check-tick { font-size: 52px; color: var(--green); filter: drop-shadow(0 0 10px rgba(0,255,136,.45)); line-height: 1; }
+  .conn-check-ring { display:none; width:48px; height:48px; border-radius:50%; border:4px solid rgba(0,255,136,.2); border-top-color:var(--green); animation:spin .9s linear infinite; }
+  .conn-check-big.loading .conn-check-ring { display:block; }
+  .conn-check-big.loading .conn-check-tick { display:none; }
   .conn-connected-name { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--green); }
   .conn-connected-user-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); }
   .conn-job-status { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: .5px; margin-top: 2px; min-height: 16px; }
@@ -1123,7 +1127,7 @@
             </div>
           </div>
           <div class="conn-connected-view" id="digiConnView" style="display:none">
-            <div class="conn-check-big">✓</div>
+            <div class="conn-check-big" id="digiCheckBig"><div class="conn-check-ring"></div><span class="conn-check-tick">✓</span></div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="conn-test-btn" id="digiRefreshBtn" style="display:none">RAFRAÎCHIR</button>
@@ -1157,7 +1161,7 @@
             </div>
           </div>
           <div class="conn-connected-view" id="ospConnView" style="display:none">
-            <div class="conn-check-big">✓</div>
+            <div class="conn-check-big" id="ospCheckBig"><div class="conn-check-ring"></div><span class="conn-check-tick">✓</span></div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
             <button class="conn-test-btn" id="ospRefreshBtn" style="display:none">RAFRAÎCHIR</button>
@@ -5767,10 +5771,13 @@ function initConnecteurModal() {
   }
 
   const _jobRefreshMap = { ospJobStatus: 'ospRefreshBtn', digiJobStatus: 'digiRefreshBtn' };
+  const _jobCheckMap   = { ospJobStatus: 'ospCheckBig',  digiJobStatus: 'digiCheckBig' };
 
   function _setJobStatusEl(elId, cls, text) {
     const el = document.getElementById(elId);
     if (!el) return;
+    const checkEl = document.getElementById(_jobCheckMap[elId]);
+    if (checkEl) checkEl.classList.toggle('loading', cls === 'running');
     el.className = `conn-job-status ${cls}`;
     const refreshBtn = document.getElementById(_jobRefreshMap[elId]);
     if (refreshBtn) refreshBtn.style.display = cls === 'error' ? '' : 'none';
