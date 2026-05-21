@@ -4619,29 +4619,11 @@ async function launchSimulation() {
           const _ca1 = parseFloat(lab1Cond?.caCondition) || 0;
           const fm1  = state.gers != null && _ca1 > 0 && _ca1 >= 0.9 * state.gers;
 
-          // Palier RSF minimal jugé non rentable pour Lab 1 (exclusion explicite → Lab 2)
-          // Biogaran RSF 2.5% → RDP 0% = aucune remise en plus du RSF de base → exclure
+          // Palier RSF minimal : préférence pour Lab 2, mais utilisé en secours si CA insuffisant
           const EXCL_RSF_PCT = 2.5;
 
-          const candidates = [];
-          let caExcluded = 0, nExcluded = 0;
-          csvData.forEach(row => {
-            const ref = naturalRefMap.get(row.cip13);
-            if (!ref) return;
-            const lab1Ref = mergedAlts(ref.libelle).find(a => a.labo === lab1Name);
-            if (!lab1Ref) return;
-            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || lab1Ref.puht || 0;
-            const rowCA   = rowPuht * row.qty;
-
-            // Refs au palier RSF le moins rentable → exclues du lot Lab 1, comptées séparément
-            if (Math.abs(parseFloat(lab1Ref.rsf_pct) || 0) <= EXCL_RSF_PCT) {
-              caExcluded += rowCA;
-              nExcluded++;
-              return;
-            }
-
-            const lab1Net = (lab1Ref.puht || 0) * (1 - getRemise(lab1Ref, lab1Cond, fm1) / 100);
-            // Meilleur prix net parmi les labos alternatifs configurés
+          // Fonction utilitaire : calcule savings(Lab1 vs meilleures alternatives)
+          const computeSavings = (ref, lab1Ref, lab1Net, row) => {
             let altBestNet = lab1Net;
             mergedAlts(ref.libelle)
               .filter(a => a.labo !== lab1Name && ourLabs.has(a.labo))
@@ -4654,26 +4636,54 @@ async function launchSimulation() {
                 const altNet  = (altRef.puht || 0) * (1 - getRemise(altRef, altCond, altFm) / 100);
                 if (altNet < altBestNet) altBestNet = altNet;
               });
-            candidates.push({
-              row, lab1Ref,
-              savings: (altBestNet - lab1Net) * row.qty,
-              rowCA,
-            });
+            return (altBestNet - lab1Net) * row.qty;
+          };
+
+          const candidates = [];   // refs RSF > EXCL_RSF_PCT
+          const fallback   = [];   // refs RSF ≤ EXCL_RSF_PCT (secours si CA insuffisant)
+
+          csvData.forEach(row => {
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const lab1Ref = mergedAlts(ref.libelle).find(a => a.labo === lab1Name);
+            if (!lab1Ref) return;
+            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || lab1Ref.puht || 0;
+            const rowCA   = rowPuht * row.qty;
+            const lab1Net = (lab1Ref.puht || 0) * (1 - getRemise(lab1Ref, lab1Cond, fm1) / 100);
+            const savings = computeSavings(ref, lab1Ref, lab1Net, row);
+
+            if (Math.abs(parseFloat(lab1Ref.rsf_pct) || 0) <= EXCL_RSF_PCT) {
+              fallback.push({ row, lab1Ref, savings, rowCA });
+            } else {
+              candidates.push({ row, lab1Ref, savings, rowCA });
+            }
           });
 
           const caAvailable = candidates.reduce((s, c) => s + c.rowCA, 0);
+          const caFallback  = fallback.reduce((s, c) => s + c.rowCA, 0);
 
-          // Trier par économie décroissante (refs où Lab 1 est le plus avantageux en premier)
+          // Phase 1 : refs prioritaires (RSF > 2.5%), triées par économie décroissante
           candidates.sort((a, b) => b.savings - a.savings);
-
-          // Greedy : affecter jusqu'à atteindre targetCA
-          let accCA = 0, assignedCount = 0;
+          let accCA = 0, assignedCount = 0, fallbackUsed = 0;
           for (const { row, lab1Ref, rowCA } of candidates) {
             if (accCA >= targetCA) break;
             assignment.set(row.cip13, lab1Ref);
             cipLocked.add(row.cip13);
             accCA += rowCA;
             assignedCount++;
+          }
+
+          // Phase 2 : si CA cible pas atteint, compléter avec les refs RSF ≤ 2.5% (secours)
+          if (accCA < targetCA) {
+            fallback.sort((a, b) => b.savings - a.savings);
+            for (const { row, lab1Ref, rowCA } of fallback) {
+              if (accCA >= targetCA) break;
+              assignment.set(row.cip13, lab1Ref);
+              cipLocked.add(row.cip13);
+              accCA += rowCA;
+              assignedCount++;
+              fallbackUsed++;
+            }
           }
           lab1Info = {
             labName:    lab1Name,
@@ -4682,8 +4692,8 @@ async function launchSimulation() {
             targetCA,
             remiseGlobale: targetCond.remiseGlobale,
             caAvailable,
-            caExcluded,
-            nExcluded,
+            caFallback,
+            fallbackUsed,
             exclRsf: EXCL_RSF_PCT,
           };
         } else {
@@ -4748,13 +4758,15 @@ async function launchSimulation() {
       const lab1Banner = lab1Info ? (() => {
         const reached = lab1Info.accCA >= lab1Info.targetCA * 0.99;
         const caColor = reached ? 'var(--green)' : 'var(--red)';
-        const exclLine = lab1Info.caExcluded > 0
-          ? `&nbsp;·&nbsp; RSF ≤${lab1Info.exclRsf}% exclus → Lab 2 : <span style="color:var(--amber)">${lab1Info.nExcluded} refs</span> / <span style="color:var(--amber)">${fmtE(lab1Info.caExcluded)}</span>`
-          : '';
         const availLine = `&nbsp;·&nbsp; CA dispo (hors ${lab1Info.exclRsf}%) : <span style="color:var(--cyan)">${fmtE(lab1Info.caAvailable)}</span>`;
+        const fallbackLine = lab1Info.fallbackUsed > 0
+          ? `&nbsp;·&nbsp; Secours RSF ${lab1Info.exclRsf}% utilisé : <span style="color:var(--amber)">${lab1Info.fallbackUsed} refs</span> ajoutées pour atteindre la cible`
+          : lab1Info.caFallback > 0
+            ? `&nbsp;·&nbsp; RSF ${lab1Info.exclRsf}% → Lab 2 : <span style="color:var(--cyan)">${fmtE(lab1Info.caFallback)}</span> CA`
+            : '';
         return `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);margin-bottom:10px;padding:8px 12px;border-left:2px solid var(--amber);line-height:1.8">
           // ${lab1Info.labName} : <span style="color:var(--cyan)">${lab1Info.assignedCount} refs</span> → CA : <span style="color:${caColor}">${fmtE(lab1Info.accCA)}</span> / cible <span style="color:var(--cyan)">${fmtE(lab1Info.targetCA)}</span> <span style="color:${caColor}">${reached ? '✓' : '✗ insuffisant'}</span>
-          &nbsp;·&nbsp; Palier visé : <span style="color:var(--green)">${lab1Info.remiseGlobale}%</span> remise globale${availLine}${exclLine}
+          &nbsp;·&nbsp; Palier visé : <span style="color:var(--green)">${lab1Info.remiseGlobale}%</span> remise globale${availLine}${fallbackLine}
         </div>`;
       })() : '';
 
