@@ -4587,6 +4587,8 @@ async function launchSimulation() {
       const assignment = new Map(naturalAssignment);
       const cipLocked  = new Set();
       let   lab1Info   = null;
+      let   lab1ExcludedName = null;
+      const lab1ExcludedSet  = new Set();
 
       if (active.length <= 1) {
         // ── Mode 1 : affecter TOUTES les refs équivalentes du labo choisi ─────
@@ -4690,6 +4692,13 @@ async function launchSimulation() {
               fallbackUsed++;
             }
           }
+          // Refs qui avaient Lab 1 disponible mais n'ont pas été sélectionnées
+          // → Lab 1 interdit dans le fallback best-net pour éviter le re-assign
+          lab1ExcludedName = lab1Name;
+          [...candidates, ...fallback].forEach(({ row }) => {
+            if (!cipLocked.has(row.cip13)) lab1ExcludedSet.add(row.cip13);
+          });
+
           lab1Info = {
             labName:    lab1Name,
             assignedCount,
@@ -4729,11 +4738,16 @@ async function launchSimulation() {
       }
 
       // Refs non couvertes → meilleur prix net
+      // lab1ExcludedSet : refs qui avaient Lab 1 disponible mais non sélectionnées
+      // → on leur interdit Lab 1 ici pour éviter de gonfler son CA
       csvData.forEach(row => {
         if (cipLocked.has(row.cip13)) return;
         const ref = naturalRefMap.get(row.cip13);
         if (!ref) return;
-        const alts = mergedAlts(ref.libelle).filter(r => ourLabs.has(r.labo));
+        const alts = mergedAlts(ref.libelle).filter(r =>
+          ourLabs.has(r.labo) &&
+          !(lab1ExcludedSet.has(row.cip13) && r.labo === lab1ExcludedName)
+        );
         if (!alts.length) { if (!assignment.has(row.cip13)) assignment.set(row.cip13, ref); return; }
         let bestRef = null, bestNet = Infinity;
         alts.forEach(altRef => {
