@@ -1226,101 +1226,20 @@
       <div class="lab-grid" id="labGridMain"></div>
       <div id="labsContainer"></div>
       <div class="btn-row">
-        <button class="btn btn-primary admin-only" id="btnImporter" disabled style="display:none">IMPORTER MES FICHIERS &nbsp;›</button>
       </div>
     </div>
   </div>
 
   <!-- ── PAGE CSV : Achats N-1 ── -->
-  <div id="page-csv" class="page">
-    <div class="panel">
-      <div class="panel-title">◈ Mes ventes génériques actuelles</div>
-      <div class="panel-sub">// Importation du fichier CSV — liste des médicaments vendus sur l'exercice précédent</div>
-
-      <div class="comp-error-banner" id="compErrorBanner">
-        <span class="comp-error-msg" id="compErrorMsg"></span>
-        <button class="btn-refresh-comp" id="compRefreshBtn">↺ RAFRAÎCHIR LES DONNÉES</button>
-      </div>
-
-      <input type="file" id="csvInput" accept=".csv,.txt,.xlsx,.pdf" style="display:none" />
-      <div class="dropzone" id="dropzone">
-        <div class="dropzone-default">
-          <div class="dropzone-icon">⬡</div>
-          <div class="dropzone-label">GLISSER-DÉPOSER LE FICHIER</div>
-          <div class="dropzone-hint">ou cliquer pour parcourir &nbsp;·&nbsp; formats acceptés : .csv .xlsx .txt .pdf</div>
-        </div>
-        <div class="dropzone-success">
-          <svg viewBox="0 0 180 120" width="180" height="120" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated;display:block;overflow:visible">
-            <defs>
-              <filter id="pxglow" x="-40%" y="-40%" width="180%" height="180%">
-                <feGaussianBlur stdDeviation="5" result="blur"/>
-                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-              </filter>
-            </defs>
-            <g fill="#00ff88" filter="url(#pxglow)">
-              <rect x="140" y="0"   width="20" height="20"/>
-              <rect x="160" y="0"   width="20" height="20"/>
-              <rect x="120" y="20"  width="20" height="20"/>
-              <rect x="140" y="20"  width="20" height="20"/>
-              <rect x="0"   y="40"  width="20" height="20"/>
-              <rect x="100" y="40"  width="20" height="20"/>
-              <rect x="120" y="40"  width="20" height="20"/>
-              <rect x="0"   y="60"  width="20" height="20"/>
-              <rect x="20"  y="60"  width="20" height="20"/>
-              <rect x="80"  y="60"  width="20" height="20"/>
-              <rect x="100" y="60"  width="20" height="20"/>
-              <rect x="20"  y="80"  width="20" height="20"/>
-              <rect x="40"  y="80"  width="20" height="20"/>
-              <rect x="60"  y="80"  width="20" height="20"/>
-              <rect x="80"  y="80"  width="20" height="20"/>
-              <rect x="40"  y="100" width="20" height="20"/>
-              <rect x="60"  y="100" width="20" height="20"/>
-            </g>
-          </svg>
-          <div class="dropzone-ok-label">FICHIER VALIDÉ</div>
-          <div id="dropzone-filename" class="dropzone-ok-filename">—</div>
-        </div>
-      </div>
-
-      <div class="file-status" id="fileStatus">
-        <span id="fileStatusText">—</span>
-      </div>
-
-      <div style="margin-top:24px;">
-        <div class="term-line"><span class="prompt">INFO:</span><span class="val">Le fichier doit contenir au minimum une colonne CIP13 et une colonne quantité</span></div>
-        <div class="term-line"><span class="prompt">INFO:</span><span class="val">Encodage UTF-8 ou Latin-1 — séparateur ; ou ,</span></div>
-      </div>
-
-      <div style="margin-top:28px;padding-top:20px;border-top:1px solid rgba(0,229,255,.12)">
-        <div class="rg-label" style="font-size:12px;letter-spacing:2px;margin-bottom:14px">CHANGEMENT DE GÉNÉRIQUEUR N°1 EN COURS D'ANNÉE</div>
-        <div class="rsf-only-radios">
-          <label class="rsf-only-radio-lbl"><input type="radio" name="changementGen" id="changementGenNon" value="NON"> NON</label>
-          <label class="rsf-only-radio-lbl"><input type="radio" name="changementGen" id="changementGenOui" value="OUI"> OUI</label>
-        </div>
-        <div id="changementGenOptions" style="display:none;margin-top:16px;flex-wrap:wrap;gap:20px;align-items:flex-end">
-          <div>
-            <div class="rg-label" style="font-size:11px;margin-bottom:6px">NOUVEAU GÉNÉRIQUEUR N°1</div>
-            <select id="changementGenLab" class="rsf-input" style="width:200px;background:var(--bg-mid);color:var(--cyan);border-color:var(--border);cursor:pointer"><option value="">— Sélectionner —</option></select>
-          </div>
-          <div>
-            <div class="rg-label" style="font-size:11px;margin-bottom:6px">DATE DU CHANGEMENT</div>
-            <input type="date" id="changementGenDate" class="rsf-input" style="width:160px;color-scheme:dark" />
-          </div>
-          <div id="changementGenProrata" style="font-size:13px;color:var(--amber);font-family:'Share Tech Mono',monospace;padding-bottom:6px"></div>
-        </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn btn-launch" id="btn1Next" disabled>LANCER LA SIMULATION &nbsp;›</button>
-      </div>
-    </div>
-  </div>
-
   <!-- ── PAGE RÉSULTATS ── -->
   <div id="page-results" class="page">
     <div class="panel">
       <div class="panel-title">◈ Résultats de simulation</div>
       <div class="panel-sub">// Analyse des ventes sur les 12 derniers mois — voici le scenario à suivre pour vos achats futurs</div>
+      <div class="comp-error-banner" id="compErrorBanner">
+        <span class="comp-error-msg" id="compErrorMsg"></span>
+        <button class="btn-refresh-comp" id="compRefreshBtn">↺ RAFRAÎCHIR LES DONNÉES</button>
+      </div>
       <div id="simResults" style="margin-top:16px;"></div>
     </div>
   </div>
@@ -1425,13 +1344,12 @@ function mkLabState(uid) {
 }
 
 let state = {
-  csvFile: null, csvRows: 0, csvData: null,
+  csvRows: 0, csvData: null,
   gers: null,
   userProfile: null,
   connectors: { ospharm: { user: '', pass: '', connected: false }, digipharmacie: { user: '', pass: '', connected: false } },
   labPages: [],
   currentPageId: 'labs',
-  changementGeneriqueur: { enabled: false, labo: null, date: '' },
   prorataRatios: null,
   condTolerance: 1.0,
 };
@@ -1447,10 +1365,7 @@ function serializeState() {
     userProfile: state.userProfile || null,
     connectors: state.connectors,
     currentPageId: state.currentPageId,
-    changementGeneriqueur: state.changementGeneriqueur,
-    csvData:       isAdmin ? (state.csvData       || null) : null,
     csvRows:       isAdmin ? (state.csvRows       || 0)    : 0,
-    csvFileName:   isAdmin ? (state.csvFile?.name || null) : null,
     prorataRatios: isAdmin ? (state.prorataRatios || null) : null,
     monthStats:   state._monthStats   || null,
     monthMeta:    state._monthMeta    || null,
@@ -1688,7 +1603,7 @@ function goTo(pageId) {
 function updateMainTabs() {
   const activeTab = {
     recap: 'recap', labs: 'recap',
-    csv: 'comparateur', results: 'comparateur',
+    results: 'comparateur',
     verificateur: 'verificateur',
   }[state.currentPageId] || 'recap';
   document.querySelectorAll('.main-tab').forEach(btn => {
@@ -1730,7 +1645,7 @@ document.querySelectorAll('.main-tab').forEach(btn => {
         document.getElementById('btnConnecteur').click();
         return;
       }
-      goTo('csv');
+      goTo('results');
       await launchComparateur();
     } else {
       goTo(page);
@@ -1936,11 +1851,6 @@ async function launchComparateur() {
 // ── Step bar ───────────────────────────────────────────────────────────────────
 function renderStepBar() {
   document.getElementById('stepbar').innerHTML = '';
-  const btnImp = document.getElementById('btnImporter');
-  if (!btnImp) return;
-  if (!isAdmin) { btnImp.style.display = 'none'; return; }
-  btnImp.style.display = '';
-  btnImp.disabled = !state.labPages.some(lp => lp.selectedLab);
 }
 
 // ── Récap achats/ventes ────────────────────────────────────────────────────────
@@ -3881,12 +3791,7 @@ async function launchSimulation() {
 
     // Renvoie le meilleur palier (condition) atteignable pour un CA donné.
     // forceMarketMet=true → prend le palier avec le seuil le plus élevé sans vérifier le CA.
-    function getProrata(labName) {
-      const cg = state.changementGeneriqueur;
-      if (!cg.enabled || cg.labo !== labName || !cg.date) return 1;
-      const month = new Date(cg.date + 'T12:00:00').getMonth() + 1;
-      return (13 - month) / 12;
-    }
+    function getProrata(_labName) { return 1; }
 
     function getBestCondFromArray(conditions, ca, forceMarketMet = false) {
       if (!conditions?.length) return null;
@@ -4744,269 +4649,7 @@ async function launchSimulation() {
   }
 }
 
-// ── CSV page ───────────────────────────────────────────────────────────────────
-const dropzone   = document.getElementById('dropzone');
-const csvInput   = document.getElementById('csvInput');
-const fileStatus = document.getElementById('fileStatus');
-const btn1Next   = document.getElementById('btn1Next');
 
-const PDF_SERVER = 'http://localhost:5050';
-
-function applyParsedRows(file, rows, warnings = []) {
-  state.csvData = rows;
-  state.csvRows = rows.length;
-  document.getElementById('fileStatusText').textContent =
-    `FICHIER : ${file.name}  —  ${rows.length.toLocaleString('fr')} références détectées`;
-  fileStatus.classList.add('visible');
-  btn1Next.disabled = false;
-  dropzone.classList.add('loaded');
-  const fnLabel = document.getElementById('dropzone-filename');
-  if (fnLabel) fnLabel.textContent = `${file.name}  —  ${rows.length.toLocaleString('fr')} références`;
-  if (warnings.length) console.info('[PDF achats]', warnings.join('\n'));
-  saveState();
-}
-
-function colLetter(i) {
-  let s = '';
-  i++;
-  while (i > 0) { s = String.fromCharCode(64 + (i % 26 || 26)) + s; i = Math.floor((i - 1) / 26); }
-  return s;
-}
-
-function showColumnMapper(file, rawData) {
-  // rawData = tableau de tableaux (ligne 0 = en-têtes éventuels)
-  const preview = rawData.slice(0, 6);
-  const colCount = Math.max(...preview.map(r => r.length), 1);
-
-  // Options de sélection : lettre + valeur de la 1ère ligne
-  const firstRow = preview[0] || [];
-  const options = Array.from({ length: colCount }, (_, i) => {
-    const label = String(firstRow[i] || '').trim();
-    return `<option value="${i}">${colLetter(i)} ${label ? '— ' + label : ''}</option>`;
-  }).join('');
-  const optionsOpt = `<option value="">— Aucune (optionnel)</option>` + options;
-
-  // Tableau de prévisualisation
-  const thRow = Array.from({ length: colCount }, (_, i) =>
-    `<th>${colLetter(i)}</th>`).join('');
-  const tdRows = preview.map(row =>
-    `<tr>${Array.from({ length: colCount }, (_, i) =>
-      `<td title="${String(row[i] ?? '').replace(/"/g,'&quot;')}">${String(row[i] ?? '').slice(0, 24)}</td>`
-    ).join('')}</tr>`
-  ).join('');
-
-  const overlay = document.createElement('div');
-  overlay.className = 'col-map-overlay';
-  overlay.innerHTML = `
-    <div class="col-map-panel">
-      <div class="col-map-title">◈ CORRESPONDANCE DES COLONNES</div>
-      <div class="col-map-sub">Indiquez dans quelles colonnes se trouvent vos données — aperçu des premières lignes :</div>
-      <div style="overflow-x:auto;margin-bottom:22px">
-        <table class="col-map-preview">
-          <thead><tr class="col-map-hl">${thRow}</tr></thead>
-          <tbody>${tdRows}</tbody>
-        </table>
-      </div>
-      <div class="col-map-fields">
-        <div class="col-map-field">
-          <label>CIP / CODE ARTICLE <span>*</span></label>
-          <select id="cmCip">${options}</select>
-        </div>
-        <div class="col-map-field">
-          <label>QUANTITÉ <span>*</span></label>
-          <select id="cmQty">${options}</select>
-        </div>
-        <div class="col-map-field">
-          <label>LIBELLÉ <em>(optionnel)</em></label>
-          <select id="cmLib">${optionsOpt}</select>
-        </div>
-      </div>
-      <div class="col-map-err" id="cmErr"></div>
-      <div class="col-map-btns">
-        <button class="col-map-cancel" id="cmCancel">ANNULER</button>
-        <button class="col-map-ok" id="cmOk">VALIDER →</button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-
-  // Pré-sélection automatique selon la 1ère ligne
-  const hdr = firstRow.map(h => String(h || '').toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ''));
-  const autoIdx = (pats) => hdr.findIndex(h => pats.some(p => h.includes(p)));
-  const autoCip = autoIdx(['cip','ean','acl','code']);
-  const autoQty = autoIdx(['qte','qty','quant','nb','nombre']);
-  const autoLib = autoIdx(['lib','desig','article','nom','produit']);
-  if (autoCip >= 0) document.getElementById('cmCip').value = autoCip;
-  if (autoQty >= 0) document.getElementById('cmQty').value = autoQty;
-  if (autoLib >= 0) document.getElementById('cmLib').value = autoLib;
-
-  document.getElementById('cmCancel').addEventListener('click', () => overlay.remove());
-
-  document.getElementById('cmOk').addEventListener('click', () => {
-    const cipCol = parseInt(document.getElementById('cmCip').value);
-    const qtyCol = parseInt(document.getElementById('cmQty').value);
-    const libColRaw = document.getElementById('cmLib').value;
-    const libCol = libColRaw !== '' ? parseInt(libColRaw) : -1;
-    const errEl = document.getElementById('cmErr');
-
-    if (cipCol === qtyCol) {
-      errEl.textContent = '⚠ La colonne CIP et la colonne Quantité doivent être différentes.';
-      return;
-    }
-
-    // Cherche la ligne de départ des données (ignore si 1ère ligne = en-têtes non numériques)
-    const firstDataIdx = (() => {
-      if (rawData.length < 2) return 0;
-      const v = String(rawData[0][cipCol] || '').replace(/\D/g, '');
-      return v.length >= 7 ? 0 : 1; // si 1ère cellule CIP n'est pas numérique → c'est un header
-    })();
-
-    const rows = [];
-    for (let i = firstDataIdx; i < rawData.length; i++) {
-      const row = rawData[i];
-      const cip = String(row[cipCol] ?? '').replace(/\D/g, '');
-      const qty = parseFloat(String(row[qtyCol] ?? '0').replace(',', '.'));
-      if (cip.length >= 7 && qty > 0)
-        rows.push({ cip13: cip, qty, puhtCSV: null });
-    }
-
-    if (!rows.length) {
-      errEl.textContent = '⚠ Aucune ligne valide trouvée. Vérifiez les colonnes sélectionnées.';
-      return;
-    }
-
-    overlay.remove();
-    applyParsedRows(file, rows);
-  });
-}
-
-function handleFile(file) {
-  if (!file) return;
-  state.csvFile = file;
-  const isPDF  = /\.pdf$/i.test(file.name);
-  const isXlsx = /\.xlsx$/i.test(file.name);
-
-  if (isPDF) {
-    document.getElementById('fileStatusText').textContent = '⟳ Analyse du PDF en cours…';
-    fileStatus.classList.add('visible');
-    const fd = new FormData();
-    fd.append('file', file);
-    fetch(`${PDF_SERVER}/extract-achats`, { method: 'POST', body: fd })
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) {
-          document.getElementById('fileStatusText').textContent = `⚠ ${data.error}`;
-          return;
-        }
-        // Adapter le format server → format interne {cip13, qty}
-        const rows = (data.rows || []).map(r => ({
-          cip13: r.cip13, qty: r.qty, puhtCSV: null
-        }));
-        if (!rows.length) {
-          document.getElementById('fileStatusText').textContent =
-            '⚠ Aucune référence CIP/quantité trouvée dans le PDF. Vérifiez le format.';
-          return;
-        }
-        applyParsedRows(file, rows, data.warnings || []);
-      })
-      .catch(() => {
-        document.getElementById('fileStatusText').textContent =
-          '⚠ Serveur PDF indisponible. Lancez lancer.py puis réessayez.';
-      });
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = e => {
-    if (isXlsx) {
-      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-      showColumnMapper(file, rawData);
-    } else {
-      const rows = parseCSV(e.target.result);
-      applyParsedRows(file, rows);
-    }
-  };
-  if (isXlsx) reader.readAsArrayBuffer(file);
-  else reader.readAsText(file, 'utf-8');
-}
-
-function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 1) { state._csvDiag = 'Fichier vide.'; return []; }
-
-  const sep = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
-  const parseCell = c => c.trim().replace(/^"|"$/g, '');
-  const norm = h => h.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[\s"'_\-]+/g, '');
-
-  // ── Essai 1 : détection par en-têtes ──────────────────────────────────────
-  const hdrs = lines[0].split(sep).map(c => norm(parseCell(c)));
-  let cipCol  = hdrs.findIndex(h => /cip|ean13/.test(h));
-  let qtyCol  = hdrs.findIndex(h => /^(qte|qty|qt|quant|nbre?|nb|nombre)/.test(h));
-  let puhtCol = hdrs.findIndex(h => /puht|prixht|prixunit|prixu|pu$/.test(h));
-  let dataStart = 1;
-
-  // ── Essai 2 : détection par contenu (fichier sans en-tête ou en-tête non reconnu) ─
-  if (cipCol === -1 || qtyCol === -1) {
-    dataStart = 0;
-    cipCol = -1; qtyCol = -1; puhtCol = -1;
-
-    const sample = lines.slice(0, Math.min(10, lines.length))
-      .map(l => l.split(sep).map(parseCell));
-    const colCount = Math.max(...sample.map(r => r.length));
-
-    for (let col = 0; col < colCount; col++) {
-      const vals    = sample.map(r => (r[col] || '').replace(/\s/g, ''));
-      const cipHits = vals.filter(v => /^\d{7,13}$/.test(v)).length;
-      const numVals = vals.map(v => parseFloat(v.replace(',', '.')));
-      const allPos  = numVals.every(v => !isNaN(v) && v > 0);
-      const hasDec  = vals.some(v => /[.,]\d/.test(v));
-
-      if (cipCol === -1 && cipHits >= vals.length * 0.7) {
-        cipCol = col;
-      } else if (allPos && col !== cipCol) {
-        if (!hasDec && qtyCol  === -1) qtyCol  = col;
-        else if (hasDec && puhtCol === -1) puhtCol = col;
-      }
-    }
-
-    // dernier recours : toute colonne numérique non-CIP devient quantité
-    if (qtyCol === -1 && cipCol !== -1) {
-      const sample2 = lines.slice(0, Math.min(10, lines.length))
-        .map(l => l.split(sep).map(parseCell));
-      for (let col = 0; col < colCount; col++) {
-        if (col === cipCol || col === puhtCol) continue;
-        const numVals = sample2.map(r => parseFloat((r[col] || '').replace(',', '.')));
-        if (numVals.every(v => !isNaN(v) && v > 0)) { qtyCol = col; break; }
-      }
-    }
-  }
-
-  state._csvDiag = `sep:"${sep}" | colonnes brutes: [${hdrs.join(' | ')}] | cip=col${cipCol} qté=col${qtyCol} puht=col${puhtCol} (données depuis ligne ${dataStart + 1})`;
-  if (cipCol === -1 || qtyCol === -1) return [];
-
-  const rows = [];
-  for (let i = dataStart; i < lines.length; i++) {
-    const cells = lines[i].split(sep).map(parseCell);
-    const cip = (cells[cipCol] || '').replace(/\D/g, '');
-    const qty = parseFloat((cells[qtyCol] || '0').replace(',', '.'));
-    const puhtCSV = puhtCol !== -1 ? parseFloat((cells[puhtCol] || '').replace(',', '.')) : null;
-    if (cip.length >= 7 && qty > 0) rows.push({ cip13: cip, qty, puhtCSV: isNaN(puhtCSV) ? null : puhtCSV });
-  }
-  return rows;
-}
-
-dropzone.addEventListener('click', () => csvInput.click());
-csvInput.addEventListener('change', e => handleFile(e.target.files[0]));
-dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('dragover'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
-
-document.getElementById('btnCsvBack')?.addEventListener('click', () => goTo('labs'));
-btn1Next.addEventListener('click', launchSimulation);
 
 document.addEventListener('input', saveState);
 
@@ -5159,11 +4802,11 @@ async function saveProfile() {
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           if (cloud?.state_json) {
             const cs = cloud.state_json;
-            if (!isAdmin) { cs.csvData = null; cs.csvRows = 0; cs.csvFileName = null; cs.prorataRatios = null; }
+            if (!isAdmin) { cs.csvData = null; cs.csvRows = 0; cs.prorataRatios = null; }
             localStorage.setItem(LS_KEY, JSON.stringify(cs));
           } else if (!isAdmin) {
             // Pas de cloud state : effacer toute donnée ospharm héritée d'un autre utilisateur
-            try { const ls = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); ls.csvData = null; ls.csvRows = 0; ls.csvFileName = null; ls.prorataRatios = null; localStorage.setItem(LS_KEY, JSON.stringify(ls)); } catch(_) {}
+            try { const ls = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); ls.csvData = null; ls.csvRows = 0; ls.prorataRatios = null; localStorage.setItem(LS_KEY, JSON.stringify(ls)); } catch(_) {}
           }
         }
       }
@@ -5174,7 +4817,6 @@ async function saveProfile() {
   if (saved) {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
-    state.changementGeneriqueur = saved.changementGeneriqueur ?? { enabled: false, labo: null, date: '' };
     if (saved.connectors) {
       const osp  = saved.connectors.ospharm      || {};
       const digi = saved.connectors.digipharmacie || {};
@@ -5227,67 +4869,13 @@ async function saveProfile() {
     });
   }
 
-  // Wire changement génériqueur
-  const cgNon   = document.getElementById('changementGenNon');
-  const cgOui   = document.getElementById('changementGenOui');
-  const cgOpts  = document.getElementById('changementGenOptions');
-  const cgLab   = document.getElementById('changementGenLab');
-  const cgDate  = document.getElementById('changementGenDate');
-  const cgProrata = document.getElementById('changementGenProrata');
-
-  if (cgNon && cgOui) {
-    // Populate lab list
-    await fetchAndSortLabs();
-    LABS_SORTED.forEach(lab => {
-      const opt = document.createElement('option');
-      opt.value = lab; opt.textContent = lab;
-      cgLab.appendChild(opt);
-    });
-
-    const showCgOptions = () => { cgOpts.style.display = state.changementGeneriqueur.enabled ? 'flex' : 'none'; };
-    const updateProrata = () => {
-      const { enabled, labo, date } = state.changementGeneriqueur;
-      if (enabled && labo && date) {
-        const month = new Date(date + 'T12:00:00').getMonth() + 1;
-        const months = 13 - month;
-        const pct = (months / 12 * 100).toFixed(1);
-        cgProrata.textContent = `→ ${months}/12 du CA annuel (${pct}%)`;
-      } else {
-        cgProrata.textContent = '';
-      }
-    };
-
-    // Restore saved state
-    const cg = state.changementGeneriqueur;
-    (cg.enabled ? cgOui : cgNon).checked = true;
-    cgLab.value  = cg.labo  || '';
-    cgDate.value = cg.date  || '';
-    showCgOptions();
-    updateProrata();
-
-    [cgNon, cgOui].forEach(r => r.addEventListener('change', () => {
-      state.changementGeneriqueur.enabled = cgOui.checked;
-      showCgOptions(); updateProrata(); saveState();
-    }));
-    cgLab.addEventListener('change', () => {
-      state.changementGeneriqueur.labo = cgLab.value || null;
-      updateProrata(); saveState();
-    });
-    cgDate.addEventListener('change', () => {
-      state.changementGeneriqueur.date = cgDate.value;
-      updateProrata(); saveState();
-    });
-  } else {
-    await fetchAndSortLabs();
-  }
+  await fetchAndSortLabs();
 
   loader.style.display = 'none';
 
   state.labPages.forEach(lp => createLabContDom(lp));
   renderLabGrid();
   renderStepBar();
-
-  document.getElementById('btnImporter')?.addEventListener('click', () => goTo('csv'));
 
   // ── CONDITIONS LABO button (toggle : aller/revenir) ───────────────────────────
   document.getElementById('btnConditionsLabo')?.addEventListener('click', () => {
@@ -5359,23 +4947,10 @@ async function saveProfile() {
     renderLabGrid();
     const firstConfigured = state.labPages.find(lp => lp.selectedLab);
     if (firstConfigured) { switchToLab(firstConfigured.uid); renderLabGrid(); }
-    // Restaure la dropzone après que le DOM est prêt (admin)
-    if (isAdmin && saved.csvData && saved.csvData.length) {
-      const fname = saved.csvFileName || 'Fichier restauré';
-      const fnLabel = document.getElementById('dropzone-filename');
-      if (fnLabel) fnLabel.textContent = `${fname}  —  ${state.csvRows.toLocaleString('fr')} références`;
-      const dz = document.getElementById('dropzone');
-      if (dz) dz.classList.add('loaded');
-      const fs = document.getElementById('fileStatus');
-      if (fs) fs.classList.add('visible');
-      const fst = document.getElementById('fileStatusText');
-      if (fst) fst.textContent = `FICHIER : ${fname}  —  ${state.csvRows.toLocaleString('fr')} références détectées`;
-      btn1Next.disabled = false;
-    }
-    // Page cible : admin peut voir csv/results, sinon par défaut recap
+    // Page cible : admin peut voir results, sinon par défaut recap
     let targetPage = saved.currentPageId || 'recap';
-    if (!['csv', 'results', 'labs', 'recap', 'verificateur'].includes(targetPage)) targetPage = 'recap';
-    if (!isAdmin && ['csv', 'results', 'labs'].includes(targetPage)) targetPage = 'recap';
+    if (!['results', 'labs', 'recap', 'verificateur'].includes(targetPage)) targetPage = 'recap';
+    if (!isAdmin && ['results', 'labs'].includes(targetPage)) targetPage = 'recap';
     goTo(targetPage);
     if (targetPage === 'results') launchSimulation();
     setTimeout(() => renderRecap(), 0);
