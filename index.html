@@ -4843,6 +4843,23 @@ async function launchSimulation() {
       const resDiv = document.getElementById('customSimResult');
       if (!resDiv) return;
       const { scenario, assignment, lab1Info } = calcCustomScenario(priorities);
+      // DEBUG — à retirer après investigation
+      if (lab1Info) {
+        const _l1 = scenario.labResults.find(r => r.name === lab1Info.labName);
+        const _l1CA_possible = (() => {
+          const _asgn2 = new Map(naturalAssignment);
+          csvData.forEach(row => {
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const lr = mergedAlts(ref.libelle).find(a => a.labo === lab1Info.labName);
+            if (!lr) return;
+            _asgn2.set(row.cip13, lr);
+          });
+          const _sc2 = calcScenario(_asgn2);
+          return _sc2.labResults.find(r => r.name === lab1Info.labName)?.ca || 0;
+        })();
+        console.log(`[DEBUG] ${lab1Info.labName} — greedy accCA=${lab1Info.accCA.toFixed(0)} targetCA=${lab1Info.targetCA.toFixed(0)} | calcScenario CA=${_l1?.ca?.toFixed(0)} met=${_l1?.met} caThreshold=${_l1?.caThreshold?.toFixed(0)} | caMaxPossible(mode1)=${_l1CA_possible.toFixed(0)}`);
+      }
       const gain = actuel.totalPaNet - scenario.totalPaNet;
       const key  = 'custom';
       scenarioStore.set(key, { assignment, labResults: scenario.labResults });
