@@ -4868,10 +4868,40 @@ async function launchSimulation() {
       return { scenario: calcScenario(assignment), assignment, lab1Info };
     }
 
-    document.getElementById('customSimBtn')?.addEventListener('click', () => {
+    // Cache pour éviter de re-fetcher un labo déjà chargé intégralement
+    const _fullFetchedLabs = new Set();
+
+    document.getElementById('customSimBtn')?.addEventListener('click', async () => {
       const priorities = [1,2,3,4].map(n => document.getElementById(`customLabSel${n}`)?.value || '');
       const resDiv = document.getElementById('customSimResult');
       if (!resDiv) return;
+
+      // Fetch complet pour les restLabs pas encore dans libelleMap/formNormMap.
+      // Le second fetch initial cherche par libellé exact → rate les alts où le libellé diffère
+      // (ex : Zydus "DUTASTERIDE 30GELULES" vs acheté "DUTASTERIDE 30CAPS").
+      // Ce fetch charge TOUS les refs du labo une fois et les injecte dans les maps.
+      const _active = priorities.filter(Boolean);
+      const _restNeeded = _active.slice(1).filter(ln => !_fullFetchedLabs.has(ln));
+      if (_restNeeded.length) {
+        resDiv.style.display = '';
+        resDiv.innerHTML = `<span style="color:var(--cyan);font-size:11px">Chargement refs ${_restNeeded.join(', ')}…</span>`;
+        const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+        await Promise.all(_restNeeded.map(async labName => {
+          const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&limit=10000`;
+          const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
+          rows.forEach(r => {
+            if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
+            if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
+              libelleMap.get(r.libelle).push(r);
+            const key = formNormKey(r.libelle);
+            if (!formNormMap.has(key)) formNormMap.set(key, []);
+            if (!formNormMap.get(key).some(x => x.cip13 === r.cip13))
+              formNormMap.get(key).push(r);
+          });
+          _fullFetchedLabs.add(labName);
+        }));
+      }
+
       const { scenario, assignment, lab1Info } = calcCustomScenario(priorities);
       // DEBUG — à retirer après investigation
       if (lab1Info) {
