@@ -4648,8 +4648,11 @@ async function launchSimulation() {
             return (altBestNet - lab1Net) * row.qty;
           };
 
-          const candidates = [];   // refs RSF > EXCL_RSF_PCT
-          const fallback   = [];   // refs RSF ≤ EXCL_RSF_PCT (secours si CA insuffisant)
+          // Déduplique par cip13 (csvData a N lignes par CIP si données mensuelles)
+          // sans dédup, _totalCA est gonflé × N → branche trimming déclenchée à tort
+          // → des CIPs Biogaran sortent du greedy sans être cipLocked
+          const candidateMap = new Map();  // cip13 → {row, lab1Ref, savings, rowCA}
+          const fallbackMap  = new Map();
 
           csvData.forEach(row => {
             const ref = naturalRefMap.get(row.cip13);
@@ -4659,15 +4662,20 @@ async function launchSimulation() {
             if (!lab1Ref) return;
             const rowPuht = row.puht || refMap.get(row.cip13)?.puht || lab1Ref.puht || 0;
             const rowCA   = rowPuht * row.qty;
-            const lab1Net = (lab1Ref.puht || 0) * (1 - getRemise(lab1Ref, lab1Cond, fm1) / 100);
-            const savings = computeSavings(ref, lab1Ref, lab1Net, row);
+            const isExcl  = Math.abs(parseFloat(lab1Ref.rsf_pct) || 0) <= EXCL_RSF_PCT;
+            const bucket  = isExcl ? fallbackMap : candidateMap;
 
-            if (Math.abs(parseFloat(lab1Ref.rsf_pct) || 0) <= EXCL_RSF_PCT) {
-              fallback.push({ row, lab1Ref, savings, rowCA });
+            if (bucket.has(row.cip13)) {
+              bucket.get(row.cip13).rowCA += rowCA;
             } else {
-              candidates.push({ row, lab1Ref, savings, rowCA });
+              const lab1Net = (lab1Ref.puht || 0) * (1 - getRemise(lab1Ref, lab1Cond, fm1) / 100);
+              const savings = computeSavings(ref, lab1Ref, lab1Net, row);
+              bucket.set(row.cip13, { row, lab1Ref, savings, rowCA });
             }
           });
+
+          const candidates = [...candidateMap.values()];
+          const fallback   = [...fallbackMap.values()];
 
           const caAvailable = candidates.reduce((s, c) => s + c.rowCA, 0);
           const caFallback  = fallback.reduce((s, c) => s + c.rowCA, 0);
