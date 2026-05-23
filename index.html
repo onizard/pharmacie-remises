@@ -4758,17 +4758,49 @@ async function launchSimulation() {
           });
         }
 
-        // Labs 2, 3, 4 : toutes les refs restantes en séquence
+        // Labs 2, 3, 4 : atteindre le palier cible pour chacun (greedy removal),
+        // puis passer les refs non-nécessaires au lab suivant / best-net
         restLabs.forEach(labName => {
+          const _lp = state.labPages.find(l => l.selectedLab === labName);
+          const _tCond = _lp?.conditions?.length
+            ? _lp.conditions.reduce((b, c) =>
+                parseFloat(c.remiseGlobale || 0) > parseFloat(b?.remiseGlobale || 0) ? c : b, null)
+            : null;
+          const _tCA = parseFloat(_tCond?.caCondition || 0);
+
+          const _items = [];
           csvData.forEach(row => {
             if (cipLocked.has(row.cip13)) return;
             const ref = naturalRefMap.get(row.cip13);
             if (!ref) return;
             const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
             if (!labRef) return;
-            assignment.set(row.cip13, labRef);
-            cipLocked.add(row.cip13);
+            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || labRef.puht || 0;
+            _items.push({ row, labRef, rowCA: rowPuht * row.qty });
           });
+
+          if (_tCA > 0 && _items.length) {
+            const _tot = _items.reduce((s, c) => s + c.rowCA, 0);
+            if (_tot >= _tCA) {
+              // Greedy removal : garder le minimum pour atteindre le palier
+              const _sel = new Set(_items.map(c => c.row.cip13));
+              let _selCA = _tot;
+              for (const item of [..._items].sort((a, b) => a.rowCA - b.rowCA)) {
+                if (_selCA - item.rowCA >= _tCA) { _sel.delete(item.row.cip13); _selCA -= item.rowCA; }
+              }
+              _items.forEach(item => {
+                if (!_sel.has(item.row.cip13)) return;
+                assignment.set(item.row.cip13, item.labRef);
+                cipLocked.add(item.row.cip13);
+              });
+            } else {
+              // Total < palier : prendre toutes les refs disponibles
+              _items.forEach(({ row, labRef }) => { assignment.set(row.cip13, labRef); cipLocked.add(row.cip13); });
+            }
+          } else {
+            // Pas de palier cible : toutes les refs restantes
+            _items.forEach(({ row, labRef }) => { assignment.set(row.cip13, labRef); cipLocked.add(row.cip13); });
+          }
         });
       }
 
@@ -4814,7 +4846,9 @@ async function launchSimulation() {
         const caColor = reached ? 'var(--green)' : 'var(--red)';
         const availLine = `&nbsp;·&nbsp; CA dispo (hors ${lab1Info.exclRsf}%) : <span style="color:var(--cyan)">${fmtE(lab1Info.caAvailable)}</span>`;
         const fallbackLine = lab1Info.fallbackUsed > 0
-          ? `&nbsp;·&nbsp; Secours RSF ${lab1Info.exclRsf}% utilisé : <span style="color:var(--amber)">${lab1Info.fallbackUsed} refs</span> ajoutées pour atteindre la cible`
+          ? reached
+            ? `&nbsp;·&nbsp; Secours RSF ${lab1Info.exclRsf}% : <span style="color:var(--amber)">${lab1Info.fallbackUsed} refs</span> ajoutées — cible atteinte`
+            : `&nbsp;·&nbsp; Secours RSF ${lab1Info.exclRsf}% : <span style="color:var(--red)">${lab1Info.fallbackUsed} refs</span> ajoutées — <span style="color:var(--red)">cible non atteinte (CA max disponible)</span>`
           : lab1Info.caFallback > 0
             ? `&nbsp;·&nbsp; RSF ${lab1Info.exclRsf}% → Lab 2 : <span style="color:var(--cyan)">${fmtE(lab1Info.caFallback)}</span> CA`
             : '';
