@@ -4686,43 +4686,50 @@ async function launchSimulation() {
           [...candidates, ...fallback].forEach(({ row }) => assignment.delete(row.cip13));
 
           // Phase 1 : refs prioritaires (RSF > 2.5%)
-          // Stratégie : sélection complète puis suppression des plus petits items inutiles
-          // → dépassement minimal du palier cible (vs greedy forward qui peut dépasser de 15k+)
+          // Stratégie : assigne tout, calcule le CA réel (cohérent avec calcScenario car
+          // row.puht OSPHARM + refMap divergent du rowPuht greedy), puis trim si dépassement
+          // en priorisant les CIPs qui ont un équivalent chez un restLab (Zydus…)
           candidates.sort((a, b) => b.savings - a.savings);
           let accCA = 0, assignedCount = 0, fallbackUsed = 0;
           {
-            const _totalCA = candidates.reduce((s, c) => s + c.rowCA, 0);
-            if (_totalCA >= targetCA) {
-              const _sel = new Set(candidates.map(c => c.row.cip13));
-              let _selCA = _totalCA;
-              // Trim d'abord les refs qui ont un équivalent chez un restLab (Zydus…)
-              // → elles partiront vers restLab et contribueront à son CA
-              // Ensuite trier par rowCA croissant pour minimiser le dépassement du palier
+            for (const { row, lab1Ref } of candidates) {
+              assignment.set(row.cip13, lab1Ref);
+              cipLocked.add(row.cip13);
+            }
+            // CA réel : même boucle que calcScenario (toutes lignes csvData par CIP)
+            const _cipCA = new Map();
+            csvData.forEach(row => {
+              const _ref = assignment.get(row.cip13);
+              if (_ref?.labo !== lab1Name) return;
+              const _p = row.puht || refMap.get(row.cip13)?.puht || _ref.puht || 0;
+              _cipCA.set(row.cip13, (_cipCA.get(row.cip13) || 0) + row.qty * _p);
+            });
+            let _actualCA = 0;
+            _cipCA.forEach(v => { _actualCA += v; });
+
+            if (_actualCA > targetCA) {
               const _hasRestAlt = cip13 => {
                 const _r = naturalRefMap.get(cip13);
                 if (!_r) return false;
-                const _alts = mergedAlts(_r.libelle);
-                return restLabs.some(ln => _alts.some(a => a.labo === ln));
+                return restLabs.some(ln => mergedAlts(_r.libelle).some(a => a.labo === ln));
               };
               for (const item of [...candidates].sort((a, b) => {
                 const da = _hasRestAlt(a.row.cip13) ? 0 : 1;
                 const db = _hasRestAlt(b.row.cip13) ? 0 : 1;
-                return da !== db ? da - db : a.rowCA - b.rowCA;
+                if (da !== db) return da - db;
+                return (_cipCA.get(a.row.cip13) || 0) - (_cipCA.get(b.row.cip13) || 0);
               })) {
-                if (_selCA - item.rowCA >= targetCA) { _sel.delete(item.row.cip13); _selCA -= item.rowCA; }
-              }
-              for (const item of candidates) {
-                if (!_sel.has(item.row.cip13)) continue;
-                assignment.set(item.row.cip13, item.lab1Ref);
-                cipLocked.add(item.row.cip13);
-              }
-              accCA = _selCA; assignedCount = _sel.size;
-            } else {
-              for (const { row, lab1Ref, rowCA } of candidates) {
-                assignment.set(row.cip13, lab1Ref); cipLocked.add(row.cip13);
-                accCA += rowCA; assignedCount++;
+                const contrib = _cipCA.get(item.row.cip13) || 0;
+                if (_actualCA - contrib >= targetCA) {
+                  assignment.delete(item.row.cip13);
+                  cipLocked.delete(item.row.cip13);
+                  _actualCA -= contrib;
+                }
               }
             }
+
+            accCA = _actualCA;
+            assignedCount = candidates.filter(c => cipLocked.has(c.row.cip13)).length;
           }
 
           // Phase 2 : si CA cible pas atteint, compléter avec les refs RSF ≤ 2.5% (secours)
