@@ -4745,6 +4745,7 @@ async function launchSimulation() {
             caFallback,
             fallbackUsed,
             exclRsf: EXCL_RSF_PCT,
+            _cipLocked: cipLocked,
           };
         } else {
           // Pas de caCondition → affecter toutes les refs Lab 1 (fallback)
@@ -4844,6 +4845,51 @@ async function launchSimulation() {
       const resDiv = document.getElementById('customSimResult');
       if (!resDiv) return;
       const { scenario, assignment, lab1Info } = calcCustomScenario(priorities);
+      // DEBUG — à retirer après investigation
+      if (lab1Info) {
+        const _l1 = scenario.labResults.find(r => r.name === lab1Info.labName);
+        // Construit un assignment mode1 (toutes refs Lab1)
+        const _asgn1 = new Map(naturalAssignment);
+        csvData.forEach(row => {
+          const ref = naturalRefMap.get(row.cip13);
+          if (!ref) return;
+          const lr = mergedAlts(ref.libelle).find(a => a.labo === lab1Info.labName) || (ref.labo === lab1Info.labName ? ref : null);
+          if (!lr) return;
+          _asgn1.set(row.cip13, lr);
+        });
+        // Gap : dans mode1=Lab1 mais dans mode2!=Lab1
+        const seen = new Set();
+        let _gapCA = 0, _gapCnt = 0;
+        const _gapTo = {};
+        csvData.forEach(row => {
+          if (seen.has(row.cip13)) return;
+          seen.add(row.cip13);
+          const m1Lab = _asgn1.get(row.cip13)?.labo;
+          const m2Lab = assignment.get(row.cip13)?.labo;
+          if (m1Lab === lab1Info.labName && m2Lab !== lab1Info.labName) {
+            const puht = row.puht || refMap.get(row.cip13)?.puht || 0;
+            const totalQty = csvData.filter(r => r.cip13 === row.cip13).reduce((s,r)=>s+r.qty,0);
+            _gapCA += totalQty * puht;
+            _gapCnt++;
+            _gapTo[m2Lab] = (_gapTo[m2Lab] || 0) + 1;
+          }
+        });
+        console.log(`[DEBUG] ${lab1Info.labName} calcScenario CA=${_l1?.ca?.toFixed(0)} targetCA=${lab1Info.targetCA} | gap ${_gapCnt} CIPs CA=${_gapCA.toFixed(0)} → vers`, _gapTo);
+        // Affiche 5 CIPs du gap
+        const _sampleSeen = new Set();
+        let _sampleN = 0;
+        csvData.forEach(row => {
+          if (_sampleN >= 5 || _sampleSeen.has(row.cip13)) return;
+          _sampleSeen.add(row.cip13);
+          const m1Lab = _asgn1.get(row.cip13)?.labo;
+          const m2Lab = assignment.get(row.cip13)?.labo;
+          if (m1Lab === lab1Info.labName && m2Lab !== lab1Info.labName) {
+            const ref = naturalRefMap.get(row.cip13);
+            console.log(`  gap CIP ${row.cip13} naturalLab=${ref?.labo} m2=${m2Lab} libelle="${ref?.libelle}" cipLocked=${lab1Info._cipLocked?.has(row.cip13)}`);
+            _sampleN++;
+          }
+        });
+      }
       const gain = actuel.totalPaNet - scenario.totalPaNet;
       const key  = 'custom';
       scenarioStore.set(key, { assignment, labResults: scenario.labResults });
