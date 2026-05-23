@@ -4695,7 +4695,20 @@ async function launchSimulation() {
             if (_totalCA >= targetCA) {
               const _sel = new Set(candidates.map(c => c.row.cip13));
               let _selCA = _totalCA;
-              for (const item of [...candidates].sort((a, b) => a.rowCA - b.rowCA)) {
+              // Trim d'abord les refs qui ont un équivalent chez un restLab (Zydus…)
+              // → elles partiront vers restLab et contribueront à son CA
+              // Ensuite trier par rowCA croissant pour minimiser le dépassement du palier
+              const _hasRestAlt = cip13 => {
+                const _r = naturalRefMap.get(cip13);
+                if (!_r) return false;
+                const _alts = mergedAlts(_r.libelle);
+                return restLabs.some(ln => _alts.some(a => a.labo === ln));
+              };
+              for (const item of [...candidates].sort((a, b) => {
+                const da = _hasRestAlt(a.row.cip13) ? 0 : 1;
+                const db = _hasRestAlt(b.row.cip13) ? 0 : 1;
+                return da !== db ? da - db : a.rowCA - b.rowCA;
+              })) {
                 if (_selCA - item.rowCA >= targetCA) { _sel.delete(item.row.cip13); _selCA -= item.rowCA; }
               }
               for (const item of candidates) {
