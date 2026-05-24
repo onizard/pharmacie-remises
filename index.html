@@ -1389,6 +1389,8 @@ let state = {
 
 // ── Persistence ────────────────────────────────────────────────────────────────
 const LS_KEY = 'org_state_v1';
+// Protège contre la sauvegarde d'un état vide pendant l'initialisation async
+let _initDone = false;
 
 function serializeState() {
   return {
@@ -1477,15 +1479,17 @@ async function saveCloudState(data) {
 }
 
 // Flush immédiat au cloud quand l'onglet est masqué (fermeture, changement d'onglet)
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    clearTimeout(_saveTimer);
-    clearTimeout(_cloudSaveTimer);
-    const data = serializeState();
-    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
-    saveCloudState(data);
-  }
-});
+function _flushState() {
+  if (!_initDone) return;
+  clearTimeout(_saveTimer);
+  clearTimeout(_cloudSaveTimer);
+  const data = serializeState();
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
+  saveCloudState(data);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) _flushState(); });
+// pagehide plus fiable que visibilitychange lors de la fermeture du navigateur
+window.addEventListener('pagehide', _flushState);
 
 async function saveRsfDefaults() {
   const sb = window._sbClient;
@@ -1576,6 +1580,7 @@ function applyRsfDefaults() {
 }
 
 function saveState() {
+  if (!_initDone) return;
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
     const data = serializeState();
@@ -2157,15 +2162,31 @@ function _renderOspProgress(el) {
 
   if (!el.querySelector('#ospStatusLine')) {
     el.innerHTML = `<div class="osp-ring-wrap">
-      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Analyse en cours — initialisation…</div>
-      <div class="osp-ring spin">
-        <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28"/></svg>
+      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${state._ospConnecting ? '// Connexion OSPHARM en cours…' : '// Analyse en cours — initialisation…'}</div>
+      <div class="osp-ring${barPct > 0 ? '' : ' spin'}">
+        <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="ospRecapArc" style="stroke-dashoffset:${175.9 * (1 - barPct / 100)}"/></svg>
+        <div class="osp-ring-label" id="ospRecapPct">${barPct > 0 ? barPct + '%' : ''}</div>
       </div>
       <div id="ospActivityLine" class="osp-activity-line" style="text-align:center">${actHtml}</div>
     </div>`;
   } else {
     const actLine = el.querySelector('#ospActivityLine');
     if (actLine) actLine.innerHTML = actHtml;
+    // Mettre à jour l'arc et le pourcentage si disponibles
+    const arc   = document.getElementById('ospRecapArc');
+    const pctEl = document.getElementById('ospRecapPct');
+    const ring  = arc?.closest('.osp-ring');
+    if (barPct > 0) {
+      if (arc)   arc.style.strokeDashoffset = 175.9 * (1 - barPct / 100);
+      if (pctEl) pctEl.textContent = barPct + '%';
+      if (ring)  ring.classList.remove('spin');
+    }
+    const stEl = document.getElementById('ospStatusLine');
+    if (stEl && state._ospConnecting) stEl.textContent = '// Connexion OSPHARM en cours…';
+    else if (stEl && state._ospJobMessage) {
+      const _m = state._ospJobMessage.match(/Mois\s+(\d+)\/(\d+)/i);
+      if (_m) stEl.textContent = `// Mois ${_m[1]} / ${_m[2]}`;
+    }
   }
 
   // Rafraîchir toutes les 30s pour mettre à jour la phrase
@@ -2183,8 +2204,8 @@ function renderRecap() {
 
   const hasMonthly = Object.keys(state._monthStats || {}).length > 0;
 
-  // Barre de progression si job OSPHARM en cours
-  if (state._ospJobRunning) {
+  // Barre de progression si connexion ou job OSPHARM en cours
+  if (state._ospJobRunning || state._ospConnecting) {
     clearInterval(_ospProgressTimer);
     _renderOspProgress(el);
     return;
@@ -5472,6 +5493,9 @@ async function saveProfile() {
   }
 
   initConnecteurModal();
+
+  // Initialisation terminée : les sauvegardes sont maintenant autorisées
+  _initDone = true;
 })();
 
 // ── Connecteur modal ────────────────────────────────────────────────────────────
@@ -5703,6 +5727,16 @@ function initConnecteurModal() {
     resultEl.className = 'conn-test-result';
     _setConnProgress(prefix, 'serveur');
 
+    // OSPHARM : afficher le spinner de chargement sur le recap dès la connexion
+    if (connKey === 'ospharm') {
+      state._ospConnecting    = true;
+      state._ospJobStartedAt  = Date.now();
+      state._ospJobMessage    = '';
+      document.getElementById('connecteurModal')?.classList.remove('open');
+      goTo('recap');
+      renderRecap();
+    }
+
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
       if (!session) throw new Error('Session expirée — reconnectez-vous.');
@@ -5758,7 +5792,15 @@ function initConnecteurModal() {
       _triggerWorkflow(connKey, prefix);
     } catch(e) {
       _setConnProgress(prefix, 'reset');
-      showView(prefix, false);
+      if (connKey === 'ospharm') {
+        state._ospConnecting = false;
+        renderRecap();
+        // Ré-ouvrir la modale pour afficher l'erreur
+        document.getElementById('connecteurModal')?.classList.add('open');
+        showView(prefix, false);
+      } else {
+        showView(prefix, false);
+      }
       resultEl.innerHTML = `❌ ${e.message}<br><span style="color:var(--text-dim)">Vérifiez vos identifiants et réessayez.</span>`;
       resultEl.className = 'conn-test-result error';
       const passEl = document.getElementById(prefix + 'Pass');
@@ -5772,7 +5814,11 @@ function initConnecteurModal() {
 
   async function _triggerWorkflow(connKey, prefix) {
     const statusId = connKey === 'digipharmacie' ? 'digiJobStatus' : 'ospJobStatus';
-    if (connKey === 'ospharm') { state._ospJobRunning = true; state._ospJobStartedAt = Date.now(); }
+    if (connKey === 'ospharm') {
+      state._ospConnecting   = false;  // connexion réussie, on passe au job
+      state._ospJobRunning   = true;
+      state._ospJobStartedAt = state._ospJobStartedAt || Date.now();
+    }
     _setJobStatusEl(statusId, 'running', '');
     _setConnProgress(prefix, 'job');
     try {
@@ -5787,14 +5833,14 @@ function initConnecteurModal() {
         throw new Error(err.detail || `Erreur ${resp.status}`);
       }
       if (connKey === 'ospharm') {
-        document.getElementById('connecteurModal')?.classList.remove('open');
-        goTo('recap');
+        // Modal déjà fermée, recap déjà affiché depuis connectConn
         renderRecap();
         _pollOspJobAndLaunch(prefix);
       } else if (connKey === 'digipharmacie') {
         _pollDigiJobAndLaunch(prefix);
       }
     } catch(e) {
+      if (connKey === 'ospharm') { state._ospConnecting = false; state._ospJobRunning = false; renderRecap(); }
       _setJobStatusEl(statusId, 'error', `❌ ${e.message}`);
       _setConnProgress(prefix, 'reset');
     }
