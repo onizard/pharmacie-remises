@@ -410,6 +410,14 @@
   .year-label-toggle:hover { text-shadow: var(--glow-a); }
   [data-theme="light"] .year-label { color: #0066cc; }
   [data-theme="light"] .year-label-toggle { color: #b07000; }
+  .mon-btns { display:flex; flex-wrap:wrap; gap:3px; margin:4px 0 10px; }
+  .mon-btn { font-family:'Share Tech Mono',monospace; font-size:10px; padding:3px 7px; background:transparent; border:1px solid rgba(0,229,255,.22); color:var(--text-dim); border-radius:3px; cursor:pointer; letter-spacing:.5px; transition:all .15s; min-width:34px; text-align:center; position:relative; }
+  .mon-btn:hover { border-color:var(--cyan); color:var(--cyan); }
+  .mon-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,.13); font-weight:bold; }
+  .mon-btn.has-override::after { content:'●'; position:absolute; top:1px; right:2px; font-size:6px; color:var(--amber); line-height:1; }
+  [data-theme="light"] .mon-btn { border-color:rgba(0,100,200,.25); color:#888; }
+  [data-theme="light"] .mon-btn.active { border-color:#0066cc; color:#0066cc; background:rgba(0,100,200,.08); }
+  [data-theme="light"] .mon-btn.has-override::after { color:#b07000; }
   .cgv-led { display:inline-block; width:8px; height:8px; border-radius:50%; background:transparent; margin-left:8px; vertical-align:middle; cursor:default; transition:background .3s,box-shadow .3s; flex-shrink:0; }
   .cgv-led.on { background:var(--green); box-shadow:0 0 6px var(--green); }
   [data-theme="light"] .cgv-led.on { background:#00b05a; box-shadow:0 0 5px #00b05a; }
@@ -1340,6 +1348,16 @@ function mkRsfValues(lab, paliers) {
   });
 }
 
+const MONTHS = ['JAN','FEV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DEC'];
+
+function getEffectiveCondsForMonth(lp, year, month) {
+  const overrides = lp.condsByMonth?.[year] || {};
+  for (let m = month; m >= 1; m--) {
+    if (overrides[m]) return overrides[m];
+  }
+  return year === 2025 ? (lp.conditions2025 || []) : (lp.conditions || []);
+}
+
 function mkLabState(uid) {
   return {
     uid,
@@ -1350,6 +1368,9 @@ function mkLabState(uid) {
     activeCondIdx: 0,
     conditions2025: [mkCondState('c0_25')],
     activeCondIdx2025: 0,
+    condsByMonth: { 2025: {}, 2026: {} },
+    activeMon2026: new Date().getMonth() + 1,
+    activeMon2025: null,
     _refreshGrid: null,
   };
 }
@@ -1412,6 +1433,9 @@ function serializeState() {
         showR3: c.showR3,
         forceFirst: c.forceFirst,
       })),
+      activeMon2026: lp.activeMon2026 ?? null,
+      activeMon2025: lp.activeMon2025 ?? null,
+      condsByMonth: lp.condsByMonth || { 2025: {}, 2026: {} },
     })),
   };
 }
@@ -1702,7 +1726,7 @@ function ospharmRowsToCsvData(rows) {
     const qty    = parseFloat(String(r[qtyKey] || '0').replace(',', '.')) || 0;
     if (!cip13 || qty <= 0) continue;
     const puht = (typeof r.puht === 'number' && r.puht > 0) ? r.puht : null;
-    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '').trim() : '', year: r._year || r.year || null, puht });
+    result.push({ cip13, qty, libelle: libKey ? String(r[libKey] || '').trim() : '', year: r._year || r.year || null, month: r._month || r.month || null, puht });
   }
   return result;
 }
@@ -2301,6 +2325,7 @@ function createLabContDom(lp) {
         <div class="year-label">2026</div>
         ${isAdmin ? `<label class="cgv-drop-label" id="cgvDrop26-${uid}" title="Déposer le PDF CGV 2026 ou cliquer pour charger les conditions depuis la DB"><span class="cgv-led" id="cgvLed26-${uid}"></span><input type="file" accept=".pdf" style="display:none" id="cgvFile26-${uid}"></label>` : ''}
       </div>
+      <div class="mon-btns" id="monBtns26-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}</div>
       <div class="cond-tabs" id="condTabs-${uid}"></div>
       <div id="condPanels-${uid}"></div>
       <div style="margin-top:24px">
@@ -2312,6 +2337,7 @@ function createLabContDom(lp) {
           <button id="copy26to25-${uid}" title="Copier les conditions 2026 sur 2025" style="font-size:11px;padding:2px 10px;background:none;border:1px solid rgba(0,229,255,.35);color:var(--cyan);border-radius:4px;cursor:pointer;letter-spacing:.5px;opacity:.8">Copier dernières CSV</button>
         </div>
         <div id="yearBody25-${uid}" style="display:none">
+          <div class="mon-btns" id="monBtns25-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}</div>
           <div class="cond-tabs" id="condTabs25-${uid}"></div>
           <div id="condPanels25-${uid}"></div>
         </div>
@@ -2322,6 +2348,40 @@ function createLabContDom(lp) {
     </div>
   `;
   document.getElementById('labsContainer').appendChild(cont);
+
+  // ── Boutons mois ────────────────────────────────────────────────────────────
+  function _wireMonBtns(yearSuffix) {
+    const yearNum = yearSuffix === '26' ? 2026 : 2025;
+    const monKey  = yearSuffix === '26' ? 'activeMon2026' : 'activeMon2025';
+    const container = document.getElementById(`monBtns${yearSuffix}-${uid}`);
+    if (!container) return;
+    function _refreshDots() {
+      const ov = lp.condsByMonth?.[yearNum] || {};
+      container.querySelectorAll('.mon-btn').forEach(b => {
+        b.classList.toggle('has-override', !!ov[parseInt(b.dataset.mon)]);
+      });
+    }
+    function _refreshActive() {
+      const cur = lp[monKey];
+      container.querySelectorAll('.mon-btn').forEach(b => {
+        b.classList.toggle('active', cur != null && parseInt(b.dataset.mon) === cur);
+      });
+    }
+    container.querySelectorAll('.mon-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mon = parseInt(btn.dataset.mon);
+        lp[monKey] = (lp[monKey] === mon) ? null : mon;  // toggle: clic same = deselect
+        _refreshActive();
+        saveState();
+      });
+    });
+    _refreshActive();
+    _refreshDots();
+    lp[`_refreshMonBtns${yearSuffix}`] = () => { _refreshActive(); _refreshDots(); };
+  }
+  _wireMonBtns('26');
+  _wireMonBtns('25');
+
   const _toggle25 = document.getElementById(`yearToggle25-${uid}`);
   const _body25   = document.getElementById(`yearBody25-${uid}`);
   if (_toggle25 && _body25) {
@@ -5379,6 +5439,14 @@ async function saveProfile() {
       }
       if (lp && sp.selectedLab && lp._restoreFromSave2025) {
         await lp._restoreFromSave2025(sp);
+      }
+      // Restore monthly state
+      if (lp) {
+        if (sp.activeMon2026 != null) lp.activeMon2026 = sp.activeMon2026;
+        if (sp.activeMon2025 != null) lp.activeMon2025 = sp.activeMon2025;
+        if (sp.condsByMonth) lp.condsByMonth = sp.condsByMonth;
+        lp._refreshMonBtns26?.();
+        lp._refreshMonBtns25?.();
       }
     }
     applyRsfDefaults();
