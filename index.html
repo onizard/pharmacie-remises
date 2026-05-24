@@ -1364,7 +1364,9 @@ function getEffectiveCondsForMonth(lp, year, month) {
   for (let m = month; m >= 1; m--) {
     if (overrides[m]) return overrides[m];
   }
-  return year === 2025 ? (lp.conditions2025 || []) : (lp.conditions || []);
+  return year === 2025
+    ? (lp._baseConds2025 || lp.conditions2025 || [])
+    : (lp._baseConds2026 || lp.conditions || []);
 }
 
 function mkLabState(uid) {
@@ -1417,7 +1419,7 @@ function serializeState() {
       uid: lp.uid,
       selectedLab: lp.selectedLab,
       activeCondIdx: lp.activeCondIdx,
-      conditions: lp.conditions.map(c => ({
+      conditions: (lp._baseConds2026 || lp.conditions).map(c => ({
         uid: c.uid,
         remiseGlobale: c.remiseGlobale,
         caCondition: c.caCondition,
@@ -1431,7 +1433,7 @@ function serializeState() {
         forceFirst: c.forceFirst,
       })),
       activeCondIdx2025: lp.activeCondIdx2025 || 0,
-      conditions2025: (lp.conditions2025 || []).map(c => ({
+      conditions2025: (lp._baseConds2025 || lp.conditions2025 || []).map(c => ({
         uid: c.uid,
         remiseGlobale: c.remiseGlobale,
         caCondition: c.caCondition,
@@ -2402,6 +2404,7 @@ function createLabContDom(lp) {
       btn.addEventListener('click', () => {
         lp[monKey] = parseInt(btn.dataset.mon);
         _refreshActive();
+        lp[`_switchCondMon${yearSuffix}`]?.();
         saveState();
       });
     });
@@ -2523,6 +2526,9 @@ function initLabPage(conf) {
   const savedCondKey = conf.savedCondKey || condKey;
   const fetchFn      = year === '2025' ? fetchRSF2025 : fetchRSF;
   const uid = euid;
+  // Initialise base reference (overwritten later by _restoreFromSave if needed)
+  if (year === '2025') s._baseConds2025 = s._baseConds2025 || s[condKey];
+  else                 s._baseConds2026 = s._baseConds2026 || s[condKey];
   const el  = {
     condTabs:   document.getElementById(conf.condTabsId),
     condPanels: document.getElementById(conf.condPanelsId),
@@ -3052,6 +3058,8 @@ function initLabPage(conf) {
     } catch(err) { console.error(err); }
     finally { el.loading.classList.remove('visible'); }
     window._syncCgvLeds?.(uid, s.selectedLab);
+    if (year === '2025') s._baseConds2025 = s[condKey];
+    else                 s._baseConds2026 = s[condKey];
     // Pendant la restauration, ne pas déclencher onLabSelected (qui appellerait _selectLab2025
     // sans await, créant une race condition avec _restoreFromSave2025 qui suit).
     // On appelle uniquement les mises à jour visuelles nécessaires.
@@ -3070,6 +3078,29 @@ function initLabPage(conf) {
   function checkDone() {
     renderStepBar();
   }
+
+  function _switchConditionsToMonth() {
+    if (!s.rsfPaliers || !s.rsfPaliers.length) return;
+    const yearNum  = year === '2025' ? 2025 : 2026;
+    const monKey   = year === '2025' ? 'activeMon2025' : 'activeMon2026';
+    const activeMon = s[monKey] ?? (new Date().getMonth() + 1);
+    const newConds  = getEffectiveCondsForMonth(s, yearNum, activeMon);
+    if (newConds === s[condKey]) return;
+    s[condKey] = newConds;
+    s[aciKey]  = Math.min(s[aciKey] || 0, newConds.length - 1);
+    el.condPanels.innerHTML = '';
+    newConds.forEach((cond, idx) => {
+      const panel = buildCondPanel(cond);
+      if (idx === (s[aciKey] || 0)) panel.classList.add('active');
+      el.condPanels.appendChild(panel);
+      wireCondition(cond);
+      const rgSec = document.getElementById(`rgSec-${uid}-${cond.uid}`);
+      if (rgSec) rgSec.classList.add('visible');
+      renderCondTable(cond);
+    });
+    renderCondTabs();
+  }
+  s[`_switchCondMon${year === '2025' ? '25' : '26'}`] = _switchConditionsToMonth;
 }
 
 // ── Shared functions ───────────────────────────────────────────────────────────
@@ -5499,6 +5530,8 @@ async function saveProfile() {
         if (sp.condsByMonth) lp.condsByMonth = sp.condsByMonth;
         lp._refreshMonBtns26?.();
         lp._refreshMonBtns25?.();
+        lp._switchCondMon26?.();
+        lp._switchCondMon25?.();
       }
     }
     applyRsfDefaults();
