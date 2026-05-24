@@ -779,20 +779,23 @@
   .conn-test-result.ko { color: var(--red); }
   .conn-test-result.warn  { color: var(--amber); }
   .conn-test-result.error { color: var(--red); }
-  .conn-prog-bar { display: none; margin: 12px 0 0; }
-  .conn-prog-bar.active { display: block; }
-  .conn-prog-track { height: 3px; background: var(--border); overflow: hidden; }
-  .conn-prog-fill { height: 100%; width: 0%; background: var(--cyan); transition: width .35s ease; box-shadow: 0 0 8px var(--cyan); }
-  @keyframes progWait { 0%,100%{opacity:1;box-shadow:0 0 8px var(--cyan)} 50%{opacity:.45;box-shadow:0 0 2px var(--cyan)} }
-  .conn-prog-fill.waiting { animation: progWait 1.6s ease-in-out infinite; }
-  .conn-prog-pct { font-family: 'Orbitron', monospace; font-size: 9px; color: var(--cyan); text-align: right; margin-top: 3px; letter-spacing: 1px; }
+  .conn-ring-wrap { display:none; justify-content:center; align-items:center; flex-direction:column; gap:6px; padding:14px 0 6px; }
+  .conn-ring-wrap.active { display:flex; }
+  .conn-ring { position:relative; width:52px; height:52px; }
+  .conn-ring svg { width:52px; height:52px; display:block; transform:rotate(-90deg); }
+  .conn-ring-track { fill:none; stroke:var(--border); stroke-width:4; }
+  .conn-ring-fill  { fill:none; stroke:var(--cyan); stroke-width:4; stroke-linecap:round;
+      stroke-dasharray:125.7; stroke-dashoffset:125.7; transition:stroke-dashoffset .5s ease; }
+  .conn-ring-pct { font-family:'Orbitron',monospace; font-size:9px; color:var(--cyan); letter-spacing:.5px; min-height:12px; }
+  .conn-ring.spin svg { animation:osp-spinner 1.1s linear infinite; }
+  .conn-ring.spin .conn-ring-fill { stroke-dashoffset:32; }
 .conn-save { display: block; width: 100%; margin-top: 22px; font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; padding: 10px; cursor: pointer; background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); transition: all .2s; }
   .conn-save:hover { border-color: var(--cyan); box-shadow: var(--glow-c); }
   .conn-connected-view { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px 16px; text-align: center; min-height: 180px; }
   .conn-check-big { display:flex; align-items:center; justify-content:center; width:56px; height:56px; }
   .conn-check-tick { font-size: 52px; color: var(--green); filter: drop-shadow(0 0 10px rgba(0,255,136,.45)); line-height: 1; }
   .conn-check-cross { display:none; font-size: 52px; color: var(--red); filter: drop-shadow(0 0 10px rgba(255,51,102,.45)); line-height: 1; }
-  .conn-check-ring { display:none; width:48px; height:48px; border-radius:50%; border:4px solid rgba(0,255,136,.2); border-top-color:var(--green); animation:spin .9s linear infinite; }
+  .conn-check-ring { display:none; width:48px; height:48px; border-radius:50%; border:4px solid rgba(0,229,255,.2); border-top-color:var(--cyan); animation:spin .9s linear infinite; }
   .conn-check-big.loading .conn-check-ring { display:block; }
   .conn-check-big.loading .conn-check-tick,  .conn-check-big.loading .conn-check-cross { display:none; }
   .conn-check-big.error .conn-check-cross { display:block; }
@@ -1155,9 +1158,11 @@
             <button class="conn-change-link" id="digiChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
-          <div class="conn-prog-bar" id="digiProgBar">
-            <div class="conn-prog-track"><div class="conn-prog-fill" id="digiProgFill"></div></div>
-            <div class="conn-prog-pct" id="digiProgPct">0%</div>
+          <div class="conn-ring-wrap" id="digiProgBar">
+            <div class="conn-ring" id="digiProgRing">
+              <svg viewBox="0 0 44 44"><circle class="conn-ring-track" cx="22" cy="22" r="20"/><circle class="conn-ring-fill" cx="22" cy="22" r="20" id="digiProgArc"/></svg>
+            </div>
+            <div class="conn-ring-pct" id="digiProgPct"></div>
           </div>
         </div>
         <!-- OSPHARM -->
@@ -1189,9 +1194,11 @@
             <button class="conn-change-link" id="ospChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
           </div>
-          <div class="conn-prog-bar" id="ospProgBar">
-            <div class="conn-prog-track"><div class="conn-prog-fill" id="ospProgFill"></div></div>
-            <div class="conn-prog-pct" id="ospProgPct">0%</div>
+          <div class="conn-ring-wrap" id="ospProgBar">
+            <div class="conn-ring" id="ospProgRing">
+              <svg viewBox="0 0 44 44"><circle class="conn-ring-track" cx="22" cy="22" r="20"/><circle class="conn-ring-fill" cx="22" cy="22" r="20" id="ospProgArc"/></svg>
+            </div>
+            <div class="conn-ring-pct" id="ospProgPct"></div>
           </div>
         </div>
       </div>
@@ -2176,7 +2183,7 @@ function _renderOspProgress(el) {
     el.innerHTML = `<div class="osp-ring-wrap">
       <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${state._ospConnecting ? '// Connexion OSPHARM en cours…' : '// Analyse en cours — initialisation…'}</div>
       <div class="osp-ring${barPct > 0 ? '' : ' spin'}">
-        <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="ospRecapArc" style="stroke-dashoffset:${175.9 * (1 - barPct / 100)}"/></svg>
+        <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="ospRecapArc"${barPct > 0 ? ` style="stroke-dashoffset:${175.9 * (1 - barPct / 100)}"` : ''}/></svg>
         <div class="osp-ring-label" id="ospRecapPct">${barPct > 0 ? barPct + '%' : ''}</div>
       </div>
       <div id="ospActivityLine" class="osp-activity-line" style="text-align:center">${actHtml}</div>
@@ -6007,71 +6014,64 @@ function initConnecteurModal() {
     clearInterval(_connProgTimer);
     clearTimeout(_connReadyTimer);
     _connCurPct = 0;
+    const CIRC = 125.7; // 2π × r=20
     const bar  = document.getElementById(prefix + 'ProgBar');
-    const fill = document.getElementById(prefix + 'ProgFill');
+    const ring = document.getElementById(prefix + 'ProgRing');
+    const arc  = document.getElementById(prefix + 'ProgArc');
     const lbl  = document.getElementById(prefix + 'ProgPct');
-    const set  = pct => {
-      const r = Math.round(pct);
-      if (fill) fill.style.width = r + '%';
-      if (lbl)  lbl.textContent  = r + '%';
+    const setArc = pct => {
+      if (arc) arc.style.strokeDashoffset = pct > 0 ? CIRC * (1 - pct / 100) : '';
+      if (lbl) lbl.textContent = pct > 0 ? Math.round(pct) + '%' : '';
     };
     const _removeModalActivity = () => {
       clearInterval(_ospModalActivityTimer);
       document.getElementById(prefix + 'ModalActivity')?.remove();
     };
-    if (action === 'reset') { bar?.classList.remove('active'); fill?.classList.remove('waiting'); set(0); _removeModalActivity(); return; }
+    if (action === 'reset') {
+      bar?.classList.remove('active');
+      ring?.classList.remove('spin');
+      setArc(0);
+      _removeModalActivity();
+      return;
+    }
     if (action === 'ready') {
-      fill?.classList.remove('waiting');
-      set(100); _connCurPct = 100;
-      _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); set(0); _connCurPct = 0; _removeModalActivity(); }, 600);
+      ring?.classList.remove('spin');
+      setArc(100); _connCurPct = 100;
+      _connReadyTimer = setTimeout(() => { bar?.classList.remove('active'); setArc(0); _connCurPct = 0; _removeModalActivity(); }, 800);
       return;
     }
     if (action === 'job') {
-      // Phase job : progression sur la page Récap uniquement, barre modale invisible
+      bar?.classList.remove('active'); // recap ring gère la progression job
+      return;
+    }
+    // Phases visibles dans la modale (serveur, envoi, test)
+    bar?.classList.add('active');
+    ring?.classList.add('spin');
+    setArc(0);
+    if (action === 'test') {
+      // test dure 15-60s : on tourne en attendant, le % arrive via _setConnProgressPct
       let cur = 0;
       _connProgTimer = setInterval(() => {
-        cur = Math.min(8, cur + 0.2);
-        if (cur > _connCurPct) _connCurPct = cur;
-        if (cur >= 8) clearInterval(_connProgTimer);
-      }, 5000);
-    } else {
-      // Phases visibles dans la modale (serveur, envoi, test)
-      bar?.classList.add('active');
-      fill?.classList.remove('waiting');
-      if (fill) { fill.style.transition = 'none'; fill.style.width = '0%'; }
-      if (lbl) lbl.textContent = '0%';
-      void fill?.offsetHeight;
-      if (fill) fill.style.transition = '';
-      if (action === 'test') {
-        // Remplissage lent ~1.8%/s → 90% max (test serveur dure 15-60s)
-        let cur = 0;
-        _connProgTimer = setInterval(() => {
-          cur = Math.min(90, cur + 1.8);
-          _connCurPct = cur; set(cur);
-          if (cur >= 90) clearInterval(_connProgTimer);
-        }, 1000);
-      } else {
-        // Phases courtes (serveur, envoi) : remplissage ~2.5s → 100%
-        let cur = 0;
-        _connProgTimer = setInterval(() => {
-          cur = Math.min(100, cur + 2);
-          _connCurPct = cur; set(cur);
-          if (cur >= 100) clearInterval(_connProgTimer);
-        }, 50);
-      }
+        cur = Math.min(90, cur + 1.8);
+        _connCurPct = cur;
+        if (cur >= 90) clearInterval(_connProgTimer);
+      }, 1000);
     }
+    // serveur / envoi : juste le spinner (phases < 5s)
   }
   window._setConnProgress = (prefix, action) => _setConnProgress(prefix, action);
 
   function _setConnProgressPct(prefix, pct) {
-    // Map 0-100% (mois X/Y) → 10-92% affichés — les 8% restants pour le post-traitement
+    const CIRC = 125.7;
     const displayPct = Math.min(92, Math.round(10 + pct * 0.82));
     const next = Math.max(_connCurPct, displayPct);
     _connCurPct = next;
-    const fill = document.getElementById(prefix + 'ProgFill');
+    const ring = document.getElementById(prefix + 'ProgRing');
+    const arc  = document.getElementById(prefix + 'ProgArc');
     const lbl  = document.getElementById(prefix + 'ProgPct');
-    if (fill) fill.style.width = next + '%';
-    if (lbl)  lbl.textContent  = next + '%';
+    if (arc)  arc.style.strokeDashoffset = CIRC * (1 - next / 100);
+    if (ring) ring.classList.remove('spin');
+    if (lbl)  lbl.textContent = next + '%';
   }
   window._setConnProgressPct = _setConnProgressPct;
 
