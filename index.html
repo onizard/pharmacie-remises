@@ -374,6 +374,15 @@
     cursor: pointer; transition: all .2s;
   }
   .cond-tab-add:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+  .cond-tab-idem {
+    display: flex; align-items: center; justify-content: center;
+    padding: 6px 10px; margin-bottom: -1px; margin-left: 4px;
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: .05em;
+    border: 1px solid var(--amber); border-bottom: none;
+    background: transparent; color: var(--amber);
+    cursor: pointer; transition: all .2s; opacity: .7;
+  }
+  .cond-tab-idem:hover { background: rgba(255,171,0,.12); opacity: 1; }
   .cond-tab-close {
     font-size: 13px; color: var(--text-dim);
     cursor: pointer; transition: color .15s; line-height: 1;
@@ -1652,8 +1661,9 @@ function updateMainTabs() {
   const btnCL = document.getElementById('btnConditionsLabo');
   if (btnCL) {
     const onLabs = state.currentPageId === 'labs';
-    btnCL.style.borderColor = onLabs ? 'var(--cyan)' : '';
-    btnCL.style.color       = onLabs ? 'var(--cyan)' : '';
+    btnCL.style.borderColor  = onLabs ? 'var(--amber)' : '';
+    btnCL.style.color        = onLabs ? 'var(--amber)' : '';
+    btnCL.style.boxShadow    = onLabs ? '0 0 8px rgba(255,171,0,.35)' : '';
   }
 }
 
@@ -2542,6 +2552,28 @@ function initLabPage(conf) {
     addBtn.className = 'cond-tab-add'; addBtn.textContent = '+';
     addBtn.addEventListener('click', addCondition);
     el.condTabs.appendChild(addBtn);
+
+    const idemBtn = document.createElement('div');
+    idemBtn.className = 'cond-tab-idem'; idemBtn.textContent = 'IDEM';
+    idemBtn.title = 'Dupliquer ce palier pour tous les mois suivants';
+    idemBtn.addEventListener('click', () => {
+      const yearNum  = year === '2025' ? 2025 : 2026;
+      const monKey   = year === '2025' ? 'activeMon2025' : 'activeMon2026';
+      const activeMon = s[monKey];
+      if (!activeMon) { showToast('Sélectionnez un mois d\'abord'); return; }
+      if (activeMon >= 12) { showToast('Aucun mois suivant à dupliquer'); return; }
+      const srcConds = getEffectiveCondsForMonth(s, yearNum, activeMon);
+      if (!s.condsByMonth) s.condsByMonth = { 2025: {}, 2026: {} };
+      if (!s.condsByMonth[yearNum]) s.condsByMonth[yearNum] = {};
+      for (let m = activeMon + 1; m <= 12; m++) {
+        s.condsByMonth[yearNum][m] = JSON.parse(JSON.stringify(srcConds));
+      }
+      if (year === '2025') s._refreshMonBtns25?.();
+      else                 s._refreshMonBtns26?.();
+      showToast(`Paliers dupliqués → ${['JAN','FEV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DEC'].slice(activeMon).join(' ')}`);
+      saveState();
+    });
+    el.condTabs.appendChild(idemBtn);
   }
 
   function activateCondition(idx) {
