@@ -1379,7 +1379,7 @@ function mkLabState(uid) {
     activeCondIdx2025: 0,
     condsByMonth: { 2025: {}, 2026: {} },
     activeMon2026: new Date().getMonth() + 1,
-    activeMon2025: null,
+    activeMon2025: new Date().getMonth() + 1,
     _refreshGrid: null,
   };
 }
@@ -1444,8 +1444,8 @@ function serializeState() {
         showR3: c.showR3,
         forceFirst: c.forceFirst,
       })),
-      activeMon2026: lp.activeMon2026 ?? null,
-      activeMon2025: lp.activeMon2025 ?? null,
+      activeMon2026: lp.activeMon2026 ?? (new Date().getMonth() + 1),
+      activeMon2025: lp.activeMon2025 ?? (new Date().getMonth() + 1),
       condsByMonth: lp.condsByMonth || { 2025: {}, 2026: {} },
     })),
   };
@@ -2393,15 +2393,14 @@ function createLabContDom(lp) {
       });
     }
     function _refreshActive() {
-      const cur = lp[monKey];
+      const cur = lp[monKey] ?? (new Date().getMonth() + 1);
       container.querySelectorAll('.mon-btn').forEach(b => {
-        b.classList.toggle('active', cur != null && parseInt(b.dataset.mon) === cur);
+        b.classList.toggle('active', parseInt(b.dataset.mon) === cur);
       });
     }
     container.querySelectorAll('.mon-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const mon = parseInt(btn.dataset.mon);
-        lp[monKey] = (lp[monKey] === mon) ? null : mon;  // toggle: clic same = deselect
+        lp[monKey] = parseInt(btn.dataset.mon);
         _refreshActive();
         saveState();
       });
