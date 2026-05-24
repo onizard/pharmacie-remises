@@ -2567,6 +2567,7 @@ function initLabPage(conf) {
       const activeMon = s[monKey];
       if (!activeMon) { showToast('Sélectionnez un mois d\'abord'); return; }
       if (activeMon >= 12) { showToast('Aucun mois suivant à dupliquer'); return; }
+      if (!s.rsfPaliers || !s.rsfPaliers.length) { showToast('RSF non chargé — réessayez dans un instant'); return; }
       const srcConds = getEffectiveCondsForMonth(s, yearNum, activeMon);
       if (!s.condsByMonth) s.condsByMonth = { 2025: {}, 2026: {} };
       if (!s.condsByMonth[yearNum]) s.condsByMonth[yearNum] = {};
@@ -3088,6 +3089,24 @@ function initLabPage(conf) {
     if (newConds === s[condKey]) return;
     s[condKey] = newConds;
     s[aciKey]  = Math.min(s[aciKey] || 0, newConds.length - 1);
+    // Reconcile rsfValues against current paliers (override may have been
+    // created before RSF loaded, or paliers may have changed since)
+    newConds.forEach(cond => {
+      const prev = {};
+      (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
+      cond.rsfValues = s.rsfPaliers.map(v => {
+        const sv = prev[String(v)];
+        return sv
+          ? { rsf_pct: v, remise2: sv.excluded && !sv.remise2 ? '0' : sv.remise2, remise3: sv.remise3, excluded: sv.excluded, hasExcept: sv.hasExcept || false }
+          : { rsf_pct: v, remise2: '', remise3: '', excluded: s.selectedLab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v)), hasExcept: false };
+      });
+      Object.values(prev).filter(r => r.custom).forEach(cr => {
+        if (!cond.rsfValues.some(r => String(r.rsf_pct) === String(cr.rsf_pct)))
+          cond.rsfValues.push({ ...cr, custom: true });
+      });
+      cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
+      applyRsf25Default(cond);
+    });
     el.condPanels.innerHTML = '';
     newConds.forEach((cond, idx) => {
       const panel = buildCondPanel(cond);
