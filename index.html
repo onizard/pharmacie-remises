@@ -4857,6 +4857,35 @@ async function launchSimulation() {
             cipLocked.add(cip13);
             _rAcc += rowCA;
           }
+
+          // Trim : relâcher l'excédent pour Lab 1 (Biogaran)
+          // Priorité : CIPs avec équivalent Lab1 ET qui lui apportent le plus de CA
+          if (_rAcc > _rTCA && lab1Name) {
+            const _lab1CAofCip = cip13 => {
+              const _r = naturalRefMap.get(cip13);
+              if (!_r) return 0;
+              const _l1Ref = mergedAlts(_r.libelle).find(a => a.labo === lab1Name);
+              if (!_l1Ref) return 0;
+              const _p = _l1Ref.puht || 0;
+              return csvData.filter(r => r.cip13 === cip13).reduce((s, r) => s + r.qty * _p, 0);
+            };
+            const _assigned = [..._rMap.entries()]
+              .filter(([c]) => cipLocked.has(c))
+              .map(([c, d]) => ({ cip13: c, rowCA: d.rowCA, lab1CA: _lab1CAofCip(c) }))
+              .sort((a, b) => {
+                const ha = a.lab1CA > 0 ? 0 : 1;
+                const hb = b.lab1CA > 0 ? 0 : 1;
+                if (ha !== hb) return ha - hb;   // CIPs avec equiv Lab1 en premier
+                return b.lab1CA - a.lab1CA;       // parmi eux : plus utile à Lab1 en premier
+              });
+            for (const { cip13, rowCA } of _assigned) {
+              if (_rAcc - rowCA >= _rTCA) {
+                assignment.delete(cip13);
+                cipLocked.delete(cip13);
+                _rAcc -= rowCA;
+              }
+            }
+          }
         });
 
         if (targetCA > 0) {
