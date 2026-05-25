@@ -5940,19 +5940,9 @@ function initConnecteurModal() {
     resultEl.className = 'conn-test-result';
     _setConnProgress(prefix, 'serveur');
 
-    // OSPHARM : afficher le spinner de chargement sur le recap dès la connexion
-    if (connKey === 'ospharm') {
-      // Sauvegarder les creds avant la fermeture de la modale — si la connexion échoue/timeout,
-      // openModal() pourra les restaurer depuis state au lieu d'afficher des champs vides
-      state.connectors[connKey] = { user, pass, connected: false };
-      saveState();
-      state._ospConnecting    = true;
-      state._ospJobStartedAt  = Date.now();
-      state._ospJobMessage    = '';
-      document.getElementById('connecteurModal')?.classList.remove('open');
-      goTo('recap');
-      renderRecap();
-    }
+    // Sauvegarder les creds immédiatement — préservés même si la connexion échoue
+    state.connectors[connKey] = { user, pass, connected: false };
+    saveState();
 
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
@@ -6006,18 +5996,19 @@ function initConnecteurModal() {
       saveState();
       resultEl.textContent = '';
       showView(prefix, true);
+      if (connKey === 'ospharm') {
+        // Connexion établie → fermer la modale et aller au recap
+        closeModal();
+        state._ospJobStartedAt = Date.now();
+        state._ospJobMessage   = '';
+        goTo('recap');
+        renderRecap();
+      }
       _triggerWorkflow(connKey, prefix);
     } catch(e) {
       _setConnProgress(prefix, 'reset');
-      if (connKey === 'ospharm') {
-        state._ospConnecting = false;
-        renderRecap();
-        // Ré-ouvrir la modale pour afficher l'erreur
-        document.getElementById('connecteurModal')?.classList.add('open');
-        showView(prefix, false);
-      } else {
-        showView(prefix, false);
-      }
+      if (connKey === 'ospharm') state._ospConnecting = false;
+      showView(prefix, false);
       resultEl.innerHTML = `❌ ${e.message}<br><span style="color:var(--text-dim)">Vérifiez vos identifiants et réessayez.</span>`;
       resultEl.className = 'conn-test-result error';
       const passEl = document.getElementById(prefix + 'Pass');
