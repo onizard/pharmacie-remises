@@ -2208,13 +2208,21 @@ function _renderOspProgress(el) {
     }
   }
 
-  // Rafraîchir toutes les 30s pour mettre à jour la phrase
+  // Cycle les phrases toutes les 5s
+  let _phraseIdx = _OSP_ACTIVITIES.indexOf(_OSP_ACTIVITIES.find(a => a.min <= ((() => {
+    const el2 = Date.now() - (state._ospJobStartedAt || Date.now());
+    const m2  = (state._ospJobMessage || '').match(/Mois\s+(\d+)\/(\d+)/i);
+    const p2  = m2 ? Math.min(95, parseInt(m2[1]) / parseInt(m2[2]) * 100) : 0;
+    return p2 > 0 ? Math.ceil(Math.max(0, el2 / (p2 / 100) - el2) / 60000) : 10;
+  })())));
+  if (_phraseIdx < 0) _phraseIdx = 0;
   _ospProgressTimer = setInterval(() => {
     const actLine = document.getElementById('ospActivityLine');
     if (!actLine) { clearInterval(_ospProgressTimer); return; }
-    const { actHtml: a } = _compute();
-    actLine.innerHTML = a;
-  }, 30_000);
+    _phraseIdx = (_phraseIdx + 1) % _OSP_ACTIVITIES.length;
+    const act = _OSP_ACTIVITIES[_phraseIdx];
+    actLine.innerHTML = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
+  }, 5_000);
 }
 
 function renderRecap() {
@@ -4191,8 +4199,8 @@ async function launchSimulation() {
           if (_achT) {
             e.caThreshold = _achT;
           } else if (e.isSelected) {
-            const _fbCs = ratio2026 > 0 ? (e.lp?.conditions || []) : (e.lp?.conditions2025 || []);
-            const _fbTs = _fbCs.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
+            const _fbAllC = [...(e.lp?.conditions || []), ...(e.lp?.conditions2025 || [])];
+            const _fbTs = _fbAllC.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
             e.caThreshold = _fbTs.length ? Math.min(..._fbTs) : 0;
           } else {
             e.caThreshold = 0;
@@ -4222,8 +4230,14 @@ async function launchSimulation() {
             : (bestCond !== null || !e.isSelected);
           if (bestCond) {
             e.caThreshold = pr * _forcedCA;
-          } else if (e.isSelected && e.lp?.conditions?.length) {
-            const _tiers = e.lp.conditions.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
+            if (!e.caThreshold && e.isSelected) {
+              const _allC = [...(e.lp?.conditions || []), ...(e.lp?.conditions2025 || [])];
+              const _nxt = _allC.filter(c => parseFloat(c.caCondition) > 0).map(c => pr * parseFloat(c.caCondition));
+              if (_nxt.length) e.caThreshold = Math.min(..._nxt);
+            }
+          } else if (e.isSelected) {
+            const _allC = [...(e.lp?.conditions || []), ...(e.lp?.conditions2025 || [])];
+            const _tiers = _allC.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
             e.caThreshold = _tiers.length ? pr * Math.min(..._tiers) : 0;
           } else {
             e.caThreshold = 0;
@@ -4547,7 +4561,7 @@ async function launchSimulation() {
     const mkLabRow = (l, withMarket = false, withGainCol = false) => {
       const cls = !l.isSelected ? 'lab-neutral' : withMarket ? (l.met ? 'lab-ok' : 'lab-nok') : 'lab-ok';
       const marketCells = withMarket && l.isSelected
-        ? `<td>${l.caThreshold ? fmtE(l.caThreshold) : '—'}</td><td style="color:${l.met?'var(--green)':'var(--red)'}">${l.met?'✓':'✗'}</td>`
+        ? `<td>${l.caThreshold > 0 ? fmtE(l.caThreshold) : '—'}</td><td style="color:${l.met?'var(--green)':'var(--red)'}">${l.met?'✓':'✗'}</td>`
         : withMarket ? `<td>—</td><td>—</td>` : '';
       const gainCol = withGainCol ? '<td></td>' : '';
       const paNet = l.ca - l.remise;
@@ -4566,7 +4580,11 @@ async function launchSimulation() {
       const tPTot = tCA > 0 ? tR / tCA * 100 : 0;
       const mPad = withMarket ? '<td>—</td><td>—</td>' : '';
       const gainTd = gain != null
-        ? `<td style="text-align:right;font-weight:700;color:var(--red)">PERTE : +${fmtE(gain)}</td>`
+        ? gain > 0
+          ? `<td style="text-align:right;font-weight:700;color:var(--red)">PERTE : +${fmtE(gain)}</td>`
+          : gain < 0
+            ? `<td style="text-align:right;font-weight:700;color:var(--green)">GAIN : +${fmtE(-gain)}</td>`
+            : `<td style="text-align:right;font-weight:700;color:var(--cyan)">ÉGAL</td>`
         : '';
       return `<tr class="sim-total-row"><td>TOTAL</td><td>${tQty}</td><td>${fmtE(tCA)}</td>${mPad}<td>${fmtE(tR)}</td><td>${fmtE(tPaNet)}</td><td>${fmtP(tP)}</td><td>${fmtP(tPTot)}</td>${gainTd}</tr>`;
     };
@@ -4795,6 +4813,52 @@ async function launchSimulation() {
           : null;
         const targetCA = parseFloat(targetCond?.caCondition || 0);
 
+        // ── Pré-passe : Labs 2..N avec palier CA cible ─────────────────────────
+        // Réserve leurs refs les plus rentables AVANT que Lab 1 tourne son greedy.
+        // Garantit que les deux labs peuvent atteindre leur seuil simultanément.
+        restLabs.forEach(rLab => {
+          const _rLp = state.labPages.find(l => l.selectedLab === rLab);
+          const _rTCond = _rLp?.conditions?.length
+            ? _rLp.conditions.reduce((b, c) =>
+                parseFloat(c.remiseGlobale || 0) > parseFloat(b?.remiseGlobale || 0) ? c : b, null)
+            : null;
+          const _rTCA = parseFloat(_rTCond?.caCondition || 0);
+          if (!_rTCA) return;  // Pas de palier cible → pas de pré-réservation
+
+          const _rCond = getBestCond(_rLp, Infinity, true);
+          const _rFm   = state.gers != null && parseFloat(_rCond?.caCondition || 0) > 0 &&
+                         parseFloat(_rCond?.caCondition || 0) >= 0.9 * state.gers;
+
+          // Déduplique par cip13 (csvData multi-lignes si données mensuelles)
+          const _rMap = new Map();
+          csvData.forEach(row => {
+            if (cipLocked.has(row.cip13)) return;
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const labRef = mergedAlts(ref.libelle).find(a => a.labo === rLab);
+            if (!labRef) return;
+            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || labRef.puht || 0;
+            if (_rMap.has(row.cip13)) {
+              _rMap.get(row.cip13).rowCA += rowPuht * row.qty;
+            } else {
+              const rNet = (labRef.puht || 0) * (1 - getRemise(labRef, _rCond, _rFm) / 100);
+              _rMap.set(row.cip13, { labRef, rowCA: rowPuht * row.qty, rNet });
+            }
+          });
+
+          // Trier par prix net croissant = refs les plus rentables en premier
+          const _rCands = [..._rMap.entries()].sort((a, b) => a[1].rNet - b[1].rNet);
+
+          // Greedy : assigner jusqu'au palier cible
+          let _rAcc = 0;
+          for (const [cip13, { labRef, rowCA }] of _rCands) {
+            if (_rAcc >= _rTCA) break;
+            assignment.set(cip13, labRef);
+            cipLocked.add(cip13);
+            _rAcc += rowCA;
+          }
+        });
+
         if (targetCA > 0) {
           // Calculer la rentabilité de chaque ref pour Lab 1 vs alternatives
           const lab1Cond = getBestCond(lp1, Infinity, true);
@@ -4828,6 +4892,7 @@ async function launchSimulation() {
           const fallbackMap  = new Map();
 
           csvData.forEach(row => {
+            if (cipLocked.has(row.cip13)) return;  // déjà réservé par pré-passe
             const ref = naturalRefMap.get(row.cip13);
             if (!ref) return;
             // Si la ref naturelle est déjà Lab1, l'inclure même sans alt dans mergedAlts
