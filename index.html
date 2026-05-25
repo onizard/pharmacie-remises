@@ -5942,6 +5942,10 @@ function initConnecteurModal() {
 
     // OSPHARM : afficher le spinner de chargement sur le recap dès la connexion
     if (connKey === 'ospharm') {
+      // Sauvegarder les creds avant la fermeture de la modale — si la connexion échoue/timeout,
+      // openModal() pourra les restaurer depuis state au lieu d'afficher des champs vides
+      state.connectors[connKey] = { user, pass, connected: false };
+      saveState();
       state._ospConnecting    = true;
       state._ospJobStartedAt  = Date.now();
       state._ospJobMessage    = '';
