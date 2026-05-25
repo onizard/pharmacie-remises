@@ -4688,7 +4688,8 @@ async function launchSimulation() {
     allOptScenarios.push(..._deduped);
     allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
     await _yield(); _sp(96, '// Classement final', 'Préparation de l\'affichage…');
-    const [winnerEntry, ...otherScenarios] = allOptScenarios;
+    let winnerEntry = allOptScenarios[0];
+    const otherScenarios = allOptScenarios.slice(1);
     const winnerSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
     const totalScenarios = 1 + allOptScenarios.length;
 
@@ -5261,6 +5262,147 @@ async function launchSimulation() {
         });
       });
     });
+
+    // ── Recherche exhaustive : toutes permutations du simulateur personnalisé ────
+    // Lance en arrière-plan après le rendu initial pour ne pas bloquer l'affichage.
+    // Si une combinaison bat le scénario gagnant, met à jour le bandeau et le KPI.
+    (async () => {
+      const _targetLabs = [...ourLabs].filter(ln => {
+        const lp = state.labPages.find(l => l.selectedLab === ln);
+        return lp?.conditions?.some(c => parseFloat(c.caCondition || 0) > 0);
+      });
+      if (_targetLabs.length < 2) return;
+
+      const _toFetch = _targetLabs.filter(ln => !_fullFetchedLabs.has(ln));
+      if (_toFetch.length) {
+        const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+        await Promise.all(_toFetch.map(async labName => {
+          const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&limit=10000`;
+          const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
+          rows.forEach(r => {
+            if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
+            if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
+              libelleMap.get(r.libelle).push(r);
+            const key = formNormKey(r.libelle);
+            if (!formNormMap.has(key)) formNormMap.set(key, []);
+            if (!formNormMap.get(key).some(x => x.cip13 === r.cip13))
+              formNormMap.get(key).push(r);
+          });
+          _fullFetchedLabs.add(labName);
+        }));
+      }
+
+      function _perms(arr, k) {
+        if (k === 0) return [[]];
+        const result = [];
+        for (let i = 0; i < arr.length; i++) {
+          const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+          for (const sub of _perms(rest, k - 1)) result.push([arr[i], ...sub]);
+        }
+        return result;
+      }
+
+      const maxK = Math.min(4, _targetLabs.length);
+      const allPerms = [];
+      for (let k = 2; k <= maxK; k++) allPerms.push(..._perms(_targetLabs, k));
+
+      let bestEntry = winnerEntry;
+      for (const perm of allPerms) {
+        await _yield();
+        const { scenario, assignment } = calcCustomScenario(perm);
+        if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
+          const eKey = `custom_auto_${perm.join('_').replace(/\s+/g,'_')}`;
+          scenarioStore.set(eKey, { assignment, labResults: scenario.labResults });
+          const eDlBtns = mkScenarioDlBtns(eKey, scenario, assignment);
+          bestEntry = {
+            key: eKey,
+            label: `SCÉNARIO ${perm.map(l => l.toUpperCase()).join(' + ')}`,
+            sub: 'SIMULATEUR PERSONNALISÉ',
+            scenario,
+            dlBtns: eDlBtns,
+            assignment,
+          };
+        }
+      }
+
+      if (bestEntry === winnerEntry) return;
+
+      winnerEntry = bestEntry;
+      const newSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
+      const simWinnerEl = document.getElementById('simWinner');
+      if (!simWinnerEl) return;
+
+      simWinnerEl.innerHTML = `
+        <canvas class="sim-fireworks" id="simFireworks"></canvas>
+        <div class="sim-winner-dl">${winnerEntry.dlBtns}</div>
+        <div class="sim-winner-crown">★</div>
+        <div class="sim-winner-title">${winnerEntry.label}</div>
+        <div class="sim-winner-sub">GAIN LE PLUS ÉLEVÉ — PA NET LE PLUS BAS${winnerEntry.sub ? ' — ' + winnerEntry.sub : ''}</div>
+        <div class="sim-winner-gain">GAIN ${newSaving>=0?'+':''}${fmtE(newSaving)}</div>
+        ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
+      `;
+
+      document.querySelectorAll('.sim-kpi').forEach(el => {
+        if (el.querySelector('.sim-kpi-label')?.textContent === 'PA NET OPTIMAL') {
+          const val = el.querySelector('.sim-kpi-value');
+          if (val) {
+            val.textContent = fmtE(winnerEntry.scenario.totalPaNet);
+            val.className = `sim-kpi-value ${newSaving > 0 ? 'green' : 'red'}`;
+          }
+        }
+      });
+
+      simWinnerEl.querySelectorAll('.sim-dl-inline').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const s = scenarioStore.get(btn.dataset.key);
+          if (!s) return;
+          downloadCSV(buildScenarioCSV(s.assignment, s.labResults, s.filterLab || null, s.forcedConds || null),
+            `scenario_${btn.dataset.key}.csv`);
+        });
+      });
+
+      (function _reFireworks() {
+        const canvas = document.getElementById('simFireworks');
+        const winner = document.getElementById('simWinner');
+        if (!canvas || !winner) return;
+        canvas.width  = winner.offsetWidth  || 800;
+        canvas.height = winner.offsetHeight || 260;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        const PX = 5;
+        const COLORS = ['#00ff88','#ffab00','#00e5ff','#ff3366','#cc5de8','#ffd93d','#6bcb77','#4d96ff'];
+        const particles = [];
+        function burst(x, y) {
+          const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+          const count = 18 + Math.floor(Math.random() * 14);
+          for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 / count) * i + Math.random() * 0.3;
+            const speed = 1.5 + Math.random() * 3.5;
+            particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
+              color, life: 45 + Math.floor(Math.random()*20), maxLife: 65 });
+          }
+        }
+        let frame = 0;
+        function tick() {
+          if (!document.getElementById('simFireworks')) return;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          if (frame % 28 === 0) burst(60 + Math.random()*(canvas.width-120), 20 + Math.random()*(canvas.height-40));
+          for (let i = particles.length-1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx; p.y += p.vy; p.vy += 0.09; p.life--;
+            if (p.life <= 0) { particles.splice(i,1); continue; }
+            ctx.globalAlpha = p.life / p.maxLife;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(Math.round(p.x/PX)*PX, Math.round(p.y/PX)*PX, PX, PX);
+          }
+          ctx.globalAlpha = 1;
+          frame++;
+          if (frame < 360) requestAnimationFrame(tick);
+          else canvas.style.opacity = '0';
+        }
+        tick();
+      })();
+    })();
 
     // Pixel-art fireworks on winner banner
     (function startFireworks() {
