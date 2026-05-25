@@ -1409,6 +1409,10 @@ let state = {
 const LS_KEY = 'org_state_v1';
 // Protège contre la sauvegarde d'un état vide pendant l'initialisation async
 let _initDone = false;
+// Cache mémoire du cloud state chargé au démarrage — fallback si localStorage indisponible
+let _startupCloudState = null;
+// Derniers labPages valides connus — garde contre l'écrasement accidentel au cloud
+let _lastGoodLabPages = null;
 
 function serializeState() {
   return {
@@ -1482,11 +1486,19 @@ async function saveCloudState(data) {
       for (const k of ['ospharm_job', 'verif_job', 'conn_test']) {
         if (cur?.state_json?.[k] && payload[k] === undefined) payload[k] = cur.state_json[k];
       }
-      // Ne jamais écraser labPages cloud si le local est vide
-      if (!payload.labPages?.length && cur?.state_json?.labPages?.length) {
-        payload.labPages = cur.state_json.labPages;
+      // Ne jamais écraser labPages cloud si le local est vide (guard DB + guard mémoire)
+      const _guardPages = cur?.state_json?.labPages?.length ? cur.state_json.labPages : _lastGoodLabPages;
+      if (!payload.labPages?.length && _guardPages?.length) {
+        payload.labPages = _guardPages;
+      } else if (payload.labPages?.length) {
+        _lastGoodLabPages = payload.labPages;
       }
-    } catch(_) {}
+    } catch(_) {
+      // Si la lecture DB échoue, utiliser le cache mémoire comme garde
+      if (!payload.labPages?.length && _lastGoodLabPages?.length) {
+        payload.labPages = _lastGoodLabPages;
+      }
+    }
     await sb.from('user_state').upsert(
       { user_id: session.user.id, state_json: payload },
       { onConflict: 'user_id' }
@@ -5504,6 +5516,10 @@ async function saveProfile() {
           const { data: cloud } = await sb.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           if (cloud?.state_json) {
+            _startupCloudState = cloud.state_json;
+            if (cloud.state_json.labPages?.length) {
+              _lastGoodLabPages = cloud.state_json.labPages;
+            }
             const cs = cloud.state_json;
             if (!isAdmin) { cs.csvData = null; cs.csvRows = 0; cs.prorataRatios = null; }
             localStorage.setItem(LS_KEY, JSON.stringify(cs));
@@ -5516,7 +5532,8 @@ async function saveProfile() {
     }
   } catch(e) {}
 
-  const saved = loadSavedState();
+  // Fallback : si localStorage vide (cache effacé, quota), utiliser l'état cloud chargé en mémoire
+  const saved = loadSavedState() || _startupCloudState;
   if (saved) {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
