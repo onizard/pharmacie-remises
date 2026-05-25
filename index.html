@@ -4849,41 +4849,32 @@ async function launchSimulation() {
           // Trier par prix net croissant = refs les plus rentables en premier
           const _rCands = [..._rMap.entries()].sort((a, b) => a[1].rNet - b[1].rNet);
 
-          // Greedy : assigner jusqu'au palier cible
+          // Pass 1 : CIPs rentables qui ne dépassent PAS le palier individuellement.
+          // Les gros CIPs qui causeraient un overshoot sont délibérément ignorés ici
+          // → ils restent disponibles pour Lab 1 (Biogaran) dont le PUHT peut être supérieur.
           let _rAcc = 0;
+          const _rUsed = new Set();
           for (const [cip13, { labRef, rowCA }] of _rCands) {
             if (_rAcc >= _rTCA) break;
-            assignment.set(cip13, labRef);
-            cipLocked.add(cip13);
-            _rAcc += rowCA;
+            if (_rAcc + rowCA <= _rTCA) {
+              assignment.set(cip13, labRef);
+              cipLocked.add(cip13);
+              _rUsed.add(cip13);
+              _rAcc += rowCA;
+            }
           }
 
-          // Trim : relâcher l'excédent pour Lab 1 (Biogaran)
-          // Priorité : CIPs avec équivalent Lab1 ET qui lui apportent le plus de CA
-          if (_rAcc > _rTCA && lab1Name) {
-            const _lab1CAofCip = cip13 => {
-              const _r = naturalRefMap.get(cip13);
-              if (!_r) return 0;
-              const _l1Ref = mergedAlts(_r.libelle).find(a => a.labo === lab1Name);
-              if (!_l1Ref) return 0;
-              const _p = _l1Ref.puht || 0;
-              return csvData.filter(r => r.cip13 === cip13).reduce((s, r) => s + r.qty * _p, 0);
-            };
-            const _assigned = [..._rMap.entries()]
-              .filter(([c]) => cipLocked.has(c))
-              .map(([c, d]) => ({ cip13: c, rowCA: d.rowCA, lab1CA: _lab1CAofCip(c) }))
-              .sort((a, b) => {
-                const ha = a.lab1CA > 0 ? 0 : 1;
-                const hb = b.lab1CA > 0 ? 0 : 1;
-                if (ha !== hb) return ha - hb;   // CIPs avec equiv Lab1 en premier
-                return b.lab1CA - a.lab1CA;       // parmi eux : plus utile à Lab1 en premier
-              });
-            for (const { cip13, rowCA } of _assigned) {
-              if (_rAcc - rowCA >= _rTCA) {
-                assignment.delete(cip13);
-                cipLocked.delete(cip13);
-                _rAcc -= rowCA;
-              }
+          // Pass 2 : combler le CA restant avec les plus petits CIPs disponibles.
+          // Minimise l'overshoot final et préserve au maximum les gros CIPs pour Lab 1.
+          if (_rAcc < _rTCA) {
+            const _fill = [..._rMap.entries()]
+              .filter(([c]) => !_rUsed.has(c))
+              .sort((a, b) => a[1].rowCA - b[1].rowCA);  // plus petits en premier
+            for (const [cip13, { labRef, rowCA }] of _fill) {
+              if (_rAcc >= _rTCA) break;
+              assignment.set(cip13, labRef);
+              cipLocked.add(cip13);
+              _rAcc += rowCA;
             }
           }
         });
