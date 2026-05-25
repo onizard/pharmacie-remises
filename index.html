@@ -1846,7 +1846,8 @@ async function autoRunOspharm() {
             saveState();
             goTo('recap');
             renderRecap();
-            if (['csv', 'results'].includes(state.currentPageId)) launchSimulation();
+            if (state.currentPageId === 'results') launchComparateur();
+            else if (state.currentPageId === 'csv') launchSimulation();
           } catch(_) {}
           break;
         }
@@ -1882,7 +1883,14 @@ async function launchComparateur() {
     const job = row?.state_json?.ospharm_job;
 
     if (!job || job.status === 'running') {
-      showCompError('Données OSPHARM en cours de récupération — réessayez dans quelques minutes.');
+      const isLoading = state._ospJobRunning || state._ospConnecting || job?.status === 'running';
+      if (isLoading) {
+        hideCompError();
+        const simEl = document.getElementById('simResults');
+        if (simEl) _renderOspProgress(simEl);
+      } else {
+        showCompError('Données OSPHARM non disponibles — connectez OSPHARM DATASTAT.');
+      }
       return;
     }
     if (job.status === 'error') {
