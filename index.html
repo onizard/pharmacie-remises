@@ -4813,73 +4813,94 @@ async function launchSimulation() {
           : null;
         const targetCA = parseFloat(targetCond?.caCondition || 0);
 
-        // ── Pré-passe : Labs 2..N avec palier CA cible ─────────────────────────
-        // Réserve leurs refs les plus rentables AVANT que Lab 1 tourne son greedy.
-        // Garantit que les deux labs peuvent atteindre leur seuil simultanément.
-        restLabs.forEach(rLab => {
-          const _rLp = state.labPages.find(l => l.selectedLab === rLab);
-          const _rTCond = _rLp?.conditions?.length
-            ? _rLp.conditions.reduce((b, c) =>
-                parseFloat(c.remiseGlobale || 0) > parseFloat(b?.remiseGlobale || 0) ? c : b, null)
-            : null;
-          const _rTCA = parseFloat(_rTCond?.caCondition || 0);
-          if (!_rTCA) return;  // Pas de palier cible → pas de pré-réservation
+        // ── Co-optimisation : tous les labs sélectionnés avec un palier CA ───────
+        // Phase 1 : refs exclusives (un seul lab peut les servir) → assignées directement.
+        // Phase 2 : refs partagées → greedy par besoin relatif (rowCA / shortfall).
+        //           Le lab qui comble le plus grand % de son shortfall obtient le CIP.
+        const _coLabs = [lab1Name, ...restLabs].map(n => {
+          const lp = n === lab1Name ? lp1 : state.labPages.find(l => l.selectedLab === n);
+          if (!lp?.conditions?.length) return null;
+          const tc = lp.conditions.reduce((b, c) =>
+            parseFloat(c.remiseGlobale || 0) > parseFloat(b?.remiseGlobale || 0) ? c : b, null);
+          const tCA = parseFloat(tc?.caCondition || 0);
+          if (!tCA) return null;
+          const bc = getBestCond(lp, Infinity, true);
+          const fm = bc && state.gers != null && parseFloat(bc.caCondition || 0) >= 0.9 * state.gers;
+          return { name: n, lp, tCA, bc, fm, acc: 0, shortfall: tCA };
+        }).filter(Boolean);
 
-          const _rCond = getBestCond(_rLp, Infinity, true);
-          const _rFm   = state.gers != null && parseFloat(_rCond?.caCondition || 0) > 0 &&
-                         parseFloat(_rCond?.caCondition || 0) >= 0.9 * state.gers;
-
-          // Déduplique par cip13 (csvData multi-lignes si données mensuelles)
-          const _rMap = new Map();
-          csvData.forEach(row => {
-            if (cipLocked.has(row.cip13)) return;
-            const ref = naturalRefMap.get(row.cip13);
-            if (!ref) return;
-            const labRef = mergedAlts(ref.libelle).find(a => a.labo === rLab);
-            if (!labRef) return;
-            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || labRef.puht || 0;
-            if (_rMap.has(row.cip13)) {
-              _rMap.get(row.cip13).rowCA += rowPuht * row.qty;
-            } else {
-              const rNet = (labRef.puht || 0) * (1 - getRemise(labRef, _rCond, _rFm) / 100);
-              _rMap.set(row.cip13, { labRef, rowCA: rowPuht * row.qty, rNet });
-            }
+        if (_coLabs.length >= 2) {
+          // Construire la carte refs par lab (dédupliqué par cip13)
+          const _coMaps = new Map();
+          _coLabs.forEach(lab => {
+            const m = new Map();
+            csvData.forEach(row => {
+              if (cipLocked.has(row.cip13)) return;
+              const ref = naturalRefMap.get(row.cip13);
+              if (!ref) return;
+              const lr = mergedAlts(ref.libelle).find(a => a.labo === lab.name)
+                       || (ref.labo === lab.name ? ref : null);
+              if (!lr) return;
+              const p = row.puht || refMap.get(row.cip13)?.puht || lr.puht || 0;
+              if (m.has(row.cip13)) m.get(row.cip13).rowCA += p * row.qty;
+              else m.set(row.cip13, { labRef: lr, rowCA: p * row.qty });
+            });
+            _coMaps.set(lab.name, m);
           });
 
-          // Trier par prix net croissant = refs les plus rentables en premier
-          const _rCands = [..._rMap.entries()].sort((a, b) => a[1].rNet - b[1].rNet);
+          const _coAllCips = new Set();
+          _coMaps.forEach(m => m.forEach((_, c) => _coAllCips.add(c)));
 
-          // Pass 1 : CIPs rentables qui ne dépassent PAS le palier individuellement.
-          // Les gros CIPs qui causeraient un overshoot sont délibérément ignorés ici
-          // → ils restent disponibles pour Lab 1 (Biogaran) dont le PUHT peut être supérieur.
-          let _rAcc = 0;
-          const _rUsed = new Set();
-          for (const [cip13, { labRef, rowCA }] of _rCands) {
-            if (_rAcc >= _rTCA) break;
-            if (_rAcc + rowCA <= _rTCA) {
-              assignment.set(cip13, labRef);
-              cipLocked.add(cip13);
-              _rUsed.add(cip13);
-              _rAcc += rowCA;
+          // Phase 1 : refs exclusives
+          _coAllCips.forEach(cip13 => {
+            const avail = _coLabs.filter(l => _coMaps.get(l.name)?.has(cip13));
+            if (avail.length !== 1) return;
+            const lab = avail[0];
+            const { labRef, rowCA } = _coMaps.get(lab.name).get(cip13);
+            assignment.set(cip13, labRef);
+            cipLocked.add(cip13);
+            lab.acc += rowCA;
+            lab.shortfall = Math.max(0, lab.tCA - lab.acc);
+          });
+
+          // Phase 2 : refs partagées — greedy par besoin relatif décroissant
+          const _sharedCips = [..._coAllCips].filter(c =>
+            _coLabs.filter(l => _coMaps.get(l.name)?.has(c)).length > 1
+          );
+          _sharedCips.sort((ca, cb) => {
+            const maxScore = cip => Math.max(0, ..._coLabs.map(l =>
+              l.shortfall > 0 ? (_coMaps.get(l.name)?.get(cip)?.rowCA || 0) / l.shortfall : 0));
+            return maxScore(cb) - maxScore(ca);
+          });
+          for (const cip13 of _sharedCips) {
+            let bestLab = null, bestScore = -1;
+            for (const lab of _coLabs) {
+              if (!lab.shortfall) continue;
+              const s = (_coMaps.get(lab.name)?.get(cip13)?.rowCA || 0) / lab.shortfall;
+              if (s > bestScore) { bestScore = s; bestLab = lab; }
             }
+            if (!bestLab) continue;
+            const { labRef, rowCA } = _coMaps.get(bestLab.name).get(cip13);
+            assignment.set(cip13, labRef);
+            cipLocked.add(cip13);
+            bestLab.acc += rowCA;
+            bestLab.shortfall = Math.max(0, bestLab.tCA - bestLab.acc);
           }
 
-          // Pass 2 : combler le CA restant avec les plus petits CIPs disponibles.
-          // Minimise l'overshoot final et préserve au maximum les gros CIPs pour Lab 1.
-          if (_rAcc < _rTCA) {
-            const _fill = [..._rMap.entries()]
-              .filter(([c]) => !_rUsed.has(c))
-              .sort((a, b) => a[1].rowCA - b[1].rowCA);  // plus petits en premier
-            for (const [cip13, { labRef, rowCA }] of _fill) {
-              if (_rAcc >= _rTCA) break;
-              assignment.set(cip13, labRef);
-              cipLocked.add(cip13);
-              _rAcc += rowCA;
-            }
+          // lab1Info + exclusions pour le bloc "remaining"
+          const _co1 = _coLabs.find(l => l.name === lab1Name);
+          if (_co1) {
+            lab1ExcludedName = lab1Name;
+            [...(_coMaps.get(lab1Name)?.keys() || [])].forEach(c => {
+              if (!cipLocked.has(c) || assignment.get(c)?.labo !== lab1Name) lab1ExcludedSet.add(c);
+            });
+            lab1Info = {
+              labName: lab1Name, assignedCount: 0, accCA: _co1.acc, targetCA: _co1.tCA,
+              remiseGlobale: targetCond?.remiseGlobale, caAvailable: 0, caFallback: 0,
+              fallbackUsed: 0, exclRsf: 2.5, _cipLocked: cipLocked,
+            };
           }
-        });
-
-        if (targetCA > 0) {
+        } else if (targetCA > 0) {
           // Calculer la rentabilité de chaque ref pour Lab 1 vs alternatives
           const lab1Cond = getBestCond(lp1, Infinity, true);
           const _ca1 = parseFloat(lab1Cond?.caCondition) || 0;
