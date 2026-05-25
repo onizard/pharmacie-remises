@@ -2228,20 +2228,12 @@ function _renderOspProgress(el) {
     }
   }
 
-  // Cycle les phrases toutes les 5s
-  let _phraseIdx = _OSP_ACTIVITIES.indexOf(_OSP_ACTIVITIES.find(a => a.min <= ((() => {
-    const el2 = Date.now() - (state._ospJobStartedAt || Date.now());
-    const m2  = (state._ospJobMessage || '').match(/Mois\s+(\d+)\/(\d+)/i);
-    const p2  = m2 ? Math.min(95, parseInt(m2[1]) / parseInt(m2[2]) * 100) : 0;
-    return p2 > 0 ? Math.ceil(Math.max(0, el2 / (p2 / 100) - el2) / 60000) : 10;
-  })())));
-  if (_phraseIdx < 0) _phraseIdx = 0;
+  // Rafraîchit l'affichage toutes les 5s en recalculant le temps réel restant
   _ospProgressTimer = setInterval(() => {
     const actLine = document.getElementById('ospActivityLine');
     if (!actLine) { clearInterval(_ospProgressTimer); return; }
-    _phraseIdx = (_phraseIdx + 1) % _OSP_ACTIVITIES.length;
-    const act = _OSP_ACTIVITIES[_phraseIdx];
-    actLine.innerHTML = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
+    const { actHtml } = _compute();
+    actLine.innerHTML = actHtml;
   }, 5_000);
 }
 
