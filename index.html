@@ -5167,12 +5167,12 @@ async function launchSimulation() {
       const resDiv = document.getElementById('customSimResult');
       if (!resDiv) return;
 
-      // Fetch complet pour les restLabs pas encore dans libelleMap/formNormMap.
+      // Fetch complet pour TOUS les labs sélectionnés pas encore dans libelleMap/formNormMap.
       // Le second fetch initial cherche par libellé exact → rate les alts où le libellé diffère
-      // (ex : Zydus "DUTASTERIDE 30GELULES" vs acheté "DUTASTERIDE 30CAPS").
+      // (ex : Biogaran "DUTASTERIDE 30GELU" vs acheté Arrow "DUTASTERIDE 30CAPS").
       // Ce fetch charge TOUS les refs du labo une fois et les injecte dans les maps.
       const _active = priorities.filter(Boolean);
-      const _restNeeded = _active.slice(1).filter(ln => !_fullFetchedLabs.has(ln));
+      const _restNeeded = _active.filter(ln => !_fullFetchedLabs.has(ln));
       if (_restNeeded.length) {
         resDiv.style.display = '';
         resDiv.innerHTML = `<span style="color:var(--cyan);font-size:11px">Chargement refs ${_restNeeded.join(', ')}…</span>`;
