@@ -4687,11 +4687,375 @@ async function launchSimulation() {
     allOptScenarios.length = 0;
     allOptScenarios.push(..._deduped);
     allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
-    await _yield(); _sp(96, '// Classement final', 'Préparation de l\'affichage…');
+    await _yield(); _sp(96, '// Classement final', 'Recherche du meilleur scénario…');
     let winnerEntry = allOptScenarios[0];
     const otherScenarios = allOptScenarios.slice(1);
-    const winnerSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
     const totalScenarios = 1 + allOptScenarios.length;
+
+    // ── Cache full-catalog + algo co-opt (chargement ET customSimBtn) ─────────
+    const _fullFetchedLabs = new Set();
+
+    function calcCustomScenario(priorities) {
+      const active     = priorities.filter(Boolean);
+      const assignment = new Map(naturalAssignment);
+      const cipLocked  = new Set();
+      let   lab1Info   = null;
+      let   lab1ExcludedName = null;
+      const lab1ExcludedSet  = new Set();
+
+      if (active.length <= 1) {
+        active.forEach(labName => {
+          csvData.forEach(row => {
+            if (cipLocked.has(row.cip13)) return;
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
+            if (!labRef) return;
+            assignment.set(row.cip13, labRef);
+            cipLocked.add(row.cip13);
+          });
+        });
+      } else {
+        const [lab1Name, ...restLabs] = active;
+        const lp1 = state.labPages.find(lp => lp.selectedLab === lab1Name);
+        const targetCond = lp1?.conditions?.length
+          ? lp1.conditions.reduce((best, c) =>
+              parseFloat(c.remiseGlobale || 0) > parseFloat(best?.remiseGlobale || 0) ? c : best, null)
+          : null;
+        const targetCA = parseFloat(targetCond?.caCondition || 0);
+
+        const _coLabs = [lab1Name, ...restLabs].map(n => {
+          const lp = n === lab1Name ? lp1 : state.labPages.find(l => l.selectedLab === n);
+          if (!lp?.conditions?.length) return null;
+          const tc = lp.conditions.reduce((b, c) =>
+            parseFloat(c.remiseGlobale || 0) > parseFloat(b?.remiseGlobale || 0) ? c : b, null);
+          const tCA = parseFloat(tc?.caCondition || 0);
+          if (!tCA) return null;
+          const bc = getBestCond(lp, Infinity, true);
+          const fm = bc && state.gers != null && parseFloat(bc.caCondition || 0) >= 0.9 * state.gers;
+          return { name: n, lp, tCA, bc, fm, acc: 0, shortfall: tCA };
+        }).filter(Boolean);
+
+        if (_coLabs.length >= 2) {
+          const _coMaps = new Map();
+          _coLabs.forEach(lab => {
+            const m = new Map();
+            csvData.forEach(row => {
+              if (cipLocked.has(row.cip13)) return;
+              const ref = naturalRefMap.get(row.cip13);
+              if (!ref) return;
+              const lr = mergedAlts(ref.libelle).find(a => a.labo === lab.name)
+                       || (ref.labo === lab.name ? ref : null);
+              if (!lr) return;
+              const p = row.puht || refMap.get(row.cip13)?.puht || lr.puht || 0;
+              if (m.has(row.cip13)) m.get(row.cip13).rowCA += p * row.qty;
+              else m.set(row.cip13, { labRef: lr, rowCA: p * row.qty });
+            });
+            _coMaps.set(lab.name, m);
+          });
+          const _coAllCips = new Set();
+          _coMaps.forEach(m => m.forEach((_, c) => _coAllCips.add(c)));
+          _coAllCips.forEach(cip13 => {
+            const avail = _coLabs.filter(l => _coMaps.get(l.name)?.has(cip13));
+            if (avail.length !== 1) return;
+            const lab = avail[0];
+            const { labRef, rowCA } = _coMaps.get(lab.name).get(cip13);
+            assignment.set(cip13, labRef);
+            cipLocked.add(cip13);
+            lab.acc += rowCA;
+            lab.shortfall = Math.max(0, lab.tCA - lab.acc);
+          });
+          const _sharedCips = [..._coAllCips].filter(c =>
+            _coLabs.filter(l => _coMaps.get(l.name)?.has(c)).length > 1
+          );
+          _sharedCips.sort((ca, cb) => {
+            const maxScore = cip => Math.max(0, ..._coLabs.map(l =>
+              l.shortfall > 0 ? (_coMaps.get(l.name)?.get(cip)?.rowCA || 0) / l.shortfall : 0));
+            return maxScore(cb) - maxScore(ca);
+          });
+          for (const cip13 of _sharedCips) {
+            let bestLab = null, bestScore = -1;
+            for (const lab of _coLabs) {
+              if (!lab.shortfall) continue;
+              const s = (_coMaps.get(lab.name)?.get(cip13)?.rowCA || 0) / lab.shortfall;
+              if (s > bestScore) { bestScore = s; bestLab = lab; }
+            }
+            if (!bestLab) continue;
+            const { labRef, rowCA } = _coMaps.get(bestLab.name).get(cip13);
+            assignment.set(cip13, labRef);
+            cipLocked.add(cip13);
+            bestLab.acc += rowCA;
+            bestLab.shortfall = Math.max(0, bestLab.tCA - bestLab.acc);
+          }
+          const _co1 = _coLabs.find(l => l.name === lab1Name);
+          if (_co1) {
+            lab1ExcludedName = lab1Name;
+            [...(_coMaps.get(lab1Name)?.keys() || [])].forEach(c => {
+              if (!cipLocked.has(c) || assignment.get(c)?.labo !== lab1Name) lab1ExcludedSet.add(c);
+            });
+            lab1Info = {
+              labName: lab1Name, assignedCount: 0, accCA: _co1.acc, targetCA: _co1.tCA,
+              remiseGlobale: targetCond?.remiseGlobale, caAvailable: 0, caFallback: 0,
+              fallbackUsed: 0, exclRsf: 2.5, _cipLocked: cipLocked,
+            };
+          }
+        } else if (targetCA > 0) {
+          const lab1Cond = getBestCond(lp1, Infinity, true);
+          const _ca1 = parseFloat(lab1Cond?.caCondition) || 0;
+          const fm1  = state.gers != null && _ca1 > 0 && _ca1 >= 0.9 * state.gers;
+          const EXCL_RSF_PCT = 2.5;
+          const computeSavings = (ref, lab1Ref, lab1Net, row) => {
+            let altBestNet = lab1Net;
+            mergedAlts(ref.libelle)
+              .filter(a => a.labo !== lab1Name && ourLabs.has(a.labo))
+              .forEach(altRef => {
+                const altLp  = state.labPages.find(l => l.selectedLab === altRef.labo);
+                if (!altLp) return;
+                const altCond = getBestCond(altLp, Infinity, true);
+                const _altCA  = parseFloat(altCond?.caCondition) || 0;
+                const altFm   = state.gers != null && _altCA > 0 && _altCA >= 0.9 * state.gers;
+                const altNet  = (altRef.puht || 0) * (1 - getRemise(altRef, altCond, altFm) / 100);
+                if (altNet < altBestNet) altBestNet = altNet;
+              });
+            return (altBestNet - lab1Net) * row.qty;
+          };
+          const candidateMap = new Map();
+          const fallbackMap  = new Map();
+          csvData.forEach(row => {
+            if (cipLocked.has(row.cip13)) return;
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const lab1Ref = mergedAlts(ref.libelle).find(a => a.labo === lab1Name) || (ref.labo === lab1Name ? ref : null);
+            if (!lab1Ref) return;
+            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || lab1Ref.puht || 0;
+            const rowCA   = rowPuht * row.qty;
+            const isExcl  = Math.abs(parseFloat(lab1Ref.rsf_pct) || 0) <= EXCL_RSF_PCT;
+            const bucket  = isExcl ? fallbackMap : candidateMap;
+            if (bucket.has(row.cip13)) {
+              bucket.get(row.cip13).rowCA += rowCA;
+            } else {
+              const lab1Net = (lab1Ref.puht || 0) * (1 - getRemise(lab1Ref, lab1Cond, fm1) / 100);
+              const savings = computeSavings(ref, lab1Ref, lab1Net, row);
+              bucket.set(row.cip13, { row, lab1Ref, savings, rowCA });
+            }
+          });
+          const candidates = [...candidateMap.values()];
+          const fallback   = [...fallbackMap.values()];
+          const caAvailable = candidates.reduce((s, c) => s + c.rowCA, 0);
+          const caFallback  = fallback.reduce((s, c) => s + c.rowCA, 0);
+          [...candidates, ...fallback].forEach(({ row }) => assignment.delete(row.cip13));
+          candidates.sort((a, b) => b.savings - a.savings);
+          let accCA = 0, assignedCount = 0, fallbackUsed = 0;
+          {
+            for (const { row, lab1Ref } of candidates) {
+              assignment.set(row.cip13, lab1Ref);
+              cipLocked.add(row.cip13);
+            }
+            const _cipCA = new Map();
+            csvData.forEach(row => {
+              const _ref = assignment.get(row.cip13);
+              if (_ref?.labo !== lab1Name) return;
+              const _p = row.puht || refMap.get(row.cip13)?.puht || _ref.puht || 0;
+              _cipCA.set(row.cip13, (_cipCA.get(row.cip13) || 0) + row.qty * _p);
+            });
+            let _actualCA = 0;
+            _cipCA.forEach(v => { _actualCA += v; });
+            if (_actualCA > targetCA) {
+              const _hasRestAlt = cip13 => {
+                const _r = naturalRefMap.get(cip13);
+                if (!_r) return false;
+                return restLabs.some(ln => mergedAlts(_r.libelle).some(a => a.labo === ln));
+              };
+              for (const item of [...candidates].sort((a, b) => {
+                const da = _hasRestAlt(a.row.cip13) ? 0 : 1;
+                const db = _hasRestAlt(b.row.cip13) ? 0 : 1;
+                if (da !== db) return da - db;
+                return (_cipCA.get(a.row.cip13) || 0) - (_cipCA.get(b.row.cip13) || 0);
+              })) {
+                const contrib = _cipCA.get(item.row.cip13) || 0;
+                if (_actualCA - contrib >= targetCA) {
+                  assignment.delete(item.row.cip13);
+                  cipLocked.delete(item.row.cip13);
+                  _actualCA -= contrib;
+                }
+              }
+            }
+            accCA = _actualCA;
+            assignedCount = candidates.filter(c => cipLocked.has(c.row.cip13)).length;
+          }
+          if (accCA < targetCA) {
+            fallback.sort((a, b) => b.savings - a.savings);
+            const _need = targetCA - accCA;
+            const _fbTotal = fallback.reduce((s, c) => s + c.rowCA, 0);
+            if (_fbTotal >= _need) {
+              const _sel = new Set(fallback.map(c => c.row.cip13));
+              let _selCA = _fbTotal;
+              for (const item of [...fallback].sort((a, b) => a.rowCA - b.rowCA)) {
+                if (_selCA - item.rowCA >= _need) { _sel.delete(item.row.cip13); _selCA -= item.rowCA; }
+              }
+              for (const item of fallback) {
+                if (!_sel.has(item.row.cip13)) continue;
+                assignment.set(item.row.cip13, item.lab1Ref);
+                cipLocked.add(item.row.cip13);
+                accCA += item.rowCA; assignedCount++; fallbackUsed++;
+              }
+            } else {
+              for (const { row, lab1Ref, rowCA } of fallback) {
+                assignment.set(row.cip13, lab1Ref); cipLocked.add(row.cip13);
+                accCA += rowCA; assignedCount++; fallbackUsed++;
+              }
+            }
+          }
+          lab1ExcludedName = lab1Name;
+          [...candidates, ...fallback].forEach(({ row }) => {
+            if (!cipLocked.has(row.cip13)) lab1ExcludedSet.add(row.cip13);
+          });
+          lab1Info = {
+            labName: lab1Name, assignedCount, accCA, targetCA,
+            remiseGlobale: targetCond.remiseGlobale, caAvailable, caFallback,
+            fallbackUsed, exclRsf: EXCL_RSF_PCT, _cipLocked: cipLocked,
+          };
+        } else {
+          csvData.forEach(row => {
+            if (cipLocked.has(row.cip13)) return;
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const labRef = mergedAlts(ref.libelle).find(a => a.labo === lab1Name);
+            if (!labRef) return;
+            assignment.set(row.cip13, labRef);
+            cipLocked.add(row.cip13);
+          });
+        }
+
+        restLabs.forEach((labName, _idx) => {
+          const _isLast = _idx === restLabs.length - 1;
+          const _items = [];
+          csvData.forEach(row => {
+            if (cipLocked.has(row.cip13)) return;
+            const ref = naturalRefMap.get(row.cip13);
+            if (!ref) return;
+            const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
+            if (!labRef) return;
+            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || labRef.puht || 0;
+            _items.push({ row, labRef, rowCA: rowPuht * row.qty });
+          });
+          if (_isLast) {
+            _items.forEach(({ row, labRef }) => { assignment.set(row.cip13, labRef); cipLocked.add(row.cip13); });
+            return;
+          }
+          const _lp = state.labPages.find(l => l.selectedLab === labName);
+          const _tCond = _lp?.conditions?.length
+            ? _lp.conditions.reduce((b, c) =>
+                parseFloat(c.remiseGlobale || 0) > parseFloat(b?.remiseGlobale || 0) ? c : b, null)
+            : null;
+          const _tCA = parseFloat(_tCond?.caCondition || 0);
+          if (_tCA > 0 && _items.length) {
+            const _tot = _items.reduce((s, c) => s + c.rowCA, 0);
+            if (_tot >= _tCA) {
+              const _sel = new Set(_items.map(c => c.row.cip13));
+              let _selCA = _tot;
+              for (const item of [..._items].sort((a, b) => a.rowCA - b.rowCA)) {
+                if (_selCA - item.rowCA >= _tCA) { _sel.delete(item.row.cip13); _selCA -= item.rowCA; }
+              }
+              _items.forEach(item => {
+                if (!_sel.has(item.row.cip13)) return;
+                assignment.set(item.row.cip13, item.labRef);
+                cipLocked.add(item.row.cip13);
+              });
+            } else {
+              _items.forEach(({ row, labRef }) => { assignment.set(row.cip13, labRef); cipLocked.add(row.cip13); });
+            }
+          } else {
+            _items.forEach(({ row, labRef }) => { assignment.set(row.cip13, labRef); cipLocked.add(row.cip13); });
+          }
+        });
+      }
+
+      csvData.forEach(row => {
+        if (cipLocked.has(row.cip13)) return;
+        const ref = naturalRefMap.get(row.cip13);
+        if (!ref) return;
+        const alts = mergedAlts(ref.libelle).filter(r =>
+          ourLabs.has(r.labo) &&
+          !(lab1ExcludedSet.has(row.cip13) && r.labo === lab1ExcludedName)
+        );
+        if (!alts.length) { if (!assignment.has(row.cip13)) assignment.set(row.cip13, ref); return; }
+        let bestRef = null, bestNet = Infinity;
+        alts.forEach(altRef => {
+          const altLp = state.labPages.find(l => l.selectedLab === altRef.labo);
+          if (!altLp) return;
+          const cond = getBestCond(altLp, Infinity, true);
+          const fm = state.gers != null && cond?.caCondition != null && cond.caCondition >= 0.9 * state.gers;
+          const net = (altRef.puht || 0) * (1 - getRemise(altRef, cond, fm) / 100);
+          if (net < bestNet) { bestNet = net; bestRef = altRef; }
+        });
+        assignment.set(row.cip13, bestRef || ref);
+      });
+
+      return { scenario: calcScenario(assignment), assignment, lab1Info };
+    }
+
+    // ── Recherche exhaustive pendant le chargement (avant affichage START) ────
+    {
+      const _targetLabs = [...ourLabs].filter(ln => {
+        const lp = state.labPages.find(l => l.selectedLab === ln);
+        return lp?.conditions?.some(c => parseFloat(c.caCondition || 0) > 0);
+      });
+      if (_targetLabs.length >= 2) {
+        _sp(97, '// Optimisation combinatoire', `Analyse de ${_targetLabs.length} génériqueurs…`);
+        const _toFetch = _targetLabs.filter(ln => !_fullFetchedLabs.has(ln));
+        if (_toFetch.length) {
+          const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+          await Promise.all(_toFetch.map(async labName => {
+            const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&limit=10000`;
+            const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
+            rows.forEach(r => {
+              if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
+              if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
+                libelleMap.get(r.libelle).push(r);
+              const fk = formNormKey(r.libelle);
+              if (!formNormMap.has(fk)) formNormMap.set(fk, []);
+              if (!formNormMap.get(fk).some(x => x.cip13 === r.cip13))
+                formNormMap.get(fk).push(r);
+            });
+            _fullFetchedLabs.add(labName);
+          }));
+        }
+        function _perms(arr, k) {
+          if (k === 0) return [[]];
+          const result = [];
+          for (let i = 0; i < arr.length; i++) {
+            const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+            for (const sub of _perms(rest, k - 1)) result.push([arr[i], ...sub]);
+          }
+          return result;
+        }
+        const maxK = Math.min(4, _targetLabs.length);
+        const allPerms = [];
+        for (let k = 2; k <= maxK; k++) allPerms.push(..._perms(_targetLabs, k));
+        let bestEntry = winnerEntry;
+        for (const perm of allPerms) {
+          await _yield();
+          const { scenario, assignment } = calcCustomScenario(perm);
+          if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
+            const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
+            scenarioStore.set(eKey, { assignment, labResults: scenario.labResults });
+            const eDlBtns = mkScenarioDlBtns(eKey, scenario, assignment);
+            bestEntry = {
+              key: eKey,
+              label: `SCÉNARIO ${perm.map(l => l.toUpperCase()).join(' + ')}`,
+              sub: 'SIMULATEUR PERSONNALISÉ',
+              scenario, dlBtns: eDlBtns, assignment,
+            };
+          }
+        }
+        if (bestEntry !== winnerEntry) {
+          winnerEntry = bestEntry;
+          _sp(99, '// Meilleur scénario identifié', `${winnerEntry.label}`);
+        }
+      }
+    }
+    const winnerSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
 
     // ── Récap par CIP ─────────────────────────────────────────────────────────
     function buildRecapRows(assignment) {
@@ -4793,376 +5157,6 @@ async function launchSimulation() {
       });
     });
 
-    function calcCustomScenario(priorities) {
-      const active     = priorities.filter(Boolean);
-      const assignment = new Map(naturalAssignment);
-      const cipLocked  = new Set();
-      let   lab1Info   = null;
-      let   lab1ExcludedName = null;
-      const lab1ExcludedSet  = new Set();
-
-      if (active.length <= 1) {
-        // ── Mode 1 : affecter TOUTES les refs équivalentes du labo choisi ─────
-        active.forEach(labName => {
-          csvData.forEach(row => {
-            if (cipLocked.has(row.cip13)) return;
-            const ref = naturalRefMap.get(row.cip13);
-            if (!ref) return;
-            const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
-            if (!labRef) return;
-            assignment.set(row.cip13, labRef);
-            cipLocked.add(row.cip13);
-          });
-        });
-      } else {
-        // ── Mode 2+ : Lab 1 stratégique jusqu'au palier cible, Labs 2+ séquentiels ─
-        const [lab1Name, ...restLabs] = active;
-        const lp1 = state.labPages.find(lp => lp.selectedLab === lab1Name);
-
-        // Palier cible = condition avec remiseGlobale la plus élevée
-        const targetCond = lp1?.conditions?.length
-          ? lp1.conditions.reduce((best, c) =>
-              parseFloat(c.remiseGlobale || 0) > parseFloat(best?.remiseGlobale || 0) ? c : best, null)
-          : null;
-        const targetCA = parseFloat(targetCond?.caCondition || 0);
-
-        // ── Co-optimisation : tous les labs sélectionnés avec un palier CA ───────
-        // Phase 1 : refs exclusives (un seul lab peut les servir) → assignées directement.
-        // Phase 2 : refs partagées → greedy par besoin relatif (rowCA / shortfall).
-        //           Le lab qui comble le plus grand % de son shortfall obtient le CIP.
-        const _coLabs = [lab1Name, ...restLabs].map(n => {
-          const lp = n === lab1Name ? lp1 : state.labPages.find(l => l.selectedLab === n);
-          if (!lp?.conditions?.length) return null;
-          const tc = lp.conditions.reduce((b, c) =>
-            parseFloat(c.remiseGlobale || 0) > parseFloat(b?.remiseGlobale || 0) ? c : b, null);
-          const tCA = parseFloat(tc?.caCondition || 0);
-          if (!tCA) return null;
-          const bc = getBestCond(lp, Infinity, true);
-          const fm = bc && state.gers != null && parseFloat(bc.caCondition || 0) >= 0.9 * state.gers;
-          return { name: n, lp, tCA, bc, fm, acc: 0, shortfall: tCA };
-        }).filter(Boolean);
-
-        if (_coLabs.length >= 2) {
-          // Construire la carte refs par lab (dédupliqué par cip13)
-          const _coMaps = new Map();
-          _coLabs.forEach(lab => {
-            const m = new Map();
-            csvData.forEach(row => {
-              if (cipLocked.has(row.cip13)) return;
-              const ref = naturalRefMap.get(row.cip13);
-              if (!ref) return;
-              const lr = mergedAlts(ref.libelle).find(a => a.labo === lab.name)
-                       || (ref.labo === lab.name ? ref : null);
-              if (!lr) return;
-              const p = row.puht || refMap.get(row.cip13)?.puht || lr.puht || 0;
-              if (m.has(row.cip13)) m.get(row.cip13).rowCA += p * row.qty;
-              else m.set(row.cip13, { labRef: lr, rowCA: p * row.qty });
-            });
-            _coMaps.set(lab.name, m);
-          });
-
-          const _coAllCips = new Set();
-          _coMaps.forEach(m => m.forEach((_, c) => _coAllCips.add(c)));
-
-          // Phase 1 : refs exclusives
-          _coAllCips.forEach(cip13 => {
-            const avail = _coLabs.filter(l => _coMaps.get(l.name)?.has(cip13));
-            if (avail.length !== 1) return;
-            const lab = avail[0];
-            const { labRef, rowCA } = _coMaps.get(lab.name).get(cip13);
-            assignment.set(cip13, labRef);
-            cipLocked.add(cip13);
-            lab.acc += rowCA;
-            lab.shortfall = Math.max(0, lab.tCA - lab.acc);
-          });
-
-          // Phase 2 : refs partagées — greedy par besoin relatif décroissant
-          const _sharedCips = [..._coAllCips].filter(c =>
-            _coLabs.filter(l => _coMaps.get(l.name)?.has(c)).length > 1
-          );
-          _sharedCips.sort((ca, cb) => {
-            const maxScore = cip => Math.max(0, ..._coLabs.map(l =>
-              l.shortfall > 0 ? (_coMaps.get(l.name)?.get(cip)?.rowCA || 0) / l.shortfall : 0));
-            return maxScore(cb) - maxScore(ca);
-          });
-          for (const cip13 of _sharedCips) {
-            let bestLab = null, bestScore = -1;
-            for (const lab of _coLabs) {
-              if (!lab.shortfall) continue;
-              const s = (_coMaps.get(lab.name)?.get(cip13)?.rowCA || 0) / lab.shortfall;
-              if (s > bestScore) { bestScore = s; bestLab = lab; }
-            }
-            if (!bestLab) continue;
-            const { labRef, rowCA } = _coMaps.get(bestLab.name).get(cip13);
-            assignment.set(cip13, labRef);
-            cipLocked.add(cip13);
-            bestLab.acc += rowCA;
-            bestLab.shortfall = Math.max(0, bestLab.tCA - bestLab.acc);
-          }
-
-          // lab1Info + exclusions pour le bloc "remaining"
-          const _co1 = _coLabs.find(l => l.name === lab1Name);
-          if (_co1) {
-            lab1ExcludedName = lab1Name;
-            [...(_coMaps.get(lab1Name)?.keys() || [])].forEach(c => {
-              if (!cipLocked.has(c) || assignment.get(c)?.labo !== lab1Name) lab1ExcludedSet.add(c);
-            });
-            lab1Info = {
-              labName: lab1Name, assignedCount: 0, accCA: _co1.acc, targetCA: _co1.tCA,
-              remiseGlobale: targetCond?.remiseGlobale, caAvailable: 0, caFallback: 0,
-              fallbackUsed: 0, exclRsf: 2.5, _cipLocked: cipLocked,
-            };
-          }
-        } else if (targetCA > 0) {
-          // Calculer la rentabilité de chaque ref pour Lab 1 vs alternatives
-          const lab1Cond = getBestCond(lp1, Infinity, true);
-          const _ca1 = parseFloat(lab1Cond?.caCondition) || 0;
-          const fm1  = state.gers != null && _ca1 > 0 && _ca1 >= 0.9 * state.gers;
-
-          // Palier RSF minimal : préférence pour Lab 2, mais utilisé en secours si CA insuffisant
-          const EXCL_RSF_PCT = 2.5;
-
-          // Fonction utilitaire : calcule savings(Lab1 vs meilleures alternatives)
-          const computeSavings = (ref, lab1Ref, lab1Net, row) => {
-            let altBestNet = lab1Net;
-            mergedAlts(ref.libelle)
-              .filter(a => a.labo !== lab1Name && ourLabs.has(a.labo))
-              .forEach(altRef => {
-                const altLp  = state.labPages.find(l => l.selectedLab === altRef.labo);
-                if (!altLp) return;
-                const altCond = getBestCond(altLp, Infinity, true);
-                const _altCA  = parseFloat(altCond?.caCondition) || 0;
-                const altFm   = state.gers != null && _altCA > 0 && _altCA >= 0.9 * state.gers;
-                const altNet  = (altRef.puht || 0) * (1 - getRemise(altRef, altCond, altFm) / 100);
-                if (altNet < altBestNet) altBestNet = altNet;
-              });
-            return (altBestNet - lab1Net) * row.qty;
-          };
-
-          // Déduplique par cip13 (csvData a N lignes par CIP si données mensuelles)
-          // sans dédup, _totalCA est gonflé × N → branche trimming déclenchée à tort
-          // → des CIPs Biogaran sortent du greedy sans être cipLocked
-          const candidateMap = new Map();  // cip13 → {row, lab1Ref, savings, rowCA}
-          const fallbackMap  = new Map();
-
-          csvData.forEach(row => {
-            if (cipLocked.has(row.cip13)) return;  // déjà réservé par pré-passe
-            const ref = naturalRefMap.get(row.cip13);
-            if (!ref) return;
-            // Si la ref naturelle est déjà Lab1, l'inclure même sans alt dans mergedAlts
-            const lab1Ref = mergedAlts(ref.libelle).find(a => a.labo === lab1Name) || (ref.labo === lab1Name ? ref : null);
-            if (!lab1Ref) return;
-            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || lab1Ref.puht || 0;
-            const rowCA   = rowPuht * row.qty;
-            const isExcl  = Math.abs(parseFloat(lab1Ref.rsf_pct) || 0) <= EXCL_RSF_PCT;
-            const bucket  = isExcl ? fallbackMap : candidateMap;
-
-            if (bucket.has(row.cip13)) {
-              bucket.get(row.cip13).rowCA += rowCA;
-            } else {
-              const lab1Net = (lab1Ref.puht || 0) * (1 - getRemise(lab1Ref, lab1Cond, fm1) / 100);
-              const savings = computeSavings(ref, lab1Ref, lab1Net, row);
-              bucket.set(row.cip13, { row, lab1Ref, savings, rowCA });
-            }
-          });
-
-          const candidates = [...candidateMap.values()];
-          const fallback   = [...fallbackMap.values()];
-
-          const caAvailable = candidates.reduce((s, c) => s + c.rowCA, 0);
-          const caFallback  = fallback.reduce((s, c) => s + c.rowCA, 0);
-
-          // Retirer tous les candidats Lab 1 de l'assignment initial :
-          // les refs déjà achetées chez Lab 1 resteraient sinon assignées par défaut
-          // et s'additionneraient au CA greedy, dépassant le palier cible.
-          [...candidates, ...fallback].forEach(({ row }) => assignment.delete(row.cip13));
-
-          // Phase 1 : refs prioritaires (RSF > 2.5%)
-          // Stratégie : assigne tout, calcule le CA réel (cohérent avec calcScenario car
-          // row.puht OSPHARM + refMap divergent du rowPuht greedy), puis trim si dépassement
-          // en priorisant les CIPs qui ont un équivalent chez un restLab (Zydus…)
-          candidates.sort((a, b) => b.savings - a.savings);
-          let accCA = 0, assignedCount = 0, fallbackUsed = 0;
-          {
-            for (const { row, lab1Ref } of candidates) {
-              assignment.set(row.cip13, lab1Ref);
-              cipLocked.add(row.cip13);
-            }
-            // CA réel : même boucle que calcScenario (toutes lignes csvData par CIP)
-            const _cipCA = new Map();
-            csvData.forEach(row => {
-              const _ref = assignment.get(row.cip13);
-              if (_ref?.labo !== lab1Name) return;
-              const _p = row.puht || refMap.get(row.cip13)?.puht || _ref.puht || 0;
-              _cipCA.set(row.cip13, (_cipCA.get(row.cip13) || 0) + row.qty * _p);
-            });
-            let _actualCA = 0;
-            _cipCA.forEach(v => { _actualCA += v; });
-
-            if (_actualCA > targetCA) {
-              const _hasRestAlt = cip13 => {
-                const _r = naturalRefMap.get(cip13);
-                if (!_r) return false;
-                return restLabs.some(ln => mergedAlts(_r.libelle).some(a => a.labo === ln));
-              };
-              for (const item of [...candidates].sort((a, b) => {
-                const da = _hasRestAlt(a.row.cip13) ? 0 : 1;
-                const db = _hasRestAlt(b.row.cip13) ? 0 : 1;
-                if (da !== db) return da - db;
-                return (_cipCA.get(a.row.cip13) || 0) - (_cipCA.get(b.row.cip13) || 0);
-              })) {
-                const contrib = _cipCA.get(item.row.cip13) || 0;
-                if (_actualCA - contrib >= targetCA) {
-                  assignment.delete(item.row.cip13);
-                  cipLocked.delete(item.row.cip13);
-                  _actualCA -= contrib;
-                }
-              }
-            }
-
-            accCA = _actualCA;
-            assignedCount = candidates.filter(c => cipLocked.has(c.row.cip13)).length;
-          }
-
-          // Phase 2 : si CA cible pas atteint, compléter avec les refs RSF ≤ 2.5% (secours)
-          if (accCA < targetCA) {
-            fallback.sort((a, b) => b.savings - a.savings);
-            const _need = targetCA - accCA;
-            const _fbTotal = fallback.reduce((s, c) => s + c.rowCA, 0);
-            if (_fbTotal >= _need) {
-              const _sel = new Set(fallback.map(c => c.row.cip13));
-              let _selCA = _fbTotal;
-              for (const item of [...fallback].sort((a, b) => a.rowCA - b.rowCA)) {
-                if (_selCA - item.rowCA >= _need) { _sel.delete(item.row.cip13); _selCA -= item.rowCA; }
-              }
-              for (const item of fallback) {
-                if (!_sel.has(item.row.cip13)) continue;
-                assignment.set(item.row.cip13, item.lab1Ref);
-                cipLocked.add(item.row.cip13);
-                accCA += item.rowCA; assignedCount++; fallbackUsed++;
-              }
-            } else {
-              for (const { row, lab1Ref, rowCA } of fallback) {
-                assignment.set(row.cip13, lab1Ref); cipLocked.add(row.cip13);
-                accCA += rowCA; assignedCount++; fallbackUsed++;
-              }
-            }
-          }
-          // Refs qui avaient Lab 1 disponible mais n'ont pas été sélectionnées
-          // → Lab 1 interdit dans le fallback best-net pour éviter le re-assign
-          lab1ExcludedName = lab1Name;
-          [...candidates, ...fallback].forEach(({ row }) => {
-            if (!cipLocked.has(row.cip13)) lab1ExcludedSet.add(row.cip13);
-          });
-
-          lab1Info = {
-            labName:    lab1Name,
-            assignedCount,
-            accCA,
-            targetCA,
-            remiseGlobale: targetCond.remiseGlobale,
-            caAvailable,
-            caFallback,
-            fallbackUsed,
-            exclRsf: EXCL_RSF_PCT,
-            _cipLocked: cipLocked,
-          };
-        } else {
-          // Pas de caCondition → affecter toutes les refs Lab 1 (fallback)
-          csvData.forEach(row => {
-            if (cipLocked.has(row.cip13)) return;
-            const ref = naturalRefMap.get(row.cip13);
-            if (!ref) return;
-            const labRef = mergedAlts(ref.libelle).find(a => a.labo === lab1Name);
-            if (!labRef) return;
-            assignment.set(row.cip13, labRef);
-            cipLocked.add(row.cip13);
-          });
-        }
-
-        // Labs 2..N : le dernier reçoit TOUTES les refs restantes ;
-        // les intermédiaires appliquent greedy-removal jusqu'à leur palier cible
-        restLabs.forEach((labName, _idx) => {
-          const _isLast = _idx === restLabs.length - 1;
-
-          // Collecte des refs disponibles pour ce lab
-          const _items = [];
-          csvData.forEach(row => {
-            if (cipLocked.has(row.cip13)) return;
-            const ref = naturalRefMap.get(row.cip13);
-            if (!ref) return;
-            const labRef = mergedAlts(ref.libelle).find(a => a.labo === labName);
-            if (!labRef) return;
-            const rowPuht = row.puht || refMap.get(row.cip13)?.puht || labRef.puht || 0;
-            _items.push({ row, labRef, rowCA: rowPuht * row.qty });
-          });
-
-          if (_isLast) {
-            // Dernier lab : toutes les refs restantes sans restriction
-            _items.forEach(({ row, labRef }) => { assignment.set(row.cip13, labRef); cipLocked.add(row.cip13); });
-            return;
-          }
-
-          // Lab intermédiaire : greedy removal jusqu'au palier cible
-          const _lp = state.labPages.find(l => l.selectedLab === labName);
-          const _tCond = _lp?.conditions?.length
-            ? _lp.conditions.reduce((b, c) =>
-                parseFloat(c.remiseGlobale || 0) > parseFloat(b?.remiseGlobale || 0) ? c : b, null)
-            : null;
-          const _tCA = parseFloat(_tCond?.caCondition || 0);
-
-          if (_tCA > 0 && _items.length) {
-            const _tot = _items.reduce((s, c) => s + c.rowCA, 0);
-            if (_tot >= _tCA) {
-              const _sel = new Set(_items.map(c => c.row.cip13));
-              let _selCA = _tot;
-              for (const item of [..._items].sort((a, b) => a.rowCA - b.rowCA)) {
-                if (_selCA - item.rowCA >= _tCA) { _sel.delete(item.row.cip13); _selCA -= item.rowCA; }
-              }
-              _items.forEach(item => {
-                if (!_sel.has(item.row.cip13)) return;
-                assignment.set(item.row.cip13, item.labRef);
-                cipLocked.add(item.row.cip13);
-              });
-            } else {
-              _items.forEach(({ row, labRef }) => { assignment.set(row.cip13, labRef); cipLocked.add(row.cip13); });
-            }
-          } else {
-            _items.forEach(({ row, labRef }) => { assignment.set(row.cip13, labRef); cipLocked.add(row.cip13); });
-          }
-        });
-      }
-
-      // Refs non couvertes → meilleur prix net
-      // lab1ExcludedSet : refs qui avaient Lab 1 disponible mais non sélectionnées
-      // → on leur interdit Lab 1 ici pour éviter de gonfler son CA
-      csvData.forEach(row => {
-        if (cipLocked.has(row.cip13)) return;
-        const ref = naturalRefMap.get(row.cip13);
-        if (!ref) return;
-        const alts = mergedAlts(ref.libelle).filter(r =>
-          ourLabs.has(r.labo) &&
-          !(lab1ExcludedSet.has(row.cip13) && r.labo === lab1ExcludedName)
-        );
-        if (!alts.length) { if (!assignment.has(row.cip13)) assignment.set(row.cip13, ref); return; }
-        let bestRef = null, bestNet = Infinity;
-        alts.forEach(altRef => {
-          const altLp = state.labPages.find(l => l.selectedLab === altRef.labo);
-          if (!altLp) return;
-          const cond = getBestCond(altLp, Infinity, true);
-          const fm = state.gers != null && cond?.caCondition != null && cond.caCondition >= 0.9 * state.gers;
-          const net = (altRef.puht || 0) * (1 - getRemise(altRef, cond, fm) / 100);
-          if (net < bestNet) { bestNet = net; bestRef = altRef; }
-        });
-        assignment.set(row.cip13, bestRef || ref);
-      });
-
-      return { scenario: calcScenario(assignment), assignment, lab1Info };
-    }
-
-    // Cache pour éviter de re-fetcher un labo déjà chargé intégralement
-    const _fullFetchedLabs = new Set();
-
     document.getElementById('customSimBtn')?.addEventListener('click', async () => {
       const priorities = [1,2,3,4].map(n => document.getElementById(`customLabSel${n}`)?.value || '');
       const resDiv = document.getElementById('customSimResult');
@@ -5262,147 +5256,6 @@ async function launchSimulation() {
         });
       });
     });
-
-    // ── Recherche exhaustive : toutes permutations du simulateur personnalisé ────
-    // Lance en arrière-plan après le rendu initial pour ne pas bloquer l'affichage.
-    // Si une combinaison bat le scénario gagnant, met à jour le bandeau et le KPI.
-    (async () => {
-      const _targetLabs = [...ourLabs].filter(ln => {
-        const lp = state.labPages.find(l => l.selectedLab === ln);
-        return lp?.conditions?.some(c => parseFloat(c.caCondition || 0) > 0);
-      });
-      if (_targetLabs.length < 2) return;
-
-      const _toFetch = _targetLabs.filter(ln => !_fullFetchedLabs.has(ln));
-      if (_toFetch.length) {
-        const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
-        await Promise.all(_toFetch.map(async labName => {
-          const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&limit=10000`;
-          const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
-          rows.forEach(r => {
-            if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
-            if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
-              libelleMap.get(r.libelle).push(r);
-            const key = formNormKey(r.libelle);
-            if (!formNormMap.has(key)) formNormMap.set(key, []);
-            if (!formNormMap.get(key).some(x => x.cip13 === r.cip13))
-              formNormMap.get(key).push(r);
-          });
-          _fullFetchedLabs.add(labName);
-        }));
-      }
-
-      function _perms(arr, k) {
-        if (k === 0) return [[]];
-        const result = [];
-        for (let i = 0; i < arr.length; i++) {
-          const rest = arr.slice(0, i).concat(arr.slice(i + 1));
-          for (const sub of _perms(rest, k - 1)) result.push([arr[i], ...sub]);
-        }
-        return result;
-      }
-
-      const maxK = Math.min(4, _targetLabs.length);
-      const allPerms = [];
-      for (let k = 2; k <= maxK; k++) allPerms.push(..._perms(_targetLabs, k));
-
-      let bestEntry = winnerEntry;
-      for (const perm of allPerms) {
-        await _yield();
-        const { scenario, assignment } = calcCustomScenario(perm);
-        if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
-          const eKey = `custom_auto_${perm.join('_').replace(/\s+/g,'_')}`;
-          scenarioStore.set(eKey, { assignment, labResults: scenario.labResults });
-          const eDlBtns = mkScenarioDlBtns(eKey, scenario, assignment);
-          bestEntry = {
-            key: eKey,
-            label: `SCÉNARIO ${perm.map(l => l.toUpperCase()).join(' + ')}`,
-            sub: 'SIMULATEUR PERSONNALISÉ',
-            scenario,
-            dlBtns: eDlBtns,
-            assignment,
-          };
-        }
-      }
-
-      if (bestEntry === winnerEntry) return;
-
-      winnerEntry = bestEntry;
-      const newSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
-      const simWinnerEl = document.getElementById('simWinner');
-      if (!simWinnerEl) return;
-
-      simWinnerEl.innerHTML = `
-        <canvas class="sim-fireworks" id="simFireworks"></canvas>
-        <div class="sim-winner-dl">${winnerEntry.dlBtns}</div>
-        <div class="sim-winner-crown">★</div>
-        <div class="sim-winner-title">${winnerEntry.label}</div>
-        <div class="sim-winner-sub">GAIN LE PLUS ÉLEVÉ — PA NET LE PLUS BAS${winnerEntry.sub ? ' — ' + winnerEntry.sub : ''}</div>
-        <div class="sim-winner-gain">GAIN ${newSaving>=0?'+':''}${fmtE(newSaving)}</div>
-        ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
-      `;
-
-      document.querySelectorAll('.sim-kpi').forEach(el => {
-        if (el.querySelector('.sim-kpi-label')?.textContent === 'PA NET OPTIMAL') {
-          const val = el.querySelector('.sim-kpi-value');
-          if (val) {
-            val.textContent = fmtE(winnerEntry.scenario.totalPaNet);
-            val.className = `sim-kpi-value ${newSaving > 0 ? 'green' : 'red'}`;
-          }
-        }
-      });
-
-      simWinnerEl.querySelectorAll('.sim-dl-inline').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const s = scenarioStore.get(btn.dataset.key);
-          if (!s) return;
-          downloadCSV(buildScenarioCSV(s.assignment, s.labResults, s.filterLab || null, s.forcedConds || null),
-            `scenario_${btn.dataset.key}.csv`);
-        });
-      });
-
-      (function _reFireworks() {
-        const canvas = document.getElementById('simFireworks');
-        const winner = document.getElementById('simWinner');
-        if (!canvas || !winner) return;
-        canvas.width  = winner.offsetWidth  || 800;
-        canvas.height = winner.offsetHeight || 260;
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = false;
-        const PX = 5;
-        const COLORS = ['#00ff88','#ffab00','#00e5ff','#ff3366','#cc5de8','#ffd93d','#6bcb77','#4d96ff'];
-        const particles = [];
-        function burst(x, y) {
-          const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-          const count = 18 + Math.floor(Math.random() * 14);
-          for (let i = 0; i < count; i++) {
-            const angle = (Math.PI * 2 / count) * i + Math.random() * 0.3;
-            const speed = 1.5 + Math.random() * 3.5;
-            particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
-              color, life: 45 + Math.floor(Math.random()*20), maxLife: 65 });
-          }
-        }
-        let frame = 0;
-        function tick() {
-          if (!document.getElementById('simFireworks')) return;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          if (frame % 28 === 0) burst(60 + Math.random()*(canvas.width-120), 20 + Math.random()*(canvas.height-40));
-          for (let i = particles.length-1; i >= 0; i--) {
-            const p = particles[i];
-            p.x += p.vx; p.y += p.vy; p.vy += 0.09; p.life--;
-            if (p.life <= 0) { particles.splice(i,1); continue; }
-            ctx.globalAlpha = p.life / p.maxLife;
-            ctx.fillStyle = p.color;
-            ctx.fillRect(Math.round(p.x/PX)*PX, Math.round(p.y/PX)*PX, PX, PX);
-          }
-          ctx.globalAlpha = 1;
-          frame++;
-          if (frame < 360) requestAnimationFrame(tick);
-          else canvas.style.opacity = '0';
-        }
-        tick();
-      })();
-    })();
 
     // Pixel-art fireworks on winner banner
     (function startFireworks() {
