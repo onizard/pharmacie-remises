@@ -1720,7 +1720,7 @@ document.querySelectorAll('.main-tab').forEach(btn => {
         return;
       }
       goTo('results');
-      if (!_simResultsReady) await launchComparateur();
+      if (!_simResultsReady && !_simRunning) await launchComparateur();
     } else {
       goTo(page);
     }
@@ -1876,12 +1876,16 @@ function hideCompError() {
 }
 
 let _simResultsReady = false;
+let _simRunning = false;
+let _simBgMode = false;
+let _simCachedUserId = null;
 
 async function launchComparateur() {
   try {
     hideCompError();
     const { data: { session } } = await window._sbClient.auth.getSession();
     if (!session) { showToast('Session expirée — rechargez la page.'); return; }
+    _simCachedUserId = session.user.id;
 
     const { data: row } = await window._sbClient.from('user_state')
       .select('state_json').eq('user_id', session.user.id).maybeSingle();
@@ -3886,9 +3890,14 @@ function startBrickGame(canvasId = 'brickCanvas') {
 
 // ── Simulation ─────────────────────────────────────────────────────────────────
 async function launchSimulation() {
-  goTo('results');
+  if (_simRunning) { _simBgMode = false; return; }
+  _simRunning = true;
+  const _isBg = _simBgMode;
+  _simBgMode = false;
+  if (!_isBg) goTo('results');
   const container = document.getElementById('simResults');
-  container.innerHTML = `<div class="osp-ring-wrap">
+  if (!_isBg) {
+    container.innerHTML = `<div class="osp-ring-wrap">
     <div id="simLoadStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Initialisation…</div>
     <div class="osp-ring">
       <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="simLoadArc"/></svg>
@@ -3896,6 +3905,7 @@ async function launchSimulation() {
     </div>
     <div id="simLoadActivity" class="osp-activity-line" style="text-align:center">Chargement des références produits…</div>
   </div>`;
+  }
 
   const _CIRC = 175.9;
   const _sp = (pct, status, activity) => {
@@ -5342,11 +5352,18 @@ async function launchSimulation() {
     });
 
     _simResultsReady = true;
+    if (_simCachedUserId) {
+      try { sessionStorage.setItem(`bp_comp_${_simCachedUserId}`, container.innerHTML); } catch(_) {}
+    }
     }; // fin _wireAndRender
 
     // Laisser le browser repeindre le cercle à 100% avant de remplacer le container
     await _yield();
 
+    if (_isBg) {
+      // Calcul en fond — skip START + brick game, affiche directement les résultats
+      _wireAndRender();
+    } else {
     // Afficher l'écran START
     const _labCount = new Set(refRows.map(r => r.labo).filter(Boolean)).size;
     container.innerHTML = `<div class="sim-start-screen">
@@ -5372,6 +5389,7 @@ async function launchSimulation() {
       </div>`;
       startBrickGame();
     });
+    } // fin bloc START / brick
 
   } catch(err) {
     console.error(err);
@@ -5384,6 +5402,8 @@ async function launchSimulation() {
       <button id="simRetryBtn" style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:2px;padding:10px 24px;cursor:pointer;background:transparent;border:1px solid var(--amber);color:var(--amber);transition:all .2s" onmouseover="this.style.background='var(--amber)';this.style.color='var(--bg)'" onmouseout="this.style.background='transparent';this.style.color='var(--amber)'">↺ RÉESSAYER</button>
     </div>`;
     document.getElementById('simRetryBtn')?.addEventListener('click', () => launchSimulation());
+  } finally {
+    _simRunning = false;
   }
 }
 
@@ -5533,6 +5553,16 @@ async function saveProfile() {
       const { data: { session } } = await sb.auth.getSession();
       if (session) {
         isAdmin = (session.user.email === ADMIN_EMAIL);
+        // Restauration instantanée du comparateur depuis le cache sessionStorage
+        if (!isAdmin) {
+          try {
+            const _cachedHtml = sessionStorage.getItem(`bp_comp_${session.user.id}`);
+            if (_cachedHtml) {
+              const _simEl = document.getElementById('simResults');
+              if (_simEl) _simEl.innerHTML = _cachedHtml;
+            }
+          } catch(_) {}
+        }
         if (isAdmin) checkAdminNotifications();
         if (!isAdmin) await loadRsfDefaults();
         if (!_isPostReset) {
@@ -5732,6 +5762,14 @@ async function saveProfile() {
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
   _initDone = true;
+
+  // Pré-calcul comparateur en arrière-plan dès le login (résultats prêts quand l'user y accède)
+  if (!isAdmin && state.connectors?.ospharm?.connected) {
+    setTimeout(() => {
+      _simBgMode = true;
+      launchComparateur().catch(() => { _simBgMode = false; _simRunning = false; });
+    }, 2000);
+  }
 })();
 
 // ── Connecteur modal ────────────────────────────────────────────────────────────
