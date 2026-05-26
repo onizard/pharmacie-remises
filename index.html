@@ -4996,12 +4996,15 @@ async function launchSimulation() {
     }
 
     // ── Recherche exhaustive pendant le chargement (avant affichage START) ────
-    {
-      const _targetLabs = [...ourLabs].filter(ln => {
-        const lp = state.labPages.find(l => l.selectedLab === ln);
-        return lp?.conditions?.some(c => parseFloat(c.caCondition || 0) > 0);
-      });
-      if (_targetLabs.length >= 2) {
+    // Enveloppé dans try/catch pour ne jamais bloquer le chargement si erreur réseau ou null-ref.
+    await (async () => {
+      try {
+        const _targetLabs = [...ourLabs].filter(ln => {
+          const lp = state.labPages.find(l => l.selectedLab === ln);
+          return lp?.conditions?.some(c => parseFloat(c.caCondition || 0) > 0);
+        });
+        if (_targetLabs.length < 2) return;
+
         _sp(97, '// Optimisation combinatoire', `Analyse de ${_targetLabs.length} génériqueurs…`);
         const _toFetch = _targetLabs.filter(ln => !_fullFetchedLabs.has(ln));
         if (_toFetch.length) {
@@ -5010,6 +5013,7 @@ async function launchSimulation() {
             const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&limit=10000`;
             const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
             rows.forEach(r => {
+              if (!r.libelle) return;
               if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
               if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
                 libelleMap.get(r.libelle).push(r);
@@ -5021,7 +5025,7 @@ async function launchSimulation() {
             _fullFetchedLabs.add(labName);
           }));
         }
-        function _perms(arr, k) {
+        const _perms = (arr, k) => {
           if (k === 0) return [[]];
           const result = [];
           for (let i = 0; i < arr.length; i++) {
@@ -5029,23 +5033,23 @@ async function launchSimulation() {
             for (const sub of _perms(rest, k - 1)) result.push([arr[i], ...sub]);
           }
           return result;
-        }
+        };
         const maxK = Math.min(4, _targetLabs.length);
         const allPerms = [];
         for (let k = 2; k <= maxK; k++) allPerms.push(..._perms(_targetLabs, k));
         let bestEntry = winnerEntry;
         for (const perm of allPerms) {
           await _yield();
-          const { scenario, assignment } = calcCustomScenario(perm);
+          const { scenario, assignment: asgn } = calcCustomScenario(perm);
           if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
             const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
-            scenarioStore.set(eKey, { assignment, labResults: scenario.labResults });
-            const eDlBtns = mkScenarioDlBtns(eKey, scenario, assignment);
+            scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
+            const eDlBtns = mkScenarioDlBtns(eKey, scenario, asgn);
             bestEntry = {
               key: eKey,
               label: `SCÉNARIO ${perm.map(l => l.toUpperCase()).join(' + ')}`,
               sub: 'SIMULATEUR PERSONNALISÉ',
-              scenario, dlBtns: eDlBtns, assignment,
+              scenario, dlBtns: eDlBtns, assignment: asgn,
             };
           }
         }
@@ -5053,8 +5057,10 @@ async function launchSimulation() {
           winnerEntry = bestEntry;
           _sp(99, '// Meilleur scénario identifié', `${winnerEntry.label}`);
         }
+      } catch(e) {
+        console.warn('[exhaustive] recherche abandonnée :', e);
       }
-    }
+    })();
     const winnerSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
 
     // ── Récap par CIP ─────────────────────────────────────────────────────────
