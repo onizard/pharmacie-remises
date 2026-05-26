@@ -5004,10 +5004,8 @@ async function launchSimulation() {
     // Enveloppé dans try/catch pour ne jamais bloquer le chargement si erreur réseau ou null-ref.
     await (async () => {
       try {
-        const _targetLabs = [...ourLabs].filter(ln => {
-          const lp = state.labPages.find(l => l.selectedLab === ln);
-          return lp?.conditions?.some(c => parseFloat(c.caCondition || 0) > 0);
-        });
+        // Tous les labs actifs — même filtre que les dropdowns du simulateur personnalisé
+        const _targetLabs = [...ourLabs];
         if (_targetLabs.length < 2) return;
 
         _sp(97, '// Optimisation combinatoire', `Analyse de ${_targetLabs.length} génériqueurs…`);
@@ -5045,17 +5043,21 @@ async function launchSimulation() {
         let bestEntry = winnerEntry;
         for (const perm of allPerms) {
           await _yield();
-          const { scenario, assignment: asgn } = calcCustomScenario(perm);
-          if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
-            const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
-            scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
-            const eDlBtns = mkScenarioDlBtns(eKey, scenario, asgn);
-            bestEntry = {
-              key: eKey,
-              label: `SCÉNARIO ${perm.map(l => l.toUpperCase()).join(' + ')}`,
-              sub: 'SIMULATEUR PERSONNALISÉ',
-              scenario, dlBtns: eDlBtns, assignment: asgn,
-            };
+          try {
+            const { scenario, assignment: asgn } = calcCustomScenario(perm);
+            if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
+              const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
+              scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
+              const eDlBtns = mkScenarioDlBtns(eKey, scenario, asgn);
+              bestEntry = {
+                key: eKey,
+                label: `SCÉNARIO ${perm.map(l => l.toUpperCase()).join(' + ')}`,
+                sub: 'SIMULATEUR PERSONNALISÉ',
+                scenario, dlBtns: eDlBtns, assignment: asgn,
+              };
+            }
+          } catch(pe) {
+            console.warn('[exhaustive] perm ignorée :', perm, pe);
           }
         }
         if (bestEntry !== winnerEntry) {
