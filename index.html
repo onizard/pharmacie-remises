@@ -1879,6 +1879,8 @@ let _simResultsReady = false;
 let _simRunning = false;
 let _simBgMode = false;
 let _simCachedUserId = null;
+let _precomputedWireAndRender = null;
+let _precomputedMeta = null;
 
 async function launchComparateur() {
   try {
@@ -3896,6 +3898,42 @@ async function launchSimulation() {
   _simBgMode = false;
   if (!_isBg) goTo('results');
   const container = document.getElementById('simResults');
+
+  // Fast path : données pré-calculées en fond → START screen immédiat, sans barre de chargement
+  if (!_isBg && _precomputedWireAndRender) {
+    const _wAR  = _precomputedWireAndRender;
+    const _meta = _precomputedMeta;
+    _precomputedWireAndRender = null;
+    _precomputedMeta = null;
+    const _labCount2 = _meta?.labCount || '?';
+    const _cipCount2 = _meta?.cipCount || '?';
+    container.innerHTML = `<div class="sim-start-screen">
+      <div class="sim-start-hint">// ${_cipCount2} produits · ${_labCount2} labos analysés</div>
+      <button class="sim-start-btn" id="simStartBtn">START</button>
+      <div class="sim-start-sub">// cliquez pour visualiser les résultats</div>
+    </div>`;
+    document.getElementById('simStartBtn')?.addEventListener('click', () => {
+      let _skipped = false;
+      const _brickTimer = setTimeout(_wAR, 10_000);
+      const _skipHandler = e => {
+        if (e.key !== 's' && e.key !== 'S') return;
+        if (_skipped) return;
+        _skipped = true;
+        clearTimeout(_brickTimer);
+        document.removeEventListener('keydown', _skipHandler);
+        _wAR();
+      };
+      document.addEventListener('keydown', _skipHandler);
+      container.innerHTML = `<div class="sim-loading" id="brickLoader">
+        <canvas id="brickCanvas"></canvas>
+        <div class="brick-status">◈ ANALYSE EN COURS ◈ &nbsp;·&nbsp; <span style="opacity:.5;font-size:.85em">S pour passer</span></div>
+      </div>`;
+      startBrickGame();
+    });
+    _simRunning = false;
+    return;
+  }
+
   if (!_isBg) {
     container.innerHTML = `<div class="osp-ring-wrap">
     <div id="simLoadStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Initialisation…</div>
@@ -5343,11 +5381,15 @@ async function launchSimulation() {
     document.getElementById('tolBtn')?.addEventListener('click', () => {
       state.condTolerance = (state.condTolerance ?? 1.0) < 1 ? 1.0 : 0.95;
       _simResultsReady = false;
+      _precomputedWireAndRender = null;
+      _precomputedMeta = null;
       launchSimulation();
     });
 
     document.getElementById('tryAgainBtn')?.addEventListener('click', () => {
       _simResultsReady = false;
+      _precomputedWireAndRender = null;
+      _precomputedMeta = null;
       launchSimulation();
     });
 
@@ -5361,8 +5403,9 @@ async function launchSimulation() {
     await _yield();
 
     if (_isBg) {
-      // Calcul en fond — skip START + brick game, affiche directement les résultats
-      _wireAndRender();
+      // Calcul en fond — mémorise _wireAndRender pour un START screen instantané à l'ouverture
+      _precomputedWireAndRender = _wireAndRender;
+      _precomputedMeta = { cipCount: allCips.length, labCount: new Set(refRows.map(r => r.labo).filter(Boolean)).size };
     } else {
     // Afficher l'écran START
     const _labCount = new Set(refRows.map(r => r.labo).filter(Boolean)).size;
@@ -5554,12 +5597,16 @@ async function saveProfile() {
       if (session) {
         isAdmin = (session.user.email === ADMIN_EMAIL);
         // Restauration instantanée du comparateur depuis le cache sessionStorage
+        // (résultats déjà vus avant le refresh — pas de START screen)
         if (!isAdmin) {
           try {
             const _cachedHtml = sessionStorage.getItem(`bp_comp_${session.user.id}`);
             if (_cachedHtml) {
               const _simEl = document.getElementById('simResults');
-              if (_simEl) _simEl.innerHTML = _cachedHtml;
+              if (_simEl) {
+                _simEl.innerHTML = _cachedHtml;
+                _simResultsReady = true;
+              }
             }
           } catch(_) {}
         }
