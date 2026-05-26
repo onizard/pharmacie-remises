@@ -1481,9 +1481,9 @@ function _showSaveBadge() {
 async function saveCloudState(data) {
   try {
     const sb = window._sbClient;
-    if (!sb) return;
+    if (!sb) return false;
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) return;
+    if (!session) return false;
     const payload = Object.assign({}, data);
     try {
       const { data: cur } = await sb.from('user_state').select('state_json').eq('user_id', session.user.id).maybeSingle();
@@ -1503,13 +1503,15 @@ async function saveCloudState(data) {
         payload.labPages = _lastGoodLabPages;
       }
     }
-    await sb.from('user_state').upsert(
+    const { error } = await sb.from('user_state').upsert(
       { user_id: session.user.id, state_json: payload },
       { onConflict: 'user_id' }
     );
+    if (error) throw error;
     _showSaveBadge();
     if (isAdmin) saveRsfDefaults();
-  } catch(e) {}
+    return true;
+  } catch(e) { return false; }
 }
 
 // Flush immédiat au cloud quand l'onglet est masqué (fermeture, changement d'onglet)
@@ -2743,6 +2745,7 @@ function initLabPage(conf) {
       cond.remiseGlobale = isNaN(v) ? null : v;
       autoFillCond(cond);
       checkDone();
+      saveState();
     });
     caInp.addEventListener('input', () => {
       const v = parseFloat(caInp.value.replace(',', '.').replace(/\s/g, ''));
@@ -2750,6 +2753,7 @@ function initLabPage(conf) {
       applyRsf25Default(cond);
       if (cond.remiseGlobale !== null) autoFillCond(cond);
       renderCondTable(cond);
+      saveState();
     });
     const rsfToggle = document.getElementById(`rsfToggle-${uid}-${cond.uid}`);
     const rsfBody   = document.getElementById(`rsfBody-${uid}-${cond.uid}`);
@@ -2976,6 +2980,7 @@ function initLabPage(conf) {
         inp2.classList.remove('excl-r2');
         tr.classList.remove('excluded');
         checkDone();
+        saveState();
       });
       const td2 = document.createElement('td'); td2.appendChild(inp2); tr.appendChild(td2);
 
@@ -2984,7 +2989,7 @@ function initLabPage(conf) {
       inp3.placeholder = 'ex : 2.50'; inp3.value = row.remise3;
       if (row.remise3) inp3.classList.add('auto-a');
       if (!isAdmin) inp3.readOnly = true;
-      inp3.addEventListener('input', e => { if (!isAdmin) return; cond.rsfValues[idx].remise3 = e.target.value; inp3.classList.remove('auto-a'); });
+      inp3.addEventListener('input', e => { if (!isAdmin) return; cond.rsfValues[idx].remise3 = e.target.value; inp3.classList.remove('auto-a'); saveState(); });
       const td3 = document.createElement('td'); td3.className = 'col-r3'; td3.appendChild(inp3); tr.appendChild(td3);
 
       const cbExcpt = document.createElement('input');
@@ -5744,9 +5749,9 @@ async function saveProfile() {
     // Flush labPages (conditions) to user_state immediately — no debounce
     const _data = serializeState();
     try { localStorage.setItem(LS_KEY, JSON.stringify(_data)); } catch(e) {}
-    await saveCloudState(_data);
-    btn.textContent = '✓ SAUVEGARDÉ';
-    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+    const _ok = await saveCloudState(_data);
+    btn.textContent = _ok ? '✓ SAUVEGARDÉ' : '⚠ ERREUR RÉSEAU';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, _ok ? 2000 : 4000);
   });
 
   // ── LED verte CGV — pilotée par rsf_defaults sentinelles __cgv_2026/__cgv_2025
