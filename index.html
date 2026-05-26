@@ -3099,6 +3099,8 @@ function initLabPage(conf) {
       const { paliers, firstMap } = await fetchFn(lab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
+      // Pré-charger rsf_defaults pour la récupération si besoin (doit être hors du forEach)
+      if (isAdmin && !window._rsfDefaults) await loadRsfDefaults();
       (savedLabData[savedCondKey] || []).forEach((sc, idx) => {
         const cond = mkCondState(sc.uid);
         cond.remiseGlobale = sc.remiseGlobale;
@@ -3120,9 +3122,8 @@ function initLabPage(conf) {
         });
         cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
         // Récupération : si toutes les remise2 sont vides (état cloud tronqué),
-        // repeupler depuis rsf_defaults qui est toujours sauvegardé par le bouton SAVE
+        // repeupler depuis rsf_defaults (pas d'await ici — déjà chargé avant le forEach)
         if (isAdmin && cond.rsfValues.every(r => !r.remise2 && !r.remise3)) {
-          await loadRsfDefaults();
           const defs = window._rsfDefaults?.[lab];
           if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
         }
