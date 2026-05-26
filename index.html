@@ -5669,7 +5669,8 @@ async function saveProfile() {
   } catch(e) {}
 
   // Fallback : si localStorage vide (cache effacé, quota), utiliser l'état cloud chargé en mémoire
-  const saved = loadSavedState() || _startupCloudState;
+  // Cloud state always takes precedence when available (guards against stale localStorage)
+  const saved = _startupCloudState || loadSavedState();
   if (saved) {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
