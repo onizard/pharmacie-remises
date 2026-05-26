@@ -77,6 +77,9 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
 
     progress("Tentative API directe depuis /factures/…")
     csrf = _get_csrf(page)
+    if not csrf:
+        await page.wait_for_timeout(800)
+        csrf = _get_csrf(page)
     api_url = (
         f"{BASE_URL}/api/v1/invoices/"
         f"?ordering=-billing_date&page_size={PAGE_SIZE}&page=1"
@@ -280,4 +283,9 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
 
 
 def run_scraper(creds: dict, progress: Callable) -> list[dict]:
-    return asyncio.run(_run_scraper_async(creds, progress))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(_run_scraper_async(creds, progress))
+    finally:
+        loop.close()

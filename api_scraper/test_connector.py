@@ -122,7 +122,12 @@ async def _test_digipharmacie_async(creds: dict):
 
 
 def test_digipharmacie(creds: dict):
-    asyncio.run(_test_digipharmacie_async(creds))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_test_digipharmacie_async(creds))
+    finally:
+        loop.close()
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
