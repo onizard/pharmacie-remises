@@ -4695,7 +4695,7 @@ async function launchSimulation() {
     await _yield(); _sp(96, '// Classement final', 'Recherche du meilleur scénario…');
     let winnerEntry = allOptScenarios[0];
     const otherScenarios = allOptScenarios.slice(1);
-    const totalScenarios = 1 + allOptScenarios.length;
+    let totalScenarios = 1 + allOptScenarios.length;
 
     // ── Cache full-catalog + algo co-opt (chargement ET customSimBtn) ─────────
     const _fullFetchedLabs = new Set();
@@ -5041,10 +5041,12 @@ async function launchSimulation() {
         const allPerms = [];
         for (let k = 2; k <= maxK; k++) allPerms.push(..._perms(_targetLabs, k));
         let bestEntry = winnerEntry;
+        let _permCount = 0;
         for (const perm of allPerms) {
           await _yield();
           try {
             const { scenario, assignment: asgn } = calcCustomScenario(perm);
+            _permCount++;
             if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
               const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
               scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
@@ -5060,6 +5062,7 @@ async function launchSimulation() {
             console.warn('[exhaustive] perm ignorée :', perm, pe);
           }
         }
+        totalScenarios += _permCount;
         if (bestEntry !== winnerEntry) {
           winnerEntry = bestEntry;
           _sp(99, '// Meilleur scénario identifié', `${winnerEntry.label}`);
