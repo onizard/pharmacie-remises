@@ -511,6 +511,9 @@
   @keyframes holdFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
   .r3-toggle { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; padding: 4px 10px; cursor: pointer; background: transparent; border: 1px solid var(--border); color: var(--text-dim); transition: all .15s; white-space: nowrap; }
   .r3-toggle:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: var(--glow-c); }
+  .try-again-btn { border-color: var(--amber) !important; color: var(--amber) !important; animation: tryAgainBlink 1.1s step-start infinite; }
+  .try-again-btn:hover { background: var(--amber) !important; color: var(--bg) !important; box-shadow: 0 0 10px var(--amber); animation: none; }
+  @keyframes tryAgainBlink { 0%,100%{opacity:1} 50%{opacity:.25} }
   .excl-block { margin-top: 10px; border: 1px solid #3d0015; background: #0a0008; padding: 18px 20px; animation: fadeIn .3s ease; }
   .excl-block-header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
   .excl-rsf-tag { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--red); padding: 3px 10px; border: 1px solid var(--red); background: #1a0510; white-space: nowrap; }
@@ -1717,7 +1720,7 @@ document.querySelectorAll('.main-tab').forEach(btn => {
         return;
       }
       goTo('results');
-      await launchComparateur();
+      if (!_simResultsReady) await launchComparateur();
     } else {
       goTo(page);
     }
@@ -1846,7 +1849,7 @@ async function autoRunOspharm() {
             saveState();
             goTo('recap');
             renderRecap();
-            if (state.currentPageId === 'results') launchComparateur();
+            if (state.currentPageId === 'results') { _simResultsReady = false; launchComparateur(); }
             else if (state.currentPageId === 'csv') launchSimulation();
           } catch(_) {}
           break;
@@ -1871,6 +1874,8 @@ function hideCompError() {
   const banner = document.getElementById('compErrorBanner');
   if (banner) banner.classList.remove('visible');
 }
+
+let _simResultsReady = false;
 
 async function launchComparateur() {
   try {
@@ -5094,9 +5099,13 @@ async function launchSimulation() {
     html += `<div class="sim-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div class="sim-title" style="margin-bottom:0">◈ RÉSUMÉ</div>
-        <button id="tolBtn" class="r3-toggle" style="font-size:10px;padding:3px 10px;${_tolActive ? 'color:var(--green);border-color:var(--green);box-shadow:var(--glow-g)' : ''}"
-          title="Les labos tolèrent un écart de 5% si le CA cible n'est pas atteint"
-        >${_tolActive ? '✓' : '○'} TOLÉRANCE CA −5%</button>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button id="tryAgainBtn" class="r3-toggle try-again-btn" style="font-size:10px;padding:3px 10px"
+            title="Relancer une nouvelle analyse">↺ TRY AGAIN</button>
+          <button id="tolBtn" class="r3-toggle" style="font-size:10px;padding:3px 10px;${_tolActive ? 'color:var(--green);border-color:var(--green);box-shadow:var(--glow-g)' : ''}"
+            title="Les labos tolèrent un écart de 5% si le CA cible n'est pas atteint"
+          >${_tolActive ? '✓' : '○'} TOLÉRANCE CA −5%</button>
+        </div>
       </div>
       <div class="sim-kpi-row">
         <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL ACTUEL</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
@@ -5318,8 +5327,16 @@ async function launchSimulation() {
 
     document.getElementById('tolBtn')?.addEventListener('click', () => {
       state.condTolerance = (state.condTolerance ?? 1.0) < 1 ? 1.0 : 0.95;
+      _simResultsReady = false;
       launchSimulation();
     });
+
+    document.getElementById('tryAgainBtn')?.addEventListener('click', () => {
+      _simResultsReady = false;
+      launchSimulation();
+    });
+
+    _simResultsReady = true;
     }; // fin _wireAndRender
 
     // Laisser le browser repeindre le cercle à 100% avant de remplacer le container
@@ -6077,6 +6094,7 @@ function initConnecteurModal() {
         if (job.status === 'done') {
           _setConnProgress(prefix, 'reset');
           _setJobStatusEl('ospJobStatus', 'done', '✓');
+          _simResultsReady = false;
           await launchComparateur();
           state._ospJobRunning = false;
           goTo('recap');
