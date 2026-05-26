@@ -874,6 +874,12 @@
   /* ── Toast notification ── */
   .bp-toast { position: fixed; bottom: 46px; left: 50%; transform: translateX(-50%); background: var(--bg2); border: 1px solid var(--red); color: var(--red); font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: .8px; padding: 13px 22px; z-index: 99999; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 88vw; text-align: center; line-height: 1.5; }
   .bp-toast.show { opacity: 1; }
+  .sync-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 99998; background: #1a1200; border-bottom: 1px solid var(--amber); color: var(--amber); font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: .8px; padding: 10px 20px; display: flex; align-items: center; justify-content: center; gap: 16px; transform: translateY(-100%); transition: transform .3s ease; }
+  .sync-banner.visible { transform: translateY(0); }
+  .sync-banner-btn { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; padding: 4px 12px; cursor: pointer; background: transparent; border: 1px solid var(--amber); color: var(--amber); letter-spacing: 1px; transition: all .15s; }
+  .sync-banner-btn:hover { background: var(--amber); color: var(--bg); }
+  .sync-banner-close { cursor: pointer; opacity: .5; font-size: 14px; padding: 0 4px; }
+  .sync-banner-close:hover { opacity: 1; }
 
   /* ── Footer ── */
   .site-footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); border-top: 1px solid var(--border); padding: 7px 24px; display: flex; justify-content: center; gap: 28px; z-index: 1000; font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: .8px; }
@@ -1292,6 +1298,12 @@
 
   <div class="bp-toast" id="bpToast"></div>
 
+  <div class="sync-banner" id="syncBanner">
+    <span>⚠ Données modifiées sur un autre appareil</span>
+    <button class="sync-banner-btn" id="syncBannerReload">↺ SYNCHRONISER</button>
+    <span class="sync-banner-close" id="syncBannerDismiss">✕</span>
+  </div>
+
 </div>
 
 <script>
@@ -1520,9 +1532,43 @@ function _flushState() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
   saveCloudState(data);
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden) _flushState(); });
+let _lastHiddenAt = 0;
+const _SYNC_STALE_MS = 5 * 60 * 1000; // 5 minutes
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    _flushState();
+    _lastHiddenAt = Date.now();
+  } else if (_initDone && _lastHiddenAt && (Date.now() - _lastHiddenAt) > _SYNC_STALE_MS) {
+    _checkCloudSync();
+  }
+});
 // pagehide plus fiable que visibilitychange lors de la fermeture du navigateur
 window.addEventListener('pagehide', _flushState);
+
+async function _checkCloudSync() {
+  try {
+    const sb = window._sbClient;
+    if (!sb) return;
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    const { data: cloud } = await sb.from('user_state')
+      .select('state_json').eq('user_id', session.user.id).maybeSingle();
+    if (!cloud?.state_json?.labPages?.length) return;
+    const _slim = lps => JSON.stringify(lps.map(lp => ({
+      uid: lp.uid, lab: lp.selectedLab,
+      c: lp.conditions, c25: lp.conditions2025,
+    })));
+    if (_slim(cloud.state_json.labPages) !== _slim(state.labPages)) {
+      document.getElementById('syncBanner')?.classList.add('visible');
+    }
+  } catch(_) {}
+}
+
+document.getElementById('syncBannerReload')?.addEventListener('click', () => location.reload());
+document.getElementById('syncBannerDismiss')?.addEventListener('click', () => {
+  document.getElementById('syncBanner')?.classList.remove('visible');
+});
 
 async function saveRsfDefaults() {
   const sb = window._sbClient;
