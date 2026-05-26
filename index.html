@@ -3119,6 +3119,13 @@ function initLabPage(conf) {
             cond.rsfValues.push({ rsf_pct: cr.rsf_pct, remise2: cr.remise2 || '', remise3: cr.remise3 || '', excluded: cr.excluded || false, hasExcept: cr.hasExcept || false, custom: true });
         });
         cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
+        // Récupération : si toutes les remise2 sont vides (état cloud tronqué),
+        // repeupler depuis rsf_defaults qui est toujours sauvegardé par le bouton SAVE
+        if (isAdmin && cond.rsfValues.every(r => !r.remise2 && !r.remise3)) {
+          await loadRsfDefaults();
+          const defs = window._rsfDefaults?.[lab];
+          if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+        }
         if (idx === 0) applyDefaultExcepts(cond, lab);
         s[condKey].push(cond);
         const panel = buildCondPanel(cond);
@@ -3130,6 +3137,9 @@ function initLabPage(conf) {
       });
       el.condTabs.classList.add('visible');
       renderCondTabs();
+      // Si une récupération depuis rsf_defaults a eu lieu, sauvegarder immédiatement en cloud
+      const _anyRecovered = s[condKey].some(c => c.rsfValues.some(r => r.remise2));
+      if (isAdmin && _anyRecovered) saveState();
     } catch(err) { console.error(err); }
     finally { el.loading.classList.remove('visible'); }
     window._syncCgvLeds?.(uid, s.selectedLab);
@@ -5669,8 +5679,7 @@ async function saveProfile() {
   } catch(e) {}
 
   // Fallback : si localStorage vide (cache effacé, quota), utiliser l'état cloud chargé en mémoire
-  // Cloud state always takes precedence when available (guards against stale localStorage)
-  const saved = _startupCloudState || loadSavedState();
+  const saved = loadSavedState() || _startupCloudState;
   if (saved) {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
