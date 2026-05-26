@@ -5140,11 +5140,13 @@ async function launchSimulation() {
         for (let k = 2; k <= maxK; k++) allPerms.push(..._perms(_targetLabs, k));
         let bestEntry = winnerEntry;
         let _permCount = 0;
+        const _totalPerms = Math.max(allPerms.length, 1);
         for (const perm of allPerms) {
           await _yield();
           try {
             const { scenario, assignment: asgn } = calcCustomScenario(perm);
             _permCount++;
+            _sp(97 + Math.floor(_permCount / _totalPerms * 2), null, null);
             if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
               const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
               scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
