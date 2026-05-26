@@ -5741,6 +5741,10 @@ async function saveProfile() {
     btn.disabled = true;
     btn.textContent = '…';
     await saveRsfDefaults();
+    // Flush labPages (conditions) to user_state immediately — no debounce
+    const _data = serializeState();
+    try { localStorage.setItem(LS_KEY, JSON.stringify(_data)); } catch(e) {}
+    await saveCloudState(_data);
     btn.textContent = '✓ SAUVEGARDÉ';
     setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
   });
