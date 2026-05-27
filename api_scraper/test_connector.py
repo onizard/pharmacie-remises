@@ -245,7 +245,13 @@ async def _test_digipharmacie_async(creds: dict):
         print(f"⚠️  curl_cffi échoué ({curl_err}) — fallback camoufox…")
 
     # Fallback : navigateur camoufox (gère les challenges JS Cloudflare)
-    from camoufox.async_api import AsyncCamoufox
+    try:
+        from camoufox.async_api import AsyncCamoufox
+    except ImportError:
+        raise RuntimeError(
+            "Cloudflare bloque les IPs de ce serveur. "
+            "Configurez un runner self-hosted sur votre machine pour contourner ce blocage."
+        )
 
     async with AsyncCamoufox(headless=True, geoip=False) as browser:
         page = await browser.new_page()
