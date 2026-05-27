@@ -107,7 +107,6 @@ async def connect_connector(
         raise HTTPException(status_code=401, detail=str(e))
 
     creds = {"user": body.user, "pass": body.password}
-    await save_user_creds(user_id, connector, body.user, body.password, False)
     background_tasks.add_task(_run_conn_test_async, user_id, connector, creds)
     return {"status": "testing"}
 
@@ -208,16 +207,17 @@ def _test_connector(connector: str, creds: dict, user_id: str = ""):
         test_ospharm(creds)
     elif connector == "digipharmacie":
         # Subprocess avec hard timeout 140s — évite le hang du cleanup camoufox
-        # test_connector.py lit les creds depuis Supabase et écrit le résultat lui-même
-        _run_digi_test_subprocess(user_id)
+        _run_digi_test_subprocess(user_id, creds)
 
 
-def _run_digi_test_subprocess(user_id: str):
+def _run_digi_test_subprocess(user_id: str, creds: dict):
     import subprocess
     import sys
     env = dict(os.environ)
-    env["CONNECTOR"] = "digipharmacie"
-    env["USER_ID"]   = user_id
+    env["CONNECTOR"]  = "digipharmacie"
+    env["USER_ID"]    = user_id
+    env["DIGI_USER"]  = creds.get("user", "")
+    env["DIGI_PASS"]  = creds.get("pass", "")
     try:
         proc = subprocess.run(
             [sys.executable, "test_connector.py"],

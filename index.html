@@ -1219,7 +1219,6 @@
         🔒 Vos identifiants sont chiffrés et strictement personnels.<br>
         Aucune donnée n'est divulguée — elles ne sont visibles que par vous.
       </p>
-      <button class="conn-save" id="connSave">SAUVEGARDER</button>
     </div>
   </div>
 
@@ -5984,7 +5983,6 @@ function initConnecteurModal() {
   const modal    = document.getElementById('connecteurModal');
   const btnOpen  = document.getElementById('btnConnecteur');
   const btnClose = document.getElementById('connClose');
-  const btnSave  = document.getElementById('connSave');
 
   function showView(prefix, connected) {
     const fv      = document.getElementById(prefix + 'FormView');
@@ -6194,25 +6192,6 @@ function initConnecteurModal() {
     resultEl.className = 'conn-test-result';
     _setConnProgress(prefix, 'serveur');
 
-    // Sauvegarder les creds immédiatement dans la colonne dédiée (atomique, sans race condition)
-    state.connectors[connKey] = { user, pass, connected: false };
-    saveState();
-    // Appel RPC direct — n'attend pas le saveCloudState de 3.4s
-    try {
-      const { data: { session: _s } } = await window._sbClient.auth.getSession();
-      if (_s) {
-        await window._sbClient.rpc('upsert_connector', {
-          p_user_id:   _s.user.id,
-          p_connector: connKey,
-          p_login:     user,
-          p_pass:      pass,
-          p_connected: false,
-        });
-      }
-    } catch (_credErr) {
-      console.warn('[connector] upsert_connector RPC échoué:', _credErr);
-    }
-
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
       if (!session) throw new Error('Session expirée — reconnectez-vous.');
@@ -6263,6 +6242,16 @@ function initConnecteurModal() {
       state.connectors[connKey] = { user, pass, connected: true };
       updateConnecteurBtn();
       saveState();
+      // Persiste les credentials dans la colonne dédiée (atomique)
+      try {
+        await window._sbClient.rpc('upsert_connector', {
+          p_user_id:   session.user.id,
+          p_connector: connKey,
+          p_login:     user,
+          p_pass:      pass,
+          p_connected: true,
+        });
+      } catch (_) {}
       resultEl.textContent = '';
       showView(prefix, true);
       if (connKey === 'ospharm') {
@@ -6579,22 +6568,6 @@ function initConnecteurModal() {
   document.getElementById('ospChangeLink').addEventListener('click',  () => requestAccountChange('ospharm', 'osp'));
   document.getElementById('digiChangeLink').addEventListener('click', () => requestAccountChange('digipharmacie', 'digi'));
 
-  btnSave.addEventListener('click', async () => {
-    ['osp', 'digi'].forEach(p => {
-      const key = p === 'osp' ? 'ospharm' : 'digipharmacie';
-      const fv  = document.getElementById(p + 'FormView');
-      if (fv && fv.style.display !== 'none') {
-        const user = document.getElementById(p + 'User').value.trim();
-        const pass = document.getElementById(p + 'Pass').value;
-        state.connectors[key] = { user, pass, connected: false };
-      }
-    });
-    updateConnecteurBtn();
-    const data = serializeState();
-    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(_) {}
-    await saveCloudState(data);
-    setTimeout(closeModal, 400);
-  });
 }
 </script>
 

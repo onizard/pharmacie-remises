@@ -45,6 +45,11 @@ def _write_result(ok: bool, message: str = ""):
 
 
 def _get_creds() -> dict:
+    # Priorité aux env vars passées par le subprocess (pas besoin de Supabase)
+    env_user = os.environ.get("DIGI_USER", "")
+    env_pass = os.environ.get("DIGI_PASS", "")
+    if env_user and env_pass:
+        return {"user": env_user, "pass": env_pass}
     state = _get_state()
     cred  = state.get("connectors", {}).get(CONNECTOR, {})
     return {"user": cred.get("user", ""), "pass": cred.get("pass", "")}
