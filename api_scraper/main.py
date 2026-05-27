@@ -241,8 +241,11 @@ def _test_connector(connector: str, creds: dict, user_id: str = ""):
             return  # succès
         except RuntimeError:
             raise  # mauvais credentials
-        except Exception:
-            pass  # Cloudflare bloque curl_cffi → fallback subprocess camoufox
+        except Exception as curl_err:
+            if GH_TOKEN or os.environ.get("PROXY_URL"):
+                # Proxy configuré mais toujours bloqué — camoufox subprocess ne servira à rien
+                raise RuntimeError(f"Cloudflare bloque malgré le proxy : {curl_err}")
+            pass  # pas de proxy → fallback subprocess camoufox
 
         # Fallback : subprocess camoufox avec hard timeout 180s
         _run_digi_test_subprocess(user_id, creds)

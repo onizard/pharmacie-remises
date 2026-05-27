@@ -156,8 +156,9 @@ def test_digi_curl(creds: dict):
     """
     from curl_cffi import requests as cffi_requests
 
-    proxies = {"http": PROXY_URL, "https": PROXY_URL} if PROXY_URL else {}
-    session = cffi_requests.Session(impersonate="chrome124", proxies=proxies)
+    # curl_cffi prend proxy= (singulier, str) par requête — pas proxies= dict
+    proxy_kw = {"proxy": PROXY_URL} if PROXY_URL else {}
+    session = cffi_requests.Session(impersonate="chrome124")
     page_headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -167,7 +168,8 @@ def test_digi_curl(creds: dict):
 
     # Étape 1 — charger la page de login pour obtenir le cookie CSRF
     try:
-        r = session.get(f"{DIGI_URL}/login/", headers=page_headers, timeout=25, allow_redirects=True)
+        r = session.get(f"{DIGI_URL}/login/", headers=page_headers, timeout=25,
+                        allow_redirects=True, **proxy_kw)
     except Exception as e:
         raise Exception(f"curl_cffi GET /login/ : {e}")
 
@@ -196,6 +198,7 @@ def test_digi_curl(creds: dict):
                 headers=api_headers,
                 timeout=15,
                 allow_redirects=False,
+                **proxy_kw,
             )
             if r.status_code == 200:
                 return  # succès
@@ -223,6 +226,7 @@ def test_digi_curl(creds: dict):
             },
             timeout=15,
             allow_redirects=True,
+            **proxy_kw,
         )
         if "/login" not in r.url:
             return  # redirigé vers le dashboard → succès
