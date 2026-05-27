@@ -1756,7 +1756,23 @@ document.querySelectorAll('.main-tab').forEach(btn => {
         return;
       }
       goTo('results');
-      if (!_simResultsReady && !_simRunning) await launchComparateur();
+      if (_precomputedWireAndRender) {
+        launchSimulation();
+      } else if (_simBgRunning) {
+        const _bgCont = document.getElementById('simResults');
+        if (_bgCont && !_bgCont.querySelector('#simLoadArc')) {
+          _bgCont.innerHTML = `<div class="osp-ring-wrap">
+            <div id="simLoadStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Analyse en cours…</div>
+            <div class="osp-ring">
+              <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="simLoadArc"/></svg>
+              <div class="osp-ring-label" id="simLoadPct">—%</div>
+            </div>
+            <div id="simLoadActivity" class="osp-activity-line" style="text-align:center">Calcul en arrière-plan…</div>
+          </div>`;
+        }
+      } else if (!_simResultsReady && !_simRunning) {
+        await launchComparateur();
+      }
     } else {
       goTo(page);
     }
@@ -1914,6 +1930,7 @@ function hideCompError() {
 let _simResultsReady = false;
 let _simRunning = false;
 let _simBgMode = false;
+let _simBgRunning = false;
 let _simCachedUserId = null;
 let _precomputedWireAndRender = null;
 let _precomputedMeta = null;
@@ -3946,6 +3963,7 @@ async function launchSimulation() {
   _simRunning = true;
   const _isBg = _simBgMode;
   _simBgMode = false;
+  if (_isBg) _simBgRunning = true;
   if (!_isBg) goTo('results');
   const container = document.getElementById('simResults');
 
@@ -5463,9 +5481,10 @@ async function launchSimulation() {
     await _yield();
 
     if (_isBg) {
-      // Calcul en fond — mémorise _wireAndRender pour un START screen instantané à l'ouverture
       _precomputedWireAndRender = _wireAndRender;
       _precomputedMeta = { cipCount: allCips.length, labCount: new Set(refRows.map(r => r.labo).filter(Boolean)).size };
+      // Si l'user est déjà sur la page résultats, afficher le START screen sans attendre
+      if (state.currentPageId === 'results') setTimeout(() => launchSimulation(), 0);
     } else {
     // Afficher l'écran START
     const _labCount = new Set(refRows.map(r => r.labo).filter(Boolean)).size;
@@ -5507,6 +5526,7 @@ async function launchSimulation() {
     document.getElementById('simRetryBtn')?.addEventListener('click', () => launchSimulation());
   } finally {
     _simRunning = false;
+    _simBgRunning = false;
   }
 }
 
@@ -5875,11 +5895,17 @@ async function saveProfile() {
   _initDone = true;
 
   // Pré-calcul comparateur en arrière-plan dès le login (résultats prêts quand l'user y accède)
-  if (!isAdmin && state.connectors?.ospharm?.connected) {
+  const _canBgCompute = state.connectors?.ospharm?.connected || state.csvData?.length > 0;
+  if (_canBgCompute && !_simRunning && !_precomputedWireAndRender) {
     setTimeout(() => {
+      if (_simRunning || _precomputedWireAndRender) return;
       _simBgMode = true;
-      launchComparateur().catch(() => { _simBgMode = false; _simRunning = false; });
-    }, 2000);
+      if (state.csvData?.length) {
+        launchSimulation();
+      } else {
+        launchComparateur().catch(() => { _simBgMode = false; _simRunning = false; });
+      }
+    }, 1500);
   }
 })();
 
