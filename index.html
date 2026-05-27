@@ -4122,7 +4122,7 @@ async function launchSimulation() {
       for (const lab of ourLabs) {
         for (let i = 0; i < allLibelles.length; i += LIB_CHUNK) {
           const chunk = allLibelles.slice(i, i + LIB_CHUNK);
-          const libStr = chunk.map(l => `"${l.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
+          const libStr = chunk.map(l => `"${l.replace(/%/g, '%25').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
           const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&libelle=in.(${libStr})&limit=2000`;
           tasks.push(fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []));
         }
@@ -4957,7 +4957,9 @@ async function launchSimulation() {
               if (s > bestScore) { bestScore = s; bestLab = lab; }
             }
             if (!bestLab) continue;
-            const { labRef, rowCA } = _coMaps.get(bestLab.name).get(cip13);
+            const _bestEntry = _coMaps.get(bestLab.name)?.get(cip13);
+            if (!_bestEntry) continue;
+            const { labRef, rowCA } = _bestEntry;
             assignment.set(cip13, labRef);
             cipLocked.add(cip13);
             bestLab.acc += rowCA;
