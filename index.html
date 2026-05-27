@@ -2763,7 +2763,7 @@ function initLabPage(conf) {
     rgInp.addEventListener('input', () => {
       const v = parseFloat(rgInp.value.replace(',', '.'));
       cond.remiseGlobale = isNaN(v) ? null : v;
-      const _CA_GERS_RATIOS = { Biogaran: 0.86, Teva: 0.75, Sandoz: 0.70, Zentiva: 0.75, Viatris: 0.90 };
+      const _CA_GERS_RATIOS = { Biogaran: 0.84, Teva: 0.75, Sandoz: 0.70, Zentiva: 0.75, Viatris: 0.90 };
       const _caRatio = _CA_GERS_RATIOS[s.selectedLab];
       if (_caRatio && !isNaN(v) && v >= 50 && state.gers != null && cond.caCondition === null) {
         cond.caCondition = Math.round(state.gers * _caRatio);
