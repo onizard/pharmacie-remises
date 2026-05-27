@@ -24,6 +24,11 @@ jobs:
       - name: Fetch camoufox browser
         run: python3 -m camoufox fetch
 
+      - name: Patch Playwright (null-check pageError.location)
+        run: |
+          BUNDLE=$(python3 -c "import os,playwright; print(os.path.join(os.path.dirname(playwright.__file__),'driver/package/lib/coreBundle.js'))")
+          sed -i 's/pageError\.location\.url/(pageError.location||{}).url/g' "$BUNDLE" && echo "Patched OK" || echo "Patch skipped"
+
       - name: Test connexion
         env:
           USER_ID:              ${{ inputs.user_id }}
