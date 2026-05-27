@@ -6135,9 +6135,9 @@ function initConnecteurModal() {
   function openModal() {
     const c = state.connectors;
     document.getElementById('ospUser').value  = c.ospharm.user;
-    document.getElementById('ospPass').value  = c.ospharm.pass;
+    document.getElementById('ospPass').value  = '';
     document.getElementById('digiUser').value = c.digipharmacie.user;
-    document.getElementById('digiPass').value = c.digipharmacie.pass;
+    document.getElementById('digiPass').value = '';
     document.getElementById('ospTestResult').textContent  = '';
     document.getElementById('digiTestResult').textContent = '';
     document.getElementById('ospReqStatus').textContent   = '';
