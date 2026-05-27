@@ -6245,7 +6245,21 @@ function initConnecteurModal() {
       }
 
       _setConnProgress(prefix, 'test');
-      const result = await _pollConnTest(session.user.id, connKey, resultEl);
+      const result = await _pollConnTest(session.user.id, connKey, resultEl,
+          connKey === 'digipharmacie' ? 120_000 : 180_000);
+
+      // Digipharmacie test runs on self-hosted runner (machine must be on).
+      // If poll times out, credentials are already saved server-side — treat as deferred, not error.
+      if (result.status === 'timeout' && connKey === 'digipharmacie') {
+        state.connectors[connKey] = { user, pass, connected: false };
+        updateConnecteurBtn();
+        saveState();
+        _setConnProgress(prefix, 'reset');
+        resultEl.innerHTML = `⏳ Identifiants enregistrés.<br><span style="color:var(--text-dim)">La vérification s'effectuera automatiquement quand votre machine sera allumée.</span>`;
+        resultEl.className = 'conn-test-result warn';
+        return;
+      }
+
       if (result.status !== 'ok') throw new Error(result.message || 'Identifiants incorrects');
 
       state.connectors[connKey] = { user, pass, connected: true };
@@ -6461,8 +6475,8 @@ function initConnecteurModal() {
   }
   window._setConnProgressPct = _setConnProgressPct;
 
-  async function _pollConnTest(userId, connKey, statusEl) {
-    const deadline = Date.now() + 180_000;
+  async function _pollConnTest(userId, connKey, statusEl, timeoutMs = 180_000) {
+    const deadline = Date.now() + timeoutMs;
     let elapsed = 0;
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 3_000));
@@ -6476,7 +6490,7 @@ function initConnecteurModal() {
         if (r?.status === 'ok' || r?.status === 'fail') return r;
       } catch(_) {}
     }
-    return { status: 'fail', message: 'Délai dépassé — réessayez.' };
+    return { status: 'timeout', message: 'Délai dépassé — réessayez.' };
   }
 
   const _jobRefreshMap = { ospJobStatus: 'ospRefreshBtn', digiJobStatus: 'digiRefreshBtn' };
