@@ -15,6 +15,15 @@ USER_ID     = os.environ.get("USER_ID", "")
 CONNECTOR   = os.environ.get("CONNECTOR", "")
 
 OSPHARM_URL = "https://datastat.ospharm.org/"
+DIGI_URL    = "https://app.digipharmacie.fr"
+
+# Endpoints JSON à tenter dans l'ordre
+DIGI_LOGIN_APIS = [
+    "/api/v1/auth/login/",
+    "/api/auth/login/",
+    "/api/v1/token/",
+    "/api/token/",
+]
 
 
 # ── Supabase ───────────────────────────────────────────────────────────────────
@@ -89,21 +98,126 @@ def test_ospharm(creds: dict):
         raise RuntimeError("Identifiants OSPHARM incorrects")
 
 
-# ── Test DIGIPHARMACIE ─────────────────────────────────────────────────────────
+# ── Test DIGIPHARMACIE — chemin rapide curl_cffi ───────────────────────────────
+
+def test_digi_curl(creds: dict):
+    """
+    Teste les credentials via curl_cffi (TLS Chrome impersonation).
+    - Retourne normalement si succès.
+    - RuntimeError si credentials incorrects.
+    - Exception (non RuntimeError) si Cloudflare bloque — le caller bascule sur camoufox.
+    """
+    from curl_cffi import requests as cffi_requests
+
+    session = cffi_requests.Session(impersonate="chrome124")
+    page_headers = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Upgrade-Insecure-Requests": "1",
+    }
+
+    # Étape 1 — charger la page de login pour obtenir le cookie CSRF
+    try:
+        r = session.get(f"{DIGI_URL}/login/", headers=page_headers, timeout=25, allow_redirects=True)
+    except Exception as e:
+        raise Exception(f"curl_cffi GET /login/ : {e}")
+
+    if r.status_code in (403, 503) or len(r.text) < 200:
+        raise Exception(f"Cloudflare bloque curl_cffi (HTTP {r.status_code}, {len(r.text)} octets)")
+
+    csrf = session.cookies.get("csrftoken", "")
+    if not csrf:
+        raise Exception("Pas de cookie csrftoken — Cloudflare ou challenge JS requis")
+
+    api_headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrf,
+        "Referer": f"{DIGI_URL}/login/",
+        "Origin": DIGI_URL,
+        "Accept-Language": "fr-FR,fr;q=0.9",
+    }
+
+    # Étape 2 — essayer les endpoints JSON connus
+    for endpoint in DIGI_LOGIN_APIS:
+        try:
+            r = session.post(
+                f"{DIGI_URL}{endpoint}",
+                json={"email": creds["user"], "password": creds["pass"]},
+                headers=api_headers,
+                timeout=15,
+                allow_redirects=False,
+            )
+            if r.status_code == 200:
+                return  # succès
+            if r.status_code in (400, 401):
+                raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+            # 404 / 405 → mauvais endpoint, on essaie le suivant
+        except RuntimeError:
+            raise
+        except Exception:
+            continue
+
+    # Étape 3 — fallback form POST sur /login/
+    try:
+        r = session.post(
+            f"{DIGI_URL}/login/",
+            data={
+                "email": creds["user"],
+                "password": creds["pass"],
+                "csrfmiddlewaretoken": csrf,
+            },
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": f"{DIGI_URL}/login/",
+                "Origin": DIGI_URL,
+            },
+            timeout=15,
+            allow_redirects=True,
+        )
+        if "/login" not in r.url:
+            return  # redirigé vers le dashboard → succès
+        raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+    except RuntimeError:
+        raise
+    except Exception as e:
+        raise Exception(f"curl_cffi form POST: {e}")
+
+
+# ── Test DIGIPHARMACIE — fallback camoufox ────────────────────────────────────
 
 async def _test_digipharmacie_async(creds: dict):
+    # Chemin rapide : curl_cffi sans navigateur (~5-10s)
+    try:
+        test_digi_curl(creds)
+        print("✅  curl_cffi login réussi")
+        return
+    except RuntimeError:
+        raise  # mauvais credentials — ne pas aller plus loin
+    except Exception as curl_err:
+        print(f"⚠️  curl_cffi échoué ({curl_err}) — fallback camoufox…")
+
+    # Fallback : navigateur camoufox (gère les challenges JS Cloudflare)
     from camoufox.async_api import AsyncCamoufox
 
     async with AsyncCamoufox(headless=True, geoip=False) as browser:
         page = await browser.new_page()
-        await page.goto("https://app.digipharmacie.fr/login/", timeout=90_000)
 
         try:
-            await page.wait_for_selector("input[type='email']", timeout=60_000)
+            await page.goto(f"{DIGI_URL}/login/", timeout=60_000)
         except Exception:
             raise RuntimeError(
-                f"Formulaire de login DIGIPHARMACIE introuvable "
-                f"(URL finale : {page.url} — Cloudflare ou timeout ?)"
+                "DIGIPHARMACIE inaccessible depuis ce serveur "
+                "(Cloudflare bloque les IPs Render). "
+                "Contactez le support si l'erreur persiste."
+            )
+
+        try:
+            await page.wait_for_selector("input[type='email']", timeout=30_000)
+        except Exception:
+            raise RuntimeError(
+                f"Formulaire de login introuvable (URL: {page.url} — Cloudflare ?)"
             )
 
         await page.locator("input[type='email']").first.fill(creds["user"])
@@ -111,12 +225,12 @@ async def _test_digipharmacie_async(creds: dict):
         await page.locator("input[type='password']").first.press("Enter")
 
         try:
-            await page.wait_for_url("**/dashboard**", timeout=25_000)
+            await page.wait_for_url("**/dashboard**", timeout=20_000)
         except Exception:
             try:
                 await page.wait_for_function(
                     "() => !window.location.pathname.includes('/login')",
-                    timeout=20_000,
+                    timeout=15_000,
                 )
             except Exception:
                 pass

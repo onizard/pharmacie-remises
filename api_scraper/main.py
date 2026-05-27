@@ -206,7 +206,17 @@ def _test_connector(connector: str, creds: dict, user_id: str = ""):
         from test_connector import test_ospharm
         test_ospharm(creds)
     elif connector == "digipharmacie":
-        # Subprocess avec hard timeout 140s — évite le hang du cleanup camoufox
+        # Chemin rapide : curl_cffi en-processus (~5-10s, pas de navigateur)
+        try:
+            from test_connector import test_digi_curl
+            test_digi_curl(creds)
+            return  # succès
+        except RuntimeError:
+            raise  # mauvais credentials
+        except Exception:
+            pass  # Cloudflare bloque curl_cffi → fallback subprocess camoufox
+
+        # Fallback : subprocess camoufox avec hard timeout 180s
         _run_digi_test_subprocess(user_id, creds)
 
 
@@ -222,12 +232,15 @@ def _run_digi_test_subprocess(user_id: str, creds: dict):
         proc = subprocess.run(
             [sys.executable, "test_connector.py"],
             env=env,
-            timeout=140,
+            timeout=180,
             capture_output=True,
             text=True,
         )
     except subprocess.TimeoutExpired:
-        raise RuntimeError("Timeout (>140s) — Digipharmacie inaccessible ou credentials invalides")
+        raise RuntimeError(
+            "Timeout (>180s) — Digipharmacie inaccessible depuis ce serveur "
+            "(Cloudflare bloque les IPs Render). Contactez le support."
+        )
     if proc.returncode != 0:
         out = (proc.stdout + "\n" + proc.stderr).strip()
         lines = [l.strip() for l in out.splitlines() if l.strip()]
