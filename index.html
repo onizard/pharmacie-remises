@@ -2244,28 +2244,29 @@ function _startOspBreakoutCanvas(canvasId) {
 function _renderOspProgress(el) {
   clearInterval(_ospProgressTimer);
 
-  function _compute() {
+  function _barPct() {
     const msg = state._ospJobMessage || '';
     const m   = msg.match(/Mois\s+(\d+)\/(\d+)/i);
     const cur = m ? parseInt(m[1]) : 0;
     const tot = m ? parseInt(m[2]) : 0;
     const elapsed = Date.now() - (state._ospJobStartedAt || Date.now());
     const pct = (tot > 0 && cur > 0) ? Math.min(95, cur / tot * 100) : 0;
-    let remainMin = 10; // défaut 10 min avant la première estimation
-    if (pct > 0 && elapsed > 0) {
-      remainMin = Math.ceil(Math.max(0, elapsed / (pct / 100) - elapsed) / 60000);
-    }
-    const barPct = pct > 0 ? Math.round(pct) : Math.min(8, Math.round(elapsed / 60000 / 10 * 8));
-    const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
-    const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
-    return { actHtml, barPct };
+    return pct > 0 ? Math.round(pct) : Math.min(8, Math.round(elapsed / 60000 / 10 * 8));
   }
 
-  const { actHtml, barPct } = _compute();
+  const barPct = _barPct();
 
   if (!el.querySelector('#ospStatusLine')) {
+    // Choisit la phrase ironique une seule fois à l'init, selon le temps estimé
+    const elapsed   = Date.now() - (state._ospJobStartedAt || Date.now());
+    const remainMin = barPct > 0
+      ? Math.ceil(Math.max(0, elapsed / (barPct / 100) - elapsed) / 60000)
+      : 10;
+    const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
+    const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
+
     el.innerHTML = `<div class="osp-ring-wrap">
-      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${state._ospConnecting ? '// Connexion OSPHARM en cours…' : '// Analyse en cours — initialisation…'}</div>
+      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${state._ospConnecting ? '// Connexion OSPHARM en cours…' : '// Analyse en cours…'}</div>
       <div class="osp-ring${barPct > 0 ? '' : ' spin'}">
         <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="ospRecapArc"${barPct > 0 ? ` style="stroke-dashoffset:${175.9 * (1 - barPct / 100)}"` : ''}/></svg>
         <div class="osp-ring-label" id="ospRecapPct">${barPct > 0 ? barPct + '%' : ''}</div>
@@ -2273,9 +2274,7 @@ function _renderOspProgress(el) {
       <div id="ospActivityLine" class="osp-activity-line" style="text-align:center">${actHtml}</div>
     </div>`;
   } else {
-    const actLine = el.querySelector('#ospActivityLine');
-    if (actLine) actLine.innerHTML = actHtml;
-    // Mettre à jour l'arc et le pourcentage si disponibles
+    // Mises à jour suivantes : seulement le % et le statut "Mois X/Y", pas la phrase
     const arc   = document.getElementById('ospRecapArc');
     const pctEl = document.getElementById('ospRecapPct');
     const ring  = arc?.closest('.osp-ring');
@@ -2291,14 +2290,6 @@ function _renderOspProgress(el) {
       if (_m) stEl.textContent = `// Mois ${_m[1]} / ${_m[2]}`;
     }
   }
-
-  // Rafraîchit l'affichage toutes les 5s en recalculant le temps réel restant
-  _ospProgressTimer = setInterval(() => {
-    const actLine = document.getElementById('ospActivityLine');
-    if (!actLine) { clearInterval(_ospProgressTimer); return; }
-    const { actHtml } = _compute();
-    actLine.innerHTML = actHtml;
-  }, 5_000);
 }
 
 function renderRecap() {
@@ -4027,26 +4018,21 @@ async function launchSimulation() {
 
   if (!_isBg) {
     container.innerHTML = `<div class="osp-ring-wrap">
-    <div id="simLoadStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Initialisation…</div>
+    <div id="simLoadStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Analyse en cours…</div>
     <div class="osp-ring">
       <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="simLoadArc"/></svg>
       <div class="osp-ring-label" id="simLoadPct">0%</div>
     </div>
-    <div id="simLoadActivity" class="osp-activity-line" style="text-align:center">Chargement des références produits…</div>
   </div>`;
   }
 
   const _CIRC = 175.9;
-  const _sp = (pct, status, activity) => {
+  const _sp = (pct) => {
     const arc   = document.getElementById('simLoadArc');
     const pctEl = document.getElementById('simLoadPct');
-    const st    = document.getElementById('simLoadStatus');
-    const act   = document.getElementById('simLoadActivity');
     const p = Math.round(pct);
-    if (arc)  arc.style.strokeDashoffset  = _CIRC * (1 - p / 100);
+    if (arc)   arc.style.strokeDashoffset = _CIRC * (1 - p / 100);
     if (pctEl) pctEl.textContent = p + '%';
-    if (status   && st)  st.textContent  = status;
-    if (activity && act) act.textContent = activity;
   };
 
   try {
@@ -4060,7 +4046,7 @@ async function launchSimulation() {
 
     // 2. Fetch reference data from Supabase (batch by 200)
     const allCips = [...new Set(csvData.map(r => r.cip13))];
-    _sp(8, `// ${allCips.length} produits identifiés`, 'Chargement des références pharmacie…');
+    _sp(8);
     const CHUNK = 200;
     const refRows = [];
     for (let i = 0; i < allCips.length; i += CHUNK) {
@@ -4068,9 +4054,9 @@ async function launchSimulation() {
       const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&cip13=in.(${chunk.join(',')})&limit=1000`;
       const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
       if (res.ok) refRows.push(...await res.json());
-      _sp(8 + Math.round((i + chunk.length) / allCips.length * 37), null, null);
+      _sp(8 + Math.round((i + chunk.length) / allCips.length * 37));
     }
-    _sp(45, '// Références chargées', 'Analyse des équivalences moléculaires…');
+    _sp(45);
 
     // refMap: cip13 -> ref (keep first match per cip, prefer refs from our labs)
     const refMap = new Map();
@@ -4105,7 +4091,7 @@ async function launchSimulation() {
       let _done = 0;
       const results = await Promise.all(tasks.map(t => t.then(r => {
         _done++;
-        _sp(45 + Math.round(_done / Math.max(tasks.length, 1) * 23), null, null);
+        _sp(45 + Math.round(_done / Math.max(tasks.length, 1) * 23));
         return r;
       })));
       results.forEach(rows => rows.forEach(r => {
@@ -4114,7 +4100,7 @@ async function launchSimulation() {
           libelleMap.get(r.libelle).push(r);
       }));
     }
-    _sp(70, '// Équivalences identifiées', 'Calcul des scénarios d\'optimisation…');
+    _sp(70);
 
     // 3a. Overlay PUHT depuis OSPHARM (plus fiable que Supabase pour les refs présentes)
     //     Priorité à l'année 2026 (plus récente) ; fallback 2025.
@@ -4214,7 +4200,7 @@ async function launchSimulation() {
       return result;
     }
 
-    await _yield(); _sp(75, '// Équivalences indexées', 'Construction des scénarios…');
+    await _yield(); _sp(75);
     // 3. Natural ref map (no lab preference) + current lab CA breakdown
     const naturalRefMap = new Map();
     refRows.forEach(r => { if (!naturalRefMap.has(r.cip13)) naturalRefMap.set(r.cip13, r); });
@@ -4431,7 +4417,7 @@ async function launchSimulation() {
       return { labResults, totalRemise, totalCA, totalPaNet: totalCA - totalRemise };
     }
 
-    await _yield(); _sp(82, '// Scénario actuel calculé', 'Optimisation des affectations…');
+    await _yield(); _sp(82);
     // 6a. Scénario N-1 : CIP → premier match Supabase, RSF uniquement
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
@@ -4537,7 +4523,7 @@ async function launchSimulation() {
 
       labScenarios.push({ name: labName, scenario: calcScenario(labAssignment), assignment: labAssignment });
     });
-    await _yield(); _sp(90, '// Scénarios par labo', 'Calcul des combinaisons…');
+    await _yield(); _sp(90);
 
     // 6e. Helper : assignment "focus labo principal + meilleur RSF pour le reste"
     function buildFocusAssignment(primaryLab) {
@@ -4838,7 +4824,7 @@ async function launchSimulation() {
     allOptScenarios.length = 0;
     allOptScenarios.push(..._deduped);
     allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
-    await _yield(); _sp(96, '// Classement final', 'Recherche du meilleur scénario…');
+    await _yield(); _sp(96);
     let winnerEntry = allOptScenarios[0];
     const otherScenarios = allOptScenarios.slice(1);
     let totalScenarios = 1 + allOptScenarios.length;
@@ -5154,7 +5140,7 @@ async function launchSimulation() {
         const _targetLabs = [...ourLabs];
         if (_targetLabs.length < 2) return;
 
-        _sp(97, '// Optimisation combinatoire', `Analyse de ${_targetLabs.length} génériqueurs…`);
+        _sp(97);
         const _toFetch = _targetLabs.filter(ln => !_fullFetchedLabs.has(ln));
         if (_toFetch.length) {
           const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
@@ -5195,7 +5181,7 @@ async function launchSimulation() {
           try {
             const { scenario, assignment: asgn } = calcCustomScenario(perm);
             _permCount++;
-            _sp(97 + Math.floor(_permCount / _totalPerms * 2), '// Optimisation combinatoire', `${_permCount} / ${_totalPerms} combinaisons analysées…`);
+            _sp(97 + Math.floor(_permCount / _totalPerms * 2));
             if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
               const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
               scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
@@ -5214,7 +5200,7 @@ async function launchSimulation() {
         totalScenarios += _permCount;
         if (bestEntry !== winnerEntry) {
           winnerEntry = bestEntry;
-          _sp(99, '// Meilleur scénario identifié', `${winnerEntry.label}`);
+          _sp(99);
         }
       } catch(e) {
         console.warn('[exhaustive] recherche abandonnée :', e);
@@ -5307,7 +5293,7 @@ async function launchSimulation() {
       <div id="customSimResult" class="sim-custom-result" style="display:none"></div>
     </div>`;
 
-    _sp(100, '// Analyse complète', `${allCips.length} références — scénarios prêts`);
+    _sp(100);
 
     // ── Phase finale : bouton START → brick 10s → résultats ──────────────────────
     const _wireAndRender = () => {
