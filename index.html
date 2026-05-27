@@ -6003,11 +6003,11 @@ function initConnecteurModal() {
     } else {
       if (fv) fv.style.display = '';
       if (cv) cv.style.display = 'none';
-      const connKey  = prefix === 'osp' ? 'ospharm' : 'digipharmacie';
-      const hasCreds = !!state.connectors[connKey]?.user;
+      const connKey     = prefix === 'osp' ? 'ospharm' : 'digipharmacie';
+      const isConnected = !!state.connectors[connKey]?.connected;
       if (userEl) {
-        userEl.readOnly = hasCreds;
-        if (hasCreds) userEl.title = '🔒 Pour changer de compte, utilisez le lien "Changer de compte ?"';
+        userEl.readOnly = isConnected;
+        if (isConnected) userEl.title = '🔒 Identifiant verrouillé — déconnectez-vous pour le changer';
         else userEl.removeAttribute('title');
       }
     }
@@ -6028,7 +6028,7 @@ function initConnecteurModal() {
     if (!creds?.user || !creds?.pass) { showView(prefix, false); return; }
     const userEl = document.getElementById(prefix + 'User');
     const passEl = document.getElementById(prefix + 'Pass');
-    if (userEl) { userEl.value = creds.user; userEl.readOnly = true; userEl.title = '🔒 Pour changer de compte, utilisez le lien "Changer de compte ?"'; }
+    if (userEl) userEl.value = creds.user;
     if (passEl) passEl.value = creds.pass;
     showView(prefix, false);
     await connectConn(connKey, prefix);
