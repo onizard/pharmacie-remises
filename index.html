@@ -777,11 +777,14 @@
   .conn-test-btn { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 2px; padding: 4px 12px; background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); cursor: pointer; transition: border-color .2s,color .2s; white-space: nowrap; }
   .conn-test-btn:hover:not(:disabled) { border-color: var(--cyan-dim); color: var(--cyan); }
   .conn-test-btn:disabled { opacity: .45; cursor: not-allowed; }
-  .conn-test-result { font-family: 'Share Tech Mono', monospace; font-size: 11px; line-height: 1.4; }
+  .conn-test-result { font-family: 'Share Tech Mono', monospace; font-size: 11px; line-height: 1.4; position:relative; }
   .conn-test-result.ok { color: var(--green); }
   .conn-test-result.ko { color: var(--red); }
   .conn-test-result.warn  { color: var(--amber); }
   .conn-test-result.error { color: var(--red); }
+  .conn-copy-btn { background:none; border:none; cursor:pointer; font-size:13px; opacity:0.5; padding:0 0 0 6px; vertical-align:middle; transition:opacity .15s; }
+  .conn-copy-btn:hover { opacity:1; }
+  .conn-copy-btn.copied::after { content:' ✓'; font-size:10px; color:var(--green); }
   .conn-ring-wrap { display:none; justify-content:center; align-items:center; flex-direction:column; gap:6px; padding:14px 0 6px; }
   .conn-ring-wrap.active { display:flex; }
   .conn-ring { position:relative; width:52px; height:52px; }
@@ -6184,6 +6187,25 @@ function initConnecteurModal() {
     });
   });
 
+  function _showConnResult(el, html, cls) {
+    el.className = `conn-test-result ${cls}`;
+    const textSpan = document.createElement('span');
+    textSpan.innerHTML = html;
+    const btn = document.createElement('button');
+    btn.className = 'conn-copy-btn';
+    btn.title = 'Copier';
+    btn.textContent = '📋';
+    btn.onclick = () => {
+      navigator.clipboard.writeText(textSpan.innerText).then(() => {
+        btn.classList.add('copied');
+        setTimeout(() => btn.classList.remove('copied'), 1500);
+      });
+    };
+    el.innerHTML = '';
+    el.appendChild(textSpan);
+    el.appendChild(btn);
+  }
+
   async function connectConn(connKey, prefix) {
     const user     = document.getElementById(prefix + 'User').value.trim();
     const pass     = document.getElementById(prefix + 'Pass').value;
@@ -6255,8 +6277,7 @@ function initConnecteurModal() {
         updateConnecteurBtn();
         saveState();
         _setConnProgress(prefix, 'reset');
-        resultEl.innerHTML = `⏳ Identifiants enregistrés.<br><span style="color:var(--text-dim)">La vérification s'effectuera automatiquement quand votre machine sera allumée.</span>`;
-        resultEl.className = 'conn-test-result warn';
+        _showConnResult(resultEl, `⏳ Identifiants enregistrés.<br><span style="color:var(--text-dim)">La vérification s'effectuera automatiquement quand votre machine sera allumée.</span>`, 'warn');
         return;
       }
 
@@ -6290,8 +6311,7 @@ function initConnecteurModal() {
       _setConnProgress(prefix, 'reset');
       if (connKey === 'ospharm') state._ospConnecting = false;
       showView(prefix, false);
-      resultEl.innerHTML = `❌ ${e.message}<br><span style="color:var(--text-dim)">Vérifiez vos identifiants et réessayez.</span>`;
-      resultEl.className = 'conn-test-result error';
+      _showConnResult(resultEl, `❌ ${e.message}<br><span style="color:var(--text-dim)">Vérifiez vos identifiants et réessayez.</span>`, 'error');
       const passEl = document.getElementById(prefix + 'Pass');
       const userEl = document.getElementById(prefix + 'User');
       if (passEl) { passEl.value = ''; passEl.classList.add('error', 'shake'); setTimeout(() => passEl.classList.remove('shake'), 400); }
