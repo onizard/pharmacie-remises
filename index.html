@@ -912,9 +912,9 @@
     <div class="auth-sub">◈ ACCÈS SÉCURISÉ ◈</div>
     <div class="auth-box" id="authBox">
       <form action="javascript:void(0)" onsubmit="return false">
-      <div class="auth-field"><label>EMAIL</label>
+      <div class="auth-field"><label for="aLEmail">EMAIL</label>
         <input type="email" id="aLEmail" placeholder="votre@email.com" autocomplete="username"/></div>
-      <div class="auth-field"><label>MOT DE PASSE</label>
+      <div class="auth-field"><label for="aLPwd">MOT DE PASSE</label>
         <input type="password" id="aLPwd" placeholder="••••••••" autocomplete="current-password"/></div>
       <div class="auth-err" id="aLErr"></div>
       <button class="auth-btn" id="aLBtn">SE CONNECTER →</button>
@@ -932,11 +932,11 @@
     <div class="auth-sub">◈ CRÉER UN COMPTE ◈</div>
     <div class="auth-box">
       <form action="javascript:void(0)" onsubmit="return false">
-      <div class="auth-field"><label>EMAIL</label>
+      <div class="auth-field"><label for="aSUEmail">EMAIL</label>
         <input type="email" id="aSUEmail" placeholder="votre@email.com" autocomplete="username"/></div>
-      <div class="auth-field"><label>MOT DE PASSE</label>
+      <div class="auth-field"><label for="aSUPwd">MOT DE PASSE</label>
         <input type="password" id="aSUPwd" placeholder="••••••••" autocomplete="new-password"/></div>
-      <div class="auth-field"><label>CONFIRMER LE MOT DE PASSE</label>
+      <div class="auth-field"><label for="aSUPwd2">CONFIRMER LE MOT DE PASSE</label>
         <input type="password" id="aSUPwd2" placeholder="••••••••" autocomplete="new-password"/></div>
       <div class="auth-err" id="aSUErr"></div>
       <div class="auth-ok" id="aSUOk"></div>
@@ -953,7 +953,7 @@
     <div class="auth-logo">BREAK-PHARMA</div>
     <div class="auth-sub">◈ RÉINITIALISATION ◈</div>
     <div class="auth-box">
-      <div class="auth-field"><label>VOTRE EMAIL</label>
+      <div class="auth-field"><label for="aFPEmail">VOTRE EMAIL</label>
         <input type="email" id="aFPEmail" placeholder="votre@email.com"/></div>
       <div class="auth-err" id="aFPErr"></div>
       <div class="auth-ok" id="aFPOk"></div>
@@ -970,10 +970,10 @@
     <div class="auth-sub">◈ NOUVEAU MOT DE PASSE ◈</div>
     <div class="auth-box">
       <form action="javascript:void(0)" onsubmit="return false">
-      <input type="text" autocomplete="username" style="display:none" aria-hidden="true">
-      <div class="auth-field"><label>NOUVEAU MOT DE PASSE</label>
+      <input type="text" name="username" autocomplete="username" style="display:none" aria-hidden="true">
+      <div class="auth-field"><label for="aRPPwd">NOUVEAU MOT DE PASSE</label>
         <input type="password" id="aRPPwd" placeholder="••••••••" autocomplete="new-password"/></div>
-      <div class="auth-field"><label>CONFIRMER</label>
+      <div class="auth-field"><label for="aRPPwd2">CONFIRMER</label>
         <input type="password" id="aRPPwd2" placeholder="••••••••" autocomplete="new-password"/></div>
       <div class="auth-err" id="aRPErr"></div>
       <div class="auth-ok" id="aRPOk"></div>
@@ -6591,7 +6591,7 @@ function initConnecteurModal() {
   <div style="color:#2ecc71;font-size:1.3rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;">BREAK-PHARMA</div>
   <div style="color:#4ade80;font-size:.75rem;letter-spacing:.2em;opacity:.7;">Accès restreint</div>
   <form action="javascript:void(0)" onsubmit="return false">
-  <input type="text" autocomplete="username" style="display:none" aria-hidden="true">
+  <input type="text" name="username" autocomplete="username" style="display:none" aria-hidden="true">
   <input id="auth-input" type="password" placeholder="Mot de passe"
     autocomplete="current-password" spellcheck="false"
     style="
