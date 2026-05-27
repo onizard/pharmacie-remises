@@ -274,6 +274,9 @@ async def _test_digipharmacie_async(creds: dict):
         ctx  = await browser.new_context(**({"proxy": proxy_cfg} if proxy_cfg else {}))
         page = await ctx.new_page()
 
+        # Supprimer les pageerror Cloudflare qui crashent le handler Playwright interne
+        page.on("pageerror", lambda exc: None)
+
         try:
             await page.goto(f"{DIGI_URL}/login/", timeout=60_000)
         except Exception:
@@ -283,51 +286,25 @@ async def _test_digipharmacie_async(creds: dict):
                 "Contactez le support si l'erreur persiste."
             )
 
-        # Attendre que le réseau se stabilise (le challenge Cloudflare fait des requêtes)
-        try:
-            await page.wait_for_load_state("networkidle", timeout=20_000)
-        except Exception:
-            pass
-
         title = await page.title()
-        print(f"  Page title: {title!r}  URL: {page.url}")
+        print(f"  Page title after goto: {title!r}  URL: {page.url}")
 
-        # Si Cloudflare challenge détecté, attendre sa résolution automatique
-        _cf_kw = ("just a moment", "checking your browser", "verifying", "cloudflare")
-        if any(k in title.lower() for k in _cf_kw):
-            print("  Cloudflare challenge détecté — attente résolution (60s max)…")
-            try:
-                await page.wait_for_function(
-                    "() => !['just a moment','checking','verifying','cloudflare']"
-                    ".some(k => document.title.toLowerCase().includes(k))",
-                    timeout=60_000, polling=2000,
-                )
-                title = await page.title()
-                print(f"  Challenge résolu. Title: {title!r}  URL: {page.url}")
-            except Exception:
-                try:
-                    snippet = (await page.content())[:800]
-                    print(f"  Page content: {snippet}")
-                except Exception:
-                    pass
-                raise RuntimeError(
-                    f"Cloudflare challenge non résolu après 60s (URL: {page.url})"
-                )
-
-        # Sélecteur large : email ou username selon le site
+        # wait_for_selector gère automatiquement le challenge Cloudflare (90s)
         _email_sel = "input[type='email'], input[name='email'], input[name='username']"
         try:
-            await page.wait_for_selector(_email_sel, timeout=30_000)
+            await page.wait_for_selector(_email_sel, timeout=90_000)
         except Exception:
             try:
-                snippet = (await page.content())[:800]
-                print(f"  Page content: {snippet}")
+                title_now = await page.title()
+                snippet   = (await page.content())[:600]
+                print(f"  [debug] title={title_now!r} content={snippet}")
             except Exception:
                 pass
             raise RuntimeError(
                 f"Formulaire de login introuvable (URL: {page.url} — Cloudflare ?)"
             )
 
+        print(f"  Formulaire trouvé. URL: {page.url}")
         await page.locator(_email_sel).first.fill(creds["user"])
         await page.locator("input[type='password']").first.fill(creds["pass"])
         await page.locator("input[type='password']").first.press("Enter")
