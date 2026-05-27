@@ -4157,13 +4157,20 @@ async function launchSimulation() {
     });
 
     // Helper : fusionne libelleMap (exact) + formNormMap (form-agnostic) pour un libellé donné
+    const _mergedAltsCache = new Map();
     function mergedAlts(libelle) {
+      if (_mergedAltsCache.has(libelle)) return _mergedAltsCache.get(libelle);
       const exact = libelleMap.get(libelle) || [];
       const fuzzy = formNormMap.get(formNormKey(libelle)) || [];
-      if (!fuzzy.length) return exact;
-      const seen = new Set(exact.map(r => r.cip13 + '|' + r.labo));
-      const extra = fuzzy.filter(r => !seen.has(r.cip13 + '|' + r.labo));
-      return extra.length ? [...exact, ...extra] : exact;
+      let result;
+      if (!fuzzy.length) result = exact;
+      else {
+        const seen = new Set(exact.map(r => r.cip13 + '|' + r.labo));
+        const extra = fuzzy.filter(r => !seen.has(r.cip13 + '|' + r.labo));
+        result = extra.length ? [...exact, ...extra] : exact;
+      }
+      _mergedAltsCache.set(libelle, result);
+      return result;
     }
 
     await _yield(); _sp(75, '// Équivalences indexées', 'Construction des scénarios…');
@@ -5140,9 +5147,10 @@ async function launchSimulation() {
         for (let k = 2; k <= maxK; k++) allPerms.push(..._perms(_targetLabs, k));
         let bestEntry = winnerEntry;
         let _permCount = 0;
+        let _yieldIdx = 0;
         const _totalPerms = Math.max(allPerms.length, 1);
         for (const perm of allPerms) {
-          await _yield();
+          if (++_yieldIdx % 20 === 0) await _yield();
           try {
             const { scenario, assignment: asgn } = calcCustomScenario(perm);
             _permCount++;
