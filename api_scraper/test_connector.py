@@ -289,15 +289,78 @@ async def _test_digipharmacie_async(creds: dict):
         title = await page.title()
         print(f"  Page title after goto: {title!r}  URL: {page.url}")
 
-        # wait_for_selector gère automatiquement le challenge Cloudflare (90s)
-        _email_sel = "input[type='email'], input[name='email'], input[name='username']"
+        # Attendre que le challenge Cloudflare se résolve (titre != "Just a moment...")
+        _cf_titles = ("just a moment", "checking", "verifying", "cloudflare")
+        if any(k in title.lower() for k in _cf_titles):
+            print("  Cloudflare challenge détecté — attente résolution (90s max)…")
+            try:
+                await page.wait_for_function(
+                    "() => !['just a moment','checking','verifying','cloudflare']"
+                    ".some(k => document.title.toLowerCase().includes(k))",
+                    timeout=90_000, polling=2000,
+                )
+                title = await page.title()
+                print(f"  Challenge résolu. Title: {title!r}")
+            except Exception:
+                raise RuntimeError(
+                    f"Cloudflare challenge non résolu après 90s (URL: {page.url})"
+                )
+
+        # Tenter le login via l'API depuis le browser context (cookie CF clearance déjà présent)
+        _js_login = """async ({email, password}) => {
+            const endpoints = [
+                '/api/v1/auth/login/',
+                '/api/auth/login/',
+                '/api/v1/token/',
+                '/api/token/',
+            ];
+            const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+            for (const ep of endpoints) {
+                try {
+                    const r = await fetch(ep, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrf,
+                        },
+                        body: JSON.stringify({email, password}),
+                        credentials: 'include',
+                    });
+                    if (r.status === 200) return {ok: true, status: r.status, ep};
+                    if (r.status === 400 || r.status === 401)
+                        return {ok: false, bad_creds: true, status: r.status, ep};
+                } catch(e) {}
+            }
+            return {ok: false, bad_creds: false, status: 0};
+        }"""
         try:
-            await page.wait_for_selector(_email_sel, timeout=90_000)
+            res = await page.evaluate(_js_login, {"email": creds["user"], "password": creds["pass"]})
+            print(f"  API login result: {res}")
+            if res.get("ok"):
+                return  # succès
+            if res.get("bad_creds"):
+                raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+        except RuntimeError:
+            raise
+        except Exception as js_err:
+            print(f"  API evaluate échoué ({js_err}) — fallback formulaire…")
+
+        # Fallback : remplir le formulaire HTML
+        _email_sel = (
+            "input[type='email'], input[name='email'], "
+            "input[name='username'], input[type='text']"
+        )
+        try:
+            await page.wait_for_selector(_email_sel, timeout=20_000)
         except Exception:
             try:
-                title_now = await page.title()
-                snippet   = (await page.content())[:600]
-                print(f"  [debug] title={title_now!r} content={snippet}")
+                inputs_info = await page.evaluate(
+                    "() => Array.from(document.querySelectorAll('input'))"
+                    ".map(i=>({type:i.type,name:i.name,id:i.id}))"
+                )
+                print(f"  [debug] inputs: {inputs_info}")
+                snippet = (await page.content())[:1500]
+                print(f"  [debug] content: {snippet}")
             except Exception:
                 pass
             raise RuntimeError(
