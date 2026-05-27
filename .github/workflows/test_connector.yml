@@ -12,15 +12,22 @@ on:
 
 jobs:
   test:
-    runs-on: [self-hosted, local]
+    runs-on: self-hosted
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Python deps
+        run: pip install --quiet --upgrade camoufox[geoip] curl_cffi
+
+      - name: Fetch camoufox browser
+        run: python -m camoufox fetch
 
       - name: Test connexion
         env:
           USER_ID:              ${{ inputs.user_id }}
           CONNECTOR:            ${{ inputs.connector }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          PROXY_URL:            ${{ secrets.PROXY_URL }}
         run: python3 api_scraper/test_connector.py

@@ -13,6 +13,7 @@ SUPA_URL    = "https://fmterazwesiwpwjpkyqi.supabase.co"
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 USER_ID     = os.environ.get("USER_ID", "")
 CONNECTOR   = os.environ.get("CONNECTOR", "")
+PROXY_URL   = os.environ.get("PROXY_URL", "")   # http://user:pass@host:port — IP résidentielle
 
 OSPHARM_URL = "https://datastat.ospharm.org/"
 DIGI_URL    = "https://app.digipharmacie.fr"
@@ -155,7 +156,8 @@ def test_digi_curl(creds: dict):
     """
     from curl_cffi import requests as cffi_requests
 
-    session = cffi_requests.Session(impersonate="chrome124")
+    proxies = {"http": PROXY_URL, "https": PROXY_URL} if PROXY_URL else {}
+    session = cffi_requests.Session(impersonate="chrome124", proxies=proxies)
     page_headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -253,7 +255,8 @@ async def _test_digipharmacie_async(creds: dict):
             "Configurez un runner self-hosted sur votre machine pour contourner ce blocage."
         )
 
-    async with AsyncCamoufox(headless=True, geoip=False) as browser:
+    proxy_kw = {"proxy": {"server": PROXY_URL}} if PROXY_URL else {}
+    async with AsyncCamoufox(headless=True, geoip=False, **proxy_kw) as browser:
         page = await browser.new_page()
 
         try:
