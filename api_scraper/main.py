@@ -36,7 +36,8 @@ from supabase_client import (
 
 GH_TOKEN = os.environ.get("GH_TOKEN", "")
 GH_REPO  = "onizard/pharmacie-remises"
-GH_WORKFLOW = "scraper_ospharm.yml"
+GH_WORKFLOW      = "scraper_ospharm.yml"
+GH_TEST_WORKFLOW = "test_connector.yml"
 
 
 class ConnectBody(BaseModel):
@@ -188,6 +189,14 @@ def get_status(job_id: str):
 # ── Conn test (async wrapper) ──────────────────────────────────────────────────
 
 async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
+    if connector == "digipharmacie":
+        # Cloudflare bloque les IPs Render → test depuis GitHub Actions (self-hosted)
+        # 1. Enregistrer les credentials en attente (connected=false)
+        await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
+        # 2. Dispatcher le workflow test (lit les creds depuis Supabase)
+        await _dispatch_gh_conn_test(user_id, connector)
+        return
+
     loop = asyncio.get_event_loop()
     try:
         await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds, user_id))
@@ -195,6 +204,33 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
         await patch_conn_test(user_id, connector, True, "Connexion réussie")
     except Exception as e:
         await patch_conn_test(user_id, connector, False, str(e))
+
+
+async def _dispatch_gh_conn_test(user_id: str, connector: str):
+    """Déclenche test_connector.yml sur GitHub Actions (self-hosted, IP non bloquée)."""
+    if not GH_TOKEN:
+        await patch_conn_test(user_id, connector, False,
+                              "GH_TOKEN manquant sur le serveur — contacter l'admin")
+        return
+
+    url  = f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{GH_TEST_WORKFLOW}/dispatches"
+    body = json.dumps({
+        "ref": "master",
+        "inputs": {"user_id": user_id, "connector": connector},
+    }).encode()
+    req  = urllib.request.Request(url, data=body, method="POST", headers={
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept":        "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type":  "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            print(f"  [gh-test] HTTP {r.status} — test {connector} pour {user_id[:8]}")
+    except Exception as e:
+        print(f"  [gh-test] ERREUR: {e}")
+        await patch_conn_test(user_id, connector, False,
+                              f"Impossible de lancer le workflow GitHub: {e}")
 
 
 # ── Test connector (synchronous, called from executor) ─────────────────────────

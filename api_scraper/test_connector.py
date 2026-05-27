@@ -53,15 +53,61 @@ def _write_result(ok: bool, message: str = ""):
     with urllib.request.urlopen(req, timeout=15): pass
 
 
+def _get_connectors_col() -> dict:
+    """Lit la colonne connectors (nouvelle architecture atomique)."""
+    url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{USER_ID}&select=connectors&limit=1"
+    req = urllib.request.Request(url, headers={
+        "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        rows = json.loads(r.read())
+    return (rows[0].get("connectors") or {}) if rows else {}
+
+
 def _get_creds() -> dict:
-    # Priorité aux env vars passées par le subprocess (pas besoin de Supabase)
+    # Priorité 1 : env vars passées par le subprocess main.py
     env_user = os.environ.get("DIGI_USER", "")
     env_pass = os.environ.get("DIGI_PASS", "")
     if env_user and env_pass:
         return {"user": env_user, "pass": env_pass}
+
+    # Priorité 2 : colonne connectors dédiée (nouvelle architecture)
+    try:
+        conns = _get_connectors_col()
+        cred  = conns.get(CONNECTOR, {})
+        if cred.get("user") and cred.get("pass"):
+            return {"user": cred["user"], "pass": cred["pass"]}
+    except Exception:
+        pass
+
+    # Priorité 3 : legacy state_json.connectors
     state = _get_state()
     cred  = state.get("connectors", {}).get(CONNECTOR, {})
     return {"user": cred.get("user", ""), "pass": cred.get("pass", "")}
+
+
+def _mark_connected():
+    """Appelle upsert_connector pour marquer connected=true après succès du test."""
+    try:
+        conns = _get_connectors_col()
+        cred  = conns.get(CONNECTOR, {})
+        if not cred.get("user"):
+            return
+        url  = f"{SUPA_URL}/rest/v1/rpc/upsert_connector"
+        body = json.dumps({
+            "p_user_id":   USER_ID,
+            "p_connector": CONNECTOR,
+            "p_login":     cred.get("user", ""),
+            "p_pass":      cred.get("pass", ""),
+            "p_connected": True,
+        }).encode()
+        req = urllib.request.Request(url, data=body, method="POST", headers={
+            "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+            "Content-Type": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=15): pass
+    except Exception as e:
+        print(f"⚠️  _mark_connected: {e}")
 
 
 # ── Test OSPHARM ───────────────────────────────────────────────────────────────
@@ -266,6 +312,7 @@ def main():
 
         print(f"✅  Connexion {CONNECTOR} réussie")
         _write_result(True, "Connexion réussie")
+        _mark_connected()
 
     except Exception as e:
         print(f"❌  {e}")
