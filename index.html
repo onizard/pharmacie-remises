@@ -931,6 +931,7 @@
     <div class="auth-logo">BREAK-PHARMA</div>
     <div class="auth-sub">◈ CRÉER UN COMPTE ◈</div>
     <div class="auth-box">
+      <form action="javascript:void(0)" onsubmit="return false">
       <div class="auth-field"><label>EMAIL</label>
         <input type="email" id="aSUEmail" placeholder="votre@email.com" autocomplete="username"/></div>
       <div class="auth-field"><label>MOT DE PASSE</label>
@@ -940,6 +941,7 @@
       <div class="auth-err" id="aSUErr"></div>
       <div class="auth-ok" id="aSUOk"></div>
       <button class="auth-btn" id="aSUBtn">CRÉER MON COMPTE →</button>
+      </form>
       <div class="auth-links">
         <span class="auth-link center" id="toLoginSU">← Retour à la connexion</span>
       </div>
@@ -967,6 +969,7 @@
     <div class="auth-logo">BREAK-PHARMA</div>
     <div class="auth-sub">◈ NOUVEAU MOT DE PASSE ◈</div>
     <div class="auth-box">
+      <form action="javascript:void(0)" onsubmit="return false">
       <div class="auth-field"><label>NOUVEAU MOT DE PASSE</label>
         <input type="password" id="aRPPwd" placeholder="••••••••" autocomplete="new-password"/></div>
       <div class="auth-field"><label>CONFIRMER</label>
@@ -974,6 +977,7 @@
       <div class="auth-err" id="aRPErr"></div>
       <div class="auth-ok" id="aRPOk"></div>
       <button class="auth-btn" id="aRPBtn">ENREGISTRER →</button>
+      </form>
     </div>
   </div>
 
@@ -1140,6 +1144,7 @@
         <!-- DIGIPHARMACIE -->
         <div class="conn-site">
           <div id="digiFormView">
+            <form action="javascript:void(0)" onsubmit="return false">
             <div class="conn-site-title">DIGIPHARMACIE</div>
             <div class="conn-field">
               <div class="conn-label">Identifiant</div>
@@ -1156,6 +1161,7 @@
               <button class="conn-test-btn" id="digiTest">CONNECTER</button>
               <span class="conn-test-result" id="digiTestResult"></span>
             </div>
+            </form>
           </div>
           <div class="conn-connected-view" id="digiConnView" style="display:none">
             <div class="conn-check-big" id="digiCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
@@ -1176,6 +1182,7 @@
         <!-- OSPHARM -->
         <div class="conn-site">
           <div id="ospFormView">
+            <form action="javascript:void(0)" onsubmit="return false">
             <div class="conn-site-title">OSPHARM DATASTAT</div>
             <div class="conn-field">
               <div class="conn-label">Identifiant</div>
@@ -1192,6 +1199,7 @@
               <button class="conn-test-btn" id="ospTest">CONNECTER</button>
               <span class="conn-test-result" id="ospTestResult"></span>
             </div>
+            </form>
           </div>
           <div class="conn-connected-view" id="ospConnView" style="display:none">
             <div class="conn-check-big" id="ospCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
@@ -6581,6 +6589,7 @@ function initConnecteurModal() {
 ">
   <div style="color:#2ecc71;font-size:1.3rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;">BREAK-PHARMA</div>
   <div style="color:#4ade80;font-size:.75rem;letter-spacing:.2em;opacity:.7;">Accès restreint</div>
+  <form action="javascript:void(0)" onsubmit="return false">
   <input id="auth-input" type="password" placeholder="Mot de passe"
     autocomplete="current-password" spellcheck="false"
     style="
@@ -6588,6 +6597,7 @@ function initConnecteurModal() {
       color:#e2e8f0;padding:10px 16px;font-size:1rem;
       font-family:inherit;letter-spacing:.1em;outline:none;width:240px;text-align:center;
     ">
+  </form>
   <div id="auth-error" style="color:#ef4444;font-size:.75rem;letter-spacing:.1em;min-height:1em;"></div>
 </div>
 
