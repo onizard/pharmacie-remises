@@ -21,6 +21,9 @@ jobs:
       - name: Install Python deps
         run: pip3 install --quiet camoufox curl_cffi
 
+      - name: Install Firefox system deps
+        run: sudo apt-get install -y --no-install-recommends libgtk-3-0 libdbus-glib-1-2 libxt6 libasound2t64 2>/dev/null || sudo apt-get install -y --no-install-recommends libgtk-3-0 libdbus-glib-1-2 libxt6 libasound2 2>/dev/null || true
+
       - name: Fetch camoufox browser
         run: python3 -m camoufox fetch 2>&1 || true
 
