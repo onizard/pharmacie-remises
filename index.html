@@ -5146,7 +5146,7 @@ async function launchSimulation() {
           try {
             const { scenario, assignment: asgn } = calcCustomScenario(perm);
             _permCount++;
-            _sp(97 + Math.floor(_permCount / _totalPerms * 2), null, null);
+            _sp(97 + Math.floor(_permCount / _totalPerms * 2), '// Optimisation combinatoire', `${_permCount} / ${_totalPerms} combinaisons analysées…`);
             if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
               const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
               scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
