@@ -189,14 +189,6 @@ def get_status(job_id: str):
 # ── Conn test (async wrapper) ──────────────────────────────────────────────────
 
 async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
-    if connector == "digipharmacie":
-        # Cloudflare bloque les IPs Render → test depuis GitHub Actions (self-hosted)
-        # 1. Enregistrer les credentials en attente (connected=false)
-        await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
-        # 2. Dispatcher le workflow test (lit les creds depuis Supabase)
-        await _dispatch_gh_conn_test(user_id, connector)
-        return
-
     loop = asyncio.get_event_loop()
     try:
         await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds, user_id))
