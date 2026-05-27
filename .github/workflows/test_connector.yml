@@ -12,7 +12,7 @@ on:
 
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -21,11 +21,8 @@ jobs:
       - name: Install Python deps
         run: pip3 install --quiet camoufox curl_cffi
 
-      - name: Install Firefox system deps
-        run: python3 -m playwright install-deps firefox
-
       - name: Fetch camoufox browser
-        run: python3 -m camoufox fetch 2>&1 || true
+        run: python3 -m camoufox fetch
 
       - name: Test connexion
         env:
