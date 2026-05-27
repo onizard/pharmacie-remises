@@ -6490,7 +6490,7 @@ function initConnecteurModal() {
         const job = sj[jobKey];
         if (!job) return;
         if (job.status === 'done') {
-          // statut 'done' : pas d'affichage
+          _setJobStatusEl(elId, 'done', ''); // retire la classe loading du check-big
           if (fileBtn && job.file_url) {
             const btn = document.getElementById(fileBtn);
             if (btn) { btn.dataset.fileUrl = job.file_url; btn.style.display = ''; }
