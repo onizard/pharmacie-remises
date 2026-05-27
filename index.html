@@ -2458,7 +2458,7 @@ function createLabContDom(lp) {
             <div class="year-label year-label-toggle" id="yearToggle25-${uid}">2025 ▶</div>
             ${isAdmin ? `<label class="cgv-drop-label" id="cgvDrop25-${uid}" title="Déposer le PDF CGV 2025 ou cliquer pour charger les conditions depuis la DB"><span class="cgv-led" id="cgvLed25-${uid}"></span><input type="file" accept=".pdf" style="display:none" id="cgvFile25-${uid}"></label>` : ''}
           </div>
-          <button id="copy26to25-${uid}" title="Copier les conditions 2026 sur 2025" style="font-size:11px;padding:2px 10px;background:none;border:1px solid rgba(0,229,255,.35);color:var(--cyan);border-radius:4px;cursor:pointer;letter-spacing:.5px;opacity:.8">Copier dernières CSV</button>
+          <button id="copy26to25-${uid}" title="Copier les conditions 2026 sur 2025" style="font-size:11px;padding:2px 10px;background:none;border:1px solid rgba(0,229,255,.35);color:var(--cyan);border-radius:4px;cursor:pointer;letter-spacing:.5px;opacity:.8">Copier derniers CGV</button>
         </div>
         <div id="yearBody25-${uid}" style="display:none">
           <div class="mon-btns" id="monBtns25-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}</div>
@@ -2980,6 +2980,8 @@ function initLabPage(conf) {
     cond.rsfValues.forEach((row, idx) => {
       const tr = document.createElement('tr');
       if (row.excluded) tr.classList.add('excluded');
+      const _refCount = s.rsfCountMap?.get(row.rsf_pct);
+      if (_refCount != null) tr.title = `${_refCount} référence${_refCount > 1 ? 's' : ''}`;
 
       const tdRsf = document.createElement('td');
       const firstRsf = firstMetDisplay ? s.rsfFirstMap.get(row.rsf_pct) : undefined;
@@ -3072,9 +3074,10 @@ function initLabPage(conf) {
     el.loading.classList.add('visible');
 
     try {
-      const { paliers, firstMap } = await fetchFn(lab);
+      const { paliers, firstMap, countMap } = await fetchFn(lab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
+      s.rsfCountMap = countMap || new Map();
       s[condKey][0].rsfValues = mkRsfValues(lab, paliers);
       applyDefaultExcepts(s[condKey][0], lab);
 
@@ -3098,9 +3101,10 @@ function initLabPage(conf) {
     if (!s.selectedLab) return;
     el.loading.classList.add('visible');
     try {
-      const { paliers, firstMap } = await fetchFn(s.selectedLab);
+      const { paliers, firstMap, countMap } = await fetchFn(s.selectedLab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
+      s.rsfCountMap = countMap || new Map();
       s[condKey].forEach(cond => {
         const prev = {};
         (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
@@ -3132,9 +3136,10 @@ function initLabPage(conf) {
     el.condTabs.classList.remove('visible');
     el.loading.classList.add('visible');
     try {
-      const { paliers, firstMap } = await fetchFn(lab);
+      const { paliers, firstMap, countMap } = await fetchFn(lab);
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
+      s.rsfCountMap = countMap || new Map();
       // Pré-charger rsf_defaults pour la récupération si besoin (doit être hors du forEach)
       if (isAdmin && !window._rsfDefaults) await loadRsfDefaults();
       (savedLabData[savedCondKey] || []).forEach((sc, idx) => {
@@ -3269,7 +3274,9 @@ async function fetchRSF(lab) {
     counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
     if (best !== null) firstMap.set(rsf_pct, best);
   });
-  return { paliers, firstMap };
+  const countMap = new Map();
+  data.forEach(r => { countMap.set(r.rsf_pct, (countMap.get(r.rsf_pct) || 0) + 1); });
+  return { paliers, firstMap, countMap };
 }
 
 async function fetchRSF2025(lab) {
@@ -3286,7 +3293,7 @@ async function fetchRSF2025(lab) {
   const data = await res.json();
   if (!data.length) return fetchRSF(lab);
   const paliers = data.map(r => parseFloat(r.rsf_pct)).sort((a, b) => a - b);
-  return { paliers, firstMap: new Map() };
+  return { paliers, firstMap: new Map(), countMap: new Map() };
 }
 
 function buildRowExceptBlock(rsf_pct, exc, labName = '') {
