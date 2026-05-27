@@ -2771,8 +2771,8 @@ function initLabPage(conf) {
         caInp.classList.add('auto-c');
         applyRsf25Default(cond);
       }
-      if (['Viatris', 'Sandoz'].includes(s.selectedLab) && (isNaN(v) || v < 50)) {
-        cond.forceFirst = false;
+      if (['Viatris', 'Sandoz'].includes(s.selectedLab)) {
+        if (isNaN(v) || v < 50) cond.forceFirst = false;
         renderCondTable(cond);
       }
       autoFillCond(cond);
