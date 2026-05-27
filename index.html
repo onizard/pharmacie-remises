@@ -911,12 +911,14 @@
     <div class="auth-logo">BREAK-PHARMA</div>
     <div class="auth-sub">◈ ACCÈS SÉCURISÉ ◈</div>
     <div class="auth-box" id="authBox">
+      <form action="javascript:void(0)" onsubmit="return false">
       <div class="auth-field"><label>EMAIL</label>
         <input type="email" id="aLEmail" placeholder="votre@email.com" autocomplete="username"/></div>
       <div class="auth-field"><label>MOT DE PASSE</label>
         <input type="password" id="aLPwd" placeholder="••••••••" autocomplete="current-password"/></div>
       <div class="auth-err" id="aLErr"></div>
       <button class="auth-btn" id="aLBtn">SE CONNECTER →</button>
+      </form>
       <div class="auth-links">
         <span class="auth-link" id="toForgot">Mot de passe oublié ?</span>
         <span class="auth-link" id="toSignup">Créer un compte</span>
