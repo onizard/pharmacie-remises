@@ -259,9 +259,12 @@ async def _test_digipharmacie_async(creds: dict):
             "Configurez un runner self-hosted sur votre machine pour contourner ce blocage."
         )
 
-    proxy_kw = {"proxy": {"server": PROXY_URL}} if PROXY_URL else {}
-    async with AsyncCamoufox(headless=True, geoip=False, **proxy_kw) as browser:
-        page = await browser.new_page()
+    async with AsyncCamoufox(headless=True, geoip=False) as browser:
+        if PROXY_URL:
+            ctx  = await browser.new_context(proxy={"server": PROXY_URL})
+            page = await ctx.new_page()
+        else:
+            page = await browser.new_page()
 
         try:
             await page.goto(f"{DIGI_URL}/login/", timeout=60_000)

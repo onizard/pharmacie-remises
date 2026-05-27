@@ -189,6 +189,13 @@ def get_status(job_id: str):
 # ── Conn test (async wrapper) ──────────────────────────────────────────────────
 
 async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
+    if connector == "digipharmacie":
+        # curl_cffi seul ne bypass pas Cloudflare Bot Management → camoufox (vrai Firefox)
+        # requis. On dispatch sur Hetzner (runner self-hosted) avec proxy résidentiel.
+        await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
+        await _dispatch_gh_conn_test(user_id, connector)
+        return
+
     loop = asyncio.get_event_loop()
     try:
         await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds, user_id))

@@ -6267,8 +6267,7 @@ function initConnecteurModal() {
       }
 
       _setConnProgress(prefix, 'test');
-      const result = await _pollConnTest(session.user.id, connKey, resultEl,
-          connKey === 'digipharmacie' ? 120_000 : 180_000);
+      const result = await _pollConnTest(session.user.id, connKey, resultEl, 240_000);
 
       // Digipharmacie test runs on self-hosted runner (machine must be on).
       // If poll times out, credentials are already saved server-side — treat as deferred, not error.
