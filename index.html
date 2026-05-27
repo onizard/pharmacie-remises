@@ -1156,7 +1156,7 @@
             </div>
           </div>
           <div class="conn-connected-view" id="digiConnView" style="display:none">
-            <div class="conn-check-big" id="digiCheckBig"><div class="conn-check-ring"></div><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
+            <div class="conn-check-big" id="digiCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="conn-test-btn" id="digiRefreshBtn" style="display:none">RAFRAÎCHIR</button>
@@ -1192,7 +1192,7 @@
             </div>
           </div>
           <div class="conn-connected-view" id="ospConnView" style="display:none">
-            <div class="conn-check-big" id="ospCheckBig"><div class="conn-check-ring"></div><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
+            <div class="conn-check-big" id="ospCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
             <button class="conn-test-btn" id="ospRefreshBtn" style="display:none">RAFRAÎCHIR</button>
@@ -2266,7 +2266,7 @@ function _renderOspProgress(el) {
     const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
 
     el.innerHTML = `<div class="osp-ring-wrap">
-      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${state._ospConnecting ? '// Connexion OSPHARM en cours…' : '// Analyse en cours…'}</div>
+      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${state._ospConnecting ? '// Connexion OSPHARM en cours…' : '// Analyse en cours — initialisation…'}</div>
       <div class="osp-ring${barPct > 0 ? '' : ' spin'}">
         <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="ospRecapArc"${barPct > 0 ? ` style="stroke-dashoffset:${175.9 * (1 - barPct / 100)}"` : ''}/></svg>
         <div class="osp-ring-label" id="ospRecapPct">${barPct > 0 ? barPct + '%' : ''}</div>
@@ -2274,7 +2274,6 @@ function _renderOspProgress(el) {
       <div id="ospActivityLine" class="osp-activity-line" style="text-align:center">${actHtml}</div>
     </div>`;
   } else {
-    // Mises à jour suivantes : seulement le % et le statut "Mois X/Y", pas la phrase
     const arc   = document.getElementById('ospRecapArc');
     const pctEl = document.getElementById('ospRecapPct');
     const ring  = arc?.closest('.osp-ring');
@@ -2290,6 +2289,24 @@ function _renderOspProgress(el) {
       if (_m) stEl.textContent = `// Mois ${_m[1]} / ${_m[2]}`;
     }
   }
+
+  // Rafraîchit la phrase ironique toutes les 5s en fonction du temps restant estimé
+  _ospProgressTimer = setInterval(() => {
+    const actLine = document.getElementById('ospActivityLine');
+    if (!actLine) { clearInterval(_ospProgressTimer); return; }
+    const { actHtml } = (function() {
+      const msg = state._ospJobMessage || '';
+      const m   = msg.match(/Mois\s+(\d+)\/(\d+)/i);
+      const cur = m ? parseInt(m[1]) : 0;
+      const tot = m ? parseInt(m[2]) : 0;
+      const elapsed   = Date.now() - (state._ospJobStartedAt || Date.now());
+      const pct       = (tot > 0 && cur > 0) ? Math.min(95, cur / tot * 100) : 0;
+      const remainMin = pct > 0 ? Math.ceil(Math.max(0, elapsed / (pct / 100) - elapsed) / 60000) : 10;
+      const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
+      return { actHtml: `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}` };
+    })();
+    actLine.innerHTML = actHtml;
+  }, 5_000);
 }
 
 function renderRecap() {
@@ -4018,21 +4035,43 @@ async function launchSimulation() {
 
   if (!_isBg) {
     container.innerHTML = `<div class="osp-ring-wrap">
-    <div id="simLoadStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Analyse en cours…</div>
+    <div id="simLoadStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Initialisation…</div>
     <div class="osp-ring">
       <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="simLoadArc"/></svg>
       <div class="osp-ring-label" id="simLoadPct">0%</div>
     </div>
+    <div id="simLoadActivity" class="osp-activity-line" style="text-align:center">Chargement des références produits…</div>
   </div>`;
+    // Phrases ironiques tournantes toutes les 5s
+    const _SIM_PHRASES = [
+      'Pendant ce temps, aucun représentant ne sonne à votre porte.',
+      'Toujours plus vite qu\'une commande CERP de 14h.',
+      'Quelques secondes — le temps de ne pas répondre à ce mail.',
+      'Moins longtemps qu\'une validation Ameli en semaine.',
+      'Optimisation en cours — comme vous avec votre planning du samedi.',
+      'Calcul des économies potentielles sur votre stock actuel…',
+      'Plus rapide que de retrouver le bon BL dans le classeur.',
+    ];
+    let _simPhraseIdx = 0;
+    const _simPhraseTimer = setInterval(() => {
+      _simPhraseIdx = (_simPhraseIdx + 1) % _SIM_PHRASES.length;
+      const act = document.getElementById('simLoadActivity');
+      if (!act) { clearInterval(_simPhraseTimer); return; }
+      act.textContent = _SIM_PHRASES[_simPhraseIdx];
+    }, 5_000);
   }
 
   const _CIRC = 175.9;
-  const _sp = (pct) => {
+  const _sp = (pct, status, activity) => {
     const arc   = document.getElementById('simLoadArc');
     const pctEl = document.getElementById('simLoadPct');
+    const st    = document.getElementById('simLoadStatus');
+    const act   = document.getElementById('simLoadActivity');
     const p = Math.round(pct);
-    if (arc)   arc.style.strokeDashoffset = _CIRC * (1 - p / 100);
+    if (arc)   arc.style.strokeDashoffset  = _CIRC * (1 - p / 100);
     if (pctEl) pctEl.textContent = p + '%';
+    if (status   && st)  st.textContent  = status;
+    if (activity && act) act.textContent = activity;
   };
 
   try {
@@ -4046,7 +4085,7 @@ async function launchSimulation() {
 
     // 2. Fetch reference data from Supabase (batch by 200)
     const allCips = [...new Set(csvData.map(r => r.cip13))];
-    _sp(8);
+    _sp(8, `// ${allCips.length} produits identifiés`, 'Chargement des références pharmacie…');
     const CHUNK = 200;
     const refRows = [];
     for (let i = 0; i < allCips.length; i += CHUNK) {
@@ -4056,7 +4095,7 @@ async function launchSimulation() {
       if (res.ok) refRows.push(...await res.json());
       _sp(8 + Math.round((i + chunk.length) / allCips.length * 37));
     }
-    _sp(45);
+    _sp(45, '// Références chargées', 'Analyse des équivalences moléculaires…');
 
     // refMap: cip13 -> ref (keep first match per cip, prefer refs from our labs)
     const refMap = new Map();
@@ -4100,7 +4139,7 @@ async function launchSimulation() {
           libelleMap.get(r.libelle).push(r);
       }));
     }
-    _sp(70);
+    _sp(70, '// Équivalences identifiées', 'Calcul des scénarios d\'optimisation…');
 
     // 3a. Overlay PUHT depuis OSPHARM (plus fiable que Supabase pour les refs présentes)
     //     Priorité à l'année 2026 (plus récente) ; fallback 2025.
@@ -4200,7 +4239,7 @@ async function launchSimulation() {
       return result;
     }
 
-    await _yield(); _sp(75);
+    await _yield(); _sp(75, '// Équivalences indexées', 'Construction des scénarios…');
     // 3. Natural ref map (no lab preference) + current lab CA breakdown
     const naturalRefMap = new Map();
     refRows.forEach(r => { if (!naturalRefMap.has(r.cip13)) naturalRefMap.set(r.cip13, r); });
@@ -4417,7 +4456,7 @@ async function launchSimulation() {
       return { labResults, totalRemise, totalCA, totalPaNet: totalCA - totalRemise };
     }
 
-    await _yield(); _sp(82);
+    await _yield(); _sp(82, '// Scénario actuel calculé', 'Optimisation des affectations…');
     // 6a. Scénario N-1 : CIP → premier match Supabase, RSF uniquement
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
@@ -4523,7 +4562,7 @@ async function launchSimulation() {
 
       labScenarios.push({ name: labName, scenario: calcScenario(labAssignment), assignment: labAssignment });
     });
-    await _yield(); _sp(90);
+    await _yield(); _sp(90, '// Scénarios par labo', 'Calcul des combinaisons…');
 
     // 6e. Helper : assignment "focus labo principal + meilleur RSF pour le reste"
     function buildFocusAssignment(primaryLab) {
@@ -4824,7 +4863,7 @@ async function launchSimulation() {
     allOptScenarios.length = 0;
     allOptScenarios.push(..._deduped);
     allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
-    await _yield(); _sp(96);
+    await _yield(); _sp(96, '// Classement final', 'Recherche du meilleur scénario…');
     let winnerEntry = allOptScenarios[0];
     const otherScenarios = allOptScenarios.slice(1);
     let totalScenarios = 1 + allOptScenarios.length;
@@ -5140,7 +5179,7 @@ async function launchSimulation() {
         const _targetLabs = [...ourLabs];
         if (_targetLabs.length < 2) return;
 
-        _sp(97);
+        _sp(97, '// Optimisation combinatoire', `Analyse de ${_targetLabs.length} génériqueurs…`);
         const _toFetch = _targetLabs.filter(ln => !_fullFetchedLabs.has(ln));
         if (_toFetch.length) {
           const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
@@ -5181,7 +5220,7 @@ async function launchSimulation() {
           try {
             const { scenario, assignment: asgn } = calcCustomScenario(perm);
             _permCount++;
-            _sp(97 + Math.floor(_permCount / _totalPerms * 2));
+            _sp(97 + Math.floor(_permCount / _totalPerms * 2), '// Optimisation combinatoire', `${_permCount} / ${_totalPerms} combinaisons analysées…`);
             if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
               const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
               scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
@@ -5200,7 +5239,7 @@ async function launchSimulation() {
         totalScenarios += _permCount;
         if (bestEntry !== winnerEntry) {
           winnerEntry = bestEntry;
-          _sp(99);
+          _sp(99, '// Meilleur scénario identifié', `${winnerEntry.label}`);
         }
       } catch(e) {
         console.warn('[exhaustive] recherche abandonnée :', e);
@@ -5293,7 +5332,7 @@ async function launchSimulation() {
       <div id="customSimResult" class="sim-custom-result" style="display:none"></div>
     </div>`;
 
-    _sp(100);
+    _sp(100, '// Analyse complète', `${allCips.length} références — scénarios prêts`);
 
     // ── Phase finale : bouton START → brick 10s → résultats ──────────────────────
     const _wireAndRender = () => {
@@ -6427,7 +6466,6 @@ function initConnecteurModal() {
     if (!el) return;
     const checkEl = document.getElementById(_jobCheckMap[elId]);
     if (checkEl) {
-      checkEl.classList.toggle('loading', cls === 'running');
       checkEl.classList.toggle('error', cls === 'error');
     }
     el.className = `conn-job-status ${cls}`;
