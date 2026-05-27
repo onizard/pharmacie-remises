@@ -2964,7 +2964,7 @@ function initLabPage(conf) {
       if (!ffBtn.dataset.wired) {
         ffBtn.dataset.wired = '1';
         ffBtn.addEventListener('click', () => {
-          if (s.selectedLab === 'Viatris' && cond.remiseGlobale >= 50) return;
+          if (s.selectedLab === 'Viatris') return;
           cond.forceFirst = !cond.forceFirst;
           renderCondTable(cond);
           autoFillCond(cond);
