@@ -284,7 +284,7 @@ async def _test_digipharmacie_async(creds: dict):
             )
 
         try:
-            await page.wait_for_selector("input[type='email']", timeout=30_000)
+            await page.wait_for_selector("input[type='email']", timeout=60_000)
         except Exception:
             raise RuntimeError(
                 f"Formulaire de login introuvable (URL: {page.url} — Cloudflare ?)"
