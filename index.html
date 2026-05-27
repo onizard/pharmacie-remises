@@ -6316,15 +6316,15 @@ function initConnecteurModal() {
         if (!session) break;
         const { data: row } = await window._sbClient.from('user_state')
           .select('state_json').eq('user_id', session.user.id).maybeSingle();
-        const job = row?.state_json?.verif_job;
+        const job = row?.state_json?.digipharmacie_job;
         if (!job) continue;
         if (job.status === 'running') {
-          _setJobStatusEl('digiJobStatus', 'running', '');
+          _setJobStatusEl('digiJobStatus', 'running', job.message || '');
           continue;
         }
         if (job.status === 'done') {
           _setConnProgress(prefix, 'ready');
-          _setJobStatusEl('digiJobStatus', 'done', '✓');
+          _setJobStatusEl('digiJobStatus', 'done', `✓ ${job.total || 0} lignes extraites`);
           document.getElementById('connecteurModal')?.classList.remove('open');
           break;
         }
@@ -6409,7 +6409,7 @@ function initConnecteurModal() {
   window._setConnProgressPct = _setConnProgressPct;
 
   async function _pollConnTest(userId, connKey, statusEl) {
-    const deadline = Date.now() + 120_000;
+    const deadline = Date.now() + 180_000;
     let elapsed = 0;
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 3_000));
@@ -6476,7 +6476,7 @@ function initConnecteurModal() {
       const sj = row?.state_json || {};
 
       const map = [
-        { jobKey: 'verif_job',   elId: 'digiJobStatus' },
+        { jobKey: 'digipharmacie_job', elId: 'digiJobStatus' },
         { jobKey: 'ospharm_job', elId: 'ospJobStatus' },
       ];
       map.forEach(({ jobKey, elId, fileBtn }) => {

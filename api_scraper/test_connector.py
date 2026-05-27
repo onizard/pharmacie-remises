@@ -89,45 +89,42 @@ def test_ospharm(creds: dict):
 async def _test_digipharmacie_async(creds: dict):
     from camoufox.async_api import AsyncCamoufox
 
-    async with AsyncCamoufox(headless=True, geoip=True) as browser:
+    async with AsyncCamoufox(headless=True, geoip=False) as browser:
         page = await browser.new_page()
-        await page.goto("https://app.digipharmacie.fr/login/", timeout=60_000)
+        await page.goto("https://app.digipharmacie.fr/login/", timeout=90_000)
 
         try:
-            await page.wait_for_selector("input[type='email']", timeout=40_000)
+            await page.wait_for_selector("input[type='email']", timeout=60_000)
         except Exception:
-            raise RuntimeError("Formulaire de login DIGIPHARMACIE introuvable (Cloudflare ?)")
+            raise RuntimeError(
+                f"Formulaire de login DIGIPHARMACIE introuvable "
+                f"(URL finale : {page.url} — Cloudflare ou timeout ?)"
+            )
 
         await page.locator("input[type='email']").first.fill(creds["user"])
         await page.locator("input[type='password']").first.fill(creds["pass"])
         await page.locator("input[type='password']").first.press("Enter")
 
         try:
-            await page.wait_for_url("**/dashboard**", timeout=20_000)
+            await page.wait_for_url("**/dashboard**", timeout=25_000)
         except Exception:
             try:
                 await page.wait_for_function(
                     "() => !window.location.pathname.includes('/login')",
-                    timeout=15_000,
+                    timeout=20_000,
                 )
             except Exception:
                 pass
 
-        ok  = "/login" not in page.url
         url = page.url
-        await page.close()
+        ok  = "/login" not in url
 
     if not ok:
         raise RuntimeError(f"Identifiants DIGIPHARMACIE incorrects (URL finale : {url})")
 
 
 def test_digipharmacie(creds: dict):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_test_digipharmacie_async(creds))
-    finally:
-        loop.close()
+    asyncio.run(_test_digipharmacie_async(creds))
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────

@@ -237,13 +237,13 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
     async with AsyncCamoufox(headless=True, geoip=True) as browser:
         page = await browser.new_page()
 
-        progress("Connexion à DIGIPHARMACIE (Cloudflare ~8s)…")
-        await page.goto(f"{BASE_URL}/login/", timeout=60_000)
+        progress("Connexion à DIGIPHARMACIE (Cloudflare ~15s)…")
+        await page.goto(f"{BASE_URL}/login/", timeout=90_000)
 
         try:
-            await page.wait_for_selector("input[type='email']", timeout=40_000)
+            await page.wait_for_selector("input[type='email']", timeout=60_000)
         except Exception:
-            raise RuntimeError("Formulaire de login DIGIPHARMACIE introuvable")
+            raise RuntimeError(f"Formulaire de login DIGIPHARMACIE introuvable (URL: {page.url})")
 
         await page.locator("input[type='email']").first.fill(username)
         await page.locator("input[type='password']").first.fill(password)
@@ -283,9 +283,4 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
 
 
 def run_scraper(creds: dict, progress: Callable) -> list[dict]:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(_run_scraper_async(creds, progress))
-    finally:
-        loop.close()
+    return asyncio.run(_run_scraper_async(creds, progress))
