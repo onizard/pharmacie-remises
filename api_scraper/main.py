@@ -191,7 +191,7 @@ def get_status(job_id: str):
 async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
     loop = asyncio.get_event_loop()
     try:
-        await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds))
+        await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds, user_id))
         await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
         await patch_conn_test(user_id, connector, True, "Connexion réussie")
     except Exception as e:
@@ -200,16 +200,38 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
 
 # ── Test connector (synchronous, called from executor) ─────────────────────────
 
-def _test_connector(connector: str, creds: dict):
+def _test_connector(connector: str, creds: dict, user_id: str = ""):
     if connector == "ospharm":
         # sync_playwright nécessite une boucle non-démarrée dans le thread
         asyncio.set_event_loop(asyncio.new_event_loop())
         from test_connector import test_ospharm
         test_ospharm(creds)
     elif connector == "digipharmacie":
-        # async camoufox — asyncio.run() crée sa propre boucle
-        from test_connector import test_digipharmacie
-        test_digipharmacie(creds)
+        # Subprocess avec hard timeout 140s — évite le hang du cleanup camoufox
+        # test_connector.py lit les creds depuis Supabase et écrit le résultat lui-même
+        _run_digi_test_subprocess(user_id)
+
+
+def _run_digi_test_subprocess(user_id: str):
+    import subprocess
+    import sys
+    env = dict(os.environ)
+    env["CONNECTOR"] = "digipharmacie"
+    env["USER_ID"]   = user_id
+    try:
+        proc = subprocess.run(
+            [sys.executable, "test_connector.py"],
+            env=env,
+            timeout=140,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Timeout (>140s) — Digipharmacie inaccessible ou credentials invalides")
+    if proc.returncode != 0:
+        out = (proc.stdout + "\n" + proc.stderr).strip()
+        lines = [l.strip() for l in out.splitlines() if l.strip()]
+        raise RuntimeError(lines[-1] if lines else "Test Digipharmacie échoué")
 
 
 # ── Background job ─────────────────────────────────────────────────────────────

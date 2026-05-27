@@ -6532,17 +6532,20 @@ function initConnecteurModal() {
   document.getElementById('ospChangeLink').addEventListener('click',  () => requestAccountChange('ospharm', 'osp'));
   document.getElementById('digiChangeLink').addEventListener('click', () => requestAccountChange('digipharmacie', 'digi'));
 
-  btnSave.addEventListener('click', () => {
+  btnSave.addEventListener('click', async () => {
     ['osp', 'digi'].forEach(p => {
-      const key  = p === 'osp' ? 'ospharm' : 'digipharmacie';
-      if (!state.connectors[key].connected) {
+      const key = p === 'osp' ? 'ospharm' : 'digipharmacie';
+      const fv  = document.getElementById(p + 'FormView');
+      if (fv && fv.style.display !== 'none') {
         const user = document.getElementById(p + 'User').value.trim();
         const pass = document.getElementById(p + 'Pass').value;
         state.connectors[key] = { user, pass, connected: false };
       }
     });
     updateConnecteurBtn();
-    saveState();
+    const data = serializeState();
+    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(_) {}
+    await saveCloudState(data);
     setTimeout(closeModal, 400);
   });
 }
