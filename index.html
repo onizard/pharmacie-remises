@@ -970,6 +970,7 @@
     <div class="auth-sub">◈ NOUVEAU MOT DE PASSE ◈</div>
     <div class="auth-box">
       <form action="javascript:void(0)" onsubmit="return false">
+      <input type="text" autocomplete="username" style="display:none" aria-hidden="true">
       <div class="auth-field"><label>NOUVEAU MOT DE PASSE</label>
         <input type="password" id="aRPPwd" placeholder="••••••••" autocomplete="new-password"/></div>
       <div class="auth-field"><label>CONFIRMER</label>
@@ -6590,6 +6591,7 @@ function initConnecteurModal() {
   <div style="color:#2ecc71;font-size:1.3rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;">BREAK-PHARMA</div>
   <div style="color:#4ade80;font-size:.75rem;letter-spacing:.2em;opacity:.7;">Accès restreint</div>
   <form action="javascript:void(0)" onsubmit="return false">
+  <input type="text" autocomplete="username" style="display:none" aria-hidden="true">
   <input id="auth-input" type="password" placeholder="Mot de passe"
     autocomplete="current-password" spellcheck="false"
     style="
