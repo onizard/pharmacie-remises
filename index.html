@@ -2850,7 +2850,7 @@ function initLabPage(conf) {
     const icon = document.createElement('span');
     icon.className = 'libelle-search-icon'; icon.textContent = '🔍';
     const inp = document.createElement('input');
-    inp.type = 'text'; inp.className = 'libelle-input'; inp.placeholder = 'Rechercher un libellé ou un CIP13…';
+    inp.type = 'text'; inp.className = 'libelle-input'; inp.placeholder = 'Rechercher un libellé ou un CIP13…'; inp.autocomplete = 'off';
     const dropdown = document.createElement('div');
     dropdown.className = 'libelle-dropdown';
     searchWrap.appendChild(icon); searchWrap.appendChild(inp); searchWrap.appendChild(dropdown);
@@ -3023,7 +3023,7 @@ function initLabPage(conf) {
       tr.appendChild(tdRsf);
 
       const inp2 = document.createElement('input');
-      inp2.type = 'text'; inp2.className = 'rsf-input inp-r2';
+      inp2.type = 'text'; inp2.className = 'rsf-input inp-r2'; inp2.autocomplete = 'off';
       inp2.placeholder = 'ex : 5.00'; inp2.value = row.remise2;
       if (row.remise2) inp2.classList.add('auto-c');
       if (row.excluded) inp2.classList.add('excl-r2');
@@ -3041,7 +3041,7 @@ function initLabPage(conf) {
       const td2 = document.createElement('td'); td2.appendChild(inp2); tr.appendChild(td2);
 
       const inp3 = document.createElement('input');
-      inp3.type = 'text'; inp3.className = 'rsf-input inp-r3';
+      inp3.type = 'text'; inp3.className = 'rsf-input inp-r3'; inp3.autocomplete = 'off';
       inp3.placeholder = 'ex : 2.50'; inp3.value = row.remise3;
       if (row.remise3) inp3.classList.add('auto-a');
       if (!isAdmin) inp3.readOnly = true;
@@ -3049,7 +3049,7 @@ function initLabPage(conf) {
       const td3 = document.createElement('td'); td3.className = 'col-r3'; td3.appendChild(inp3); tr.appendChild(td3);
 
       const cbExcpt = document.createElement('input');
-      cbExcpt.type = 'checkbox'; cbExcpt.className = 'excpt-check'; cbExcpt.checked = row.hasExcept;
+      cbExcpt.type = 'checkbox'; cbExcpt.className = 'excpt-check'; cbExcpt.checked = row.hasExcept; cbExcpt.name = 'excpt';
       if (!isAdmin) cbExcpt.disabled = true;
       cbExcpt.addEventListener('change', () => {
         if (!isAdmin) return;
@@ -3336,7 +3336,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   const icon = document.createElement('span');
   icon.className = 'libelle-search-icon'; icon.textContent = '🔍';
   const inp = document.createElement('input');
-  inp.type = 'text'; inp.className = 'libelle-input'; inp.placeholder = 'Rechercher un libellé ou un CIP13…';
+  inp.type = 'text'; inp.className = 'libelle-input'; inp.placeholder = 'Rechercher un libellé ou un CIP13…'; inp.autocomplete = 'off';
   const dropdown = document.createElement('div');
   dropdown.className = 'libelle-dropdown';
   searchWrap.appendChild(icon); searchWrap.appendChild(inp); searchWrap.appendChild(dropdown);
@@ -3352,7 +3352,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   const lbl = document.createElement('span');
   lbl.className = 'excpt-remise2-label'; lbl.textContent = labName === 'Biogaran' ? 'RDP spécifique' : 'Remise 2 spécifique';
   const remInp = document.createElement('input');
-  remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '100px';
+  remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '100px'; remInp.autocomplete = 'off';
   remInp.placeholder = 'ex : 3.00'; remInp.value = exc.remise2;
   if (!isAdmin) remInp.readOnly = true;
   remInp.addEventListener('input', e => { exc.remise2 = e.target.value; saveState(); });
@@ -3384,7 +3384,7 @@ function buildExceptionContent(exc, rsf_pct = null, labName = '') {
   const icon = document.createElement('span');
   icon.className = 'libelle-search-icon'; icon.textContent = '🔍';
   const inp = document.createElement('input');
-  inp.type = 'text'; inp.className = 'libelle-input'; inp.placeholder = 'Rechercher un libellé ou un CIP13…';
+  inp.type = 'text'; inp.className = 'libelle-input'; inp.placeholder = 'Rechercher un libellé ou un CIP13…'; inp.autocomplete = 'off';
   const dropdown = document.createElement('div');
   dropdown.className = 'libelle-dropdown';
   searchWrap.appendChild(icon); searchWrap.appendChild(inp); searchWrap.appendChild(dropdown);
@@ -3400,7 +3400,7 @@ function buildExceptionContent(exc, rsf_pct = null, labName = '') {
   const lbl = document.createElement('span');
   lbl.className = 'remonter-label'; lbl.textContent = 'seront remontés à';
   const remInp = document.createElement('input');
-  remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '100px';
+  remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '100px'; remInp.autocomplete = 'off';
   remInp.placeholder = 'ex : 10.00'; remInp.value = exc.remiseCible;
   if (!isAdmin) remInp.readOnly = true;
   remInp.addEventListener('input', e => { exc.remiseCible = e.target.value; });
