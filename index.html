@@ -2882,7 +2882,8 @@ function initLabPage(conf) {
     const tbody = document.getElementById(`tbody-${uid}-${cond.uid}`);
     if (!tbody) return;
     const firstMet = (state.gers != null && cond.caCondition != null &&
-                     cond.caCondition >= 0.9 * state.gers) || cond.forceFirst;
+                     cond.caCondition >= 0.9 * state.gers) || cond.forceFirst ||
+                     (lab === 'Viatris' && rg >= 50);
     cond.rsfValues.forEach((row, idx) => {
       const tr = tbody.querySelectorAll('tr')[idx];
       if (!tr) return;
@@ -2949,8 +2950,9 @@ function initLabPage(conf) {
     }
     const condNaturallyMet = state.gers != null && cond.caCondition != null &&
                               cond.caCondition >= 0.9 * state.gers;
+    const viatrisFirstMet = s.selectedLab === 'Viatris' && cond.remiseGlobale >= 50;
     if (condNaturallyMet && !cond.forceFirst) { cond.forceFirst = true; }
-    const firstMetDisplay = condNaturallyMet || cond.forceFirst;
+    const firstMetDisplay = condNaturallyMet || cond.forceFirst || viatrisFirstMet;
     const ffBtn = document.getElementById(`ffBtn-${uid}-${cond.uid}`);
     if (ffBtn) {
       const hasFirst = s.rsfFirstMap.size > 0;
