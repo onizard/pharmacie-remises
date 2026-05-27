@@ -5744,7 +5744,7 @@ async function saveProfile() {
         if (!isAdmin) await loadRsfDefaults();
         if (!_isPostReset) {
           const { data: cloud } = await sb.from('user_state')
-            .select('state_json').eq('user_id', session.user.id).maybeSingle();
+            .select('state_json,connectors').eq('user_id', session.user.id).maybeSingle();
           if (cloud?.state_json) {
             _startupCloudState = cloud.state_json;
             if (cloud.state_json.labPages?.length) {
@@ -5752,6 +5752,10 @@ async function saveProfile() {
             }
             const cs = cloud.state_json;
             if (!isAdmin) { cs.csvData = null; cs.csvRows = 0; cs.prorataRatios = null; }
+            // Priorité à la colonne connectors dédiée (source de vérité pour les credentials)
+            if (cloud.connectors && Object.keys(cloud.connectors).length) {
+              cs.connectors = cloud.connectors;
+            }
             localStorage.setItem(LS_KEY, JSON.stringify(cs));
           } else if (!isAdmin) {
             // Pas de cloud state : effacer toute donnée ospharm héritée d'un autre utilisateur
@@ -6188,9 +6192,24 @@ function initConnecteurModal() {
     resultEl.className = 'conn-test-result';
     _setConnProgress(prefix, 'serveur');
 
-    // Sauvegarder les creds immédiatement — préservés même si la connexion échoue
+    // Sauvegarder les creds immédiatement dans la colonne dédiée (atomique, sans race condition)
     state.connectors[connKey] = { user, pass, connected: false };
     saveState();
+    // Appel RPC direct — n'attend pas le saveCloudState de 3.4s
+    try {
+      const { data: { session: _s } } = await window._sbClient.auth.getSession();
+      if (_s) {
+        await window._sbClient.rpc('upsert_connector', {
+          p_user_id:   _s.user.id,
+          p_connector: connKey,
+          p_login:     user,
+          p_pass:      pass,
+          p_connected: false,
+        });
+      }
+    } catch (_credErr) {
+      console.warn('[connector] upsert_connector RPC échoué:', _credErr);
+    }
 
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();

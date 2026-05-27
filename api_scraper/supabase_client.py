@@ -59,10 +59,47 @@ def _patch_state_sync(user_id: str, state: dict):
         pass
 
 
+def _upsert_connector_sync(user_id: str, connector: str, user: str, password: str, connected: bool):
+    """Atomic upsert via RPC — no read-modify-write, no race conditions."""
+    key  = _supa_key()
+    url  = f"{SUPA_URL}/rest/v1/rpc/upsert_connector"
+    body = json.dumps({
+        "p_user_id":   user_id,
+        "p_connector": connector,
+        "p_login":     user,
+        "p_pass":      password,
+        "p_connected": connected,
+    }).encode()
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "apikey":        key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type":  "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=15):
+        pass
+
+
+def _get_connectors_sync(user_id: str) -> dict:
+    """Read only the connectors column (lighter than full state_json)."""
+    key = _supa_key()
+    url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=connectors&limit=1"
+    req = urllib.request.Request(url, headers={
+        "apikey": key, "Authorization": f"Bearer {key}",
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        rows = json.loads(r.read())
+    return (rows[0].get("connectors") or {}) if rows else {}
+
+
 async def get_user_creds_for(user_id: str, connector: str) -> dict:
-    loop  = asyncio.get_event_loop()
-    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
-    conn  = state.get("connectors", {}).get(connector, {})
+    loop = asyncio.get_event_loop()
+    # Try new connectors column first, fall back to state_json for legacy rows
+    conns = await loop.run_in_executor(None, lambda: _get_connectors_sync(user_id))
+    conn  = conns.get(connector, {})
+    if not conn.get("user") or not conn.get("pass"):
+        # Legacy fallback
+        state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+        conn  = state.get("connectors", {}).get(connector, {})
     if not conn.get("user") or not conn.get("pass"):
         raise ValueError(
             f"Identifiants {connector.upper()} manquants — "
@@ -72,21 +109,25 @@ async def get_user_creds_for(user_id: str, connector: str) -> dict:
 
 
 async def save_user_creds(user_id: str, connector: str, user: str, password: str, connected: bool):
-    loop  = asyncio.get_event_loop()
-    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
-    state.setdefault("connectors", {})[connector] = {
-        "user":      user,
-        "pass":      password,
-        "connected": connected,
-    }
-    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None, lambda: _upsert_connector_sync(user_id, connector, user, password, connected)
+    )
 
 
 async def patch_connector_connected(user_id: str, connector: str, connected: bool):
+    # Read current pass to preserve it, then upsert with updated connected flag
     loop  = asyncio.get_event_loop()
-    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
-    state.setdefault("connectors", {}).setdefault(connector, {})["connected"] = connected
-    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))
+    conns = await loop.run_in_executor(None, lambda: _get_connectors_sync(user_id))
+    conn  = conns.get(connector, {})
+    if not conn.get("user"):
+        state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+        conn  = state.get("connectors", {}).get(connector, {})
+    await loop.run_in_executor(
+        None, lambda: _upsert_connector_sync(
+            user_id, connector, conn.get("user", ""), conn.get("pass", ""), connected
+        )
+    )
 
 
 async def patch_conn_test(user_id: str, connector: str, ok: bool, message: str):
