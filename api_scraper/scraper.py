@@ -40,8 +40,8 @@ def _is_generic(name: str) -> bool:
     return any(k in n for k in LABOS_GENERIQUES)
 
 
-def _get_csrf(page) -> str:
-    for c in page.context.cookies():
+async def _get_csrf(page) -> str:
+    for c in await page.context.cookies():
         if c["name"] == "csrftoken":
             return c["value"]
     return ""
@@ -78,10 +78,10 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
         return await _paginate_from_browser(page, first_data, first_api_url[0], progress)
 
     progress("Tentative API directe depuis /factures/…")
-    csrf = _get_csrf(page)
+    csrf = await _get_csrf(page)
     if not csrf:
         await page.wait_for_timeout(800)
-        csrf = _get_csrf(page)
+        csrf = await _get_csrf(page)
     api_url = (
         f"{BASE_URL}/api/v1/invoices/"
         f"?ordering=-billing_date&page_size={PAGE_SIZE}&page=1"
@@ -93,7 +93,7 @@ async def _paginate_from_browser(page, first_data: dict, first_url: str, progres
     invoices    = []
     total_seen  = 0
     page_num    = 1
-    csrf        = _get_csrf(page)
+    csrf        = await _get_csrf(page)
 
     data = first_data
     while True:
@@ -330,10 +330,10 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                 raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
 
             # Try 1 : JS API login (plus fiable que form fill dans les SPAs)
-            csrf2 = _get_csrf(page)
+            csrf2 = await _get_csrf(page)
             if not csrf2:
                 await page.wait_for_timeout(800)
-                csrf2 = _get_csrf(page)
+                csrf2 = await _get_csrf(page)
             progress(f"csrf camoufox : {'ok' if csrf2 else 'manquant'}")
             api_ok = False
             if csrf2:
