@@ -146,14 +146,38 @@ async def _discover_async(creds: dict) -> dict:
             return {status: 0};
         }""", {"email": creds["user"], "password": creds["pass"], "csrf": csrf})
 
-        print(f"  API login: {res}")
+        print(f"  API login: {res}  URL post-eval: {page.url}")
         if res.get("bad_creds"):
             raise RuntimeError("Identifiants incorrects")
 
         if res.get("status", 0) not in (200, 204):
-            # Fallback form
-            sel = "input[type='email'],input[name='email'],input[name='username'],input[type='text']"
-            await page.wait_for_selector(sel)
+            # Fallback form — debug avant
+            t2 = await page.title()
+            print(f"  Avant form login: title={t2!r}  url={page.url}")
+            # Snapshot HTML
+            try:
+                snap = (await page.content())[:600]
+                print(f"  HTML snippet: {snap}")
+            except Exception as se:
+                print(f"  (impossible de lire le contenu: {se})")
+
+            sel = "input[type='email'], input[name='email'], input[name='username'], input[type='text']"
+            try:
+                await page.wait_for_selector(sel, timeout=30_000)
+            except Exception:
+                # Lister tous les inputs présents
+                try:
+                    inputs = await page.evaluate(
+                        "() => Array.from(document.querySelectorAll('input'))"
+                        ".map(i=>({type:i.type,name:i.name,id:i.id,placeholder:i.placeholder}))"
+                    )
+                    print(f"  Inputs détectés: {inputs}")
+                    snap2 = (await page.content())[:1000]
+                    print(f"  HTML (2): {snap2}")
+                except Exception as de2:
+                    print(f"  (debug échoué: {de2})")
+                raise
+
             await page.locator(sel).first.fill(creds["user"])
             await page.locator("input[type='password']").first.fill(creds["pass"])
             await page.locator("input[type='password']").first.press("Enter")
@@ -161,7 +185,7 @@ async def _discover_async(creds: dict) -> dict:
                 "() => !window.location.pathname.includes('/login')"
             )
 
-        print("  Connecté — navigation /factures/…")
+        print(f"  Connecté — URL: {page.url}  navigation /factures/…")
 
         # Intercepter la première réponse API
         raw_pages: list[dict] = []
