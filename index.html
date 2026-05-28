@@ -1538,7 +1538,6 @@ async function saveCloudState(data) {
     );
     if (error) throw error;
     _showSaveBadge();
-    if (isAdmin) saveRsfDefaults();
     return true;
   } catch(e) {
     console.error('[BP] saveCloudState ERREUR :', e);
