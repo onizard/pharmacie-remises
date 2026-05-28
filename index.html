@@ -1369,6 +1369,7 @@ function applyDefaultExcepts(cond, lab) {
     if (cond.remise2Except[key] && cond.remise2Except[key].libelles.length) return;
     cond.remise2Except[key] = {
       remise2: def.remise2,
+      remise3: def.remise3 || '',
       libelles: def.libelles.map(text => ({ id: id++, text })),
     };
     const row = cond.rsfValues.find(r => String(r.rsf_pct) === key);
@@ -3069,6 +3070,7 @@ function initLabPage(conf) {
             cond.remise2Except[curKey] = {
               libelles: [...firstExc.libelles],
               remise2:  firstExc.remise2 || '',
+              remise3:  firstExc.remise3 || '',
             };
           }
         }
@@ -3092,7 +3094,7 @@ function initLabPage(conf) {
     excptsEl.innerHTML = '';
     active.forEach(row => {
       const key = String(row.rsf_pct);
-      if (!cond.remise2Except[key]) cond.remise2Except[key] = { libelles: [], remise2: '' };
+      if (!cond.remise2Except[key]) cond.remise2Except[key] = { libelles: [], remise2: '', remise3: '' };
       excptsEl.appendChild(buildRowExceptBlock(row.rsf_pct, cond.remise2Except[key], s.selectedLab));
     });
   }
@@ -3378,6 +3380,20 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   unit.className = 'rg-unit'; unit.textContent = '%';
   remise2Row.appendChild(lbl); remise2Row.appendChild(remInp); remise2Row.appendChild(unit);
   block.appendChild(remise2Row);
+
+  const remise3Row = document.createElement('div');
+  remise3Row.className = 'excpt-remise2-row';
+  const lbl3 = document.createElement('span');
+  lbl3.className = 'excpt-remise2-label'; lbl3.textContent = 'Remise 3 spécifique';
+  const remInp3 = document.createElement('input');
+  remInp3.type = 'text'; remInp3.className = 'rsf-input'; remInp3.style.width = '100px'; remInp3.autocomplete = 'off';
+  remInp3.placeholder = 'ex : 2.00'; remInp3.value = exc.remise3 || '';
+  if (!isAdmin) remInp3.readOnly = true;
+  remInp3.addEventListener('input', e => { exc.remise3 = e.target.value; saveState(); });
+  const unit3 = document.createElement('span');
+  unit3.className = 'rg-unit'; unit3.textContent = '%';
+  remise3Row.appendChild(lbl3); remise3Row.appendChild(remInp3); remise3Row.appendChild(unit3);
+  block.appendChild(remise3Row);
 
   let debounce, focusIdx = -1;
   inp.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doSearch(inp.value, dropdown, exc, chipsWrap, inp, rsf_pct, labName), 300); });
@@ -4323,7 +4339,8 @@ async function launchSimulation() {
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
         if (exc && exc.libelles.some(l => l.text === ref.libelle)) {
-          return baseRSF + (parseFloat(exc.remise2) || 0) + (parseFloat(rsfRow.remise3) || 0);
+          const excR3 = (exc.remise3 !== undefined && exc.remise3 !== '') ? (parseFloat(exc.remise3) || 0) : (parseFloat(rsfRow.remise3) || 0);
+          return baseRSF + (parseFloat(exc.remise2) || 0) + excR3;
         }
       }
       return baseRSF + (parseFloat(rsfRow.remise2) || 0) + (parseFloat(rsfRow.remise3) || 0);
@@ -4339,15 +4356,17 @@ async function launchSimulation() {
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
       if (!rsfRow) return baseRSF;
-      const r3 = parseFloat(rsfRow.remise3) || 0;
-      if (r3 === 0) return baseRSF; // pas de remise3 → remise2 est la dernière → on l'exclut
-      // remise3 présente → on inclut remise2 mais pas remise3
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
         if (exc && exc.libelles.some(l => l.text === ref.libelle)) {
+          const excR3 = (exc.remise3 !== undefined && exc.remise3 !== '') ? (parseFloat(exc.remise3) || 0) : (parseFloat(rsfRow.remise3) || 0);
+          if (excR3 === 0) return baseRSF;
           return baseRSF + (parseFloat(exc.remise2) || 0);
         }
       }
+      const r3 = parseFloat(rsfRow.remise3) || 0;
+      if (r3 === 0) return baseRSF; // pas de remise3 → remise2 est la dernière → on l'exclut
+      // remise3 présente → on inclut remise2 mais pas remise3
       return baseRSF + (parseFloat(rsfRow.remise2) || 0);
     }
 
