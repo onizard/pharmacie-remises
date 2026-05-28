@@ -124,12 +124,18 @@ async def _discover_async(creds: dict) -> dict:
             )
             title = await page.title()
             print(f"  Challenge résolu. Titre: {title!r}")
+            # Attendre que la page soit complètement chargée (cookies Django inclus)
+            await page.wait_for_load_state("networkidle")
 
-        # Essai login API JS (cookie CF clearance déjà présent)
-        csrf = await page.evaluate(
-            "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
-        )
-        print(f"  Creds: user={creds['user'][:4]}*** len={len(creds['user'])}  pass_len={len(creds['pass'])}  csrf_len={len(csrf)}")
+        # Récupérer le CSRF token — via context (bypass HttpOnly) puis document.cookie
+        ctx_cookies = await ctx.cookies()
+        csrf = next((c["value"] for c in ctx_cookies if c["name"] == "csrftoken"), "")
+        if not csrf:
+            csrf = await page.evaluate(
+                "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
+            )
+        all_cookie_names = [c["name"] for c in ctx_cookies]
+        print(f"  Creds: user={creds['user'][:4]}*** len={len(creds['user'])}  pass_len={len(creds['pass'])}  csrf_len={len(csrf)}  all_cookies={all_cookie_names}")
 
         res = await page.evaluate("""async ({email, password, csrf}) => {
             const endpoints = [
@@ -160,10 +166,9 @@ async def _discover_async(creds: dict) -> dict:
             raise RuntimeError("Identifiants incorrects")
 
         if res.get("status", 0) not in (200, 204):
-            # Fallback : POST form-encodé via fetch depuis le browser (CSRF déjà présent)
-            csrf2 = await page.evaluate(
-                "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
-            )
+            # Fallback : POST form-encodé via fetch (CSRF depuis context cookies)
+            ctx_cookies2 = await ctx.cookies()
+            csrf2 = next((c["value"] for c in ctx_cookies2 if c["name"] == "csrftoken"), csrf)
             form_res = await page.evaluate("""async ({email, password, csrf}) => {
                 const body = new URLSearchParams({
                     email, password, csrfmiddlewaretoken: csrf
@@ -187,16 +192,27 @@ async def _discover_async(creds: dict) -> dict:
             if form_res.get("status") == 200 and "/login" not in form_res.get("url", "/login"):
                 await page.goto(form_res["url"], wait_until="networkidle", timeout=30_000)
             elif form_res.get("status") == 200:
-                # Reload pour appliquer la session cookie
                 await page.reload(wait_until="networkidle", timeout=30_000)
 
             cur_url = page.url
             print(f"  URL après form POST: {cur_url}")
             if "/login" in cur_url:
-                # Dernier essai : remplir le formulaire HTML directement
+                # Dernier essai : remplir le formulaire HTML avec csrfmiddlewaretoken injecté
                 sel = "input[type='email'], input[name='email'], input[name='username'], input[type='text']"
                 try:
                     await page.wait_for_selector(sel, timeout=10_000)
+                    # Injecter le CSRF token dans le formulaire si pas déjà présent
+                    if csrf2:
+                        await page.evaluate("""(csrf) => {
+                            let inp = document.querySelector('input[name="csrfmiddlewaretoken"]');
+                            if (!inp) {
+                                inp = document.createElement('input');
+                                inp.type = 'hidden'; inp.name = 'csrfmiddlewaretoken';
+                                const form = document.querySelector('form');
+                                if (form) form.appendChild(inp);
+                            }
+                            inp.value = csrf;
+                        }""", csrf2)
                     await page.locator(sel).first.fill(creds["user"])
                     await page.locator("input[type='password']").first.fill(creds["pass"])
                     await page.locator("input[type='password']").first.press("Enter")
