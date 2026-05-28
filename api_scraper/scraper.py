@@ -311,7 +311,7 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
         page.set_default_timeout(120_000)
 
         if not session_cookies:
-            progress("Login via camoufox…")
+            progress(f"Login via camoufox… (user: {username[:4]}***)")
             await page.goto(f"{BASE_URL}/login/", timeout=90_000)
             title = await page.title()
             _cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
@@ -323,17 +323,80 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                     timeout=90_000, polling=2000,
                 )
             _email_sel = ("input[type='email'], input[name='email'], "
-                          "input[name='username'], input[type='text']")
+                          "input[name='username']")
             try:
                 await page.wait_for_selector(_email_sel, timeout=30_000)
             except Exception:
                 raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
-            await page.locator(_email_sel).first.fill(username)
-            await page.locator("input[type='password']").first.fill(password)
-            await page.locator("input[type='password']").first.press("Enter")
-            await page.wait_for_timeout(8_000)
-            if "/login" in page.url:
-                raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+
+            # Try 1 : JS API login (plus fiable que form fill dans les SPAs)
+            csrf2 = _get_csrf(page)
+            if not csrf2:
+                await page.wait_for_timeout(800)
+                csrf2 = _get_csrf(page)
+            progress(f"csrf camoufox : {'ok' if csrf2 else 'manquant'}")
+            api_ok = False
+            if csrf2:
+                for ep in ["/api/v1/auth/login/", "/api/auth/login/", "/api/v1/token/"]:
+                    try:
+                        res = await page.evaluate("""
+                            async ([url, user, pwd, csrf]) => {
+                                const r = await fetch(url, {
+                                    method: 'POST', credentials: 'include',
+                                    headers: {
+                                        'Accept': 'application/json',
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': csrf,
+                                        'Referer': 'https://app.digipharmacie.fr/login/',
+                                    },
+                                    body: JSON.stringify({email: user, password: pwd}),
+                                });
+                                return {status: r.status};
+                            }
+                        """, [f"{BASE_URL}{ep}", username, password, csrf2])
+                        progress(f"JS API {ep} → {res['status']}")
+                        if res["status"] == 200:
+                            api_ok = True
+                            break
+                        if res["status"] in (400, 401):
+                            raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+                    except RuntimeError:
+                        raise
+                    except Exception:
+                        continue
+
+            if not api_ok:
+                # Try 2 : form fill + submit button
+                email_loc = page.locator(_email_sel).first
+                pwd_loc   = page.locator("input[type='password']").first
+                await email_loc.click()
+                await email_loc.fill(username)
+                await page.wait_for_timeout(400)
+                await pwd_loc.click()
+                await pwd_loc.fill(password)
+                await page.wait_for_timeout(400)
+                submitted = False
+                for btn_sel in [
+                    "button[type='submit']", "input[type='submit']",
+                    "button:has-text('Connexion')", "button:has-text('Se connecter')",
+                    "button:has-text('Login')", "button:has-text('Continuer')",
+                ]:
+                    if await page.locator(btn_sel).count() > 0:
+                        await page.locator(btn_sel).first.click()
+                        submitted = True
+                        progress(f"Submit via bouton '{btn_sel}'")
+                        break
+                if not submitted:
+                    await pwd_loc.press("Enter")
+                    progress("Submit via Enter")
+
+            try:
+                await page.wait_for_function(
+                    "() => !window.location.href.includes('/login')", timeout=15_000
+                )
+            except Exception:
+                if "/login" in page.url:
+                    raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
 
         invoices = await _fetch_invoices(page, progress)
         if not invoices:

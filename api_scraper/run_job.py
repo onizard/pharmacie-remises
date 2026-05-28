@@ -104,6 +104,7 @@ def main():
 
     try:
         creds = _get_creds()
+        print(f"  → Credentials chargés : user={creds['user'][:4]}*** pass={'ok' if creds.get('pass') else 'VIDE'}")
     except ValueError as e:
         _update_job("error", error=str(e))
         sys.exit(1)
