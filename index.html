@@ -1592,7 +1592,7 @@ async function _checkCloudSync() {
 
 async function saveRsfDefaults() {
   const sb = window._sbClient;
-  if (!sb || !isAdmin) return;
+  if (!sb || !isAdmin) return false;
   const rows = [];
   const excRows = [];
   state.labPages.forEach(lp => {
@@ -1621,11 +1621,19 @@ async function saveRsfDefaults() {
       });
     }
   });
-  if (!rows.length) return;
-  try { await sb.from('rsf_defaults').upsert(rows, { onConflict: 'lab,rsf_pct' }); } catch(e) {}
-  if (excRows.length) {
-    try { await sb.from('lab_config').upsert(excRows, { onConflict: 'lab' }); } catch(e) {}
+  console.log('[BP] saveRsfDefaults — rows:', rows.length, '| excRows:', excRows.length);
+  let ok = true;
+  if (rows.length) {
+    const { error: e1 } = await sb.from('rsf_defaults').upsert(rows, { onConflict: 'lab,rsf_pct' });
+    if (e1) { console.error('[BP] rsf_defaults upsert ERREUR:', e1); ok = false; }
+    else console.log('[BP] rsf_defaults upsert OK');
   }
+  if (excRows.length) {
+    const { error: e2 } = await sb.from('lab_config').upsert(excRows, { onConflict: 'lab' });
+    if (e2) { console.error('[BP] lab_config upsert ERREUR:', e2); ok = false; }
+    else console.log('[BP] lab_config upsert OK');
+  }
+  return ok;
 }
 
 async function loadRsfDefaults() {
@@ -5987,7 +5995,12 @@ async function saveProfile() {
     const orig = btn.textContent;
     btn.disabled = true;
     btn.textContent = '…';
-    await saveRsfDefaults();
+    const _defOk = await saveRsfDefaults();
+    if (!_defOk) {
+      btn.textContent = '⚠ ERREUR DEFAULTS';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 5000);
+      return;
+    }
     // Reload cache then re-apply to admin's own conditions (round-trip confirmation)
     await loadRsfDefaults();
     state.labPages.forEach(lp => {
