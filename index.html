@@ -1640,17 +1640,22 @@ async function loadRsfDefaults() {
   const sb = window._sbClient;
   if (!sb) return;
   try {
-    const { data } = await sb.from('rsf_defaults').select('lab,rsf_pct,remise2,remise3');
-    if (!data?.length) return;
-    window._rsfDefaults = {};
-    data.forEach(r => {
-      if (!window._rsfDefaults[r.lab]) window._rsfDefaults[r.lab] = {};
-      window._rsfDefaults[r.lab][String(r.rsf_pct)] = { remise2: r.remise2, remise3: r.remise3 };
-    });
-  } catch(e) {}
+    const { data, error: e1 } = await sb.from('rsf_defaults').select('lab,rsf_pct,remise2,remise3');
+    if (e1) { console.error('[BP] loadRsfDefaults rsf_defaults ERREUR:', e1); }
+    else if (!data?.length) { console.warn('[BP] loadRsfDefaults: rsf_defaults vide'); }
+    else {
+      window._rsfDefaults = {};
+      data.forEach(r => {
+        if (!window._rsfDefaults[r.lab]) window._rsfDefaults[r.lab] = {};
+        window._rsfDefaults[r.lab][String(r.rsf_pct)] = { remise2: r.remise2, remise3: r.remise3 };
+      });
+      console.log('[BP] loadRsfDefaults OK:', Object.keys(window._rsfDefaults).length, 'labs —', Object.keys(window._rsfDefaults).join(', '));
+    }
+  } catch(e) { console.error('[BP] loadRsfDefaults catch:', e); }
   try {
-    const { data: excData } = await sb.from('lab_config').select('lab,exceptions_json,remise2except_json');
-    if (excData?.length) {
+    const { data: excData, error: e2 } = await sb.from('lab_config').select('lab,exceptions_json,remise2except_json');
+    if (e2) { console.error('[BP] loadRsfDefaults lab_config ERREUR:', e2); }
+    else if (excData?.length) {
       window._labExceptions = {};
       excData.forEach(r => {
         window._labExceptions[r.lab] = {
@@ -1658,8 +1663,9 @@ async function loadRsfDefaults() {
           remise2Except: r.remise2except_json || {},
         };
       });
+      console.log('[BP] loadRsfDefaults lab_config OK:', Object.keys(window._labExceptions).length, 'labs');
     }
-  } catch(e) {}
+  } catch(e) { console.error('[BP] loadRsfDefaults lab_config catch:', e); }
 }
 
 function applyRsfDefaults() {
@@ -3306,7 +3312,12 @@ function initLabPage(conf) {
         // Non-admin : toujours appliquer les defaults admin (remise2/remise3 + exceptions)
         if (!isAdmin) {
           const defs = window._rsfDefaults?.[lab];
-          if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+          if (defs) {
+            cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+            console.log('[BP] defaults appliqués non-admin:', lab, 'paliers:', cond.rsfValues.map(r => r.rsf_pct + '→' + r.remise2).join(' | '));
+          } else {
+            console.warn('[BP] pas de defaults pour', lab, '— _rsfDefaults:', window._rsfDefaults ? Object.keys(window._rsfDefaults).join(', ') : 'undefined');
+          }
           const exc = window._labExceptions?.[lab];
           if (exc) { Object.assign(cond.exceptions, exc.exceptions || {}); Object.assign(cond.remise2Except, exc.remise2Except || {}); }
         }
