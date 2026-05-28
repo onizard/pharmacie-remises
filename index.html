@@ -3059,6 +3059,19 @@ function initLabPage(conf) {
       cbExcpt.addEventListener('change', () => {
         if (!isAdmin) return;
         cond.rsfValues[idx].hasExcept = cbExcpt.checked;
+        // Copier l'exception du 1er palier sur les paliers suivants cochés
+        if (cbExcpt.checked && idx > 0) {
+          const firstKey = String(cond.rsfValues[0].rsf_pct);
+          const firstExc = cond.remise2Except?.[firstKey];
+          if (firstExc && firstExc.libelles && firstExc.libelles.length > 0) {
+            const curKey = String(cond.rsfValues[idx].rsf_pct);
+            if (!cond.remise2Except) cond.remise2Except = {};
+            cond.remise2Except[curKey] = {
+              libelles: [...firstExc.libelles],
+              remise2:  firstExc.remise2 || '',
+            };
+          }
+        }
         renderRowExcepts(cond, excptsEl);
         saveState();
       });
