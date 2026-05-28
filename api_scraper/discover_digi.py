@@ -206,7 +206,7 @@ async def _discover_async(creds: dict) -> dict:
 
             sel = ("input[type='email'], input[name='email'], "
                    "input[name='username'], input[type='text']")
-            await page.wait_for_selector(sel, timeout=20_000)
+            await page.wait_for_selector(sel, timeout=60_000)
             print(f"  Formulaire trouvé. URL: {page.url}")
 
             # press_sequentially pour compatibilité React (déclenche keydown/keyup/input)
