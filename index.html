@@ -1173,6 +1173,7 @@
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="conn-test-btn" id="digiRefreshBtn" style="display:none">RAFRAÎCHIR</button>
             <button class="conn-test-btn" id="digiReconnectBtn">RECONNECTER</button>
+            <button class="conn-change-link admin-only" id="digiEditCredsBtn" style="display:none" title="Admin : modifier les identifiants sans déconnexion">✏ Modifier les identifiants</button>
             <button class="conn-change-link" id="digiChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
@@ -1211,6 +1212,7 @@
             <div class="conn-job-status" id="ospJobStatus"></div>
             <button class="conn-test-btn" id="ospRefreshBtn" style="display:none">RAFRAÎCHIR</button>
             <button class="conn-test-btn" id="ospReconnectBtn">RECONNECTER</button>
+            <button class="conn-change-link admin-only" id="ospEditCredsBtn" style="display:none" title="Admin : modifier les identifiants sans déconnexion">✏ Modifier les identifiants</button>
             <button class="conn-change-link" id="ospChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
           </div>
@@ -6021,9 +6023,19 @@ function initConnecteurModal() {
     updateConnecteurBtn();
     saveState();
     showView(prefix, false);
-    // Effacer les champs
     document.getElementById(prefix + 'User').value = '';
     document.getElementById(prefix + 'Pass').value = '';
+  }
+
+  function adminEditCreds(connKey, prefix) {
+    // Admin : montre le formulaire avec l'email pré-rempli, laisse le mot de passe vide
+    const curUser = state.connectors[connKey]?.user || '';
+    showView(prefix, false);
+    const userEl = document.getElementById(prefix + 'User');
+    const passEl = document.getElementById(prefix + 'Pass');
+    if (userEl) { userEl.value = curUser; userEl.readOnly = false; }
+    if (passEl) passEl.value = '';
+    passEl?.focus();
   }
 
   async function reconnectConn(connKey, prefix) {
@@ -6171,6 +6183,8 @@ function initConnecteurModal() {
     if (isAdmin) {
       document.getElementById('connAdminPanel').style.display = '';
       loadAdminRequests();
+      document.getElementById('digiEditCredsBtn').style.display = '';
+      document.getElementById('ospEditCredsBtn').style.display  = '';
     }
   }
 
@@ -6609,6 +6623,10 @@ function initConnecteurModal() {
   });
   document.getElementById('ospChangeLink').addEventListener('click',  () => requestAccountChange('ospharm', 'osp'));
   document.getElementById('digiChangeLink').addEventListener('click', () => requestAccountChange('digipharmacie', 'digi'));
+
+  // Admin : boutons de modification directe des identifiants
+  document.getElementById('digiEditCredsBtn').addEventListener('click', () => adminEditCreds('digipharmacie', 'digi'));
+  document.getElementById('ospEditCredsBtn').addEventListener('click',  () => adminEditCreds('ospharm', 'osp'));
 
 }
 </script>
