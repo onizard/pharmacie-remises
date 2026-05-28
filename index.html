@@ -6421,6 +6421,18 @@ function initConnecteurModal() {
         }
       } catch(_) {}
 
+      // Persiste les credentials directement depuis le frontend avant d'appeler Render
+      // (le background task Render peut échouer silencieusement)
+      try {
+        await window._sbClient.rpc('upsert_connector', {
+          p_user_id:   session.user.id,
+          p_connector: connKey,
+          p_login:     user,
+          p_pass:      pass,
+          p_connected: false,
+        });
+      } catch(e) { console.warn('[BP] upsert_connector direct:', e); }
+
       const resp = await fetch(`${API_URL}/connect/${connKey}`, {
         method: 'POST',
         headers: {
