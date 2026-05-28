@@ -3381,33 +3381,36 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   renderChips(chipsWrap, exc);
   block.appendChild(chipsWrap);
 
-  const remise2Row = document.createElement('div');
-  remise2Row.className = 'excpt-remise2-row';
+  const remisesRow = document.createElement('div');
+  remisesRow.className = 'excpt-remise2-row';
+
   const lbl = document.createElement('span');
   lbl.className = 'excpt-remise2-label'; lbl.textContent = labName === 'Biogaran' ? 'RDP spécifique' : 'Remise 2 spécifique';
   const remInp = document.createElement('input');
-  remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '100px'; remInp.autocomplete = 'off';
+  remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '80px'; remInp.autocomplete = 'off';
   remInp.placeholder = 'ex : 3.00'; remInp.value = exc.remise2;
   if (!isAdmin) remInp.readOnly = true;
   remInp.addEventListener('input', e => { exc.remise2 = e.target.value; saveState(); });
   const unit = document.createElement('span');
   unit.className = 'rg-unit'; unit.textContent = '%';
-  remise2Row.appendChild(lbl); remise2Row.appendChild(remInp); remise2Row.appendChild(unit);
-  block.appendChild(remise2Row);
 
-  const remise3Row = document.createElement('div');
-  remise3Row.className = 'excpt-remise2-row';
+  const sep = document.createElement('span');
+  sep.style.cssText = 'width:1px;height:16px;background:rgba(0,229,255,.2);margin:0 6px;flex-shrink:0';
+
   const lbl3 = document.createElement('span');
   lbl3.className = 'excpt-remise2-label'; lbl3.textContent = 'Remise 3 spécifique';
   const remInp3 = document.createElement('input');
-  remInp3.type = 'text'; remInp3.className = 'rsf-input'; remInp3.style.width = '100px'; remInp3.autocomplete = 'off';
+  remInp3.type = 'text'; remInp3.className = 'rsf-input'; remInp3.style.width = '80px'; remInp3.autocomplete = 'off';
   remInp3.placeholder = 'ex : 2.00'; remInp3.value = exc.remise3 || '';
   if (!isAdmin) remInp3.readOnly = true;
   remInp3.addEventListener('input', e => { exc.remise3 = e.target.value; saveState(); });
   const unit3 = document.createElement('span');
   unit3.className = 'rg-unit'; unit3.textContent = '%';
-  remise3Row.appendChild(lbl3); remise3Row.appendChild(remInp3); remise3Row.appendChild(unit3);
-  block.appendChild(remise3Row);
+
+  remisesRow.appendChild(lbl); remisesRow.appendChild(remInp); remisesRow.appendChild(unit);
+  remisesRow.appendChild(sep);
+  remisesRow.appendChild(lbl3); remisesRow.appendChild(remInp3); remisesRow.appendChild(unit3);
+  block.appendChild(remisesRow);
 
   let debounce, focusIdx = -1;
   inp.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doSearch(inp.value, dropdown, exc, chipsWrap, inp, rsf_pct, labName), 300); });
