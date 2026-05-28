@@ -10,6 +10,7 @@ Stratégie :
 import asyncio
 import base64
 import json
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -22,6 +23,7 @@ from pdf_extractor import extract_invoice_lines
 BASE_URL  = "https://app.digipharmacie.fr"
 PAGE_SIZE = 100
 YEAR      = "2025"
+PROXY_URL = os.environ.get("PROXY_URL", "")
 
 LABOS_GENERIQUES = [
     "cerp", "mylan", "viatris", "biogaran", "arrow", "sandoz", "teva",
@@ -234,34 +236,105 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
     username = creds["user"]
     password = creds["pass"]
 
-    async with AsyncCamoufox(headless=True, geoip=True) as browser:
-        page = await browser.new_page()
+    proxy_cfg = None
+    if PROXY_URL:
+        import urllib.parse as _up
+        _p = _up.urlparse(PROXY_URL)
+        proxy_cfg = {
+            "server":   f"{_p.scheme}://{_p.hostname}:{_p.port}",
+            "username": _p.username or "",
+            "password": _p.password or "",
+        }
 
-        progress("Connexion à DIGIPHARMACIE (Cloudflare ~15s)…")
-        await page.goto(f"{BASE_URL}/login/", timeout=90_000)
+    # ── Phase 1 : curl_cffi login (fast path — ~5s, bypass Cloudflare CSRF) ──────
+    session_cookies: dict = {}
+    try:
+        from curl_cffi import requests as cffi_requests
+        proxy_kw = {"proxy": PROXY_URL} if PROXY_URL else {}
+        session  = cffi_requests.Session(impersonate="chrome124")
+        r = session.get(f"{BASE_URL}/login/",
+                        headers={"Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+                                 "Accept-Language": "fr-FR,fr;q=0.9"},
+                        timeout=25, allow_redirects=True, **proxy_kw)
+        csrf = session.cookies.get("csrftoken", "")
+        progress(f"curl_cffi GET /login/ → {r.status_code}  csrf={'ok' if csrf else 'manquant'}")
+        if csrf:
+            api_hdrs = {
+                "Accept": "application/json", "Content-Type": "application/json",
+                "X-CSRFToken": csrf, "Referer": f"{BASE_URL}/login/", "Origin": BASE_URL,
+            }
+            for ep in ["/api/v1/auth/login/", "/api/auth/login/", "/api/v1/token/", "/api/token/"]:
+                try:
+                    rp = session.post(f"{BASE_URL}{ep}",
+                                      json={"email": username, "password": password},
+                                      headers=api_hdrs, timeout=15,
+                                      allow_redirects=False, **proxy_kw)
+                    if rp.status_code == 200:
+                        session_cookies = dict(session.cookies)
+                        progress(f"curl_cffi login OK via {ep}")
+                        break
+                    if rp.status_code in (400, 401):
+                        raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+                except RuntimeError:
+                    raise
+                except Exception:
+                    continue
+            if not session_cookies:
+                rp = session.post(f"{BASE_URL}/login/",
+                                  data={"email": username, "password": password,
+                                        "csrfmiddlewaretoken": csrf},
+                                  headers={"Content-Type": "application/x-www-form-urlencoded",
+                                           "Referer": f"{BASE_URL}/login/"},
+                                  timeout=15, allow_redirects=True, **proxy_kw)
+                if "/login" not in rp.url:
+                    session_cookies = dict(session.cookies)
+                    progress("curl_cffi form login OK")
+    except RuntimeError:
+        raise
+    except Exception as ce:
+        progress(f"curl_cffi échoué ({ce}) — fallback camoufox…")
 
-        try:
-            await page.wait_for_selector("input[type='email']", timeout=60_000)
-        except Exception:
-            raise RuntimeError(f"Formulaire de login DIGIPHARMACIE introuvable (URL: {page.url})")
+    # ── Phase 2 : camoufox (gère les challenges Cloudflare restants) ──────────────
+    async with AsyncCamoufox(headless=True, geoip=False) as browser:
+        ctx  = await browser.new_context(**({"proxy": proxy_cfg} if proxy_cfg else {}))
 
-        await page.locator("input[type='email']").first.fill(username)
-        await page.locator("input[type='password']").first.fill(password)
-        await page.locator("input[type='password']").first.press("Enter")
+        if session_cookies:
+            await ctx.add_cookies([
+                {"name": k, "value": v, "domain": "app.digipharmacie.fr", "path": "/",
+                 "sameSite": "Lax"}
+                for k, v in session_cookies.items()
+            ])
+            progress(f"Cookies curl_cffi injectés ({len(session_cookies)} cookies)")
 
-        try:
-            await page.wait_for_url("**/dashboard**", timeout=20_000)
-        except Exception:
-            try:
+        page = await ctx.new_page()
+        page.on("pageerror", lambda e: None)
+        page.set_default_timeout(120_000)
+
+        if not session_cookies:
+            progress("Login via camoufox…")
+            await page.goto(f"{BASE_URL}/login/", timeout=90_000)
+            title = await page.title()
+            _cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
+            if any(k in title.lower() for k in _cf_kw):
+                progress("Challenge Cloudflare — attente résolution (90s max)…")
                 await page.wait_for_function(
-                    "() => !window.location.pathname.includes('/login')",
-                    timeout=15_000,
+                    "() => !['just a moment','checking','verifying','cloudflare']"
+                    ".some(k => document.title.toLowerCase().includes(k))",
+                    timeout=90_000, polling=2000,
+                )
+            try:
+                await page.wait_for_selector(
+                    "input[type='email'], input[name='email'], input[name='username']",
+                    timeout=30_000,
                 )
             except Exception:
-                pass
-
-        if "/login" in page.url:
-            raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+                raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
+            await page.locator("input[type='email'], input[name='email']").first.fill(username)
+            await page.locator("input[type='password']").first.fill(password)
+            await page.locator("input[type='password']").first.press("Enter")
+            await page.wait_for_timeout(8_000)
+            if "/login" in page.url:
+                raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
 
         invoices = await _fetch_invoices(page, progress)
         if not invoices:

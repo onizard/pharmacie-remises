@@ -37,6 +37,7 @@ from supabase_client import (
 GH_TOKEN = os.environ.get("GH_TOKEN", "")
 GH_REPO  = "onizard/pharmacie-remises"
 GH_WORKFLOW      = "scraper_ospharm.yml"
+GH_DIGI_WORKFLOW = "scraper.yml"
 GH_TEST_WORKFLOW = "test_connector.yml"
 
 
@@ -133,21 +134,37 @@ async def run_connector(
     job_id = str(uuid.uuid4())
 
     if connector == "ospharm":
-        # OSPHARM : dispatch GitHub Actions (7 GB RAM, stable)
         background_tasks.add_task(_dispatch_gh_ospharm, user_id)
         return {"job_id": job_id, "mode": "github_actions"}
 
-    # DIGIPHARMACIE : exécution locale sur Render
-    job_key = f"{connector}_job"
-    _jobs[job_id] = {
-        "status":  "running",
-        "message": f"Démarrage {connector.upper()}…",
-        "created": time.time(),
-        "rows":    [],
-        "total":   0,
-    }
-    background_tasks.add_task(_run_job_async, job_id, user_id, connector, job_key, creds)
-    return {"job_id": job_id}
+    # DIGIPHARMACIE : dispatch GitHub Actions (self-hosted, proxy résidentiel, camoufox)
+    background_tasks.add_task(_dispatch_gh_digi, user_id)
+    return {"job_id": job_id, "mode": "github_actions"}
+
+
+async def _dispatch_gh_digi(user_id: str):
+    """Déclenche scraper.yml sur GitHub Actions (self-hosted, proxy résidentiel)."""
+    await patch_job_status(user_id, "verif_job", "running",
+                           "Job en attente de démarrage…", [])
+    if not GH_TOKEN:
+        await patch_job_status(user_id, "verif_job", "error",
+                               "GH_TOKEN manquant sur le serveur — contacter l'admin", [])
+        return
+    url  = f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{GH_DIGI_WORKFLOW}/dispatches"
+    body = json.dumps({"ref": "master", "inputs": {"user_id": user_id}}).encode()
+    req  = urllib.request.Request(url, data=body, method="POST", headers={
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept":        "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type":  "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            print(f"  [gh-dispatch] HTTP {r.status} — scraper digi déclenché pour {user_id[:8]}")
+    except Exception as e:
+        print(f"  [gh-dispatch] ERREUR digi: {e}")
+        await patch_job_status(user_id, "verif_job", "error",
+                               f"Impossible de lancer le workflow GitHub: {e}", [])
 
 
 async def _dispatch_gh_ospharm(user_id: str):

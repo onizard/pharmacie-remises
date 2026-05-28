@@ -67,6 +67,22 @@ def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
 
 
 def _get_creds() -> dict:
+    # Priorité 1 : colonne connectors dédiée (nouvelle architecture)
+    try:
+        url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{USER_ID}&select=connectors&limit=1"
+        req = urllib.request.Request(url, headers={
+            "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+        })
+        with urllib.request.urlopen(req, timeout=15) as r:
+            rows = json.loads(r.read())
+        conns = (rows[0].get("connectors") or {}) if rows else {}
+        cred  = conns.get("digipharmacie", {})
+        if cred.get("user") and cred.get("pass"):
+            return {"user": cred["user"], "pass": cred["pass"]}
+    except Exception:
+        pass
+
+    # Priorité 2 : legacy state_json.connectors
     state      = _supa_get_state()
     connectors = state.get("connectors", {})
     digi       = connectors.get("digipharmacie", {})
