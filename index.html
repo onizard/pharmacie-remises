@@ -3114,18 +3114,6 @@ function initLabPage(conf) {
               };
             }
           }
-          // Priorité 2 : copier depuis le 1er palier de la même condition
-          if (!cond.remise2Except[curKey]?.libelles?.length && idx > 0) {
-            const firstKey = String(cond.rsfValues[0].rsf_pct);
-            const firstExc = cond.remise2Except?.[firstKey];
-            if (firstExc?.libelles?.length > 0) {
-              cond.remise2Except[curKey] = {
-                libelles: [...firstExc.libelles],
-                remise2:  firstExc.remise2 || '',
-                remise3:  firstExc.remise3 || '',
-              };
-            }
-          }
         }
         renderRowExcepts(cond, excptsEl);
         saveState();
@@ -3146,24 +3134,11 @@ function initLabPage(conf) {
     const active = cond.rsfValues.filter(r => r.hasExcept);
     excptsEl.innerHTML = '';
 
-    // Quand un libellé est ajouté/supprimé dans n'importe quel bloc,
-    // on synchronise les données de tous les autres puis on re-rend l'ensemble.
+    // Quand un libellé est ajouté/supprimé, on sync uniquement les autres conditions
+    // du même labo sur la MÊME clé RSF (pas entre paliers différents).
     const syncLibelles = (triggerExc) => {
       const srcTexts = new Set(triggerExc.libelles.map(l => l.text));
-      // Trouver la clé RSF de triggerExc
       const triggerKey = Object.keys(cond.remise2Except).find(k => cond.remise2Except[k] === triggerExc);
-      // Sync dans la condition courante (tous les paliers RSF actifs)
-      active.forEach(r => {
-        const k = String(r.rsf_pct);
-        const tgt = cond.remise2Except[k];
-        if (!tgt || tgt === triggerExc) return;
-        tgt.libelles = tgt.libelles.filter(l => srcTexts.has(l.text));
-        const tgtTexts = new Set(tgt.libelles.map(l => l.text));
-        triggerExc.libelles.forEach(l => {
-          if (!tgtTexts.has(l.text)) tgt.libelles.push({ id: Date.now() + Math.random(), text: l.text });
-        });
-      });
-      // Sync vers les autres conditions du même labo (même clé RSF, si l'exception y est déjà active)
       if (triggerKey) {
         (s[condKey] || []).forEach(otherCond => {
           if (otherCond === cond) return;
