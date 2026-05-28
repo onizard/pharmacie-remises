@@ -130,7 +130,12 @@ async def _discover_async(creds: dict) -> dict:
             "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
         )
         res = await page.evaluate("""async ({email, password, csrf}) => {
-            const endpoints = ['/api/v1/auth/login/','/api/auth/login/'];
+            const endpoints = [
+                '/api/v1/auth/login/',
+                '/api/auth/login/',
+                '/api/v1/token/',
+                '/api/token/',
+            ];
             for (const ep of endpoints) {
                 try {
                     const r = await fetch(ep, {
@@ -180,10 +185,20 @@ async def _discover_async(creds: dict) -> dict:
 
             await page.locator(sel).first.fill(creds["user"])
             await page.locator("input[type='password']").first.fill(creds["pass"])
-            await page.locator("input[type='password']").first.press("Enter")
-            await page.wait_for_function(
-                "() => !window.location.pathname.includes('/login')"
-            )
+            submit_sel = "button[type='submit'], input[type='submit'], button:has-text('Connexion'), button:has-text('Login'), button:has-text('Se connecter')"
+            try:
+                await page.locator(submit_sel).first.click(timeout=5_000)
+            except Exception:
+                await page.locator("input[type='password']").first.press("Enter")
+            try:
+                await page.wait_for_function(
+                    "() => !window.location.pathname.includes('/login')",
+                    timeout=30_000,
+                )
+            except Exception:
+                cur_url = page.url
+                print(f"  Form login timeout — URL finale: {cur_url}")
+                raise RuntimeError(f"Form login échoué (URL: {cur_url})")
 
         print(f"  Connecté — URL: {page.url}  navigation /factures/…")
 
