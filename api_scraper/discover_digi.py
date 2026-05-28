@@ -129,6 +129,8 @@ async def _discover_async(creds: dict) -> dict:
         csrf = await page.evaluate(
             "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
         )
+        print(f"  Creds: user={creds['user'][:4]}*** len={len(creds['user'])}  pass_len={len(creds['pass'])}  csrf_len={len(csrf)}")
+
         res = await page.evaluate("""async ({email, password, csrf}) => {
             const endpoints = [
                 '/api/v1/auth/login/',
@@ -136,6 +138,7 @@ async def _discover_async(creds: dict) -> dict:
                 '/api/v1/token/',
                 '/api/token/',
             ];
+            const results = [];
             for (const ep of endpoints) {
                 try {
                     const r = await fetch(ep, {
@@ -144,61 +147,65 @@ async def _discover_async(creds: dict) -> dict:
                         body: JSON.stringify({email, password}),
                         credentials: 'include',
                     });
-                    if (r.status === 200 || r.status === 204) return {status: r.status, ep};
-                    if (r.status === 400 || r.status === 401) return {status: r.status, bad_creds: true};
-                } catch(e) {}
+                    results.push({ep, status: r.status});
+                    if (r.status === 200 || r.status === 204) return {status: r.status, ep, results};
+                    if (r.status === 400 || r.status === 401) return {status: r.status, bad_creds: true, ep, results};
+                } catch(e) { results.push({ep, error: String(e)}); }
             }
-            return {status: 0};
+            return {status: 0, results};
         }""", {"email": creds["user"], "password": creds["pass"], "csrf": csrf})
 
-        print(f"  API login: {res}  URL post-eval: {page.url}")
+        print(f"  API login: {res}")
         if res.get("bad_creds"):
             raise RuntimeError("Identifiants incorrects")
 
         if res.get("status", 0) not in (200, 204):
-            # Fallback form — debug avant
-            t2 = await page.title()
-            print(f"  Avant form login: title={t2!r}  url={page.url}")
-            # Snapshot HTML
-            try:
-                snap = (await page.content())[:600]
-                print(f"  HTML snippet: {snap}")
-            except Exception as se:
-                print(f"  (impossible de lire le contenu: {se})")
+            # Fallback : POST form-encodé via fetch depuis le browser (CSRF déjà présent)
+            csrf2 = await page.evaluate(
+                "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
+            )
+            form_res = await page.evaluate("""async ({email, password, csrf}) => {
+                const body = new URLSearchParams({
+                    email, password, csrfmiddlewaretoken: csrf
+                }).toString();
+                const r = await fetch('/login/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrf,
+                        'Referer': window.location.href,
+                    },
+                    body,
+                    credentials: 'include',
+                    redirect: 'follow',
+                });
+                return {status: r.status, url: r.url};
+            }""", {"email": creds["user"], "password": creds["pass"], "csrf": csrf2})
+            print(f"  Form POST result: {form_res}")
 
-            sel = "input[type='email'], input[name='email'], input[name='username'], input[type='text']"
-            try:
-                await page.wait_for_selector(sel, timeout=30_000)
-            except Exception:
-                # Lister tous les inputs présents
+            # Naviguer vers la page retournée si succès
+            if form_res.get("status") == 200 and "/login" not in form_res.get("url", "/login"):
+                await page.goto(form_res["url"], wait_until="networkidle", timeout=30_000)
+            elif form_res.get("status") == 200:
+                # Reload pour appliquer la session cookie
+                await page.reload(wait_until="networkidle", timeout=30_000)
+
+            cur_url = page.url
+            print(f"  URL après form POST: {cur_url}")
+            if "/login" in cur_url:
+                # Dernier essai : remplir le formulaire HTML directement
+                sel = "input[type='email'], input[name='email'], input[name='username'], input[type='text']"
                 try:
-                    inputs = await page.evaluate(
-                        "() => Array.from(document.querySelectorAll('input'))"
-                        ".map(i=>({type:i.type,name:i.name,id:i.id,placeholder:i.placeholder}))"
+                    await page.wait_for_selector(sel, timeout=10_000)
+                    await page.locator(sel).first.fill(creds["user"])
+                    await page.locator("input[type='password']").first.fill(creds["pass"])
+                    await page.locator("input[type='password']").first.press("Enter")
+                    await page.wait_for_function(
+                        "() => !window.location.pathname.includes('/login')",
+                        timeout=30_000,
                     )
-                    print(f"  Inputs détectés: {inputs}")
-                    snap2 = (await page.content())[:1000]
-                    print(f"  HTML (2): {snap2}")
-                except Exception as de2:
-                    print(f"  (debug échoué: {de2})")
-                raise
-
-            await page.locator(sel).first.fill(creds["user"])
-            await page.locator("input[type='password']").first.fill(creds["pass"])
-            submit_sel = "button[type='submit'], input[type='submit'], button:has-text('Connexion'), button:has-text('Login'), button:has-text('Se connecter')"
-            try:
-                await page.locator(submit_sel).first.click(timeout=5_000)
-            except Exception:
-                await page.locator("input[type='password']").first.press("Enter")
-            try:
-                await page.wait_for_function(
-                    "() => !window.location.pathname.includes('/login')",
-                    timeout=30_000,
-                )
-            except Exception:
-                cur_url = page.url
-                print(f"  Form login timeout — URL finale: {cur_url}")
-                raise RuntimeError(f"Form login échoué (URL: {cur_url})")
+                except Exception:
+                    raise RuntimeError(f"Login échoué — URL: {page.url}")
 
         print(f"  Connecté — URL: {page.url}  navigation /factures/…")
 
