@@ -3209,6 +3209,12 @@ function initLabPage(conf) {
       s.rsfFirstMap = firstMap;
       s.rsfCountMap = countMap || new Map();
       s[condKey][0].rsfValues = mkRsfValues(lab, paliers);
+      if (!isAdmin) {
+        const defs = window._rsfDefaults?.[lab];
+        if (defs) s[condKey][0].rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+        const exc = window._labExceptions?.[lab];
+        if (exc) { Object.assign(s[condKey][0].exceptions, exc.exceptions || {}); Object.assign(s[condKey][0].remise2Except, exc.remise2Except || {}); }
+      }
       applyDefaultExcepts(s[condKey][0], lab);
 
       const panel = buildCondPanel(s[condKey][0]);
@@ -3292,11 +3298,17 @@ function initLabPage(conf) {
             cond.rsfValues.push({ rsf_pct: cr.rsf_pct, remise2: cr.remise2 || '', remise3: cr.remise3 || '', excluded: cr.excluded || false, hasExcept: cr.hasExcept || false, custom: true });
         });
         cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
-        // Récupération : si toutes les remise2 sont vides (état cloud tronqué),
-        // repeupler depuis rsf_defaults (pas d'await ici — déjà chargé avant le forEach)
+        // Récupération admin : si toutes les remise2 sont vides (état cloud tronqué)
         if (isAdmin && cond.rsfValues.every(r => !r.remise2 && !r.remise3)) {
           const defs = window._rsfDefaults?.[lab];
           if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+        }
+        // Non-admin : toujours appliquer les defaults admin (remise2/remise3 + exceptions)
+        if (!isAdmin) {
+          const defs = window._rsfDefaults?.[lab];
+          if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+          const exc = window._labExceptions?.[lab];
+          if (exc) { Object.assign(cond.exceptions, exc.exceptions || {}); Object.assign(cond.remise2Except, exc.remise2Except || {}); }
         }
         if (idx === 0) applyDefaultExcepts(cond, lab);
         s[condKey].push(cond);
