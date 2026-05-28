@@ -3106,10 +3106,18 @@ function initLabPage(conf) {
     if (!cond.remise2Except) cond.remise2Except = {};
     const active = cond.rsfValues.filter(r => r.hasExcept);
     excptsEl.innerHTML = '';
-    active.forEach(row => {
+    active.forEach((row, idx) => {
       const key = String(row.rsf_pct);
       if (!cond.remise2Except[key]) cond.remise2Except[key] = { libelles: [], remise2: '', remise3: '' };
-      excptsEl.appendChild(buildRowExceptBlock(row.rsf_pct, cond.remise2Except[key], s.selectedLab));
+      const propagateR3 = idx === 0 ? val => {
+        active.slice(1).forEach(r => {
+          const k = String(r.rsf_pct);
+          if (cond.remise2Except[k]) cond.remise2Except[k].remise3 = val;
+        });
+        excptsEl.querySelectorAll('.excpt-r3-inp').forEach((inp, i) => { if (i > 0) inp.value = val; });
+        saveState();
+      } : null;
+      excptsEl.appendChild(buildRowExceptBlock(row.rsf_pct, cond.remise2Except[key], s.selectedLab, propagateR3));
     });
   }
 
@@ -3348,7 +3356,7 @@ async function fetchRSF2025(lab) {
   return { paliers, firstMap: new Map(), countMap: new Map() };
 }
 
-function buildRowExceptBlock(rsf_pct, exc, labName = '') {
+function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null) {
   const block = document.createElement('div');
   block.className = 'row-except-block';
 
@@ -3400,10 +3408,14 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '') {
   const lbl3 = document.createElement('span');
   lbl3.className = 'excpt-remise2-label'; lbl3.textContent = 'Remise 3 spécifique';
   const remInp3 = document.createElement('input');
-  remInp3.type = 'text'; remInp3.className = 'rsf-input'; remInp3.style.width = '80px'; remInp3.autocomplete = 'off';
+  remInp3.type = 'text'; remInp3.className = 'rsf-input excpt-r3-inp'; remInp3.style.width = '80px'; remInp3.autocomplete = 'off';
   remInp3.placeholder = 'ex : 2.00'; remInp3.value = exc.remise3 || '';
   if (!isAdmin) remInp3.readOnly = true;
-  remInp3.addEventListener('input', e => { exc.remise3 = e.target.value; saveState(); });
+  remInp3.addEventListener('input', e => {
+    exc.remise3 = e.target.value;
+    if (propagateR3) propagateR3(e.target.value);
+    else saveState();
+  });
   const unit3 = document.createElement('span');
   unit3.className = 'rg-unit'; unit3.textContent = '%';
 
