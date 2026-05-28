@@ -189,24 +189,55 @@ async def _discover_async(creds: dict) -> dict:
                 )
                 title = await page.title()
                 print(f"  Challenge résolu. Titre: {title!r}")
-            # Remplir le formulaire directement (même logique que test_connector.py)
+            # Remplir le formulaire — intercepter les requêtes réseau pour diagnostiquer
+            login_responses: list[dict] = []
+            async def _capture_login(response):
+                url_r = response.url
+                if any(k in url_r for k in ("login", "auth", "token", "session")):
+                    try:
+                        body_t = await response.text()
+                    except Exception:
+                        body_t = ""
+                    login_responses.append({
+                        "url": url_r, "status": response.status,
+                        "method": response.request.method, "body": body_t[:400],
+                    })
+            page.on("response", _capture_login)
+
             sel = ("input[type='email'], input[name='email'], "
                    "input[name='username'], input[type='text']")
             await page.wait_for_selector(sel, timeout=20_000)
             print(f"  Formulaire trouvé. URL: {page.url}")
-            await page.locator(sel).first.fill(creds["user"])
-            await page.locator("input[type='password']").first.fill(creds["pass"])
-            await page.locator("input[type='password']").first.press("Enter")
+
+            # press_sequentially pour compatibilité React (déclenche keydown/keyup/input)
+            await page.locator(sel).first.click()
+            await page.locator(sel).first.press_sequentially(creds["user"], delay=80)
+            await page.locator("input[type='password']").first.click()
+            await page.locator("input[type='password']").first.press_sequentially(creds["pass"], delay=80)
+
+            # Cliquer sur le bouton de soumission
             try:
-                await page.wait_for_url("**/factures/**", timeout=25_000)
+                await page.locator("button[type='submit'], input[type='submit']").first.click(timeout=3_000)
             except Exception:
-                try:
-                    await page.wait_for_function(
-                        "() => !window.location.pathname.includes('/login')",
-                        timeout=20_000,
-                    )
-                except Exception:
-                    pass
+                await page.keyboard.press("Enter")
+
+            # Attendre la navigation ou le timeout (ne pas lever immédiatement)
+            await page.wait_for_timeout(10_000)
+            page.off("response", _capture_login)
+
+            print(f"  Réponses login: {login_responses}")
+            print(f"  URL après submit: {page.url}  title: {await page.title()!r}")
+            # Snapshot de la page pour diagnostiquer
+            try:
+                err_txt = await page.evaluate("""() => {
+                    const el = document.querySelector('[class*="error"],[class*="alert"],[class*="Error"],[class*="Alert"]');
+                    return el ? el.textContent.trim().slice(0, 300) : '';
+                }""")
+                if err_txt:
+                    print(f"  Message erreur: {err_txt!r}")
+            except Exception:
+                pass
+
             if "/login" in page.url:
                 raise RuntimeError(f"Login échoué — URL: {page.url}")
 
