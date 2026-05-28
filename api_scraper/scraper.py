@@ -322,101 +322,44 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                     ".some(k => document.title.toLowerCase().includes(k))",
                     timeout=90_000, polling=2000,
                 )
+            # Même approche que OSPHARM : fill() direct + click bouton + wait_for_url
             _email_sel = ("input[type='email'], input[name='email'], "
-                          "input[name='username']")
+                          "input[name='username'], input[type='text']")
             try:
                 await page.wait_for_selector(_email_sel, timeout=30_000)
             except Exception:
                 raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
 
-            # Try 1 : JS API login (avec ou sans csrf)
-            csrf2 = await _get_csrf(page)
-            if not csrf2:
-                await page.wait_for_timeout(800)
-                csrf2 = await _get_csrf(page)
-            progress(f"csrf camoufox : {'ok' if csrf2 else 'manquant (on tente quand même)'}")
-            api_ok = False
-            for ep in ["/api/v1/auth/login/", "/api/auth/login/", "/api/v1/token/"]:
-                try:
-                    res = await page.evaluate("""
-                        async ([url, user, pwd, csrf]) => {
-                            const hdrs = {
-                                'Accept': 'application/json',
-                                'Content-Type': 'application/json',
-                                'Referer': 'https://app.digipharmacie.fr/login/',
-                            };
-                            if (csrf) hdrs['X-CSRFToken'] = csrf;
-                            const r = await fetch(url, {
-                                method: 'POST', credentials: 'include',
-                                headers: hdrs,
-                                body: JSON.stringify({email: user, password: pwd}),
-                            });
-                            let body = '';
-                            try { body = await r.text(); } catch(_) {}
-                            return {status: r.status, body: body.slice(0, 300)};
-                        }
-                    """, [f"{BASE_URL}{ep}", username, password, csrf2])
-                    progress(f"JS API {ep} → {res['status']} | {res['body'][:120]}")
-                    if res["status"] == 200:
-                        api_ok = True
-                        break
-                    if res["status"] in (400, 401):
-                        raise RuntimeError(f"Identifiants DIGIPHARMACIE incorrects (API {ep} → {res['status']})")
-                except RuntimeError:
-                    raise
-                except Exception:
-                    continue
+            await page.locator(_email_sel).first.fill(username)
+            await page.locator("input[type='password']").first.fill(password)
+            progress("Formulaire rempli")
 
-            if not api_ok:
-                # Try 2 : form fill React-compatible (native input setter)
-                await page.evaluate("""
-                    ([emailSel, emailVal, pwdVal]) => {
-                        const setter = Object.getOwnPropertyDescriptor(
-                            window.HTMLInputElement.prototype, 'value').set;
-                        const emailEl = document.querySelector(emailSel);
-                        const pwdEl   = document.querySelector("input[type='password']");
-                        if (emailEl) {
-                            setter.call(emailEl, emailVal);
-                            emailEl.dispatchEvent(new Event('input',  { bubbles: true }));
-                            emailEl.dispatchEvent(new Event('change', { bubbles: true }));
-                        }
-                        if (pwdEl) {
-                            setter.call(pwdEl, pwdVal);
-                            pwdEl.dispatchEvent(new Event('input',  { bubbles: true }));
-                            pwdEl.dispatchEvent(new Event('change', { bubbles: true }));
-                        }
-                    }
-                """, [_email_sel, username, password])
-                progress("Form React rempli via native setter")
-                await page.wait_for_timeout(400)
+            submitted = False
+            for btn_sel in [
+                "button[type='submit']", "input[type='submit']",
+                "button:has-text('Connexion')", "button:has-text('Se connecter')",
+                "button:has-text('Login')",
+            ]:
+                if await page.locator(btn_sel).count() > 0:
+                    await page.locator(btn_sel).first.click()
+                    submitted = True
+                    progress(f"Submit via '{btn_sel}'")
+                    break
+            if not submitted:
+                await page.locator("input[type='password']").first.press("Enter")
+                progress("Submit via Enter")
 
-                submitted = False
-                for btn_sel in [
-                    "button[type='submit']", "input[type='submit']",
-                    "button:has-text('Connexion')", "button:has-text('Se connecter')",
-                    "button:has-text('Login')", "button:has-text('Continuer')",
-                ]:
-                    if await page.locator(btn_sel).count() > 0:
-                        await page.locator(btn_sel).first.click()
-                        submitted = True
-                        progress(f"Submit via bouton '{btn_sel}'")
-                        break
-                if not submitted:
-                    await page.locator("input[type='password']").first.press("Enter")
-                    progress("Submit via Enter")
-
-                try:
-                    await page.wait_for_function(
-                        "() => !window.location.href.includes('/login')", timeout=15_000
-                    )
-                except Exception:
-                    err_txt = await page.evaluate(
-                        "() => document.querySelector('[class*=error],[class*=alert],[class*=invalid]')?.innerText || ''"
-                    )
-                    if err_txt:
-                        progress(f"Message page : {err_txt[:200]}")
-                    if "/login" in page.url:
-                        raise RuntimeError("Identifiants DIGIPHARMACIE incorrects (form)")
+            try:
+                await page.wait_for_url(f"{BASE_URL}/**", wait_until="load", timeout=30_000)
+            except Exception:
+                pass
+            if "/login" in page.url:
+                err_txt = await page.evaluate(
+                    "() => document.querySelector('[class*=error],[class*=alert],[class*=invalid]')?.innerText || ''"
+                )
+                if err_txt:
+                    progress(f"Erreur page : {err_txt[:200]}")
+                raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
 
         invoices = await _fetch_invoices(page, progress)
         if not invoices:
