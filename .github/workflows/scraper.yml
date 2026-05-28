@@ -19,7 +19,7 @@ jobs:
         run: pip3 install --quiet camoufox curl_cffi pdfplumber
 
       - name: Fetch camoufox browser
-        run: python3 -m camoufox fetch
+        run: python3 -m camoufox fetch || true  # binaries déjà présents sur self-hosted ; MMDB geoip non requis
 
       - name: Patch Playwright (null-check pageError.location)
         run: |
