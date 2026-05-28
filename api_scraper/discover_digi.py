@@ -209,37 +209,64 @@ async def _discover_async(creds: dict) -> dict:
             await page.wait_for_selector(sel, timeout=60_000)
             print(f"  Formulaire trouvé. URL: {page.url}")
 
-            # press_sequentially pour compatibilité React (déclenche keydown/keyup/input)
-            await page.locator(sel).first.click()
-            await page.locator(sel).first.press_sequentially(creds["user"], delay=80)
-            await page.locator("input[type='password']").first.click()
-            await page.locator("input[type='password']").first.press_sequentially(creds["pass"], delay=80)
+            # Lire les inputs présents pour vérifier qu'on cible le bon
+            inputs_info = await page.evaluate(
+                "() => Array.from(document.querySelectorAll('input'))"
+                ".map(i=>({type:i.type,name:i.name,id:i.id,placeholder:i.placeholder}))"
+            )
+            print(f"  Inputs présents: {inputs_info}")
 
-            # Cliquer sur le bouton de soumission
-            try:
-                await page.locator("button[type='submit'], input[type='submit']").first.click(timeout=3_000)
-            except Exception:
-                await page.keyboard.press("Enter")
+            # Cibler l'email et le mot de passe avec fill() (dispatche input + change)
+            await page.locator(sel).first.fill(creds["user"])
+            await page.locator("input[type='password']").first.fill(creds["pass"])
 
-            # Attendre la navigation ou le timeout (ne pas lever immédiatement)
-            await page.wait_for_timeout(10_000)
-            page.remove_listener("response", _capture_login)
+            # Vérifier les valeurs dans les champs
+            email_val = await page.locator(sel).first.input_value()
+            pass_len_val = len(await page.locator("input[type='password']").first.input_value())
+            print(f"  Champs après fill: email={email_val[:6]}*** ({len(email_val)}c)  pass_len={pass_len_val}")
 
-            print(f"  Réponses login: {login_responses}")
-            print(f"  URL après submit: {page.url}  title: {await page.title()!r}")
-            # Snapshot de la page pour diagnostiquer
-            try:
-                err_txt = await page.evaluate("""() => {
-                    const el = document.querySelector('[class*="error"],[class*="alert"],[class*="Error"],[class*="Alert"]');
-                    return el ? el.textContent.trim().slice(0, 300) : '';
-                }""")
-                if err_txt:
-                    print(f"  Message erreur: {err_txt!r}")
-            except Exception:
-                pass
+            # Essai direct de l'endpoint réel /auth/login/ depuis le contexte navigateur
+            direct_res = await page.evaluate("""async ({email, password}) => {
+                const r = await fetch('/auth/login/', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, password}),
+                    credentials: 'include',
+                });
+                const body = await r.text();
+                return {status: r.status, body: body.slice(0, 300)};
+            }""", {"email": creds["user"], "password": creds["pass"]})
+            print(f"  Direct /auth/login/ → {direct_res}")
 
-            if "/login" in page.url:
-                raise RuntimeError(f"Login échoué — URL: {page.url}")
+            if direct_res.get("status") == 200:
+                print("  Login JS direct réussi !")
+                page.remove_listener("response", _capture_login)
+                # Session créée — naviguer maintenant vers /factures/
+            else:
+                # Cliquer sur le bouton de soumission (une seule fois)
+                try:
+                    await page.locator("button[type='submit'], input[type='submit']").first.click(timeout=3_000)
+                except Exception:
+                    await page.keyboard.press("Enter")
+
+                # Attendre la navigation ou le timeout
+                await page.wait_for_timeout(10_000)
+                page.remove_listener("response", _capture_login)
+
+                print(f"  Réponses login: {login_responses}")
+                print(f"  URL après submit: {page.url}  title: {await page.title()!r}")
+                try:
+                    err_txt = await page.evaluate("""() => {
+                        const el = document.querySelector('[class*="error"],[class*="alert"],[class*="Error"],[class*="Alert"]');
+                        return el ? el.textContent.trim().slice(0, 300) : '';
+                    }""")
+                    if err_txt:
+                        print(f"  Message erreur: {err_txt!r}")
+                except Exception:
+                    pass
+
+                if "/login" in page.url:
+                    raise RuntimeError(f"Login échoué — URL: {page.url}")
 
         print(f"  Connecté — URL: {page.url}  navigation /factures/…")
 
