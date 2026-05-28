@@ -322,14 +322,13 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                     ".some(k => document.title.toLowerCase().includes(k))",
                     timeout=90_000, polling=2000,
                 )
+            _email_sel = ("input[type='email'], input[name='email'], "
+                          "input[name='username'], input[type='text']")
             try:
-                await page.wait_for_selector(
-                    "input[type='email'], input[name='email'], input[name='username']",
-                    timeout=30_000,
-                )
+                await page.wait_for_selector(_email_sel, timeout=30_000)
             except Exception:
                 raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
-            await page.locator("input[type='email'], input[name='email']").first.fill(username)
+            await page.locator(_email_sel).first.fill(username)
             await page.locator("input[type='password']").first.fill(password)
             await page.locator("input[type='password']").first.press("Enter")
             await page.wait_for_timeout(8_000)
