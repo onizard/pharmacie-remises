@@ -3107,23 +3107,21 @@ function initLabPage(conf) {
     const active = cond.rsfValues.filter(r => r.hasExcept);
     excptsEl.innerHTML = '';
 
-    // Références aux chipsWraps de chaque bloc — remplies après appendChild
-    const blockRefs = [];
-
-    // Synchronise les libellés de triggerExc vers tous les autres blocs actifs
+    // Quand un libellé est ajouté/supprimé dans n'importe quel bloc,
+    // on synchronise les données de tous les autres puis on re-rend l'ensemble.
     const syncLibelles = (triggerExc) => {
       const srcTexts = new Set(triggerExc.libelles.map(l => l.text));
-      blockRefs.forEach(({ exc: tgt, chipsWrap: cw }) => {
-        if (tgt === triggerExc) return;
-        // Retirer les libellés absents de la source
+      active.forEach(r => {
+        const k = String(r.rsf_pct);
+        const tgt = cond.remise2Except[k];
+        if (!tgt || tgt === triggerExc) return;
         tgt.libelles = tgt.libelles.filter(l => srcTexts.has(l.text));
-        // Ajouter les libellés manquants
         const tgtTexts = new Set(tgt.libelles.map(l => l.text));
         triggerExc.libelles.forEach(l => {
           if (!tgtTexts.has(l.text)) tgt.libelles.push({ id: Date.now() + Math.random(), text: l.text });
         });
-        renderChips(cw, tgt, syncLibelles);
       });
+      renderRowExcepts(cond, excptsEl);
       saveState();
     };
 
@@ -3136,12 +3134,10 @@ function initLabPage(conf) {
           const k = String(r.rsf_pct);
           if (cond.remise2Except[k]) cond.remise2Except[k].remise3 = val;
         });
-        excptsEl.querySelectorAll('.excpt-r3-inp').forEach((inp, i) => { if (i > 0) inp.value = val; });
+        excptsEl.querySelectorAll('.excpt-r3-inp').forEach((i2, i) => { if (i > 0) i2.value = val; });
         saveState();
       } : null;
-      const block = buildRowExceptBlock(row.rsf_pct, exc, s.selectedLab, propagateR3, syncLibelles);
-      excptsEl.appendChild(block);
-      blockRefs.push({ exc, chipsWrap: block.querySelector('.chips-wrap') });
+      excptsEl.appendChild(buildRowExceptBlock(row.rsf_pct, exc, s.selectedLab, propagateR3, syncLibelles));
     });
   }
 
