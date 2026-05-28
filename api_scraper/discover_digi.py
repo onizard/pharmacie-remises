@@ -101,127 +101,114 @@ async def _discover_async(creds: dict) -> dict:
             "password": _p.password or "",
         }
 
+    # ── Phase 1 : curl_cffi login (fast path — bypasses Cloudflare CSRF cache issue) ──
+    session_cookies: dict = {}
+    try:
+        from curl_cffi import requests as cffi_requests
+        proxy_kw = {"proxy": PROXY_URL} if PROXY_URL else {}
+        session = cffi_requests.Session(impersonate="chrome124")
+        page_hdrs = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "fr-FR,fr;q=0.9",
+        }
+        r = session.get(f"{BASE_URL}/login/", headers=page_hdrs, timeout=25,
+                        allow_redirects=True, **proxy_kw)
+        csrf = session.cookies.get("csrftoken", "")
+        print(f"  curl_cffi GET /login/ → {r.status_code}  csrf_len={len(csrf)}")
+        if csrf:
+            api_hdrs = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrf,
+                "Referer": f"{BASE_URL}/login/",
+                "Origin": BASE_URL,
+            }
+            for ep in ["/api/v1/auth/login/", "/api/auth/login/", "/api/v1/token/", "/api/token/"]:
+                try:
+                    rp = session.post(f"{BASE_URL}{ep}",
+                                      json={"email": creds["user"], "password": creds["pass"]},
+                                      headers=api_hdrs, timeout=15,
+                                      allow_redirects=False, **proxy_kw)
+                    print(f"    {ep} → {rp.status_code}")
+                    if rp.status_code == 200:
+                        session_cookies = dict(session.cookies)
+                        print(f"  curl_cffi login OK via {ep}")
+                        break
+                    if rp.status_code in (400, 401):
+                        raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+                except RuntimeError:
+                    raise
+                except Exception:
+                    continue
+            if not session_cookies:
+                # Form POST fallback
+                rp = session.post(f"{BASE_URL}/login/",
+                                  data={"email": creds["user"], "password": creds["pass"],
+                                        "csrfmiddlewaretoken": csrf},
+                                  headers={"Content-Type": "application/x-www-form-urlencoded",
+                                           "Referer": f"{BASE_URL}/login/"},
+                                  timeout=15, allow_redirects=True, **proxy_kw)
+                print(f"  curl_cffi form POST → {rp.status_code}  url={rp.url}")
+                if "/login" not in rp.url:
+                    session_cookies = dict(session.cookies)
+                    print(f"  curl_cffi form login OK")
+    except RuntimeError:
+        raise
+    except Exception as ce:
+        print(f"  curl_cffi échoué ({ce}) — fallback camoufox…")
+
     async with AsyncCamoufox(headless=True, geoip=False) as browser:
         ctx  = await browser.new_context(**({"proxy": proxy_cfg} if proxy_cfg else {}))
+
+        # Injecter les cookies de session curl_cffi si disponibles
+        if session_cookies:
+            await ctx.add_cookies([
+                {"name": k, "value": v, "domain": "app.digipharmacie.fr", "path": "/",
+                 "sameSite": "Lax"}
+                for k, v in session_cookies.items()
+            ])
+            print(f"  Session cookies injectés: {list(session_cookies.keys())}")
+
         page = await ctx.new_page()
         page.on("pageerror", lambda e: None)
-        page.set_default_timeout(120_000)  # override default 30s partout
+        page.set_default_timeout(120_000)
 
-        print("  Login…")
-        await page.goto(f"{BASE_URL}/login/", timeout=60_000)
-
-        title = await page.title()
-        print(f"  Titre après goto: {title!r}")
-
-        # Attendre résolution challenge Cloudflare
-        _cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
-        if any(k in title.lower() for k in _cf_kw):
-            print("  Cloudflare challenge — attente résolution…")
-            await page.wait_for_function(
-                "() => !['just a moment','checking','verifying','cloudflare']"
-                ".some(k => document.title.toLowerCase().includes(k))",
-                polling=2000,  # timeout géré par set_default_timeout (120s)
-            )
+        if not session_cookies:
+            # Pas de session curl_cffi — login via camoufox (même code que test_connector.py)
+            print("  Login via camoufox…")
+            await page.goto(f"{BASE_URL}/login/", timeout=60_000)
             title = await page.title()
-            print(f"  Challenge résolu. Titre: {title!r}")
-            # Attendre que la page soit complètement chargée (cookies Django inclus)
-            await page.wait_for_load_state("networkidle")
-
-        # Récupérer le CSRF token — via context (bypass HttpOnly) puis document.cookie
-        ctx_cookies = await ctx.cookies()
-        csrf = next((c["value"] for c in ctx_cookies if c["name"] == "csrftoken"), "")
-        if not csrf:
-            csrf = await page.evaluate(
-                "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
-            )
-        all_cookie_names = [c["name"] for c in ctx_cookies]
-        print(f"  Creds: user={creds['user'][:4]}*** len={len(creds['user'])}  pass_len={len(creds['pass'])}  csrf_len={len(csrf)}  all_cookies={all_cookie_names}")
-
-        res = await page.evaluate("""async ({email, password, csrf}) => {
-            const endpoints = [
-                '/api/v1/auth/login/',
-                '/api/auth/login/',
-                '/api/v1/token/',
-                '/api/token/',
-            ];
-            const results = [];
-            for (const ep of endpoints) {
-                try {
-                    const r = await fetch(ep, {
-                        method: 'POST',
-                        headers: {'Content-Type':'application/json','X-CSRFToken':csrf},
-                        body: JSON.stringify({email, password}),
-                        credentials: 'include',
-                    });
-                    results.push({ep, status: r.status});
-                    if (r.status === 200 || r.status === 204) return {status: r.status, ep, results};
-                    if (r.status === 400 || r.status === 401) return {status: r.status, bad_creds: true, ep, results};
-                } catch(e) { results.push({ep, error: String(e)}); }
-            }
-            return {status: 0, results};
-        }""", {"email": creds["user"], "password": creds["pass"], "csrf": csrf})
-
-        print(f"  API login: {res}")
-        if res.get("bad_creds"):
-            raise RuntimeError("Identifiants incorrects")
-
-        if res.get("status", 0) not in (200, 204):
-            # Fallback : POST form-encodé via fetch (CSRF depuis context cookies)
-            ctx_cookies2 = await ctx.cookies()
-            csrf2 = next((c["value"] for c in ctx_cookies2 if c["name"] == "csrftoken"), csrf)
-            form_res = await page.evaluate("""async ({email, password, csrf}) => {
-                const body = new URLSearchParams({
-                    email, password, csrfmiddlewaretoken: csrf
-                }).toString();
-                const r = await fetch('/login/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': csrf,
-                        'Referer': window.location.href,
-                    },
-                    body,
-                    credentials: 'include',
-                    redirect: 'follow',
-                });
-                return {status: r.status, url: r.url};
-            }""", {"email": creds["user"], "password": creds["pass"], "csrf": csrf2})
-            print(f"  Form POST result: {form_res}")
-
-            # Naviguer vers la page retournée si succès
-            if form_res.get("status") == 200 and "/login" not in form_res.get("url", "/login"):
-                await page.goto(form_res["url"], wait_until="networkidle", timeout=30_000)
-            elif form_res.get("status") == 200:
-                await page.reload(wait_until="networkidle", timeout=30_000)
-
-            cur_url = page.url
-            print(f"  URL après form POST: {cur_url}")
-            if "/login" in cur_url:
-                # Dernier essai : remplir le formulaire HTML avec csrfmiddlewaretoken injecté
-                sel = "input[type='email'], input[name='email'], input[name='username'], input[type='text']"
+            print(f"  Titre après goto: {title!r}")
+            _cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
+            if any(k in title.lower() for k in _cf_kw):
+                print("  Cloudflare challenge — attente résolution…")
+                await page.wait_for_function(
+                    "() => !['just a moment','checking','verifying','cloudflare']"
+                    ".some(k => document.title.toLowerCase().includes(k))",
+                    polling=2000,
+                )
+                title = await page.title()
+                print(f"  Challenge résolu. Titre: {title!r}")
+            # Remplir le formulaire directement (même logique que test_connector.py)
+            sel = ("input[type='email'], input[name='email'], "
+                   "input[name='username'], input[type='text']")
+            await page.wait_for_selector(sel, timeout=20_000)
+            print(f"  Formulaire trouvé. URL: {page.url}")
+            await page.locator(sel).first.fill(creds["user"])
+            await page.locator("input[type='password']").first.fill(creds["pass"])
+            await page.locator("input[type='password']").first.press("Enter")
+            try:
+                await page.wait_for_url("**/factures/**", timeout=25_000)
+            except Exception:
                 try:
-                    await page.wait_for_selector(sel, timeout=10_000)
-                    # Injecter le CSRF token dans le formulaire si pas déjà présent
-                    if csrf2:
-                        await page.evaluate("""(csrf) => {
-                            let inp = document.querySelector('input[name="csrfmiddlewaretoken"]');
-                            if (!inp) {
-                                inp = document.createElement('input');
-                                inp.type = 'hidden'; inp.name = 'csrfmiddlewaretoken';
-                                const form = document.querySelector('form');
-                                if (form) form.appendChild(inp);
-                            }
-                            inp.value = csrf;
-                        }""", csrf2)
-                    await page.locator(sel).first.fill(creds["user"])
-                    await page.locator("input[type='password']").first.fill(creds["pass"])
-                    await page.locator("input[type='password']").first.press("Enter")
                     await page.wait_for_function(
                         "() => !window.location.pathname.includes('/login')",
-                        timeout=30_000,
+                        timeout=20_000,
                     )
                 except Exception:
-                    raise RuntimeError(f"Login échoué — URL: {page.url}")
+                    pass
+            if "/login" in page.url:
+                raise RuntimeError(f"Login échoué — URL: {page.url}")
 
         print(f"  Connecté — URL: {page.url}  navigation /factures/…")
 
@@ -250,9 +237,12 @@ async def _discover_async(creds: dict) -> dict:
         # Si pas capturé via event, appel direct
         if not raw_pages:
             print("  Tentative fetch direct…")
-            csrf2 = await page.evaluate(
-                "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
-            )
+            _ctx_cks = await ctx.cookies()
+            csrf2 = next((c["value"] for c in _ctx_cks if c["name"] == "csrftoken"), "")
+            if not csrf2:
+                csrf2 = await page.evaluate(
+                    "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
+                )
             result = await page.evaluate("""async ([url, csrf]) => {
                 const r = await fetch(url, {
                     credentials:'include',
