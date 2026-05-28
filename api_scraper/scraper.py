@@ -368,15 +368,28 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                     continue
 
             if not api_ok:
-                # Try 2 : form fill + submit button
-                email_loc = page.locator(_email_sel).first
-                pwd_loc   = page.locator("input[type='password']").first
-                await email_loc.click()
-                await email_loc.fill(username)
+                # Try 2 : form fill React-compatible (native input setter)
+                await page.evaluate("""
+                    ([emailSel, emailVal, pwdVal]) => {
+                        const setter = Object.getOwnPropertyDescriptor(
+                            window.HTMLInputElement.prototype, 'value').set;
+                        const emailEl = document.querySelector(emailSel);
+                        const pwdEl   = document.querySelector("input[type='password']");
+                        if (emailEl) {
+                            setter.call(emailEl, emailVal);
+                            emailEl.dispatchEvent(new Event('input',  { bubbles: true }));
+                            emailEl.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                        if (pwdEl) {
+                            setter.call(pwdEl, pwdVal);
+                            pwdEl.dispatchEvent(new Event('input',  { bubbles: true }));
+                            pwdEl.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }
+                """, [_email_sel, username, password])
+                progress("Form React rempli via native setter")
                 await page.wait_for_timeout(400)
-                await pwd_loc.click()
-                await pwd_loc.fill(password)
-                await page.wait_for_timeout(400)
+
                 submitted = False
                 for btn_sel in [
                     "button[type='submit']", "input[type='submit']",
@@ -389,7 +402,7 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                         progress(f"Submit via bouton '{btn_sel}'")
                         break
                 if not submitted:
-                    await pwd_loc.press("Enter")
+                    await page.locator("input[type='password']").first.press("Enter")
                     progress("Submit via Enter")
 
                 try:
@@ -397,7 +410,6 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                         "() => !window.location.href.includes('/login')", timeout=15_000
                     )
                 except Exception:
-                    # Log le message d'erreur visible sur la page
                     err_txt = await page.evaluate(
                         "() => document.querySelector('[class*=error],[class*=alert],[class*=invalid]')?.innerText || ''"
                     )
