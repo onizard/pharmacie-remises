@@ -105,42 +105,60 @@ async def _discover_async(creds: dict) -> dict:
         ctx  = await browser.new_context(**({"proxy": proxy_cfg} if proxy_cfg else {}))
         page = await ctx.new_page()
         page.on("pageerror", lambda e: None)
+        page.set_default_timeout(120_000)  # override default 30s partout
 
         print("  Login…")
         await page.goto(f"{BASE_URL}/login/", timeout=60_000)
 
-        # Attendre challenge Cloudflare
         title = await page.title()
-        if "just a moment" in title.lower():
-            print("  Cloudflare challenge — attente…")
-            await page.wait_for_function(
-                "() => !document.title.toLowerCase().includes('just a moment')",
-                timeout=90_000, polling=2000,
-            )
+        print(f"  Titre après goto: {title!r}")
 
-        # Login via API JS (cookie CF déjà présent)
+        # Attendre résolution challenge Cloudflare
+        _cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
+        if any(k in title.lower() for k in _cf_kw):
+            print("  Cloudflare challenge — attente résolution…")
+            await page.wait_for_function(
+                "() => !['just a moment','checking','verifying','cloudflare']"
+                ".some(k => document.title.toLowerCase().includes(k))",
+                polling=2000,  # timeout géré par set_default_timeout (120s)
+            )
+            title = await page.title()
+            print(f"  Challenge résolu. Titre: {title!r}")
+
+        # Essai login API JS (cookie CF clearance déjà présent)
         csrf = await page.evaluate(
             "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
         )
         res = await page.evaluate("""async ({email, password, csrf}) => {
-            const r = await fetch('/api/v1/auth/login/', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json','X-CSRFToken':csrf},
-                body: JSON.stringify({email, password}),
-                credentials: 'include',
-            });
-            return {status: r.status};
+            const endpoints = ['/api/v1/auth/login/','/api/auth/login/'];
+            for (const ep of endpoints) {
+                try {
+                    const r = await fetch(ep, {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json','X-CSRFToken':csrf},
+                        body: JSON.stringify({email, password}),
+                        credentials: 'include',
+                    });
+                    if (r.status === 200 || r.status === 204) return {status: r.status, ep};
+                    if (r.status === 400 || r.status === 401) return {status: r.status, bad_creds: true};
+                } catch(e) {}
+            }
+            return {status: 0};
         }""", {"email": creds["user"], "password": creds["pass"], "csrf": csrf})
 
-        if res["status"] not in (200, 204):
-            # Fallback form login
-            sel = "input[type='email'],input[name='email'],input[type='text']"
-            await page.wait_for_selector(sel, timeout=30_000)
+        print(f"  API login: {res}")
+        if res.get("bad_creds"):
+            raise RuntimeError("Identifiants incorrects")
+
+        if res.get("status", 0) not in (200, 204):
+            # Fallback form
+            sel = "input[type='email'],input[name='email'],input[name='username'],input[type='text']"
+            await page.wait_for_selector(sel)
             await page.locator(sel).first.fill(creds["user"])
             await page.locator("input[type='password']").first.fill(creds["pass"])
             await page.locator("input[type='password']").first.press("Enter")
             await page.wait_for_function(
-                "() => !window.location.pathname.includes('/login')", timeout=30_000
+                "() => !window.location.pathname.includes('/login')"
             )
 
         print("  Connecté — navigation /factures/…")
