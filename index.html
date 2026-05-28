@@ -178,6 +178,7 @@
   .header-right { margin-left: auto; font-size: 13px; color: var(--text-dim); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
   .save-badge { font-size: 10px; color: var(--green); opacity: 0; transition: opacity 0.4s; font-family: 'Share Tech Mono', monospace; letter-spacing: 1px; white-space: nowrap; pointer-events: none; }
   .save-badge.visible { opacity: 1; }
+  .save-badge.error { color: var(--red); }
 
   /* ── Recap tables ── */
   .recap-section { margin-bottom: 36px; }
@@ -1489,12 +1490,21 @@ function serializeState() {
 
 let _saveTimer, _cloudSaveTimer, _saveBadgeTimer;
 
-function _showSaveBadge() {
+function _showSaveBadge(isError = false) {
   const badge = document.getElementById('saveBadge');
   if (!badge) return;
   clearTimeout(_saveBadgeTimer);
-  badge.classList.add('visible');
-  _saveBadgeTimer = setTimeout(() => badge.classList.remove('visible'), 2000);
+  badge.classList.remove('error');
+  if (isError) {
+    badge.textContent = ' ✗ erreur sync';
+    badge.classList.add('error');
+    badge.classList.add('visible');
+    _saveBadgeTimer = setTimeout(() => { badge.classList.remove('visible'); badge.classList.remove('error'); badge.textContent = ' ✓ sauvegardé'; }, 8000);
+  } else {
+    badge.textContent = ' ✓ sauvegardé';
+    badge.classList.add('visible');
+    _saveBadgeTimer = setTimeout(() => badge.classList.remove('visible'), 2000);
+  }
 }
 
 async function saveCloudState(data) {
@@ -1530,7 +1540,11 @@ async function saveCloudState(data) {
     _showSaveBadge();
     if (isAdmin) saveRsfDefaults();
     return true;
-  } catch(e) { return false; }
+  } catch(e) {
+    console.error('[BP] saveCloudState ERREUR :', e);
+    _showSaveBadge(true);
+    return false;
+  }
 }
 
 // Flush immédiat au cloud quand l'onglet est masqué (fermeture, changement d'onglet)
@@ -5790,8 +5804,10 @@ async function saveProfile() {
         if (isAdmin) checkAdminNotifications();
         if (!isAdmin) await loadRsfDefaults();
         if (!_isPostReset) {
-          const { data: cloud } = await sb.from('user_state')
+          const { data: cloud, error: cloudErr } = await sb.from('user_state')
             .select('state_json,connectors').eq('user_id', session.user.id).maybeSingle();
+          if (cloudErr) console.error('[BP] Chargement cloud state ERREUR :', cloudErr);
+          console.log('[BP] Cloud state chargé :', cloud ? `labPages=${cloud.state_json?.labPages?.length ?? 0}` : 'aucune ligne en base');
           if (cloud?.state_json) {
             _startupCloudState = cloud.state_json;
             if (cloud.state_json.labPages?.length) {
