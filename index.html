@@ -3074,18 +3074,34 @@ function initLabPage(conf) {
       cbExcpt.addEventListener('change', () => {
         if (!isAdmin) return;
         cond.rsfValues[idx].hasExcept = cbExcpt.checked;
-        // Copier l'exception du 1er palier sur les paliers suivants cochés
-        if (cbExcpt.checked && idx > 0) {
-          const firstKey = String(cond.rsfValues[0].rsf_pct);
-          const firstExc = cond.remise2Except?.[firstKey];
-          if (firstExc && firstExc.libelles && firstExc.libelles.length > 0) {
-            const curKey = String(cond.rsfValues[idx].rsf_pct);
-            if (!cond.remise2Except) cond.remise2Except = {};
-            cond.remise2Except[curKey] = {
-              libelles: [...firstExc.libelles],
-              remise2:  firstExc.remise2 || '',
-              remise3:  firstExc.remise3 || '',
-            };
+        if (cbExcpt.checked) {
+          const curKey = String(cond.rsfValues[idx].rsf_pct);
+          if (!cond.remise2Except) cond.remise2Except = {};
+          // Priorité 1 : copier depuis une autre condition du même labo (même clé RSF)
+          if (!cond.remise2Except[curKey]?.libelles?.length) {
+            const srcExc = (s[condKey] || [])
+              .filter(c => c !== cond)
+              .map(c => c.remise2Except?.[curKey])
+              .find(e => e?.libelles?.length > 0);
+            if (srcExc) {
+              cond.remise2Except[curKey] = {
+                libelles: srcExc.libelles.map(l => ({ id: Date.now() + Math.random(), text: l.text })),
+                remise2: cond.remise2Except[curKey]?.remise2 || '',
+                remise3: cond.remise2Except[curKey]?.remise3 || '',
+              };
+            }
+          }
+          // Priorité 2 : copier depuis le 1er palier de la même condition
+          if (!cond.remise2Except[curKey]?.libelles?.length && idx > 0) {
+            const firstKey = String(cond.rsfValues[0].rsf_pct);
+            const firstExc = cond.remise2Except?.[firstKey];
+            if (firstExc?.libelles?.length > 0) {
+              cond.remise2Except[curKey] = {
+                libelles: [...firstExc.libelles],
+                remise2:  firstExc.remise2 || '',
+                remise3:  firstExc.remise3 || '',
+              };
+            }
           }
         }
         renderRowExcepts(cond, excptsEl);
@@ -3111,6 +3127,9 @@ function initLabPage(conf) {
     // on synchronise les données de tous les autres puis on re-rend l'ensemble.
     const syncLibelles = (triggerExc) => {
       const srcTexts = new Set(triggerExc.libelles.map(l => l.text));
+      // Trouver la clé RSF de triggerExc
+      const triggerKey = Object.keys(cond.remise2Except).find(k => cond.remise2Except[k] === triggerExc);
+      // Sync dans la condition courante (tous les paliers RSF actifs)
       active.forEach(r => {
         const k = String(r.rsf_pct);
         const tgt = cond.remise2Except[k];
@@ -3121,6 +3140,19 @@ function initLabPage(conf) {
           if (!tgtTexts.has(l.text)) tgt.libelles.push({ id: Date.now() + Math.random(), text: l.text });
         });
       });
+      // Sync vers les autres conditions du même labo (même clé RSF, si l'exception y est déjà active)
+      if (triggerKey) {
+        (s[condKey] || []).forEach(otherCond => {
+          if (otherCond === cond) return;
+          const otherExc = otherCond.remise2Except?.[triggerKey];
+          if (!otherExc) return;
+          otherExc.libelles = otherExc.libelles.filter(l => srcTexts.has(l.text));
+          const otherTexts = new Set(otherExc.libelles.map(l => l.text));
+          triggerExc.libelles.forEach(l => {
+            if (!otherTexts.has(l.text)) otherExc.libelles.push({ id: Date.now() + Math.random(), text: l.text });
+          });
+        });
+      }
       renderRowExcepts(cond, excptsEl);
       saveState();
     };
