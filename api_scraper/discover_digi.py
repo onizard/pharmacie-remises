@@ -223,7 +223,7 @@ async def _discover_async(creds: dict) -> dict:
 
             # Attendre la navigation ou le timeout (ne pas lever immédiatement)
             await page.wait_for_timeout(10_000)
-            page.off("response", _capture_login)
+            page.remove_listener("response", _capture_login)
 
             print(f"  Réponses login: {login_responses}")
             print(f"  URL après submit: {page.url}  title: {await page.title()!r}")
