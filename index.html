@@ -1275,7 +1275,7 @@
           <span style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:2px;white-space:nowrap">GERS</span>
           <input type="text" id="gersGlobal" class="rsf-input" style="width:100px;border-color:#6b4700;color:var(--amber);font-size:12px;padding:5px 8px" placeholder="ex : 80000" title="Entre ton GERS" />
           <span style="font-size:12px;color:var(--text-dim)">€</span>
-          <button class="btn btn-reset-hold" id="btnResetConditions" title="Maintenir 3 secondes pour réinitialiser">↺ RESET</button>
+          <button class="btn btn-reset-hold admin-only" id="btnResetConditions" style="display:none" title="Maintenir 3 secondes pour réinitialiser">↺ RESET</button>
           <button class="btn btn-primary admin-only" id="btnSaveConditions" style="display:none">↑ SAVE</button>
           <button class="btn btn-secondary" id="btnRetourRecap">← RETOUR</button>
         </div>
@@ -5988,6 +5988,21 @@ async function saveProfile() {
     btn.disabled = true;
     btn.textContent = '…';
     await saveRsfDefaults();
+    // Reload cache then re-apply to admin's own conditions (round-trip confirmation)
+    await loadRsfDefaults();
+    state.labPages.forEach(lp => {
+      if (!lp.selectedLab) return;
+      const defs = window._rsfDefaults?.[lp.selectedLab];
+      const exc  = window._labExceptions?.[lp.selectedLab];
+      if (!defs && !exc) return;
+      [...(lp.conditions || []), ...(lp.conditions2025 || [])].forEach(cond => {
+        if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
+        if (exc) { Object.assign(cond.exceptions, exc.exceptions); Object.assign(cond.remise2Except, exc.remise2Except); }
+      });
+      if (lp._reRenderCondTables)     lp._reRenderCondTables();
+      if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();
+    });
+    window.syncAllCgvLeds?.();
     // Flush labPages (conditions) to user_state immediately — no debounce
     const _data = serializeState();
     try { localStorage.setItem(LS_KEY, JSON.stringify(_data)); } catch(e) {}
