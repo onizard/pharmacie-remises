@@ -3065,7 +3065,17 @@ function initLabPage(conf) {
       inp3.placeholder = 'ex : 2.50'; inp3.value = row.remise3;
       if (row.remise3) inp3.classList.add('auto-a');
       if (!isAdmin) inp3.readOnly = true;
-      inp3.addEventListener('input', e => { if (!isAdmin) return; cond.rsfValues[idx].remise3 = e.target.value; inp3.classList.remove('auto-a'); saveState(); });
+      inp3.addEventListener('input', e => {
+        if (!isAdmin) return;
+        const val = e.target.value;
+        cond.rsfValues[idx].remise3 = val;
+        inp3.classList.remove('auto-a');
+        if (idx === 0) {
+          cond.rsfValues.forEach((r, i) => { if (i > 0) r.remise3 = val; });
+          tbody.querySelectorAll('.inp-r3').forEach((el, i) => { if (i > 0) { el.value = val; el.classList.remove('auto-a'); } });
+        }
+        saveState();
+      });
       const td3 = document.createElement('td'); td3.className = 'col-r3'; td3.appendChild(inp3); tr.appendChild(td3);
 
       const cbExcpt = document.createElement('input');
