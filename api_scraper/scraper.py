@@ -366,7 +366,7 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                 progress(f"API login échoué ({_je}) — fallback formulaire…")
 
             if not _api_ok:
-                # Phase 2b : fallback formulaire HTML
+                # Phase 2b : fallback formulaire HTML (même logique que test_connector.py)
                 _email_sel = ("input[type='email'], input[name='email'], "
                               "input[name='username'], input[type='text']")
                 try:
@@ -374,29 +374,23 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                 except Exception:
                     raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
 
+                progress(f"Formulaire trouvé. URL: {page.url}")
                 await page.locator(_email_sel).first.fill(username)
                 await page.locator("input[type='password']").first.fill(password)
-                progress("Formulaire rempli")
-
-                submitted = False
-                for btn_sel in [
-                    "button[type='submit']", "input[type='submit']",
-                    "button:has-text('Connexion')", "button:has-text('Se connecter')",
-                    "button:has-text('Login')",
-                ]:
-                    if await page.locator(btn_sel).count() > 0:
-                        await page.locator(btn_sel).first.click()
-                        submitted = True
-                        progress(f"Submit via '{btn_sel}'")
-                        break
-                if not submitted:
-                    await page.locator("input[type='password']").first.press("Enter")
-                    progress("Submit via Enter")
+                await page.locator("input[type='password']").first.press("Enter")
+                progress("Formulaire soumis via Enter")
 
                 try:
-                    await page.wait_for_url(f"{BASE_URL}/**", wait_until="load", timeout=30_000)
+                    await page.wait_for_url("**/dashboard**", timeout=20_000)
                 except Exception:
-                    pass
+                    try:
+                        await page.wait_for_function(
+                            "() => !window.location.pathname.includes('/login')",
+                            timeout=15_000,
+                        )
+                    except Exception:
+                        pass
+
                 if "/login" in page.url:
                     err_txt = await page.evaluate(
                         "() => document.querySelector('[class*=error],[class*=alert],[class*=invalid]')?.innerText || ''"
