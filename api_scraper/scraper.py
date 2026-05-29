@@ -71,7 +71,7 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     page.on("response", on_response)
     await page.goto(f"{BASE_URL}/factures/", wait_until="networkidle", timeout=60_000)
     await page.wait_for_timeout(4000)
-    page.off("response", on_response)
+    page.remove_listener("response", on_response)
 
     if first_data and first_api_url[0]:
         progress(f"API détectée : {first_api_url[0]}")
