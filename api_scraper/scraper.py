@@ -322,44 +322,88 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                     ".some(k => document.title.toLowerCase().includes(k))",
                     timeout=90_000, polling=2000,
                 )
-            # Même approche que OSPHARM : fill() direct + click bouton + wait_for_url
-            _email_sel = ("input[type='email'], input[name='email'], "
-                          "input[name='username'], input[type='text']")
+
+            # Phase 2a : login via JS fetch depuis le contexte browser
+            # (le cookie CF clearance est déjà présent — même stratégie que test_connector.py)
+            _js_login = """async ([email, password]) => {
+                const endpoints = [
+                    '/api/v1/auth/login/',
+                    '/api/auth/login/',
+                    '/api/v1/token/',
+                    '/api/token/',
+                ];
+                const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+                for (const ep of endpoints) {
+                    try {
+                        const r = await fetch(ep, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrf,
+                            },
+                            body: JSON.stringify({email, password}),
+                            credentials: 'include',
+                        });
+                        if (r.status === 200) return {ok: true, ep};
+                        if (r.status === 400 || r.status === 401)
+                            return {ok: false, bad_creds: true, status: r.status, ep};
+                    } catch(e) {}
+                }
+                return {ok: false, bad_creds: false};
+            }"""
+            _api_ok = False
             try:
-                await page.wait_for_selector(_email_sel, timeout=30_000)
-            except Exception:
-                raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
+                _res = await page.evaluate(_js_login, [username, password])
+                progress(f"API login: {_res}")
+                if _res.get("ok"):
+                    progress(f"Login API OK via {_res.get('ep')}")
+                    _api_ok = True
+                elif _res.get("bad_creds"):
+                    raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+            except RuntimeError:
+                raise
+            except Exception as _je:
+                progress(f"API login échoué ({_je}) — fallback formulaire…")
 
-            await page.locator(_email_sel).first.fill(username)
-            await page.locator("input[type='password']").first.fill(password)
-            progress("Formulaire rempli")
+            if not _api_ok:
+                # Phase 2b : fallback formulaire HTML
+                _email_sel = ("input[type='email'], input[name='email'], "
+                              "input[name='username'], input[type='text']")
+                try:
+                    await page.wait_for_selector(_email_sel, timeout=30_000)
+                except Exception:
+                    raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
 
-            submitted = False
-            for btn_sel in [
-                "button[type='submit']", "input[type='submit']",
-                "button:has-text('Connexion')", "button:has-text('Se connecter')",
-                "button:has-text('Login')",
-            ]:
-                if await page.locator(btn_sel).count() > 0:
-                    await page.locator(btn_sel).first.click()
-                    submitted = True
-                    progress(f"Submit via '{btn_sel}'")
-                    break
-            if not submitted:
-                await page.locator("input[type='password']").first.press("Enter")
-                progress("Submit via Enter")
+                await page.locator(_email_sel).first.fill(username)
+                await page.locator("input[type='password']").first.fill(password)
+                progress("Formulaire rempli")
 
-            try:
-                await page.wait_for_url(f"{BASE_URL}/**", wait_until="load", timeout=30_000)
-            except Exception:
-                pass
-            if "/login" in page.url:
-                err_txt = await page.evaluate(
-                    "() => document.querySelector('[class*=error],[class*=alert],[class*=invalid]')?.innerText || ''"
-                )
-                if err_txt:
-                    progress(f"Erreur page : {err_txt[:200]}")
-                raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+                submitted = False
+                for btn_sel in [
+                    "button[type='submit']", "input[type='submit']",
+                    "button:has-text('Connexion')", "button:has-text('Se connecter')",
+                    "button:has-text('Login')",
+                ]:
+                    if await page.locator(btn_sel).count() > 0:
+                        await page.locator(btn_sel).first.click()
+                        submitted = True
+                        progress(f"Submit via '{btn_sel}'")
+                        break
+                if not submitted:
+                    await page.locator("input[type='password']").first.press("Enter")
+                    progress("Submit via Enter")
+
+                try:
+                    await page.wait_for_url(f"{BASE_URL}/**", wait_until="load", timeout=30_000)
+                except Exception:
+                    pass
+                if "/login" in page.url:
+                    err_txt = await page.evaluate(
+                        "() => document.querySelector('[class*=error],[class*=alert],[class*=invalid]')?.innerText || ''"
+                    )
+                    if err_txt:
+                        progress(f"Erreur page : {err_txt[:200]}")
+                    raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
 
         invoices = await _fetch_invoices(page, progress)
         if not invoices:
