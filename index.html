@@ -6424,8 +6424,10 @@ function initConnecteurModal() {
         }
       } catch(_) {}
 
-      // Persiste les credentials directement depuis le frontend avant d'appeler Render
-      // (le background task Render peut échouer silencieusement)
+      // Sauvegarde immédiate dans state + cloud avant d'appeler Render
+      // (garantit que run_job.py lira les bons credentials même si la RPC échoue)
+      state.connectors[connKey] = { user, pass, connected: false };
+      saveState();
       try {
         await window._sbClient.rpc('upsert_connector', {
           p_user_id:   session.user.id,

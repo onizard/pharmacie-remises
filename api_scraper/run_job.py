@@ -67,7 +67,19 @@ def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
 
 
 def _get_creds() -> dict:
-    # Priorité 1 : colonne connectors dédiée (nouvelle architecture)
+    # Priorité 1 : state_json.connectors (mis à jour par saveState() dès la saisie)
+    try:
+        state      = _supa_get_state()
+        connectors = state.get("connectors", {})
+        digi       = connectors.get("digipharmacie", {})
+        user       = digi.get("user", "")
+        passwd     = digi.get("pass", "")
+        if user and passwd:
+            return {"user": user, "pass": passwd}
+    except Exception:
+        pass
+
+    # Priorité 2 : colonne connectors dédiée (fallback)
     try:
         url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{USER_ID}&select=connectors&limit=1"
         req = urllib.request.Request(url, headers={
@@ -82,18 +94,10 @@ def _get_creds() -> dict:
     except Exception:
         pass
 
-    # Priorité 2 : legacy state_json.connectors
-    state      = _supa_get_state()
-    connectors = state.get("connectors", {})
-    digi       = connectors.get("digipharmacie", {})
-    user       = digi.get("user", "")
-    passwd     = digi.get("pass", "")
-    if not user or not passwd:
-        raise ValueError(
-            "Identifiants DIGIPHARMACIE manquants dans Supabase.\n"
-            "Configure-les dans break-pharma.fr → CONNECTEUR."
-        )
-    return {"user": user, "pass": passwd}
+    raise ValueError(
+        "Identifiants DIGIPHARMACIE manquants dans Supabase.\n"
+        "Configure-les dans break-pharma.fr → CONNECTEUR."
+    )
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
