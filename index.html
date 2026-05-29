@@ -1382,7 +1382,7 @@ function mkRsfValues(lab, paliers) {
   return paliers.map(v => {
     const excluded = lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v));
     const defs = !isAdmin && window._rsfDefaults?.[lab]?.[String(v)];
-    const r2 = defs ? defs.remise2 : (excluded || parseFloat(v) === -2.5) ? '0' : '';
+    const r2 = defs ? defs.remise2 : (excluded || parseFloat(v) === -2.5 || parseFloat(v) === 0) ? '0' : '';
     const r3 = defs ? defs.remise3 : '';
     return { rsf_pct: v, remise2: r2, remise3: r3, excluded, hasExcept: false };
   });
@@ -2955,7 +2955,7 @@ function initLabPage(conf) {
         if (lab === 'Biogaran') { row.remise3 = (rg - 30).toFixed(2); if (i3) { i3.value = row.remise3; i3.classList.add('auto-a'); } }
         return;
       }
-      if (row.excluded) {
+      if (row.excluded || abs === 0) {
         row.remise2 = '0';
         if (i2) { i2.value = '0'; i2.classList.add('auto-c'); }
       } else {
