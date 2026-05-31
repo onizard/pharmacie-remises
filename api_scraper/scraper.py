@@ -15,6 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Callable
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from pdf_extractor import extract_invoice_lines
 
@@ -22,7 +23,8 @@ from pdf_extractor import extract_invoice_lines
 
 BASE_URL  = "https://app.digipharmacie.fr"
 PAGE_SIZE = 100
-YEAR      = "2025"
+YEARS     = {"2025", "2026"}   # années à collecter
+STOP_YEAR = "2025"             # arrêter quand billing_date < 2025
 PROXY_URL = os.environ.get("PROXY_URL", "")
 
 LABOS_GENERIQUES = [
@@ -66,34 +68,39 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     await page.wait_for_timeout(4000)
     page.remove_listener("response", on_response)
 
-    # Lire les corps en async maintenant que la navigation est terminée
-    first_data: dict = {}
-    first_api_url: str | None = None
-    for url, resp in _captured:
-        if first_data:
-            break
+    # Construire une URL propre depuis l'endpoint détecté (sans filtre de date)
+    # L'URL interceptée a souvent created_gte=<date récente> qui limite les résultats
+    clean_url: str | None = None
+    for url, _resp in _captured:
         try:
-            body = await resp.json()
-            if isinstance(body, dict) and ("results" in body or "count" in body):
-                first_data.update(body)
-                first_api_url = url
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+            # Supprimer tous les filtres de date/période
+            for key in list(params):
+                if any(k in key for k in ("gte", "lte", "date", "start", "end", "since", "created")):
+                    del params[key]
+            params["page_size"] = [str(PAGE_SIZE)]
+            params["page"]      = ["1"]
+            # Conserver l'ordering existant ou forcer par date décroissante
+            if "ordering" not in params or not params["ordering"][0]:
+                params["ordering"] = ["-billing_date"]
+            new_query = urlencode({k: v[0] for k, v in params.items()})
+            clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}"
+            progress(f"Endpoint API : {parsed.path} — URL propre construite")
+            break
         except Exception:
             pass
 
-    if first_data and first_api_url:
-        progress(f"API détectée : {first_api_url}")
-        return await _paginate_from_browser(page, first_data, first_api_url, progress)
-
-    progress("Tentative API directe depuis /factures/…")
     csrf = await _get_csrf(page)
     if not csrf:
         await page.wait_for_timeout(800)
         csrf = await _get_csrf(page)
-    api_url = (
-        f"{BASE_URL}/api/v1/invoices/"
-        f"?ordering=-billing_date&page_size={PAGE_SIZE}&page=1"
-    )
-    return await _paginate_fetch(page, api_url, csrf, progress)
+
+    if not clean_url:
+        clean_url = f"{BASE_URL}/api/v1/invoices/?ordering=-billing_date&page_size={PAGE_SIZE}&page=1"
+        progress("Endpoint non détecté — URL de fallback utilisée")
+
+    return await _paginate_fetch(page, clean_url, csrf, progress)
 
 
 async def _paginate_from_browser(page, first_data: dict, first_url: str, progress: Callable) -> list[dict]:
@@ -114,13 +121,13 @@ async def _paginate_from_browser(page, first_data: dict, first_url: str, progres
         for inv in results:
             date     = str(inv.get("billing_date", ""))
             provider = inv.get("provider_ref") or inv.get("provider_name") or ""
-            if date and date[:4] < YEAR:
+            if date and date[:4] < STOP_YEAR:
                 stop_early = True
                 break
-            if date.startswith(YEAR) and _is_generic(provider):
+            if date[:4] in YEARS and _is_generic(provider):
                 invoices.append(inv)
 
-        progress(f"Page {page_num} — {total_seen} lues · {len(invoices)} génériques {YEAR}")
+        progress(f"Page {page_num} — {total_seen} lues · {len(invoices)} génériques {'/'.join(sorted(YEARS))}")
 
         next_url = data.get("next")
         if stop_early or not next_url:
@@ -149,13 +156,13 @@ async def _paginate_fetch(page, start_url: str, csrf: str, progress: Callable) -
         for inv in results:
             date     = str(inv.get("billing_date", ""))
             provider = inv.get("provider_ref") or inv.get("provider_name") or ""
-            if date and date[:4] < YEAR:
+            if date and date[:4] < STOP_YEAR:
                 stop_early = True
                 break
-            if date.startswith(YEAR) and _is_generic(provider):
+            if date[:4] in YEARS and _is_generic(provider):
                 invoices.append(inv)
 
-        progress(f"Page {page_num} — {total_seen} lues · {len(invoices)} génériques {YEAR}")
+        progress(f"Page {page_num} — {total_seen} lues · {len(invoices)} génériques {'/'.join(sorted(YEARS))}")
 
         next_url = data.get("next")
         if stop_early or not next_url:
