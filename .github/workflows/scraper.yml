@@ -42,5 +42,5 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           PROXY_URL:            ${{ secrets.PROXY_URL }}
           LABS_FILTER:          ${{ inputs.labs_filter }}
-          PDF_DEBUG:            "0"
+          PDF_DEBUG:            "1"
         run: python3 api_scraper/run_job.py
