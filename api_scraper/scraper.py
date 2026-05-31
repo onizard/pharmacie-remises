@@ -278,24 +278,37 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
     provider     = inv.get("provider_ref") or inv.get("provider_name") or ""
     billing_date = inv.get("billing_date", "")
 
+    import os as _os
+    if _os.environ.get("PDF_DEBUG") == "1":
+        print(f"[PDF] Téléchargement : {file_url[:120]}", flush=True)
+
     b64 = await page.evaluate("""
         async ([url]) => {
             try {
                 const resp = await fetch(url, { credentials: 'include' });
-                if (!resp.ok) return null;
+                if (!resp.ok) return {err: resp.status + ' ' + resp.statusText};
                 const buf   = await resp.arrayBuffer();
                 const bytes = new Uint8Array(buf);
                 let bin = '';
                 for (const b of bytes) bin += String.fromCharCode(b);
-                return btoa(bin);
-            } catch(e) { return null; }
+                return {ok: btoa(bin)};
+            } catch(e) { return {err: String(e)}; }
         }
     """, [file_url])
 
-    if not b64:
+    if _os.environ.get("PDF_DEBUG") == "1":
+        if b64 and b64.get("err"):
+            print(f"[PDF] Échec download : {b64['err']}", flush=True)
+        elif b64 and b64.get("ok"):
+            print(f"[PDF] OK : {len(b64['ok'])} chars base64", flush=True)
+        else:
+            print(f"[PDF] Réponse inattendue : {b64}", flush=True)
+
+    if not b64 or not b64.get("ok"):
         return []
-    content = base64.b64decode(b64)
+    content = base64.b64decode(b64["ok"])
     if len(content) < 500:
+        print(f"[PDF] Trop petit ({len(content)} bytes), ignoré", flush=True)
         return []
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
