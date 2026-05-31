@@ -1,10 +1,10 @@
 """
 Extraction des données produits depuis les PDFs de factures DIGIPHARMACIE.
 
-Stratégie :
-  1. pdfplumber — lecture de toutes les tables du PDF
-  2. Pour chaque ligne : chercher CIP13, libellé, prix brut, remise%, PA NET
-  3. Fallback texte brut si aucune table détectée (regex)
+Formats supportés :
+  1. ALLOGA FRANCE — factures au nom d'un labo (Biogaran, Reckitt, etc.)
+     Colonnes : Code Article | Désignation | Qté | PU HT Brut | Taux Remise | PU HT Net | Total HT | TVA%
+  2. Fallback texte brut — regex sur CIP13 + nombres voisins
 """
 
 import re
@@ -12,142 +12,130 @@ from pathlib import Path
 
 import pdfplumber
 
-# ── Patterns ───────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-RE_CIP13  = re.compile(r'\b(3[46]\d{11})\b')          # CIP13 : 34xxxxx ou 36xxxxx
-RE_CIP7   = re.compile(r'\b(\d{7})\b')
-RE_PRICE  = re.compile(r'\b(\d{1,4}[,\.]\d{2,4})\b')  # prix : 12,34 ou 12.3456
-RE_PCT    = re.compile(r'\b(\d{1,2}[,\.]\d{0,2})\s*%') # pourcentage : 17,5 %
+RE_CIP13 = re.compile(r'\b(3[0-9]\d{11})\b')
 
-HEADER_SYNONYMS = {
-    "cip":      ["cip", "cip13", "cip7", "code cip", "code article", "référence", "ref"],
-    "libelle":  ["désignation", "libellé", "produit", "description", "article"],
-    "prix":     ["pu ht", "prix ht", "prix brut", "p.u.", "pu", "tarif", "p.u.h.t"],
-    "remise":   ["remise", "remise %", "taux", "%" ],
-    "pa_net":   ["net ht", "pa net", "montant net", "net", "total ht", "montant ht"],
-    "qte":      ["qté", "quantite", "quantité", "qte", "nb"],
-}
-
-
-def _norm(s: str) -> str:
-    return (s or "").lower().strip().replace("\n", " ")
-
-
-def _match_header(cell: str, field: str) -> bool:
-    n = _norm(cell)
-    return any(syn in n for syn in HEADER_SYNONYMS[field])
+# Ligne produit Alloga :
+#   3400938254518 DESIGNATION QTE [QTE_GRATUIT] PU_BRUT REMISE% PU_NET TOTAL_HT TVA%
+# Exemple : "3400938254518 GAVISCONELL SUSP SSUCRE X12 12 7,700 35,00% 5,005 60,06 10,00%"
+_NUM   = r'[\d]+(?:[,\s]\d+)*'    # nombre français (virgule décimale, espaces milliers)
+_PCT   = r'(\d{1,3},\d{2})%'      # pourcentage type "35,00%"
+RE_ALLOGA_LINE = re.compile(
+    r'^(\d{13})\s+'              # CIP13
+    r'(.+?)\s+'                  # désignation (non-greedy)
+    r'(\d+)\s+'                  # quantité facturée
+    r'([\d,\s]+?)\s+'            # PU HT Brut
+    + _PCT + r'\s+'              # Taux Remise
+    + r'([\d,\s]+?)\s+'         # PU HT Net
+    + r'([\d,\s]+?)\s+'         # Total HT
+    + _PCT + r'\s*$',            # Taux TVA
+    re.MULTILINE,
+)
 
 
 def _to_float(s: str) -> float | None:
     if not s:
         return None
-    s = str(s).strip().replace(" ", "").replace(",", ".")
-    m = re.search(r"[\d.]+", s)
+    s = str(s).strip().replace('\xa0', '').replace(' ', '').replace(' ', '').replace(',', '.')
+    m = re.search(r'[\d.]+', s)
     try:
         return float(m.group()) if m else None
     except ValueError:
         return None
 
 
-# ── Table extraction ───────────────────────────────────────────────────────────
+def _norm(s: str) -> str:
+    return (s or "").lower().strip()
 
-def _extract_from_tables(pdf, provider: str, billing_date: str) -> list[dict]:
+
+# ── Détection du format ────────────────────────────────────────────────────────
+
+def _detect_format(text: str) -> str:
+    """Retourne 'alloga' ou 'unknown' selon les marqueurs dans le texte."""
+    t = text[:500].lower()
+    if "alloga france" in t or "alloga" in t[:200]:
+        return "alloga"
+    return "unknown"
+
+
+def _extract_lab_name(text: str) -> str:
+    """Extrait le nom du labo depuis 'AU NOM ET POUR LE COMPTE DE\\n{lab_name}'."""
+    m = re.search(
+        r"AU NOM ET POUR LE COMPTE DE\s*\n\s*(.+)",
+        text, re.IGNORECASE
+    )
+    if m:
+        lab = m.group(1).strip()
+        # Nettoyer : parfois suivi de l'adresse sur la même ligne
+        lab = re.split(r'\s{2,}|\n', lab)[0].strip()
+        return lab
+    return ""
+
+
+# ── Extracteur ALLOGA ──────────────────────────────────────────────────────────
+
+def _extract_alloga(text: str, provider: str, billing_date: str) -> list[dict]:
+    """
+    Extrait les lignes produits d'une facture Alloga.
+
+    Format brut (raw text) car pdfplumber fusionne souvent toutes les lignes
+    produits dans une seule cellule.
+
+    Colonnes : CIP13 | Désignation | Qté | PU Brut | Remise% | PU Net | Total HT | TVA%
+    """
+    lab_name = _extract_lab_name(text)
+
     lines = []
-    for page in pdf.pages:
-        for table in page.extract_tables():
-            if not table or len(table) < 2:
-                continue
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        m = RE_ALLOGA_LINE.match(line)
+        if not m:
+            continue
 
-            # Identify header row (first non-empty row)
-            header_row = None
-            data_start = 0
-            for i, row in enumerate(table):
-                if any(c and _norm(c) for c in row):
-                    header_row = row
-                    data_start = i + 1
-                    break
+        cip13    = m.group(1)
+        libelle  = m.group(2).strip()
+        qte_str  = m.group(3)
+        pubrut_s = m.group(4)
+        remise_s = m.group(5)   # sans %
+        punet_s  = m.group(6)
+        total_s  = m.group(7)
+        # tva_s  = m.group(8)   # non utilisé pour l'instant
 
-            if header_row is None:
-                continue
+        pu_brut  = _to_float(pubrut_s)
+        remise   = _to_float(remise_s)
+        pu_net   = _to_float(punet_s)
+        total_ht = _to_float(total_s)
+        qte      = int(qte_str) if qte_str.isdigit() else None
 
-            # Map column index to field
-            col = {}
-            for j, cell in enumerate(header_row):
-                for field in HEADER_SYNONYMS:
-                    if _match_header(str(cell or ""), field) and field not in col:
-                        col[field] = j
-                        break
+        if pu_brut is None and pu_net is None:
+            continue
 
-            # Need at least a price or CIP column
-            if not col:
-                continue
-
-            for row in table[data_start:]:
-                if not row or all(not c for c in row):
-                    continue
-
-                def get(field):
-                    idx = col.get(field)
-                    return str(row[idx] or "").strip() if idx is not None and idx < len(row) else ""
-
-                # CIP — try dedicated column first, then regex scan
-                cip = ""
-                raw_cip = get("cip")
-                m = RE_CIP13.search(raw_cip)
-                if m:
-                    cip = m.group(1)
-                else:
-                    for cell in row:
-                        m = RE_CIP13.search(str(cell or ""))
-                        if m:
-                            cip = m.group(1)
-                            break
-
-                libelle  = get("libelle") or get("cip")  # sometimes same column
-                prix_raw = get("prix")
-                rem_raw  = get("remise")
-                net_raw  = get("pa_net")
-                qte_raw  = get("qte")
-
-                prix_brut = _to_float(prix_raw)
-                remise    = _to_float(re.sub(r'[%\s]', '', rem_raw)) if rem_raw else None
-                pa_net    = _to_float(net_raw)
-                qte       = _to_float(qte_raw)
-
-                # Derive missing values
-                if prix_brut and remise is not None and pa_net is None:
-                    pa_net = round(prix_brut * (1 - remise / 100), 4)
-                elif prix_brut and pa_net and remise is None and prix_brut > 0:
-                    remise = round((1 - pa_net / prix_brut) * 100, 2)
-
-                if not prix_brut and not pa_net:
-                    continue  # skip empty/header rows
-
-                lines.append({
-                    "cip":          cip,
-                    "libelle":      libelle,
-                    "fournisseur":  provider,
-                    "billing_date": billing_date,
-                    "prix_brut":    round(prix_brut, 4) if prix_brut else None,
-                    "remise_pct":   round(remise, 2)    if remise is not None else None,
-                    "pa_net":       round(pa_net, 4)    if pa_net else None,
-                    "quantite":     int(qte)            if qte else None,
-                })
+        lines.append({
+            "cip":          cip13,
+            "libelle":      libelle,
+            "fournisseur":  provider,
+            "labo":         lab_name,
+            "billing_date": billing_date,
+            "quantite":     qte,
+            "prix_brut":    round(pu_brut, 4) if pu_brut else None,
+            "remise_pct":   round(remise, 2)  if remise is not None else None,
+            "pa_net":       round(pu_net, 4)  if pu_net else None,
+            "total_ht":     round(total_ht, 2) if total_ht else None,
+        })
 
     return lines
 
 
-# ── Regex fallback on raw text ─────────────────────────────────────────────────
+# ── Fallback texte brut ────────────────────────────────────────────────────────
 
-def _extract_from_text(pdf, provider: str, billing_date: str) -> list[dict]:
-    """
-    Fallback : parcourt le texte ligne par ligne, cherche des CIP13
-    et les valeurs numériques voisines.
-    """
+def _extract_text_fallback(text: str, provider: str, billing_date: str) -> list[dict]:
+    """Fallback générique : cherche CIP13 + valeurs numériques sur la même ligne."""
+    RE_PRICE = re.compile(r'\b(\d{1,4}[,\.]\d{2,4})\b')
+    RE_PCT   = re.compile(r'\b(\d{1,2}[,\.]\d{0,2})\s*%')
+
     lines = []
-    full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-
-    for line in full_text.splitlines():
+    for line in text.splitlines():
         m_cip = RE_CIP13.search(line)
         if not m_cip:
             continue
@@ -159,47 +147,58 @@ def _extract_from_text(pdf, provider: str, billing_date: str) -> list[dict]:
         if not prices:
             continue
 
-        prix_brut = max(prices)                        # heuristic: largest value = brut
+        prix_brut = max(prices)
         remise    = pcts[0] if pcts else None
         pa_net    = (
             round(prix_brut * (1 - remise / 100), 4)
             if remise is not None else None
         )
-
-        # Try to extract libellé (text before the first number)
         libelle = re.split(r'\d', line)[0].strip()[:80]
 
         lines.append({
             "cip":          cip,
             "libelle":      libelle,
             "fournisseur":  provider,
+            "labo":         "",
             "billing_date": billing_date,
+            "quantite":     None,
             "prix_brut":    round(prix_brut, 4),
             "remise_pct":   remise,
             "pa_net":       pa_net,
-            "quantite":     None,
+            "total_ht":     None,
         })
 
     return lines
 
 
-# ── Public entry point ─────────────────────────────────────────────────────────
+# ── Point d'entrée public ──────────────────────────────────────────────────────
 
 def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> list[dict]:
     """
     Extrait toutes les lignes produits d'une facture PDF.
+    Retourne une liste de dicts avec cip, libelle, quantite, prix_brut,
+    remise_pct, pa_net, total_ht, labo, fournisseur, billing_date.
     """
     try:
         with pdfplumber.open(str(pdf_path)) as pdf:
-            lines = _extract_from_tables(pdf, provider, billing_date)
-            if not lines:
-                lines = _extract_from_text(pdf, provider, billing_date)
+            full_text = "\n".join(
+                page.extract_text() or "" for page in pdf.pages
+            )
     except Exception:
         return []
 
-    # Déduplication légère : même CIP + même date = garder la première occurrence
-    seen  = set()
-    dedup = []
+    if not full_text.strip():
+        return []
+
+    fmt = _detect_format(full_text)
+
+    if fmt == "alloga":
+        lines = _extract_alloga(full_text, provider, billing_date)
+    else:
+        lines = _extract_text_fallback(full_text, provider, billing_date)
+
+    # Déduplication légère : même CIP + même date
+    seen, dedup = set(), []
     for line in lines:
         key = (line["cip"], line["billing_date"], line.get("libelle", "")[:20])
         if key not in seen:
