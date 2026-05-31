@@ -12,6 +12,23 @@ from pathlib import Path
 
 import pdfplumber
 
+# ── Labos génériqueurs cibles ─────────────────────────────────────────────────
+# Seules les lignes dont le labo (extrait de l'en-tête) correspond à l'un de ces
+# mots-clés sont conservées. Les autres labos (Reckitt, Biocodex, Colgate…) sont
+# ignorés même si la facture transite par Alloga ou un répartiteur.
+
+LABOS_CIBLES = {
+    "biogaran", "teva", "mylan", "viatris", "zydus",
+    "sandoz", "zentiva", "arrow", "cristers",
+    "eg labo", "eg labs", "evolupharm",
+}
+
+
+def _is_labo_cible(labo: str) -> bool:
+    n = (labo or "").lower()
+    return any(kw in n for kw in LABOS_CIBLES)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 RE_CIP13 = re.compile(r'\b(3[0-9]\d{11})\b')
@@ -192,9 +209,14 @@ def _extract_text_fallback(text: str, provider: str, billing_date: str) -> list[
 
 def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> list[dict]:
     """
-    Extrait toutes les lignes produits d'une facture PDF.
-    Retourne une liste de dicts avec cip, libelle, quantite, prix_brut,
-    remise_pct, pa_net, total_ht, labo, fournisseur, billing_date.
+    Extrait les lignes produits d'une facture PDF.
+
+    Seules les lignes dont le labo est un génériqueur cible (LABOS_CIBLES) sont
+    conservées. Les lignes d'autres labos (Reckitt, Biocodex, Colgate…) sont
+    ignorées même si la facture transite par Alloga ou un répartiteur.
+
+    Retourne une liste de dicts : cip, libelle, labo, fournisseur, billing_date,
+    quantite, prix_brut, remise_pct, pa_net, total_ht.
     """
     try:
         with pdfplumber.open(str(pdf_path)) as pdf:
@@ -214,7 +236,10 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
     else:
         lines = _extract_text_fallback(full_text, provider, billing_date)
 
-    # Déduplication légère : même CIP + même date
+    # Filtrer : ne garder que les lignes d'un labo génériqueur cible
+    lines = [l for l in lines if _is_labo_cible(l.get("labo", ""))]
+
+    # Déduplication légère : même CIP + même date + début libellé
     seen, dedup = set(), []
     for line in lines:
         key = (line["cip"], line["billing_date"], line.get("libelle", "")[:20])

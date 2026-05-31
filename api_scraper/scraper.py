@@ -30,13 +30,23 @@ PROXY_URL    = os.environ.get("PROXY_URL", "")
 # Filtre optionnel : ne traiter que les PDFs de ce labo (ex: "biogaran"). Vide = tous.
 LABS_FILTER  = os.environ.get("LABS_FILTER", "").lower().strip()
 
+# Fournisseurs potentiels de factures génériqueurs :
+# — labos génériqueurs eux-mêmes
+# — dépositaires/grossistes qui facturent en leur nom
+# — répartiteurs pharmaceutiques (CERP, OCP, Alliance, Phoenix)
 LABOS_GENERIQUES = [
-    "cerp", "mylan", "viatris", "biogaran", "arrow", "sandoz", "teva",
-    "zentiva", "cooperation pharmaceutique", "cooperation pharma", "alloga",
-    "cristers", "eg labo", " eg ", "ranbaxy", "ratiopharm", "actavis",
-    "hexal", "aurobindo", "intas", "sun pharma", "pharmaki", "strides",
-    "qualimed", "almus", "ibigen", "substipharm", "evolupharm", "medipha",
-    "phlorogine",
+    # Labos génériqueurs cibles
+    "biogaran", "teva", "mylan", "viatris", "zydus", "sandoz", "zentiva",
+    "arrow", "cristers", "eg labo", "eg labs", "evolupharm",
+    # Autres génériqueurs secondaires
+    "ranbaxy", "ratiopharm", "actavis", "hexal", "aurobindo", "intas",
+    "sun pharma", "pharmaki", "strides", "qualimed", "almus", "ibigen",
+    "substipharm", "medipha", "phlorogine",
+    # Dépositaires (facturent au nom des labos)
+    "alloga", "cegedim", "movianto",
+    # Répartiteurs pharmaceutiques (grossistes)
+    "cerp", "ocp", "alliance", "phoenix",
+    "cooperation pharmaceutique", "cooperation pharma",
 ]
 
 
@@ -520,12 +530,21 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
         all_lines = []
         for i, inv in enumerate(invoices, 1):
             provider = inv.get("provider_ref") or inv.get("provider_name") or "?"
-            progress(f"PDF {i}/{len(invoices)} — {provider}  ({inv.get('billing_date','?')})")
             lines = await _process_pdf(page, inv)
+            if lines:
+                labo = lines[0].get("labo", "")
+                progress(f"PDF {i}/{len(invoices)} — {provider} ({inv.get('billing_date','?')}) → {len(lines)} lignes [{labo}]")
+            else:
+                progress(f"PDF {i}/{len(invoices)} — {provider} ({inv.get('billing_date','?')}) → 0 lignes")
             all_lines.extend(lines)
             await page.wait_for_timeout(150)
 
-        progress(f"Extraction terminée — {len(all_lines)} lignes produits")
+        # Synthèse par labo
+        labos_count: dict[str, int] = {}
+        for l in all_lines:
+            k = l.get("labo") or l.get("fournisseur") or "?"
+            labos_count[k] = labos_count.get(k, 0) + 1
+        progress(f"Extraction terminée — {len(all_lines)} lignes : {labos_count}")
 
     return all_lines
 
