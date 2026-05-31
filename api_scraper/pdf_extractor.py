@@ -60,15 +60,32 @@ def _detect_format(text: str) -> str:
 
 
 def _extract_lab_name(text: str) -> str:
-    """Extrait le nom du labo depuis 'AU NOM ET POUR LE COMPTE DE\\n{lab_name}'."""
+    """
+    Extrait le nom du labo depuis le bloc 'AU NOM ET POUR LE COMPTE DE'.
+
+    pdfplumber lit les colonnes gauche/droite dans l'ordre :
+      AU NOM ET POUR LE COMPTE DE   ← col gauche (header)
+      Facturé à                      ← col droite (header, intercalé)
+      RECKITT BENCKISER ...          ← col gauche (vrai labo)
+
+    On cherche donc la première ligne NON vide après 'Facturé à' dans ce bloc.
+    """
     m = re.search(
-        r"AU NOM ET POUR LE COMPTE DE\s*\n\s*(.+)",
+        r"AU NOM ET POUR LE COMPTE DE\s*\n\s*Facturé\s+à\s*\n\s*(.+)",
         text, re.IGNORECASE
     )
+    if not m:
+        # Variante sans "Facturé à" intercalé
+        m = re.search(
+            r"AU NOM ET POUR LE COMPTE DE\s*\n\s*(.+)",
+            text, re.IGNORECASE
+        )
     if m:
         lab = m.group(1).strip()
-        # Nettoyer : parfois suivi de l'adresse sur la même ligne
-        lab = re.split(r'\s{2,}|\n', lab)[0].strip()
+        # Supprimer le "N° client XXXXXXX" en fin de ligne
+        lab = re.sub(r'\s*N°?\s*(?:client|compte|c\.?|clt)\b.*', '', lab, flags=re.IGNORECASE).strip()
+        # Garder uniquement la première partie (avant double espace ou retour)
+        lab = re.split(r'\s{3,}|\n', lab)[0].strip()
         return lab
     return ""
 
