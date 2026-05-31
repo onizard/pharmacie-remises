@@ -354,24 +354,18 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
             title = await page.title()
             _cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
             if any(k in title.lower() for k in _cf_kw):
-                progress("Challenge Cloudflare — attente résolution + formulaire (120s max)…")
-                try:
-                    # Attendre que le challenge soit résolu ET que le formulaire soit monté
-                    await page.wait_for_function(
-                        """() => {
-                            const noChallenge = !['just a moment','checking','verifying','cloudflare']
-                                .some(k => document.title.toLowerCase().includes(k));
-                            const hasForm = !!document.querySelector(
-                                "input[type='email'], input[name='email'], " +
-                                "input[name='username'], input[type='text'], input[type='password']"
-                            );
-                            return noChallenge && hasForm;
-                        }""",
-                        timeout=120_000, polling=2000,
-                    )
-                    progress(f"Challenge résolu + formulaire présent. Title: {await page.title()!r}")
-                except Exception:
-                    raise RuntimeError(f"Cloudflare challenge non résolu ou formulaire absent après 120s (URL: {page.url})")
+                progress("Challenge Cloudflare détecté — attente formulaire (120s)…")
+
+            # Attendre directement l'apparition d'un input (couvre CF challenge + React mount)
+            _form_sel = (
+                "input[type='email'], input[name='email'], "
+                "input[name='username'], input[type='text'], input[type='password']"
+            )
+            try:
+                await page.wait_for_selector(_form_sel, timeout=120_000)
+                progress(f"Formulaire présent. Title: {await page.title()!r}")
+            except Exception:
+                raise RuntimeError(f"Formulaire introuvable après 120s (URL: {page.url})")
 
             # Phase 2a : login via JS fetch depuis le contexte browser
             # (le cookie CF clearance est déjà présent — même stratégie que test_connector.py)
@@ -416,15 +410,10 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                 progress(f"API login échoué ({_je}) — fallback formulaire…")
 
             if not _api_ok:
-                # Phase 2b : fallback formulaire HTML (même logique que test_connector.py)
+                # Phase 2b : fallback formulaire HTML
                 _email_sel = ("input[type='email'], input[name='email'], "
                               "input[name='username'], input[type='text']")
-                try:
-                    await page.wait_for_selector(_email_sel, timeout=60_000)
-                except Exception:
-                    raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
-
-                progress(f"Formulaire trouvé. URL: {page.url}")
+                progress(f"Remplissage formulaire. URL: {page.url}")
                 await page.locator(_email_sel).first.fill(username)
                 await page.locator("input[type='password']").first.fill(password)
                 await page.locator("input[type='password']").first.press("Enter")
