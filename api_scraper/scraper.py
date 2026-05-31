@@ -58,43 +58,48 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     # elle ne peut pas être attendue dans un handler synchrone.
     _captured: list[tuple[str, object]] = []
 
-    _page_url = f"{BASE_URL}/factures/"
-
     def on_response(response):
         url = response.url
         ct  = response.headers.get("content-type", "")
-        # Capturer uniquement les réponses JSON de l'API (exclure la page /factures/ elle-même)
-        if "json" in ct and response.status == 200 and url != _page_url:
+        # Capturer uniquement les réponses JSON venant du même domaine
+        if "json" in ct and response.status == 200 and BASE_URL in url:
             _captured.append((url, response))
 
     page.on("response", on_response)
     await page.goto(f"{BASE_URL}/factures/", wait_until="networkidle", timeout=60_000)
-    await page.wait_for_timeout(4000)
+    await page.wait_for_timeout(6000)
     page.remove_listener("response", on_response)
 
-    # Construire une URL propre depuis l'endpoint JSON détecté (sans filtre de date)
-    # L'URL interceptée a souvent created_gte=<date récente> qui limite les résultats
-    progress(f"{len(_captured)} réponse(s) JSON interceptée(s) : {[u for u, _ in _captured[:3]]}")
+    # Sélectionner l'endpoint factures/invoices parmi les réponses JSON capturées
+    all_urls = [u for u, _ in _captured]
+    progress(f"{len(_captured)} réponses JSON du domaine : {all_urls[:5]}")
+
+    INVOICE_KEYWORDS = ("invoice", "facture", "bill", "order")
+
+    def _build_clean_url(url: str) -> str:
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        for key in list(params):
+            if any(k in key for k in ("gte", "lte", "since", "created", "start", "end")):
+                del params[key]
+        params["page_size"] = [str(PAGE_SIZE)]
+        params["page"]      = ["1"]
+        if "ordering" not in params or not params["ordering"][0]:
+            params["ordering"] = ["-billing_date"]
+        new_query = urlencode({k: v[0] for k, v in params.items()})
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}"
+
     clean_url: str | None = None
+    # Priorité 1 : URL dont le path contient un mot-clé facture/invoice
     for url, _resp in _captured:
-        try:
-            parsed = urlparse(url)
-            params = parse_qs(parsed.query)
-            # Supprimer tous les filtres de date/période
-            for key in list(params):
-                if any(k in key for k in ("gte", "lte", "date", "start", "end", "since", "created")):
-                    del params[key]
-            params["page_size"] = [str(PAGE_SIZE)]
-            params["page"]      = ["1"]
-            # Conserver l'ordering existant ou forcer par date décroissante
-            if "ordering" not in params or not params["ordering"][0]:
-                params["ordering"] = ["-billing_date"]
-            new_query = urlencode({k: v[0] for k, v in params.items()})
-            clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}"
-            progress(f"Endpoint API : {parsed.path} → {clean_url}")
-            break
-        except Exception:
-            pass
+        path = urlparse(url).path.lower()
+        if any(kw in path for kw in INVOICE_KEYWORDS):
+            try:
+                clean_url = _build_clean_url(url)
+                progress(f"Endpoint factures détecté : {urlparse(url).path} → {clean_url}")
+                break
+            except Exception:
+                pass
 
     csrf = await _get_csrf(page)
     if not csrf:
