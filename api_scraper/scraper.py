@@ -96,22 +96,19 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
 
     clean_url: str | None = None
     # Priorité 1 : URL dont le path contient un mot-clé facture/invoice
+    # On remonte jusqu'au segment contenant le keyword (ex: /invoices/count/ → /invoices/)
     for url, _resp in _captured:
-        parsed  = urlparse(url)
-        path    = parsed.path
-        path_lc = path.lower()
-        if not any(kw in path_lc for kw in INVOICE_KEYWORDS):
+        parsed   = urlparse(url)
+        segments = [s for s in parsed.path.split("/") if s]
+        kw_idx   = next((i for i, s in enumerate(segments)
+                         if any(kw in s.lower() for kw in INVOICE_KEYWORDS)), -1)
+        if kw_idx < 0:
             continue
-        # Normaliser vers l'endpoint liste : /invoices/count/ → /invoices/
-        # Supprimer le dernier segment si c'est un sous-endpoint (non numérique)
-        last_seg = path.rstrip("/").split("/")[-1]
-        if last_seg and not last_seg.isdigit():
-            # e.g. "count", "stats", "detail" → remonter d'un niveau
-            path = re.sub(r"/[^/]+/?$", "/", path.rstrip("/").rsplit("/", 1)[0] + "/")
-        base_url = f"{parsed.scheme}://{parsed.netloc}{path}"
+        base_path = "/" + "/".join(segments[:kw_idx + 1]) + "/"
+        base_url  = f"{parsed.scheme}://{parsed.netloc}{base_path}"
         try:
             clean_url = _build_clean_url(base_url)
-            progress(f"Endpoint factures : {path} → {clean_url}")
+            progress(f"Endpoint factures : {base_path} → {clean_url}")
             break
         except Exception:
             pass
