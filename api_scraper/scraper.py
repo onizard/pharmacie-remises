@@ -356,11 +356,17 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
             _cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
             if any(k in title.lower() for k in _cf_kw):
                 progress("Challenge Cloudflare — attente résolution (90s max)…")
-                await page.wait_for_function(
-                    "() => !['just a moment','checking','verifying','cloudflare']"
-                    ".some(k => document.title.toLowerCase().includes(k))",
-                    timeout=90_000, polling=2000,
-                )
+                try:
+                    await page.wait_for_function(
+                        "() => !['just a moment','checking','verifying','cloudflare']"
+                        ".some(k => document.title.toLowerCase().includes(k))",
+                        timeout=90_000, polling=2000,
+                    )
+                    progress(f"Challenge résolu. Title: {await page.title()!r}")
+                except Exception as _cf_e:
+                    raise RuntimeError(f"Cloudflare challenge non résolu après 90s (URL: {page.url})")
+                # Laisser la SPA monter le formulaire après la redirection CF
+                await page.wait_for_timeout(3000)
 
             # Phase 2a : login via JS fetch depuis le contexte browser
             # (le cookie CF clearance est déjà présent — même stratégie que test_connector.py)
@@ -409,7 +415,7 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                 _email_sel = ("input[type='email'], input[name='email'], "
                               "input[name='username'], input[type='text']")
                 try:
-                    await page.wait_for_selector(_email_sel, timeout=30_000)
+                    await page.wait_for_selector(_email_sel, timeout=60_000)
                 except Exception:
                     raise RuntimeError(f"Formulaire de login introuvable (URL: {page.url})")
 
