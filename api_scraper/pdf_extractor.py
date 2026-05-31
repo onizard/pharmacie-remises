@@ -1,10 +1,14 @@
 """
-Extraction des données produits depuis les PDFs de factures DIGIPHARMACIE.
+Extraction des lignes produits depuis les PDFs de factures DIGIPHARMACIE.
 
 Formats supportés :
-  1. ALLOGA FRANCE — factures au nom d'un labo (Biogaran, Reckitt, etc.)
-     Colonnes : Code Article | Désignation | Qté | PU HT Brut | Taux Remise | PU HT Net | Total HT | TVA%
-  2. Fallback texte brut — regex sur CIP13 + nombres voisins
+  1. ALLOGA FRANCE — factures au nom d'un labo (format liste per-CIP)
+  2. VIATRIS / MYLAN — factures directes labo (table pdfplumber 6 colonnes)
+  3. COOPERATION PHARMACEUTIQUE — factures répartiteur (EAN13 + PU brut/net)
+  4. Fallback texte brut — regex CIP13 + valeurs numériques
+
+Seules les lignes dont le labo (extrait du PDF) appartient à LABOS_CIBLES
+sont retournées. Les autres labos sont ignorés.
 """
 
 import re
@@ -13,9 +17,6 @@ from pathlib import Path
 import pdfplumber
 
 # ── Labos génériqueurs cibles ─────────────────────────────────────────────────
-# Seules les lignes dont le labo (extrait de l'en-tête) correspond à l'un de ces
-# mots-clés sont conservées. Les autres labos (Reckitt, Biocodex, Colgate…) sont
-# ignorés même si la facture transite par Alloga ou un répartiteur.
 
 LABOS_CIBLES = {
     "biogaran", "teva", "mylan", "viatris", "zydus",
@@ -29,32 +30,18 @@ def _is_labo_cible(labo: str) -> bool:
     return any(kw in n for kw in LABOS_CIBLES)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+def _is_generic_designation(designation: str) -> bool:
+    """Vérifie si la désignation d'un produit contient un nom de labo génériqueur."""
+    n = (designation or "").lower()
+    return any(kw in n for kw in LABOS_CIBLES)
 
-RE_CIP13 = re.compile(r'\b(3[0-9]\d{11})\b')
 
-# Ligne produit Alloga :
-#   3400938254518 DESIGNATION QTE [QTE_GRATUIT] PU_BRUT REMISE% PU_NET TOTAL_HT TVA%
-# Exemple : "3400938254518 GAVISCONELL SUSP SSUCRE X12 12 7,700 35,00% 5,005 60,06 10,00%"
-_NUM   = r'[\d]+(?:[,\s]\d+)*'    # nombre français (virgule décimale, espaces milliers)
-_PCT   = r'(\d{1,3},\d{2})%'      # pourcentage type "35,00%"
-RE_ALLOGA_LINE = re.compile(
-    r'^(\d{13})\s+'              # CIP13
-    r'(.+?)\s+'                  # désignation (non-greedy)
-    r'(\d+)\s+'                  # quantité facturée
-    r'([\d,\s]+?)\s+'            # PU HT Brut
-    + _PCT + r'\s+'              # Taux Remise
-    + r'([\d,\s]+?)\s+'         # PU HT Net
-    + r'([\d,\s]+?)\s+'         # Total HT
-    + _PCT + r'\s*$',            # Taux TVA
-    re.MULTILINE,
-)
-
+# ── Helpers numériques ─────────────────────────────────────────────────────────
 
 def _to_float(s: str) -> float | None:
     if not s:
         return None
-    s = str(s).strip().replace('\xa0', '').replace(' ', '').replace(' ', '').replace(',', '.')
+    s = str(s).strip().replace('\xa0', '').replace(' ', '').replace(' ', '').replace(',', '.')
     m = re.search(r'[\d.]+', s)
     try:
         return float(m.group()) if m else None
@@ -62,79 +49,85 @@ def _to_float(s: str) -> float | None:
         return None
 
 
-def _norm(s: str) -> str:
-    return (s or "").lower().strip()
+def _parse_remise_str(s: str) -> float | None:
+    """Parse '5-%', '5,00%', '17.5%' → float."""
+    if not s:
+        return None
+    m = re.search(r'(\d+)[.,\-]?(\d*)', s.replace('%', ''))
+    if not m:
+        return None
+    integer_part = m.group(1)
+    decimal_part = m.group(2) or '0'
+    try:
+        return float(f"{integer_part}.{decimal_part}")
+    except ValueError:
+        return None
+
+
+RE_CIP13 = re.compile(r'\b(3[0-9]\d{11})\b')
 
 
 # ── Détection du format ────────────────────────────────────────────────────────
 
 def _detect_format(text: str) -> str:
-    """Retourne 'alloga' ou 'unknown' selon les marqueurs dans le texte."""
-    t = text[:500].lower()
-    if "alloga france" in t or "alloga" in t[:200]:
+    t200 = text[:400].lower()
+    if "alloga france" in t200 or ("alloga" in t200 and "au nom et pour le compte" in text[:600].lower()):
         return "alloga"
+    if "viatris sante" in t200 or "viatris santé" in t200 or ("mylan" in t200 and "c.i.p" in text[:1000].lower()):
+        return "viatris"
+    if "cooperation pharmaceutique" in t200 or "coopération pharmaceutique" in t200:
+        return "cooperation"
     return "unknown"
 
 
-def _extract_lab_name(text: str) -> str:
-    """
-    Extrait le nom du labo depuis le bloc 'AU NOM ET POUR LE COMPTE DE'.
-
-    pdfplumber lit les colonnes gauche/droite dans l'ordre :
-      AU NOM ET POUR LE COMPTE DE   ← col gauche (header)
-      Facturé à                      ← col droite (header, intercalé)
-      RECKITT BENCKISER ...          ← col gauche (vrai labo)
-
-    On cherche donc la première ligne NON vide après 'Facturé à' dans ce bloc.
-    """
+def _extract_lab_from_header(text: str) -> str:
+    """Extrait le labo depuis 'AU NOM ET POUR LE COMPTE DE → Facturé à → {labo}'."""
     m = re.search(
         r"AU NOM ET POUR LE COMPTE DE\s*\n\s*Facturé\s+à\s*\n\s*(.+)",
         text, re.IGNORECASE
     )
     if not m:
-        # Variante sans "Facturé à" intercalé
-        m = re.search(
-            r"AU NOM ET POUR LE COMPTE DE\s*\n\s*(.+)",
-            text, re.IGNORECASE
-        )
+        m = re.search(r"AU NOM ET POUR LE COMPTE DE\s*\n\s*(.+)", text, re.IGNORECASE)
     if m:
         lab = m.group(1).strip()
-        # Supprimer le "N° client XXXXXXX" en fin de ligne
         lab = re.sub(r'\s*N°?\s*(?:client|compte|c\.?|clt)\b.*', '', lab, flags=re.IGNORECASE).strip()
-        # Garder uniquement la première partie (avant double espace ou retour)
         lab = re.split(r'\s{3,}|\n', lab)[0].strip()
         return lab
     return ""
 
 
-# ── Extracteur ALLOGA ──────────────────────────────────────────────────────────
+# ── 1. Format ALLOGA ───────────────────────────────────────────────────────────
+
+# Ligne produit Alloga :
+#   3400938254518 GAVISCONELL SUSP SSUCRE X12 12 7,700 35,00% 5,005 60,06 10,00%
+_PCT = r'(\d{1,3},\d{2})%'
+RE_ALLOGA_LINE = re.compile(
+    r'^(\d{13})\s+'
+    r'(.+?)\s+'
+    r'(\d+)\s+'
+    r'([\d,\s]+?)\s+'
+    + _PCT + r'\s+'
+    + r'([\d,\s]+?)\s+'
+    + r'([\d,\s]+?)\s+'
+    + _PCT + r'\s*$',
+    re.MULTILINE,
+)
+
 
 def _extract_alloga(text: str, provider: str, billing_date: str) -> list[dict]:
-    """
-    Extrait les lignes produits d'une facture Alloga.
-
-    Format brut (raw text) car pdfplumber fusionne souvent toutes les lignes
-    produits dans une seule cellule.
-
-    Colonnes : CIP13 | Désignation | Qté | PU Brut | Remise% | PU Net | Total HT | TVA%
-    """
-    lab_name = _extract_lab_name(text)
-
+    lab_name = _extract_lab_from_header(text)
     lines = []
     for raw_line in text.splitlines():
-        line = raw_line.strip()
-        m = RE_ALLOGA_LINE.match(line)
+        m = RE_ALLOGA_LINE.match(raw_line.strip())
         if not m:
             continue
-
         cip13    = m.group(1)
         libelle  = m.group(2).strip()
         qte_str  = m.group(3)
         pubrut_s = m.group(4)
-        remise_s = m.group(5)   # sans %
+        remise_s = m.group(5)
         punet_s  = m.group(6)
         total_s  = m.group(7)
-        # tva_s  = m.group(8)   # non utilisé pour l'instant
 
         pu_brut  = _to_float(pubrut_s)
         remise   = _to_float(remise_s)
@@ -144,64 +137,186 @@ def _extract_alloga(text: str, provider: str, billing_date: str) -> list[dict]:
 
         if pu_brut is None and pu_net is None:
             continue
-
         lines.append({
-            "cip":          cip13,
-            "libelle":      libelle,
-            "fournisseur":  provider,
-            "labo":         lab_name,
-            "billing_date": billing_date,
-            "quantite":     qte,
-            "prix_brut":    round(pu_brut, 4) if pu_brut else None,
-            "remise_pct":   round(remise, 2)  if remise is not None else None,
-            "pa_net":       round(pu_net, 4)  if pu_net else None,
-            "total_ht":     round(total_ht, 2) if total_ht else None,
+            "cip": cip13, "libelle": libelle, "labo": lab_name,
+            "fournisseur": provider, "billing_date": billing_date,
+            "quantite": qte, "prix_brut": round(pu_brut, 4) if pu_brut else None,
+            "remise_pct": round(remise, 2) if remise is not None else None,
+            "pa_net": round(pu_net, 4) if pu_net else None,
+            "total_ht": round(total_ht, 2) if total_ht else None,
         })
-
     return lines
 
 
-# ── Fallback texte brut ────────────────────────────────────────────────────────
+# ── 2. Format VIATRIS / MYLAN ─────────────────────────────────────────────────
+
+def _extract_viatris(pdf, provider: str, billing_date: str) -> list[dict]:
+    """
+    Facture Viatris/Mylan — table pdfplumber 6 colonnes (cellules multi-lignes).
+
+    Ligne data : [CIP13, Designation, "Qty\\nRemise%\\nLot", "PU_brut\\nPU_net\\nDate", "Montant_brut\\nMontant_net\\nDate", TVA%]
+    Quand pas de remise : [CIP13, Designation, "Qty\\nLot", "PU_brut\\nDate", "Montant_brut\\nDate", TVA%]
+    """
+    lab_name = ""
+    lines    = []
+
+    for page in pdf.pages:
+        text = page.extract_text() or ""
+        if not lab_name:
+            # Viatris met son nom en tête sans "AU NOM ET POUR LE COMPTE DE"
+            m = re.search(r'(VIATRIS\s+SANT[EÉ]|MYLAN\s+SAS|MYLAN)\b', text, re.IGNORECASE)
+            if m:
+                lab_name = m.group(1)
+
+        for tbl in page.extract_tables():
+            if not tbl or len(tbl) < 2:
+                continue
+            # Vérifier que c'est le tableau produits (colonnes C.I.P, Designation, Quantite…)
+            header_str = " ".join(str(c or "") for c in tbl[0]).lower()
+            if "c.i.p" not in header_str and "designation" not in header_str:
+                continue
+
+            for row in tbl[1:]:
+                if not row or len(row) < 6:
+                    continue
+                cip_raw = str(row[0] or "").strip()
+                # Ignorer les lignes d'en-tête secondaires ou vides
+                if not RE_CIP13.match(cip_raw.split('\n')[0]):
+                    continue
+
+                cip13   = cip_raw.split('\n')[0].strip()
+                libelle = str(row[1] or "").split('\n')[0].strip()
+
+                # col[2] = "qty\\nremise%\\nlot"  ou  "qty\\nlot"
+                col2 = str(row[2] or "").split('\n')
+                qty_str    = col2[0].strip() if col2 else ""
+                remise_str = col2[1].strip() if len(col2) >= 3 else ""
+
+                # col[3] = "pu_brut EUR\\npu_net EUR\\ndate"  ou  "pu_brut EUR\\ndate"
+                col3   = str(row[3] or "").split('\n')
+                pubrut = _to_float(col3[0])
+                punet  = _to_float(col3[1]) if len(col3) >= 3 else None
+
+                # col[4] = "montant_brut EUR\\nmontant_net EUR\\ndate"  ou  "montant_brut EUR\\ndate"
+                col4       = str(row[4] or "").split('\n')
+                total_brut = _to_float(col4[0])
+                total_net  = _to_float(col4[1]) if len(col4) >= 3 else None
+
+                if pubrut is None:
+                    continue
+
+                # Calculer la remise si non fournie explicitement
+                remise = _parse_remise_str(remise_str) if remise_str and '%' in remise_str else None
+                if remise is None and pubrut and punet and pubrut > 0:
+                    remise = round((1 - punet / pubrut) * 100, 2)
+
+                qte = None
+                m_qty = re.search(r'(\d+)', qty_str)
+                if m_qty:
+                    qte = int(m_qty.group(1))
+
+                lines.append({
+                    "cip": cip13, "libelle": libelle, "labo": lab_name or "VIATRIS SANTE",
+                    "fournisseur": provider, "billing_date": billing_date,
+                    "quantite": qte,
+                    "prix_brut": round(pubrut, 4) if pubrut else None,
+                    "remise_pct": round(remise, 2) if remise is not None else None,
+                    "pa_net": round(punet, 4) if punet else None,
+                    "total_ht": round(total_net or total_brut, 2) if (total_net or total_brut) else None,
+                })
+    return lines
+
+
+# ── 3. Format COOPÉRATION PHARMACEUTIQUE ──────────────────────────────────────
+
+# Ligne produit Coopération :
+#   1179070 3614810007097 POUXIT PEIGNE A/POUX 6 6 10,05 5,53 33,18 5
+# Colonnes : code_int(7) | ean13(13) | designation | qty_liv | qty_fac |
+#            [prix_fab] | pu_brut | pu_net | montant | tva_code
+RE_COOP_LINE = re.compile(
+    r'^\d{6,7}\s+'                  # code article interne
+    r'(\d{13})\s+'                   # EAN13 / CIP13
+    r'(.+?)\s+'                      # désignation (non-greedy)
+    r'(\d+)\s+'                      # qté livrée
+    r'(\d+)\s+'                      # qté facturée
+    r'(?:\d[\d,]*\s+)?'              # prix fabricant (optionnel)
+    r'(\d[\d,]*,\d{2})\s+'          # PU HT brut
+    r'(\d[\d,]*,\d{2})\s+'          # PU HT net
+    r'(\d[\d,]*,\d{2})\s+'          # montant HT
+    r'\d+\s*$',                      # code TVA
+    re.MULTILINE,
+)
+
+
+def _extract_cooperation(text: str, provider: str, billing_date: str) -> list[dict]:
+    """
+    Factures répartiteur Coopération Pharmaceutique.
+    Le labo n'est pas dans l'en-tête — on le détecte depuis la désignation.
+    """
+    lines = []
+    for raw_line in text.splitlines():
+        m = RE_COOP_LINE.match(raw_line.strip())
+        if not m:
+            continue
+        ean13   = m.group(1)
+        libelle = m.group(2).strip()
+        # qte_liv = m.group(3)
+        qte_fac = m.group(4)
+        pubrut  = _to_float(m.group(5))
+        punet   = _to_float(m.group(6))
+        montant = _to_float(m.group(7))
+
+        if pubrut is None or punet is None:
+            continue
+
+        # Calculer la remise
+        remise = round((1 - punet / pubrut) * 100, 2) if pubrut > 0 else None
+
+        # Détecter le labo depuis la désignation
+        labo_detected = ""
+        libelle_lc = libelle.lower()
+        for kw in LABOS_CIBLES:
+            if kw in libelle_lc:
+                labo_detected = kw.upper()
+                break
+
+        lines.append({
+            "cip": ean13, "libelle": libelle, "labo": labo_detected,
+            "fournisseur": provider, "billing_date": billing_date,
+            "quantite": int(qte_fac) if qte_fac.isdigit() else None,
+            "prix_brut": round(pubrut, 4),
+            "remise_pct": round(remise, 2) if remise is not None else None,
+            "pa_net": round(punet, 4),
+            "total_ht": round(montant, 2) if montant else None,
+        })
+    return lines
+
+
+# ── 4. Fallback texte brut ─────────────────────────────────────────────────────
 
 def _extract_text_fallback(text: str, provider: str, billing_date: str) -> list[dict]:
-    """Fallback générique : cherche CIP13 + valeurs numériques sur la même ligne."""
     RE_PRICE = re.compile(r'\b(\d{1,4}[,\.]\d{2,4})\b')
     RE_PCT   = re.compile(r'\b(\d{1,2}[,\.]\d{0,2})\s*%')
-
     lines = []
     for line in text.splitlines():
         m_cip = RE_CIP13.search(line)
         if not m_cip:
             continue
         cip = m_cip.group(1)
-
         prices = [float(p.replace(",", ".")) for p in RE_PRICE.findall(line)]
         pcts   = [float(p.replace(",", ".")) for p in RE_PCT.findall(line)]
-
         if not prices:
             continue
-
         prix_brut = max(prices)
         remise    = pcts[0] if pcts else None
-        pa_net    = (
-            round(prix_brut * (1 - remise / 100), 4)
-            if remise is not None else None
-        )
-        libelle = re.split(r'\d', line)[0].strip()[:80]
-
+        pa_net    = round(prix_brut * (1 - remise / 100), 4) if remise is not None else None
+        libelle   = re.split(r'\d', line)[0].strip()[:80]
         lines.append({
-            "cip":          cip,
-            "libelle":      libelle,
-            "fournisseur":  provider,
-            "labo":         "",
-            "billing_date": billing_date,
-            "quantite":     None,
-            "prix_brut":    round(prix_brut, 4),
-            "remise_pct":   remise,
-            "pa_net":       pa_net,
-            "total_ht":     None,
+            "cip": cip, "libelle": libelle, "labo": "",
+            "fournisseur": provider, "billing_date": billing_date,
+            "quantite": None, "prix_brut": round(prix_brut, 4),
+            "remise_pct": remise, "pa_net": pa_net, "total_ht": None,
         })
-
     return lines
 
 
@@ -209,37 +324,29 @@ def _extract_text_fallback(text: str, provider: str, billing_date: str) -> list[
 
 def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> list[dict]:
     """
-    Extrait les lignes produits d'une facture PDF.
-
-    Seules les lignes dont le labo est un génériqueur cible (LABOS_CIBLES) sont
-    conservées. Les lignes d'autres labos (Reckitt, Biocodex, Colgate…) sont
-    ignorées même si la facture transite par Alloga ou un répartiteur.
-
-    Retourne une liste de dicts : cip, libelle, labo, fournisseur, billing_date,
-    quantite, prix_brut, remise_pct, pa_net, total_ht.
+    Extrait les lignes produits d'une facture PDF et retourne uniquement
+    les lignes dont le labo est un génériqueur cible (LABOS_CIBLES).
     """
     try:
         with pdfplumber.open(str(pdf_path)) as pdf:
-            full_text = "\n".join(
-                page.extract_text() or "" for page in pdf.pages
-            )
+            full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+            fmt = _detect_format(full_text)
+
+            if fmt == "alloga":
+                lines = _extract_alloga(full_text, provider, billing_date)
+            elif fmt == "viatris":
+                lines = _extract_viatris(pdf, provider, billing_date)
+            elif fmt == "cooperation":
+                lines = _extract_cooperation(full_text, provider, billing_date)
+            else:
+                lines = _extract_text_fallback(full_text, provider, billing_date)
     except Exception:
         return []
 
-    if not full_text.strip():
-        return []
-
-    fmt = _detect_format(full_text)
-
-    if fmt == "alloga":
-        lines = _extract_alloga(full_text, provider, billing_date)
-    else:
-        lines = _extract_text_fallback(full_text, provider, billing_date)
-
-    # Filtrer : ne garder que les lignes d'un labo génériqueur cible
+    # Filtrer sur les labos génériqueurs cibles
     lines = [l for l in lines if _is_labo_cible(l.get("labo", ""))]
 
-    # Déduplication légère : même CIP + même date + début libellé
+    # Déduplication légère
     seen, dedup = set(), []
     for line in lines:
         key = (line["cip"], line["billing_date"], line.get("libelle", "")[:20])
