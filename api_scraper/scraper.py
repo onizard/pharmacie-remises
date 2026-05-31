@@ -303,6 +303,24 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
         tmp_path = Path(tmp.name)
 
     try:
+        # Mode diagnostic : imprimer la structure pdfplumber du PREMIER PDF pour
+        # comprendre le format avant d'écrire l'extracteur ciblé
+        import pdfplumber, os
+        if os.environ.get("PDF_DEBUG") == "1":
+            print(f"\n{'='*60}")
+            print(f"PDF DEBUG : {provider} | {billing_date} | {len(content)} bytes")
+            print(f"{'='*60}")
+            with pdfplumber.open(str(tmp_path)) as _pdf:
+                for _pn, _pg in enumerate(_pdf.pages, 1):
+                    print(f"\n--- PAGE {_pn} ---")
+                    _txt = _pg.extract_text() or ""
+                    print(_txt[:3000])
+                    for _ti, _tbl in enumerate(_pg.extract_tables()):
+                        print(f"\n  [TABLE {_ti+1}] {len(_tbl)} lignes")
+                        for _row in _tbl[:10]:
+                            print(f"    {_row}")
+            print(f"{'='*60}\n")
+
         lines = extract_invoice_lines(tmp_path, provider, billing_date)
     finally:
         tmp_path.unlink(missing_ok=True)
