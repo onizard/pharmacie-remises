@@ -6,11 +6,15 @@ on:
       user_id:
         description: 'Supabase user ID'
         required: true
+      labs_filter:
+        description: 'Filtre labo (ex: biogaran). Vide = tous les génériques.'
+        required: false
+        default: ''
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -37,4 +41,5 @@ jobs:
           USER_ID:              ${{ inputs.user_id }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           PROXY_URL:            ${{ secrets.PROXY_URL }}
+          LABS_FILTER:          ${{ inputs.labs_filter }}
         run: python3 api_scraper/run_job.py

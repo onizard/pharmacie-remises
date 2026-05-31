@@ -22,11 +22,13 @@ from pdf_extractor import extract_invoice_lines
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-BASE_URL  = "https://app.digipharmacie.fr"
-PAGE_SIZE = 100
-YEARS     = {"2025", "2026"}   # années à collecter
-STOP_YEAR = "2025"             # arrêter quand billing_date < 2025
-PROXY_URL = os.environ.get("PROXY_URL", "")
+BASE_URL     = "https://app.digipharmacie.fr"
+PAGE_SIZE    = 100
+YEARS        = {"2025", "2026"}   # années à collecter
+STOP_YEAR    = "2025"             # arrêter quand billing_date < 2025
+PROXY_URL    = os.environ.get("PROXY_URL", "")
+# Filtre optionnel : ne traiter que les PDFs de ce labo (ex: "biogaran"). Vide = tous.
+LABS_FILTER  = os.environ.get("LABS_FILTER", "").lower().strip()
 
 LABOS_GENERIQUES = [
     "cerp", "mylan", "viatris", "biogaran", "arrow", "sandoz", "teva",
@@ -452,11 +454,19 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
             progress("Aucune facture générique 2025 trouvée")
             return []
 
-        progress(f"{len(invoices)} factures trouvées — extraction PDF…")
+        # Appliquer le filtre labo si défini (ex: LABS_FILTER=biogaran)
+        if LABS_FILTER:
+            filtered = [inv for inv in invoices
+                        if LABS_FILTER in (inv.get("provider_ref") or inv.get("provider_name") or "").lower()]
+            progress(f"{len(invoices)} factures → {len(filtered)} après filtre '{LABS_FILTER}'")
+            invoices = filtered
+
+        progress(f"{len(invoices)} factures à extraire (PDF)…")
 
         all_lines = []
         for i, inv in enumerate(invoices, 1):
-            progress(f"PDF {i}/{len(invoices)} — {inv.get('provider_ref', '?')}")
+            provider = inv.get("provider_ref") or inv.get("provider_name") or "?"
+            progress(f"PDF {i}/{len(invoices)} — {provider}  ({inv.get('billing_date','?')})")
             lines = await _process_pdf(page, inv)
             all_lines.extend(lines)
             await page.wait_for_timeout(150)
