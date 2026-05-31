@@ -66,8 +66,12 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
             _captured.append((url, response))
 
     page.on("response", on_response)
-    await page.goto(f"{BASE_URL}/factures/", wait_until="networkidle", timeout=60_000)
-    await page.wait_for_timeout(6000)
+    try:
+        await page.goto(f"{BASE_URL}/factures/", wait_until="load", timeout=60_000)
+    except Exception:
+        pass  # domcontentloaded au minimum, on continue
+    # Laisser la SPA charger ses données (appels API asynchrones)
+    await page.wait_for_timeout(8000)
     page.remove_listener("response", on_response)
 
     # Sélectionner l'endpoint factures/invoices parmi les réponses JSON capturées
