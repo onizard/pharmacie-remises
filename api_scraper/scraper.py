@@ -52,30 +52,37 @@ async def _get_csrf(page) -> str:
 async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     progress("Navigation vers les factures…")
 
-    first_data = {}
-    first_api_url = [None]
+    # Sauvegarder les objets Response (pas leur corps) — response.json() est une coroutine,
+    # elle ne peut pas être attendue dans un handler synchrone.
+    _captured: list[tuple[str, object]] = []
 
     def on_response(response):
-        if first_data:
-            return
         url = response.url
         if ("invoices" in url or "facture" in url.lower()) and response.status == 200:
-            try:
-                body = response.json()
-                if isinstance(body, dict) and ("results" in body or "count" in body):
-                    first_data.update(body)
-                    first_api_url[0] = url
-            except Exception:
-                pass
+            _captured.append((url, response))
 
     page.on("response", on_response)
     await page.goto(f"{BASE_URL}/factures/", wait_until="networkidle", timeout=60_000)
     await page.wait_for_timeout(4000)
     page.remove_listener("response", on_response)
 
-    if first_data and first_api_url[0]:
-        progress(f"API détectée : {first_api_url[0]}")
-        return await _paginate_from_browser(page, first_data, first_api_url[0], progress)
+    # Lire les corps en async maintenant que la navigation est terminée
+    first_data: dict = {}
+    first_api_url: str | None = None
+    for url, resp in _captured:
+        if first_data:
+            break
+        try:
+            body = await resp.json()
+            if isinstance(body, dict) and ("results" in body or "count" in body):
+                first_data.update(body)
+                first_api_url = url
+        except Exception:
+            pass
+
+    if first_data and first_api_url:
+        progress(f"API détectée : {first_api_url}")
+        return await _paginate_from_browser(page, first_data, first_api_url, progress)
 
     progress("Tentative API directe depuis /factures/…")
     csrf = await _get_csrf(page)
