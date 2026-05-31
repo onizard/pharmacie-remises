@@ -307,23 +307,22 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
         tmp_path = Path(tmp.name)
 
     try:
-        # Mode diagnostic : imprimer la structure pdfplumber du PREMIER PDF pour
-        # comprendre le format avant d'écrire l'extracteur ciblé
+        # Mode diagnostic : imprimer la structure pdfplumber
         import pdfplumber, os
         if os.environ.get("PDF_DEBUG") == "1":
             print(f"\n{'='*60}")
-            print(f"PDF DEBUG : {provider} | {billing_date} | {len(content)} bytes")
-            print(f"{'='*60}")
+            print(f"PDF DEBUG : {provider} | {billing_date} | {len(content)} bytes", flush=True)
+            print(f"{'='*60}", flush=True)
             with pdfplumber.open(str(tmp_path)) as _pdf:
                 for _pn, _pg in enumerate(_pdf.pages, 1):
-                    print(f"\n--- PAGE {_pn} ---")
+                    print(f"\n--- PAGE {_pn} ---", flush=True)
                     _txt = _pg.extract_text() or ""
-                    print(_txt[:3000])
+                    print(_txt[:4000], flush=True)
                     for _ti, _tbl in enumerate(_pg.extract_tables()):
-                        print(f"\n  [TABLE {_ti+1}] {len(_tbl)} lignes")
-                        for _row in _tbl[:10]:
-                            print(f"    {_row}")
-            print(f"{'='*60}\n")
+                        print(f"\n  [TABLE {_ti+1}] {len(_tbl)} lignes", flush=True)
+                        for _row in _tbl[:20]:
+                            print(f"    {_row}", flush=True)
+            print(f"{'='*60}\n", flush=True)
 
         lines = extract_invoice_lines(tmp_path, provider, billing_date)
     finally:
