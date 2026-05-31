@@ -74,7 +74,24 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     except Exception:
         pass  # domcontentloaded au minimum, on continue
     # Laisser la SPA charger ses données (appels API asynchrones)
-    await page.wait_for_timeout(8000)
+    await page.wait_for_timeout(6000)
+
+    # Cliquer "Charger plus" si présent — l'API limite à 6 mois par défaut,
+    # ce bouton déclenche un appel API sans cette restriction
+    _charger_plus_sel = (
+        "button:has-text('Charger plus'), a:has-text('Charger plus'), "
+        "button:has-text('Load more'), [data-action*='load'], "
+        "button:has-text('charger plus')"
+    )
+    try:
+        btn = page.locator(_charger_plus_sel).first
+        if await btn.count() > 0:
+            progress("Clic 'Charger plus' pour élargir la recherche…")
+            await btn.click()
+            await page.wait_for_timeout(4000)  # attendre les réponses API étendues
+    except Exception:
+        pass
+
     page.remove_listener("response", on_response)
 
     # Sélectionner l'endpoint factures/invoices parmi les réponses JSON capturées
@@ -97,8 +114,9 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
         return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}"
 
     clean_url: str | None = None
-    # Priorité 1 : URL dont le path contient un mot-clé facture/invoice
-    # On remonte jusqu'au segment contenant le keyword (ex: /invoices/count/ → /invoices/)
+    # Collecter TOUTES les URLs candidate (invoice/facture), puis prendre la DERNIÈRE
+    # (capturée après le clic "Charger plus" si présent — URL avec le bon contexte étendu)
+    invoice_candidates: list[str] = []
     for url, _resp in _captured:
         parsed   = urlparse(url)
         segments = [s for s in parsed.path.split("/") if s]
@@ -108,10 +126,14 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
             continue
         base_path = "/" + "/".join(segments[:kw_idx + 1]) + "/"
         base_url  = f"{parsed.scheme}://{parsed.netloc}{base_path}"
+        invoice_candidates.append(base_url)
+
+    if invoice_candidates:
+        # Utiliser la DERNIÈRE candidate (post "Charger plus" si cliqué)
+        chosen = invoice_candidates[-1]
         try:
-            clean_url = _build_clean_url(base_url)
-            progress(f"Endpoint factures : {base_path} → {clean_url}")
-            break
+            clean_url = _build_clean_url(chosen)
+            progress(f"Endpoint factures : {urlparse(chosen).path} → {clean_url}")
         except Exception:
             pass
 
