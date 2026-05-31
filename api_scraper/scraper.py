@@ -355,18 +355,24 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
             title = await page.title()
             _cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
             if any(k in title.lower() for k in _cf_kw):
-                progress("Challenge Cloudflare — attente résolution (90s max)…")
+                progress("Challenge Cloudflare — attente résolution + formulaire (120s max)…")
                 try:
+                    # Attendre que le challenge soit résolu ET que le formulaire soit monté
                     await page.wait_for_function(
-                        "() => !['just a moment','checking','verifying','cloudflare']"
-                        ".some(k => document.title.toLowerCase().includes(k))",
-                        timeout=90_000, polling=2000,
+                        """() => {
+                            const noChallenge = !['just a moment','checking','verifying','cloudflare']
+                                .some(k => document.title.toLowerCase().includes(k));
+                            const hasForm = !!document.querySelector(
+                                "input[type='email'], input[name='email'], " +
+                                "input[name='username'], input[type='text'], input[type='password']"
+                            );
+                            return noChallenge && hasForm;
+                        }""",
+                        timeout=120_000, polling=2000,
                     )
-                    progress(f"Challenge résolu. Title: {await page.title()!r}")
-                except Exception as _cf_e:
-                    raise RuntimeError(f"Cloudflare challenge non résolu après 90s (URL: {page.url})")
-                # Laisser la SPA monter le formulaire après la redirection CF
-                await page.wait_for_timeout(3000)
+                    progress(f"Challenge résolu + formulaire présent. Title: {await page.title()!r}")
+                except Exception:
+                    raise RuntimeError(f"Cloudflare challenge non résolu ou formulaire absent après 120s (URL: {page.url})")
 
             # Phase 2a : login via JS fetch depuis le contexte browser
             # (le cookie CF clearance est déjà présent — même stratégie que test_connector.py)
