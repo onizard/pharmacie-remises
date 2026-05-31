@@ -279,36 +279,27 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
     billing_date = inv.get("billing_date", "")
 
     import os as _os
+    import urllib.request as _ul
     if _os.environ.get("PDF_DEBUG") == "1":
-        print(f"[PDF] Téléchargement : {file_url[:120]}", flush=True)
+        print(f"[PDF] Téléchargement : {file_url[:140]}", flush=True)
 
-    b64 = await page.evaluate("""
-        async ([url]) => {
-            try {
-                const resp = await fetch(url, { credentials: 'include' });
-                if (!resp.ok) return {err: resp.status + ' ' + resp.statusText};
-                const buf   = await resp.arrayBuffer();
-                const bytes = new Uint8Array(buf);
-                let bin = '';
-                for (const b of bytes) bin += String.fromCharCode(b);
-                return {ok: btoa(bin)};
-            } catch(e) { return {err: String(e)}; }
-        }
-    """, [file_url])
-
-    if _os.environ.get("PDF_DEBUG") == "1":
-        if b64 and b64.get("err"):
-            print(f"[PDF] Échec download : {b64['err']}", flush=True)
-        elif b64 and b64.get("ok"):
-            print(f"[PDF] OK : {len(b64['ok'])} chars base64", flush=True)
-        else:
-            print(f"[PDF] Réponse inattendue : {b64}", flush=True)
-
-    if not b64 or not b64.get("ok"):
+    # Télécharger directement depuis Python (pas browser fetch) pour éviter les
+    # erreurs CORS sur les URLs signées Google Cloud Storage
+    content = b""
+    try:
+        req = _ul.Request(file_url, headers={"User-Agent": "Mozilla/5.0"})
+        with _ul.urlopen(req, timeout=30) as r:
+            content = r.read()
+        if _os.environ.get("PDF_DEBUG") == "1":
+            print(f"[PDF] OK : {len(content)} bytes", flush=True)
+    except Exception as _e:
+        if _os.environ.get("PDF_DEBUG") == "1":
+            print(f"[PDF] Échec urllib : {_e}", flush=True)
         return []
-    content = base64.b64decode(b64["ok"])
+
     if len(content) < 500:
-        print(f"[PDF] Trop petit ({len(content)} bytes), ignoré", flush=True)
+        if _os.environ.get("PDF_DEBUG") == "1":
+            print(f"[PDF] Trop petit ({len(content)} bytes), ignoré", flush=True)
         return []
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
