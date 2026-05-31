@@ -91,7 +91,14 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
             _btn = page.locator(_sel).first
             if await _btn.count() > 0:
                 progress(f"Clic '{_txt}' pour élargir la recherche…")
-                await _btn.click()
+                try:
+                    await _btn.click(timeout=5_000)
+                except Exception:
+                    # Element non actionable (caché, overlay) → forcer via JS
+                    try:
+                        await _btn.evaluate("el => el.click()")
+                    except Exception:
+                        pass
                 _btn_found = True
                 await page.wait_for_timeout(6000)  # attendre les réponses API étendues
                 break
