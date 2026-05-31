@@ -66,31 +66,34 @@ def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
         print(f"  [warn] Supabase update failed : {e}")
 
 
-def _get_creds() -> dict:
-    # Priorité 1 : state_json.connectors (mis à jour par saveState() dès la saisie)
-    try:
-        state      = _supa_get_state()
-        connectors = state.get("connectors", {})
-        digi       = connectors.get("digipharmacie", {})
-        user       = digi.get("user", "")
-        passwd     = digi.get("pass", "")
-        if user and passwd:
-            return {"user": user, "pass": passwd}
-    except Exception:
-        pass
+def _get_connectors_col() -> dict:
+    url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{USER_ID}&select=connectors&limit=1"
+    req = urllib.request.Request(url, headers={
+        "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        rows = json.loads(r.read())
+    return (rows[0].get("connectors") or {}) if rows else {}
 
-    # Priorité 2 : colonne connectors dédiée (fallback)
+
+def _get_creds() -> dict:
+    # Priorité 1 : colonne connectors (mise à jour atomique via upsert_connector RPC)
     try:
-        url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{USER_ID}&select=connectors&limit=1"
-        req = urllib.request.Request(url, headers={
-            "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
-        })
-        with urllib.request.urlopen(req, timeout=15) as r:
-            rows = json.loads(r.read())
-        conns = (rows[0].get("connectors") or {}) if rows else {}
+        conns = _get_connectors_col()
         cred  = conns.get("digipharmacie", {})
         if cred.get("user") and cred.get("pass"):
             return {"user": cred["user"], "pass": cred["pass"]}
+    except Exception:
+        pass
+
+    # Priorité 2 : state_json.connectors (fallback — peut être périmé si saveCloudState a timeout)
+    try:
+        state  = _supa_get_state()
+        digi   = state.get("connectors", {}).get("digipharmacie", {})
+        user   = digi.get("user", "")
+        passwd = digi.get("pass", "")
+        if user and passwd:
+            return {"user": user, "pass": passwd}
     except Exception:
         pass
 
