@@ -77,20 +77,28 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     await page.wait_for_timeout(6000)
 
     # Cliquer "Charger plus" si présent — l'API limite à 6 mois par défaut,
-    # ce bouton déclenche un appel API sans cette restriction
-    _charger_plus_sel = (
-        "button:has-text('Charger plus'), a:has-text('Charger plus'), "
-        "button:has-text('Load more'), [data-action*='load'], "
-        "button:has-text('charger plus')"
-    )
+    # ce bouton déclenche un appel API sans cette restriction.
+    # Le bouton n'apparaît qu'après que la SPA a chargé la fin de la liste 6 mois.
+    # Stratégie : scroll en bas + chercher le bouton + cliquer
+    _charger_plus_texts = ["Charger plus", "Load more", "charger plus", "load more",
+                           "Voir plus", "Voir tout"]
+    _btn_found = False
     try:
-        btn = page.locator(_charger_plus_sel).first
-        if await btn.count() > 0:
-            progress("Clic 'Charger plus' pour élargir la recherche…")
-            await btn.click()
-            await page.wait_for_timeout(4000)  # attendre les réponses API étendues
-    except Exception:
-        pass
+        await page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+        await page.wait_for_timeout(1500)
+        for _txt in _charger_plus_texts:
+            _sel = f"button:has-text('{_txt}'), a:has-text('{_txt}'), span:has-text('{_txt}')"
+            _btn = page.locator(_sel).first
+            if await _btn.count() > 0:
+                progress(f"Clic '{_txt}' pour élargir la recherche…")
+                await _btn.click()
+                _btn_found = True
+                await page.wait_for_timeout(6000)  # attendre les réponses API étendues
+                break
+        if not _btn_found:
+            progress("Bouton 'Charger plus' non trouvé (OK — données déjà chargées ou absent)")
+    except Exception as _e:
+        progress(f"Charger plus : {_e}")
 
     page.remove_listener("response", on_response)
 
@@ -214,7 +222,11 @@ async def _paginate_fetch(page, start_url: str, csrf: str, progress: Callable) -
         progress(f"Page {page_num} — {total_seen} lues · {len(invoices)} génériques {'/'.join(sorted(YEARS))}")
 
         next_url = data.get("next")
-        if stop_early or not next_url:
+        if stop_early:
+            progress(f"Stop : billing_date < {STOP_YEAR} atteinte")
+            break
+        if not next_url:
+            progress("Stop : fin de la liste (pas de next)")
             break
 
         page_num += 1
