@@ -11,6 +11,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -96,14 +97,24 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     clean_url: str | None = None
     # Priorité 1 : URL dont le path contient un mot-clé facture/invoice
     for url, _resp in _captured:
-        path = urlparse(url).path.lower()
-        if any(kw in path for kw in INVOICE_KEYWORDS):
-            try:
-                clean_url = _build_clean_url(url)
-                progress(f"Endpoint factures détecté : {urlparse(url).path} → {clean_url}")
-                break
-            except Exception:
-                pass
+        parsed  = urlparse(url)
+        path    = parsed.path
+        path_lc = path.lower()
+        if not any(kw in path_lc for kw in INVOICE_KEYWORDS):
+            continue
+        # Normaliser vers l'endpoint liste : /invoices/count/ → /invoices/
+        # Supprimer le dernier segment si c'est un sous-endpoint (non numérique)
+        last_seg = path.rstrip("/").split("/")[-1]
+        if last_seg and not last_seg.isdigit():
+            # e.g. "count", "stats", "detail" → remonter d'un niveau
+            path = re.sub(r"/[^/]+/?$", "/", path.rstrip("/").rsplit("/", 1)[0] + "/")
+        base_url = f"{parsed.scheme}://{parsed.netloc}{path}"
+        try:
+            clean_url = _build_clean_url(base_url)
+            progress(f"Endpoint factures : {path} → {clean_url}")
+            break
+        except Exception:
+            pass
 
     csrf = await _get_csrf(page)
     if not csrf:
