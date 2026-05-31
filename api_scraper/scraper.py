@@ -58,9 +58,13 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     # elle ne peut pas être attendue dans un handler synchrone.
     _captured: list[tuple[str, object]] = []
 
+    _page_url = f"{BASE_URL}/factures/"
+
     def on_response(response):
         url = response.url
-        if ("invoices" in url or "facture" in url.lower()) and response.status == 200:
+        ct  = response.headers.get("content-type", "")
+        # Capturer uniquement les réponses JSON de l'API (exclure la page /factures/ elle-même)
+        if "json" in ct and response.status == 200 and url != _page_url:
             _captured.append((url, response))
 
     page.on("response", on_response)
@@ -68,8 +72,9 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     await page.wait_for_timeout(4000)
     page.remove_listener("response", on_response)
 
-    # Construire une URL propre depuis l'endpoint détecté (sans filtre de date)
+    # Construire une URL propre depuis l'endpoint JSON détecté (sans filtre de date)
     # L'URL interceptée a souvent created_gte=<date récente> qui limite les résultats
+    progress(f"{len(_captured)} réponse(s) JSON interceptée(s) : {[u for u, _ in _captured[:3]]}")
     clean_url: str | None = None
     for url, _resp in _captured:
         try:
@@ -86,7 +91,7 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
                 params["ordering"] = ["-billing_date"]
             new_query = urlencode({k: v[0] for k, v in params.items()})
             clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}"
-            progress(f"Endpoint API : {parsed.path} — URL propre construite")
+            progress(f"Endpoint API : {parsed.path} → {clean_url}")
             break
         except Exception:
             pass
