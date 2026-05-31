@@ -97,6 +97,9 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
     # Sélectionner l'endpoint factures/invoices parmi les réponses JSON capturées
     all_urls = [u for u, _ in _captured]
     progress(f"{len(_captured)} réponses JSON du domaine : {all_urls[:5]}")
+    invoice_urls = [u for u in all_urls if any(kw in u.lower() for kw in ("invoice", "facture", "bill"))]
+    if invoice_urls:
+        progress(f"URLs invoice capturées : {invoice_urls}")
 
     INVOICE_KEYWORDS = ("invoice", "facture", "bill", "order")
 
