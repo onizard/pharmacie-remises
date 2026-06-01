@@ -2137,29 +2137,22 @@ function _renderMonthTable(mk) {
         <th>LABO</th>
         <th class="num">VENTE NBR BOITES</th>
         <th class="num">ACHAT NBR BOITES</th>
-        <th class="num">STOCK</th>
         <th class="num">PA BRUT HT</th>
       </tr></thead>
       <tbody>
       ${rows.map(r => {
-        const stock = (r.achatQty != null && r.venteQty != null) ? r.achatQty - r.venteQty : null;
-        const stockColor = stock != null ? (stock >= 0 ? 'var(--green)' : 'var(--red)') : '';
         return `<tr>
           <td class="labo-col">${r.labo}</td>
           <td class="num">${r.venteQty != null ? fmtN(r.venteQty) : '—'}</td>
           <td class="num">${r.achatQty != null ? fmtN(r.achatQty) : '—'}</td>
-          <td class="num" style="color:${stockColor}">${stock != null ? fmtN(stock) : '—'}</td>
           <td class="num">${r.achatTotal != null ? fmtE(r.achatTotal) : '—'}</td>
         </tr>`;
       }).join('')}
       ${rows.length > 1 ? (() => {
-        const totStock = (hasDigi && totVente != null) ? totAchat - totVente : null;
-        const stockColor = totStock != null ? (totStock >= 0 ? 'var(--green)' : 'var(--red)') : '';
         return `<tr style="border-top:1px solid var(--border);font-weight:700">
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
           <td class="num">${fmtN(totVente)}</td>
           <td class="num">${hasDigi ? fmtN(totAchat) : '—'}</td>
-          <td class="num" style="color:${stockColor}">${totStock != null ? fmtN(totStock) : '—'}</td>
           <td class="num">${hasDigi ? fmtE(totTotal) : '—'}</td>
         </tr>`;
       })() : ''}
