@@ -334,7 +334,19 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
                             print(f"    {_row}", flush=True)
             print(f"{'='*60}\n", flush=True)
 
-        lines = extract_invoice_lines(tmp_path, provider, billing_date)
+        loop = asyncio.get_running_loop()
+        try:
+            lines = await asyncio.wait_for(
+                loop.run_in_executor(None, extract_invoice_lines, tmp_path, provider, billing_date),
+                timeout=25.0,
+            )
+        except asyncio.TimeoutError:
+            import os as _os2
+            print(f"[PDF] TIMEOUT >25s sur {provider} {billing_date} — PDF ignoré", flush=True)
+            lines = []
+        except Exception as _ex:
+            print(f"[PDF] Erreur extraction {provider} {billing_date} : {_ex}", flush=True)
+            lines = []
     finally:
         tmp_path.unlink(missing_ok=True)
 
