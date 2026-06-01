@@ -280,6 +280,42 @@ async def _js_fetch_json(page, url: str, csrf: str) -> dict:
 
 # ── PDF download + extraction ──────────────────────────────────────────────────
 
+def _extract_pdf_timed(tmp_path: Path, provider: str, billing_date: str, timeout: int = 20) -> list[dict]:
+    """
+    Appelle extract_invoice_lines avec un hard timeout SIGALRM (Linux).
+    asyncio.wait_for + run_in_executor ne suffit pas : le thread pdfplumber
+    reste bloqué et empêche wait_for de rendre la main.
+    SIGALRM interrompt directement l'appel bloquant depuis le main thread.
+    """
+    import signal as _sig
+    if not hasattr(_sig, 'SIGALRM'):
+        # Windows / environnement sans SIGALRM — pas de hard timeout
+        try:
+            return extract_invoice_lines(tmp_path, provider, billing_date)
+        except Exception:
+            return []
+
+    class _Timeout(Exception):
+        pass
+
+    def _handler(sig, frame):
+        raise _Timeout()
+
+    old = _sig.signal(_sig.SIGALRM, _handler)
+    _sig.alarm(timeout)
+    try:
+        return extract_invoice_lines(tmp_path, provider, billing_date)
+    except _Timeout:
+        print(f"[PDF] TIMEOUT {timeout}s — {provider} {billing_date} ignoré", flush=True)
+        return []
+    except Exception as e:
+        print(f"[PDF] Erreur — {provider} {billing_date} : {e}", flush=True)
+        return []
+    finally:
+        _sig.alarm(0)
+        _sig.signal(_sig.SIGALRM, old)
+
+
 async def _process_pdf(page, inv: dict) -> list[dict]:
     file_url = inv.get("file") or inv.get("file_url") or ""
     if not file_url:
@@ -334,19 +370,7 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
                             print(f"    {_row}", flush=True)
             print(f"{'='*60}\n", flush=True)
 
-        loop = asyncio.get_running_loop()
-        try:
-            lines = await asyncio.wait_for(
-                loop.run_in_executor(None, extract_invoice_lines, tmp_path, provider, billing_date),
-                timeout=25.0,
-            )
-        except asyncio.TimeoutError:
-            import os as _os2
-            print(f"[PDF] TIMEOUT >25s sur {provider} {billing_date} — PDF ignoré", flush=True)
-            lines = []
-        except Exception as _ex:
-            print(f"[PDF] Erreur extraction {provider} {billing_date} : {_ex}", flush=True)
-            lines = []
+        lines = _extract_pdf_timed(tmp_path, provider, billing_date, timeout=20)
     finally:
         tmp_path.unlink(missing_ok=True)
 
