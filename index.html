@@ -2614,7 +2614,16 @@ function renderLabGrid() {
         const visibleUid = visibleCont.id.replace('labcont-', '');
         const visibleLp = state.labPages.find(lp => lp.uid === visibleUid);
         if (visibleLp && visibleLp.selectedLab !== lab) {
-          const isEmpty = visibleLp.conditions.every(c => c.remiseGlobale === null && c.caCondition === null);
+          // Utilise _baseConds2026 (source de vérité après restore) et vérifie
+          // rsfValues + exceptions en plus de remiseGlobale/caCondition.
+          const _conds = visibleLp._baseConds2026 || visibleLp.conditions || [];
+          const isEmpty = !visibleLp.selectedLab || _conds.every(c =>
+            c.remiseGlobale === null &&
+            c.caCondition   === null &&
+            !(c.rsfValues || []).some(r => r.remise2 || r.remise3 || r.excluded || r.hasExcept) &&
+            !Object.keys(c.exceptions     || {}).length &&
+            !Object.keys(c.remise2Except  || {}).length
+          );
           if (isEmpty) {
             state.labPages.splice(state.labPages.indexOf(visibleLp), 1);
             visibleCont.remove();
