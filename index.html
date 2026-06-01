@@ -6110,7 +6110,7 @@ async function saveProfile() {
             }
           } catch(_) {}
         }
-        if (isAdmin) checkAdminNotifications();
+        if (isAdmin && typeof checkAdminNotifications === 'function') checkAdminNotifications();
         if (!isAdmin) await loadRsfDefaults();
         if (!_isPostReset) {
           // Chargement cloud avec fallback fetch direct (contourne les erreurs Supabase JS client)
