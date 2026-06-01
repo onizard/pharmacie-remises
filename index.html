@@ -2540,15 +2540,12 @@ function renderRecap() {
     wrap.className = 'recap-section';
     wrap.innerHTML = '<div class="recap-section-title">◇ ACHATS DIGIPHARMACIE</div><div id="digiProgressWrap"></div>';
     el.appendChild(wrap);
+    const digiConnected = state.connectors?.digipharmacie?.connected;
     const progressEl = wrap.querySelector('#digiProgressWrap');
-    if (state._digiJobRunning) {
+    if (state._digiJobRunning || digiConnected) {
       _renderDigiProgress(progressEl);
     } else {
-      const digiConnected = state.connectors?.digipharmacie?.connected;
-      const digiMsg = digiConnected
-        ? '// Connecteur DIGIPHARMACIE actif — données en cours de chargement…'
-        : '// Connectez DIGIPHARMACIE pour voir vos achats par labo';
-      progressEl.innerHTML = `<div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:12px;padding:16px 0;letter-spacing:1px">${digiMsg}</div>`;
+      progressEl.innerHTML = `<div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:12px;padding:16px 0;letter-spacing:1px">// Connectez DIGIPHARMACIE pour voir vos achats par labo</div>`;
     }
   }
 }
