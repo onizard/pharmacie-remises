@@ -2242,7 +2242,7 @@ async function autoRunDigi() {
     }
     if (state.currentPageId === 'recap') renderRecap();
 
-    const deadline = Date.now() + 600_000;
+    const deadline = Date.now() + 75 * 60_000; // 75 min = timeout GitHub Actions (60 min) + marge
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 5_000));
       try {
@@ -2309,6 +2309,18 @@ let _digiProgressTimer = null;
 
 function _renderDigiProgress(el) {
   clearInterval(_digiProgressTimer);
+
+  // Timeout frontend : si running depuis > 75 min → considérer comme échoué
+  const _digiElapsed = Date.now() - (state._digiJobStartedAt || Date.now());
+  if (_digiElapsed > 75 * 60_000 && state._digiJobRunning) {
+    state._digiJobRunning = false;
+    el.innerHTML = `<div style="color:var(--red);font-family:'Share Tech Mono',monospace;font-size:12px;padding:16px 0;letter-spacing:1px">
+      // Timeout — le job GitHub Actions a dépassé 75 min.<br>
+      Vérifiez <a href="https://github.com/onizard/pharmacie-remises/actions" target="_blank" style="color:var(--cyan)">GitHub Actions</a> puis relancez le connecteur.
+    </div>`;
+    clearInterval(_digiProgressTimer);
+    return;
+  }
 
   function _calcRemainMin() {
     const msg = state._digiJobMessage || '';
