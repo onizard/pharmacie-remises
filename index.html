@@ -6101,26 +6101,44 @@ async function saveProfile() {
       const { data: { session } } = await sb.auth.getSession();
       if (session) {
         isAdmin = (session.user.email === ADMIN_EMAIL);
-        // Restauration instantanée du comparateur depuis le cache sessionStorage
-        // (résultats déjà vus avant le refresh — pas de START screen)
         if (!isAdmin) {
           try {
             const _cachedHtml = sessionStorage.getItem(`bp_comp_${session.user.id}`);
             if (_cachedHtml) {
               const _simEl = document.getElementById('simResults');
-              if (_simEl) {
-                _simEl.innerHTML = _cachedHtml;
-                _simResultsReady = true;
-              }
+              if (_simEl) { _simEl.innerHTML = _cachedHtml; _simResultsReady = true; }
             }
           } catch(_) {}
         }
         if (isAdmin) checkAdminNotifications();
         if (!isAdmin) await loadRsfDefaults();
         if (!_isPostReset) {
-          const { data: cloud, error: cloudErr } = await sb.from('user_state')
-            .select('state_json,connectors').eq('user_id', session.user.id).maybeSingle();
-          if (cloudErr) console.error('[BP] Chargement cloud state ERREUR :', cloudErr);
+          // Chargement cloud avec fallback fetch direct (contourne les erreurs Supabase JS client)
+          let cloud = null;
+          try {
+            const _r = await sb.from('user_state')
+              .select('state_json,connectors').eq('user_id', session.user.id).maybeSingle();
+            if (_r.error) {
+              console.error('[BP] Cloud state ERREUR sb client :', _r.error);
+            } else {
+              cloud = _r.data;
+            }
+          } catch(eSb) {
+            console.error('[BP] Cloud state EXCEPTION sb client :', eSb);
+            // Fallback : fetch direct vers l'API REST Supabase
+            try {
+              const _token = session.access_token;
+              const _resp = await fetch(
+                `${SUPA_URL}/rest/v1/user_state?user_id=eq.${session.user.id}&select=state_json,connectors&limit=1`,
+                { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${_token}` } }
+              );
+              const _rows = await _resp.json();
+              cloud = _rows?.[0] ?? null;
+              console.log('[BP] Cloud state via fetch direct :', cloud ? 'OK' : 'vide');
+            } catch(eFetch) {
+              console.error('[BP] Cloud state EXCEPTION fetch direct :', eFetch);
+            }
+          }
           console.log('[BP] Cloud state chargé :', cloud ? `labPages=${cloud.state_json?.labPages?.length ?? 0}` : 'aucune ligne en base', '| user_id =', session.user.id, '| email =', session.user.email);
           if (cloud?.state_json) {
             _startupCloudState = cloud.state_json;
@@ -6129,19 +6147,17 @@ async function saveProfile() {
             }
             const cs = cloud.state_json;
             if (!isAdmin) { cs.csvData = null; cs.csvRows = 0; cs.prorataRatios = null; }
-            // Priorité à la colonne connectors dédiée (source de vérité pour les credentials)
             if (cloud.connectors && Object.keys(cloud.connectors).length) {
               cs.connectors = cloud.connectors;
             }
             localStorage.setItem(LS_KEY, JSON.stringify(cs));
           } else if (!isAdmin) {
-            // Pas de cloud state : effacer toute donnée ospharm héritée d'un autre utilisateur
             try { const ls = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); ls.csvData = null; ls.csvRows = 0; ls.prorataRatios = null; localStorage.setItem(LS_KEY, JSON.stringify(ls)); } catch(_) {}
           }
         }
       }
     }
-  } catch(e) {}
+  } catch(e) { console.error('[BP] Init EXCEPTION globale :', e); }
 
   // Fallback : si localStorage vide (cache effacé, quota), utiliser l'état cloud chargé en mémoire
   const saved = loadSavedState() || _startupCloudState;
