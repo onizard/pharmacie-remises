@@ -2217,6 +2217,59 @@ function renderMonthlySection(container) {
   // listener global dans DOMContentLoaded — pas de listener par wrap
 }
 
+async function autoRunDigi() {
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) return;
+    // Vérifier si un job est déjà en cours
+    const { data: row0 } = await window._sbClient.from('user_state')
+      .select('state_json').eq('user_id', session.user.id).maybeSingle();
+    if (row0?.state_json?.verif_job?.status === 'running') {
+      // Job déjà lancé — se greffer dessus
+      state._digiJobRunning   = true;
+      state._digiJobStartedAt = state._digiJobStartedAt || Date.now();
+    } else {
+      const resp = await fetch(`${API_URL}/run/digipharmacie`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!resp.ok) return;
+      state._digiJobRunning   = true;
+      state._digiJobStartedAt = Date.now();
+      state._digiJobMessage   = '';
+    }
+    if (state.currentPageId === 'recap') renderRecap();
+
+    const deadline = Date.now() + 600_000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 5_000));
+      try {
+        const { data: row } = await window._sbClient.from('user_state')
+          .select('state_json').eq('user_id', session.user.id).maybeSingle();
+        const job = row?.state_json?.verif_job;
+        if (!job || job.status === 'running') {
+          if (job?.message) {
+            state._digiJobMessage = job.message;
+            if (state.currentPageId === 'recap') renderRecap();
+          }
+          continue;
+        }
+        state._digiJobRunning = false;
+        if (job.status === 'done') {
+          const digiStats = row?.state_json?.digi_month_stats;
+          if (digiStats && Object.keys(digiStats).length) {
+            state._digiMonthStats = digiStats;
+            saveState();
+          }
+        }
+        if (state.currentPageId === 'recap') renderRecap();
+        break;
+      } catch(_) {}
+    }
+    state._digiJobRunning = false;
+  } catch(_) { state._digiJobRunning = false; }
+}
+
 // ── Activités pharmacien pendant chargement OSPHARM ──────────────────────────
 const _OSP_ACTIVITIES = [
   { min: 45, emoji: '👵', label: '~45 min',  text: 'd\'aller vous occuper de votre plus ancienne cliente — elle veut parler de ses genoux, de son fils à Lyon, et du prix du beurre en 1987. Comptez large.' },
@@ -2234,6 +2287,48 @@ const _OSP_ACTIVITIES = [
 ];
 
 let _ospProgressTimer = null;
+
+// ── Activités pharmacien pendant chargement DIGIPHARMACIE ─────────────────────
+const _DIGI_ACTIVITIES = [
+  { min: 8, emoji: '📄', label: '~8 min',   text: 'de ranger la paperasse sur votre bureau. Vos factures numériques arrivent — les papier, elles, attendent toujours.' },
+  { min: 6, emoji: '☕', label: '~6 min',   text: 'de prendre un café. Un vrai, pas la capsule de la salle de pause qui a le goût de plastique depuis 2019.' },
+  { min: 4, emoji: '💊', label: '~4 min',   text: 'd\'expliquer à ce client pourquoi son générique n\'est pas moins bien que la marque. Spoiler : ça prendra plus de 4 min.' },
+  { min: 2, emoji: '📱', label: '~2 min',   text: 'de répondre aux messages WhatsApp du groupe famille que vous ignorez depuis le week-end.' },
+  { min: 1, emoji: '🧾', label: '~1 min',   text: 'de vous demander pourquoi ces PDFs n\'existent pas en CSV. La réponse : personne ne sait.' },
+  { min: 0, emoji: '⚡', label: '< 1 min',  text: 'à peine. Restez là, ça arrive.' },
+];
+
+let _digiProgressTimer = null;
+
+function _renderDigiProgress(el) {
+  clearInterval(_digiProgressTimer);
+  const elapsed   = Date.now() - (state._digiJobStartedAt || Date.now());
+  const remainMin = Math.max(0, Math.ceil((480_000 - elapsed) / 60_000)); // ~8 min max
+
+  if (!el.querySelector('#digiStatusLine')) {
+    const act     = _DIGI_ACTIVITIES.find(a => a.min <= remainMin) || _DIGI_ACTIVITIES[_DIGI_ACTIVITIES.length - 1];
+    const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
+    el.innerHTML = `<div class="osp-ring-wrap">
+      <div id="digiStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Téléchargement des factures PDF en cours…</div>
+      <div class="osp-ring spin">
+        <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28"/></svg>
+      </div>
+      <div id="digiActivityLine" class="osp-activity-line" style="text-align:center">${actHtml}</div>
+    </div>`;
+  } else {
+    const stEl = document.getElementById('digiStatusLine');
+    if (stEl && state._digiJobMessage) stEl.textContent = `// ${state._digiJobMessage}`;
+  }
+
+  _digiProgressTimer = setInterval(() => {
+    const actLine = document.getElementById('digiActivityLine');
+    if (!actLine) { clearInterval(_digiProgressTimer); return; }
+    const elapsed   = Date.now() - (state._digiJobStartedAt || Date.now());
+    const remainMin = Math.max(0, Math.ceil((480_000 - elapsed) / 60_000));
+    const act = _DIGI_ACTIVITIES.find(a => a.min <= remainMin) || _DIGI_ACTIVITIES[_DIGI_ACTIVITIES.length - 1];
+    actLine.innerHTML = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
+  }, 5_000);
+}
 
 function _startOspBreakoutCanvas(canvasId) {
   const canvas = document.getElementById(canvasId);
@@ -2438,17 +2533,23 @@ function renderRecap() {
   // Section mensuelle
   if (hasMonthly) renderMonthlySection(el);
 
-  // Si pas de données digi, indiquer comment les obtenir
+  // Si pas de données digi, indiquer comment les obtenir (ou progression si job en cours)
   const hasDigi = Object.keys(state._digiMonthStats || {}).length > 0;
   if (!hasDigi) {
-    const digiConnected = state.connectors?.digipharmacie?.connected;
-    const digiMsg = digiConnected
-      ? '// Lancez le connecteur DIGIPHARMACIE pour alimenter la colonne Achat'
-      : '// Connectez DIGIPHARMACIE pour voir vos achats par labo';
-    el.insertAdjacentHTML('beforeend', `<div class="recap-section">
-      <div class="recap-section-title">◇ ACHATS DIGIPHARMACIE</div>
-      <div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:12px;padding:16px 0;letter-spacing:1px">${digiMsg}</div>
-    </div>`);
+    const wrap = document.createElement('div');
+    wrap.className = 'recap-section';
+    wrap.innerHTML = '<div class="recap-section-title">◇ ACHATS DIGIPHARMACIE</div><div id="digiProgressWrap"></div>';
+    el.appendChild(wrap);
+    const progressEl = wrap.querySelector('#digiProgressWrap');
+    if (state._digiJobRunning) {
+      _renderDigiProgress(progressEl);
+    } else {
+      const digiConnected = state.connectors?.digipharmacie?.connected;
+      const digiMsg = digiConnected
+        ? '// Connecteur DIGIPHARMACIE actif — données en cours de chargement…'
+        : '// Connectez DIGIPHARMACIE pour voir vos achats par labo';
+      progressEl.innerHTML = `<div style="color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:12px;padding:16px 0;letter-spacing:1px">${digiMsg}</div>`;
+    }
   }
 }
 
@@ -6045,6 +6146,12 @@ async function saveProfile() {
         setTimeout(() => autoRunOspharm().catch(() => {}), 1500);
       }
     }
+    if (saved.connectors?.digipharmacie?.connected) {
+      const hasDigi = Object.keys(state._digiMonthStats || {}).length > 0;
+      if (!hasDigi) {
+        setTimeout(() => autoRunDigi().catch(() => {}), 3000);
+      }
+    }
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 1) {
       state.labPages = savedPages.map(sp => mkLabState(sp.uid));
@@ -6571,10 +6678,16 @@ function initConnecteurModal() {
       resultEl.textContent = '';
       showView(prefix, true);
       if (connKey === 'ospharm') {
-        // Connexion établie → fermer la modale et aller au recap
         closeModal();
         state._ospJobStartedAt = Date.now();
         state._ospJobMessage   = '';
+        goTo('recap');
+        renderRecap();
+      } else if (connKey === 'digipharmacie') {
+        closeModal();
+        state._digiJobRunning   = true;
+        state._digiJobStartedAt = Date.now();
+        state._digiJobMessage   = '';
         goTo('recap');
         renderRecap();
       }
@@ -6596,9 +6709,12 @@ function initConnecteurModal() {
   async function _triggerWorkflow(connKey, prefix) {
     const statusId = connKey === 'digipharmacie' ? 'digiJobStatus' : 'ospJobStatus';
     if (connKey === 'ospharm') {
-      state._ospConnecting   = false;  // connexion réussie, on passe au job
+      state._ospConnecting   = false;
       state._ospJobRunning   = true;
       state._ospJobStartedAt = state._ospJobStartedAt || Date.now();
+    } else if (connKey === 'digipharmacie') {
+      state._digiJobRunning   = true;
+      state._digiJobStartedAt = state._digiJobStartedAt || Date.now();
     }
     _setJobStatusEl(statusId, 'running', '');
     _setConnProgress(prefix, 'job');
@@ -6667,33 +6783,44 @@ function initConnecteurModal() {
   }
 
   async function _pollDigiJobAndLaunch(prefix) {
-    const deadline = Date.now() + 600_000; // 10 min max
+    const deadline = Date.now() + 600_000;
     while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 2_500));
+      await new Promise(r => setTimeout(r, 5_000));
       try {
         const { data: { session } } = await window._sbClient.auth.getSession();
         if (!session) break;
         const { data: row } = await window._sbClient.from('user_state')
           .select('state_json').eq('user_id', session.user.id).maybeSingle();
-        const job = row?.state_json?.digipharmacie_job;
-        if (!job) continue;
-        if (job.status === 'running') {
-          _setJobStatusEl('digiJobStatus', 'running', job.message || '');
+        const job = row?.state_json?.verif_job;  // run_job.py écrit dans verif_job
+        if (!job || job.status === 'running') {
+          if (job?.message) {
+            state._digiJobMessage = job.message;
+            _setJobStatusEl('digiJobStatus', 'running', job.message);
+            if (state.currentPageId === 'recap') renderRecap();
+          }
           continue;
         }
+        state._digiJobRunning = false;
         if (job.status === 'done') {
           _setConnProgress(prefix, 'ready');
-          _setJobStatusEl('digiJobStatus', 'done', `✓ ${job.total || 0} lignes extraites`);
-          document.getElementById('connecteurModal')?.classList.remove('open');
+          _setJobStatusEl('digiJobStatus', 'done', `✓ ${job.invoices?.length || 0} lignes extraites`);
+          const digiStats = row?.state_json?.digi_month_stats;
+          if (digiStats && Object.keys(digiStats).length) {
+            state._digiMonthStats = digiStats;
+            saveState();
+          }
+          if (state.currentPageId === 'recap') renderRecap();
           break;
         }
         if (job.status === 'error') {
           _setJobStatusEl('digiJobStatus', 'error', `❌ ${job.error || 'erreur'}`);
           _setConnProgress(prefix, 'reset');
+          if (state.currentPageId === 'recap') renderRecap();
           break;
         }
       } catch(_) {}
     }
+    state._digiJobRunning = false;
   }
 
   let _connProgTimer = null;
