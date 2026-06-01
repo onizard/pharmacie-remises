@@ -6094,6 +6094,7 @@ async function saveProfile() {
   // Sauf si on vient d'un reset (sessionStorage flag) — on laisse le localStorage primer
   const _isPostReset = sessionStorage.getItem('bp_reset') === '1';
   sessionStorage.removeItem('bp_reset');
+  console.log('[BP] _isPostReset =', _isPostReset);
   try {
     const sb = window._sbClient;
     if (sb) {
@@ -6120,7 +6121,7 @@ async function saveProfile() {
           const { data: cloud, error: cloudErr } = await sb.from('user_state')
             .select('state_json,connectors').eq('user_id', session.user.id).maybeSingle();
           if (cloudErr) console.error('[BP] Chargement cloud state ERREUR :', cloudErr);
-          console.log('[BP] Cloud state chargé :', cloud ? `labPages=${cloud.state_json?.labPages?.length ?? 0}` : 'aucune ligne en base');
+          console.log('[BP] Cloud state chargé :', cloud ? `labPages=${cloud.state_json?.labPages?.length ?? 0}` : 'aucune ligne en base', '| user_id =', session.user.id, '| email =', session.user.email);
           if (cloud?.state_json) {
             _startupCloudState = cloud.state_json;
             if (cloud.state_json.labPages?.length) {
@@ -6144,6 +6145,7 @@ async function saveProfile() {
 
   // Fallback : si localStorage vide (cache effacé, quota), utiliser l'état cloud chargé en mémoire
   const saved = loadSavedState() || _startupCloudState;
+  console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| via localStorage =', !!loadSavedState());
   if (saved) {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
