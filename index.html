@@ -2234,9 +2234,11 @@ async function autoRunDigi() {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       });
       if (!resp.ok) return;
-      state._digiJobRunning   = true;
-      state._digiJobStartedAt = Date.now();
-      state._digiJobMessage   = '';
+      state._digiJobRunning       = true;
+      state._digiJobStartedAt     = Date.now();
+      state._digiJobMessage       = '';
+      state._digiProgressFirstAt  = null;
+      state._digiProgressFirstNum = null;
     }
     if (state.currentPageId === 'recap') renderRecap();
 
@@ -2249,6 +2251,11 @@ async function autoRunDigi() {
         const job = row?.state_json?.verif_job;
         if (!job || job.status === 'running') {
           if (job?.message) {
+            const _pm = job.message.match(/PDF\s+(\d+)\/(\d+)/i);
+            if (_pm && !state._digiProgressFirstAt) {
+              state._digiProgressFirstAt  = Date.now();
+              state._digiProgressFirstNum = parseInt(_pm[1]);
+            }
             state._digiJobMessage = job.message;
             if (state.currentPageId === 'recap') renderRecap();
           }
@@ -2308,13 +2315,20 @@ function _renderDigiProgress(el) {
     const m   = msg.match(/PDF\s+(\d+)\/(\d+)/i);
     if (m) {
       const cur = parseInt(m[1]), tot = parseInt(m[2]);
-      if (cur > 0 && tot > 0) {
-        const elapsed  = Date.now() - (state._digiJobStartedAt || Date.now());
-        const totalEst = elapsed / cur * tot;
-        return Math.max(1, Math.ceil((totalEst - elapsed) / 60_000));
+      const remaining = tot - cur;
+      // Taux calculé depuis le 1er message de progression reçu
+      if (state._digiProgressFirstAt && state._digiProgressFirstNum != null) {
+        const done    = cur - state._digiProgressFirstNum;
+        const elapsed = Date.now() - state._digiProgressFirstAt;
+        if (done > 0) {
+          const msPerPdf = elapsed / done;
+          return Math.max(1, Math.ceil(remaining * msPerPdf / 60_000));
+        }
       }
+      // Taux inconnu — estimation conservative 4s/PDF
+      return Math.max(1, Math.ceil(remaining * 4_000 / 60_000));
     }
-    // Pas encore de progression connue — on estime à la hausse
+    // Aucune progression encore — décrémente depuis 12 min
     const elapsed = Date.now() - (state._digiJobStartedAt || Date.now());
     return Math.max(2, 12 - Math.floor(elapsed / 60_000));
   }
@@ -6704,9 +6718,11 @@ function initConnecteurModal() {
         renderRecap();
       } else if (connKey === 'digipharmacie') {
         closeModal();
-        state._digiJobRunning   = true;
-        state._digiJobStartedAt = Date.now();
-        state._digiJobMessage   = '';
+        state._digiJobRunning       = true;
+        state._digiJobStartedAt     = Date.now();
+        state._digiJobMessage       = '';
+        state._digiProgressFirstAt  = null;
+        state._digiProgressFirstNum = null;
         goTo('recap');
         renderRecap();
       }
@@ -6813,6 +6829,11 @@ function initConnecteurModal() {
         const job = row?.state_json?.verif_job;  // run_job.py écrit dans verif_job
         if (!job || job.status === 'running') {
           if (job?.message) {
+            const _pm = job.message.match(/PDF\s+(\d+)\/(\d+)/i);
+            if (_pm && !state._digiProgressFirstAt) {
+              state._digiProgressFirstAt  = Date.now();
+              state._digiProgressFirstNum = parseInt(_pm[1]);
+            }
             state._digiJobMessage = job.message;
             _setJobStatusEl('digiJobStatus', 'running', '');
             if (state.currentPageId === 'recap') renderRecap();
