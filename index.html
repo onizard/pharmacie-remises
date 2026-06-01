@@ -1520,11 +1520,17 @@ async function saveCloudState(data) {
       for (const k of ['ospharm_job', 'verif_job', 'conn_test']) {
         if (cur?.state_json?.[k] && payload[k] === undefined) payload[k] = cur.state_json[k];
       }
-      // Ne jamais écraser labPages cloud si le local est vide (guard DB + guard mémoire)
+      // Ne jamais écraser labPages cloud si le local est vide OU significativement plus petit
+      // (guard contre le bug isEmpty qui supprimait des labs au clic)
       const _guardPages = cur?.state_json?.labPages?.length ? cur.state_json.labPages : _lastGoodLabPages;
-      if (!payload.labPages?.length && _guardPages?.length) {
+      const _localLen  = payload.labPages?.length ?? 0;
+      const _guardLen  = _guardPages?.length ?? 0;
+      if (_localLen === 0 && _guardLen > 0) {
         payload.labPages = _guardPages;
-      } else if (payload.labPages?.length) {
+      } else if (_localLen > 0 && _guardLen > _localLen + 1) {
+        // Local a perdu plus d'1 labo vs cloud → probable bug, garder le cloud
+        payload.labPages = _guardPages;
+      } else if (_localLen > 0) {
         _lastGoodLabPages = payload.labPages;
       }
     } catch(_) {
