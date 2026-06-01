@@ -2302,14 +2302,35 @@ let _digiProgressTimer = null;
 
 function _renderDigiProgress(el) {
   clearInterval(_digiProgressTimer);
-  const elapsed   = Date.now() - (state._digiJobStartedAt || Date.now());
-  const remainMin = Math.max(0, Math.ceil((480_000 - elapsed) / 60_000)); // ~8 min max
+
+  function _calcRemainMin() {
+    const msg = state._digiJobMessage || '';
+    const m   = msg.match(/PDF\s+(\d+)\/(\d+)/i);
+    if (m) {
+      const cur = parseInt(m[1]), tot = parseInt(m[2]);
+      if (cur > 0 && tot > 0) {
+        const elapsed  = Date.now() - (state._digiJobStartedAt || Date.now());
+        const totalEst = elapsed / cur * tot;
+        return Math.max(1, Math.ceil((totalEst - elapsed) / 60_000));
+      }
+    }
+    // Pas encore de progression connue — on estime à la hausse
+    const elapsed = Date.now() - (state._digiJobStartedAt || Date.now());
+    return Math.max(2, 12 - Math.floor(elapsed / 60_000));
+  }
+
+  function _statusText() {
+    const msg = state._digiJobMessage || '';
+    const m   = msg.match(/PDF\s+(\d+)\/(\d+)/i);
+    return m ? `// PDF ${m[1]} / ${m[2]}` : '// Téléchargement des factures PDF en cours…';
+  }
 
   if (!el.querySelector('#digiStatusLine')) {
-    const act     = _DIGI_ACTIVITIES.find(a => a.min <= remainMin) || _DIGI_ACTIVITIES[_DIGI_ACTIVITIES.length - 1];
-    const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
+    const remainMin = _calcRemainMin();
+    const act       = _DIGI_ACTIVITIES.find(a => a.min <= remainMin) || _DIGI_ACTIVITIES[_DIGI_ACTIVITIES.length - 1];
+    const actHtml   = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
     el.innerHTML = `<div class="osp-ring-wrap">
-      <div id="digiStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">// Téléchargement des factures PDF en cours…</div>
+      <div id="digiStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${_statusText()}</div>
       <div class="osp-ring spin">
         <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28"/></svg>
       </div>
@@ -2317,14 +2338,15 @@ function _renderDigiProgress(el) {
     </div>`;
   } else {
     const stEl = document.getElementById('digiStatusLine');
-    if (stEl && state._digiJobMessage) stEl.textContent = `// ${state._digiJobMessage}`;
+    if (stEl) stEl.textContent = _statusText();
   }
 
   _digiProgressTimer = setInterval(() => {
     const actLine = document.getElementById('digiActivityLine');
+    const stEl    = document.getElementById('digiStatusLine');
     if (!actLine) { clearInterval(_digiProgressTimer); return; }
-    const elapsed   = Date.now() - (state._digiJobStartedAt || Date.now());
-    const remainMin = Math.max(0, Math.ceil((480_000 - elapsed) / 60_000));
+    if (stEl) stEl.textContent = _statusText();
+    const remainMin = _calcRemainMin();
     const act = _DIGI_ACTIVITIES.find(a => a.min <= remainMin) || _DIGI_ACTIVITIES[_DIGI_ACTIVITIES.length - 1];
     actLine.innerHTML = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
   }, 5_000);
@@ -2538,7 +2560,7 @@ function renderRecap() {
   if (!hasDigi) {
     const wrap = document.createElement('div');
     wrap.className = 'recap-section';
-    wrap.innerHTML = '<div class="recap-section-title">◇ ACHATS DIGIPHARMACIE</div><div id="digiProgressWrap"></div>';
+    wrap.innerHTML = '<div id="digiProgressWrap"></div>';
     el.appendChild(wrap);
     const digiConnected = state.connectors?.digipharmacie?.connected;
     const progressEl = wrap.querySelector('#digiProgressWrap');
