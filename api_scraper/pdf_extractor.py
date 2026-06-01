@@ -70,12 +70,23 @@ RE_CIP13 = re.compile(r'\b(3[0-9]\d{11})\b')
 # ── Détection du format ────────────────────────────────────────────────────────
 
 def _detect_format(text: str) -> str:
-    t200 = text[:400].lower()
-    if "alloga france" in t200 or ("alloga" in t200 and "au nom et pour le compte" in text[:600].lower()):
+    t400 = text[:400].lower()
+    if "alloga france" in t400 or ("alloga" in t400 and "au nom et pour le compte" in text[:600].lower()):
         return "alloga"
-    if "viatris sante" in t200 or "viatris santé" in t200 or ("mylan" in t200 and "c.i.p" in text[:1000].lower()):
+    # CSP / Movianto : "FACTURE DE SPÉCIALITÉS" avec lignes CIP13 décimales en points
+    if ("facture de sp" in text[:800].lower() and "cialité" in text[:800].lower()) \
+            or "spécialités remboursées" in text[:1500].lower() \
+            or "centre sp" in text[:800].lower():
+        return "csp"
+    # RDP (Remise de performance) / Avoir récapitulatif — pas de données par référence
+    if "récapitulatif des remises" in text[:600].lower() or "remise de performance" in text[:800].lower():
+        return "rdp"
+    # Prestations de services / Coopération commerciale — pas de CIP
+    if "facture de prestations de services" in text[:600].lower() or "convention commerciale" in text[:800].lower():
+        return "presta"
+    if "viatris sante" in t400 or "viatris santé" in t400 or ("mylan" in t400 and "c.i.p" in text[:1000].lower()):
         return "viatris"
-    if "cooperation pharmaceutique" in t200 or "coopération pharmaceutique" in t200:
+    if "cooperation pharmaceutique" in t400 or "coopération pharmaceutique" in t400:
         return "cooperation"
     return "unknown"
 
@@ -292,6 +303,73 @@ def _extract_cooperation(text: str, provider: str, billing_date: str) -> list[di
     return lines
 
 
+# ── 5. Format CSP / Movianto (factures de spécialités au nom d'un labo) ──────
+#
+# Ligne produit :
+#   3400930285473  ARIPIPRAZOLE 10MG 28CP BGN  1600297  2  14.56  20.00  11.648  23.30  2.10
+#   CIP13          Désignation                 Lot      Qty PU_HT  RSF%   PU_net  Mnt    TVA
+#
+# Décimaux avec point (pas de signe %). Lot = token alphanum avant la quantité.
+
+RE_CSP_LINE = re.compile(
+    r'^(3\d{12})\s+'       # CIP13
+    r'(.+?)\s+'            # Désignation (non-greedy — s'arrête au lot)
+    r'(\S+)\s+'            # Numéro de lot (alphanum, pas d'espace)
+    r'(\d+)\s+'            # Quantité facturée
+    r'(\d+\.\d+)\s+'      # Prix unitaire HT
+    r'(\d+\.\d+)\s+'      # Remise (%)
+    r'(\d+\.\d+)\s+'      # Prix unitaire après remise
+    r'(\d+\.\d+)\s+'      # Montant HT
+    r'(\d+\.\d+)',         # Taux TVA
+    re.MULTILINE,
+)
+
+
+def _extract_csp_lab(text: str) -> str:
+    """Détecte le labo depuis l'en-tête CSP (le nom du labo précède l'adresse)."""
+    header = text[:800].upper()
+    for kw in sorted(LABOS_CIBLES, key=len, reverse=True):
+        if re.search(r'\b' + re.escape(kw.upper()) + r'\b', header):
+            return kw.upper()
+    return ""
+
+
+def _extract_csp(text: str, provider: str, billing_date: str) -> list[dict]:
+    """
+    Facture de spécialités CSP / Movianto (dépositaire) au nom d'un labo générique.
+    Ex : Biogaran, Teva, Arrow via Centre Spécialités Pharmaceutiques / Movianto.
+    """
+    lab_name = _extract_csp_lab(text) or _extract_lab_from_header(text) or provider
+    lines = []
+    for m in RE_CSP_LINE.finditer(text):
+        cip13   = m.group(1)
+        libelle = m.group(2).strip()
+        # m.group(3) = numéro de lot (ignoré)
+        qty_str = m.group(4)
+        pubrut  = _to_float(m.group(5))
+        remise  = _to_float(m.group(6))
+        punet   = _to_float(m.group(7))
+        montant = _to_float(m.group(8))
+        # m.group(9) = TVA % (ignoré)
+
+        if pubrut is None:
+            continue
+
+        lines.append({
+            "cip":          cip13,
+            "libelle":      libelle,
+            "labo":         lab_name,
+            "fournisseur":  provider,
+            "billing_date": billing_date,
+            "quantite":     int(qty_str) if qty_str.isdigit() else None,
+            "prix_brut":    round(pubrut, 4),
+            "remise_pct":   round(remise, 2) if remise is not None else None,
+            "pa_net":       round(punet, 4) if punet else None,
+            "total_ht":     round(montant, 2) if montant else None,
+        })
+    return lines
+
+
 # ── 4. Fallback texte brut ─────────────────────────────────────────────────────
 
 def _extract_text_fallback(text: str, provider: str, billing_date: str) -> list[dict]:
@@ -334,10 +412,15 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
 
             if fmt == "alloga":
                 lines = _extract_alloga(full_text, provider, billing_date)
+            elif fmt == "csp":
+                lines = _extract_csp(full_text, provider, billing_date)
             elif fmt == "viatris":
                 lines = _extract_viatris(pdf, provider, billing_date)
             elif fmt == "cooperation":
                 lines = _extract_cooperation(full_text, provider, billing_date)
+            elif fmt in ("rdp", "presta"):
+                # RDP (remise de perf.) et prestations : pas de données par référence CIP
+                lines = []
             else:
                 lines = _extract_text_fallback(full_text, provider, billing_date)
     except Exception:
