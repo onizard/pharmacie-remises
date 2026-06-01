@@ -52,6 +52,54 @@ def _supa_patch_state(state: dict):
         pass
 
 
+_LABO_NORMALIZE = {
+    "biogaran": "BIOGARAN",
+    "teva": "TEVA",
+    "mylan": "MYLAN",
+    "viatris": "VIATRIS",
+    "zydus": "ZYDUS",
+    "sandoz": "SANDOZ",
+    "zentiva": "ZENTIVA",
+    "arrow": "ARROW",
+    "cristers": "CRISTERS",
+    "eg labo": "EG LABO",
+    "eg labs": "EG LABO",
+    "evolupharm": "EVOLUPHARM",
+}
+
+
+def _norm_labo(raw: str) -> str:
+    n = (raw or "").lower().strip()
+    for kw, canonical in _LABO_NORMALIZE.items():
+        if kw in n:
+            return canonical
+    return n.upper()
+
+
+def _compute_digi_month_stats(lines: list[dict]) -> dict:
+    """Agrège les lignes digi → {year-MM: [{labo, qty, total_ht}]}."""
+    acc: dict[str, dict] = {}
+    for line in lines:
+        date = str(line.get("billing_date", ""))
+        if len(date) < 7:
+            continue
+        mk    = date[:7]
+        labo  = _norm_labo(line.get("labo") or line.get("fournisseur") or "")
+        qty   = int(line.get("quantite") or 0)
+        total = float(line.get("total_ht") or 0)
+        acc.setdefault(mk, {}).setdefault(labo, {"qty": 0, "total_ht": 0.0})
+        acc[mk][labo]["qty"]      += qty
+        acc[mk][labo]["total_ht"] += total
+    return {
+        mk: sorted(
+            [{"labo": labo, "qty": d["qty"], "total_ht": round(d["total_ht"], 2)}
+             for labo, d in labos.items()],
+            key=lambda r: r["labo"],
+        )
+        for mk, labos in acc.items()
+    }
+
+
 def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
     try:
         state = _supa_get_state()
@@ -123,6 +171,16 @@ def main():
     try:
         invoices = run_scraper(creds, progress)
         _update_job("done", f"{len(invoices)} lignes extraites", invoices)
+
+        # Agrégation mensuelle par labo → stockée dans state_json pour la page Recap
+        digi_stats = _compute_digi_month_stats(invoices)
+        if digi_stats:
+            st = _supa_get_state()
+            st["digi_month_stats"] = digi_stats
+            _supa_patch_state(st)
+            months = sorted(digi_stats)
+            print(f"  📊  digi_month_stats : {len(digi_stats)} mois ({months[0]} → {months[-1]})")
+
         print(f"\n✅  {len(invoices)} lignes produits extraites et sauvegardées.")
     except Exception as e:
         _update_job("error", error=str(e))
