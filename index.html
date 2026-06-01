@@ -6795,7 +6795,7 @@ function initConnecteurModal() {
         if (!job || job.status === 'running') {
           if (job?.message) {
             state._digiJobMessage = job.message;
-            _setJobStatusEl('digiJobStatus', 'running', job.message);
+            _setJobStatusEl('digiJobStatus', 'running', '');
             if (state.currentPageId === 'recap') renderRecap();
           }
           continue;
