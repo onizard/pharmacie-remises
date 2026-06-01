@@ -55,8 +55,16 @@ def _patch_state_sync(user_id: str, state: dict):
         "Content-Type":  "application/json",
         "Prefer":        "return=minimal",
     })
-    with urllib.request.urlopen(req, timeout=15):
-        pass
+    # Payload can be large (job rows) — retry up to 3 times with increasing timeouts
+    last_err = None
+    for attempt, timeout in enumerate((30, 60, 90), 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout):
+                return
+        except Exception as e:
+            last_err = e
+            print(f"  [warn] Supabase update failed (attempt {attempt}/3) : {e}", flush=True)
+    raise RuntimeError(f"Supabase patch failed after 3 attempts : {last_err}")
 
 
 def _upsert_connector_sync(user_id: str, connector: str, user: str, password: str, connected: bool):
