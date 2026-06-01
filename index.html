@@ -6356,13 +6356,15 @@ async function saveProfile() {
   }
 
   if (saved && saved.labPages) {
+    console.log('[BP] Restauration labPages :', saved.labPages.length, saved.labPages.map(p => p.selectedLab));
     for (const sp of saved.labPages) {
       const lp = state.labPages.find(l => l.uid === sp.uid);
+      console.log('[BP] restore', sp.selectedLab, '| lp trouvé:', !!lp, '| _restoreFromSave:', !!(lp?._restoreFromSave), '| conditions:', sp.conditions?.length);
       if (lp && sp.selectedLab && lp._restoreFromSave) {
-        await lp._restoreFromSave(sp);
+        try { await lp._restoreFromSave(sp); } catch(e) { console.error('[BP] _restoreFromSave ERREUR', sp.selectedLab, e); }
       }
       if (lp && sp.selectedLab && lp._restoreFromSave2025) {
-        await lp._restoreFromSave2025(sp);
+        try { await lp._restoreFromSave2025(sp); } catch(e) { console.error('[BP] _restoreFromSave2025 ERREUR', sp.selectedLab, e); }
       }
       // Restore monthly state
       if (lp) {
