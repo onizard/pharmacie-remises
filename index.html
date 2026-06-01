@@ -1892,23 +1892,27 @@ function computeProrataRatios(periodStart, periodEnd) {
   return { ratio2025: ms2025 / totalMs, ratio2026: ms2026 / totalMs, periodStart, periodEnd };
 }
 
-async function autoRunOspharm() {
+async function autoRunOspharm(mode) {
+  // mode='attach' : se greffe sur un job GitHub Actions déjà en cours sans en lancer un nouveau
   // Déclenche un scrape OSPHARM à chaque connexion pour avoir les données à jour.
   // Silencieux : pas de toast d'erreur, pas de blocage UI.
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
     if (!session) return;
     window._setConnProgress?.('osp', 'job');
-    const resp = await fetch(`${API_URL}/run/ospharm`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${session.access_token}` },
-    });
-    if (!resp.ok) { window._setConnProgress?.('osp', 'reset'); return; }
 
-    // Démarrage : marquer le job en cours + afficher la barre de progression
-    state._ospJobRunning   = true;
-    state._ospJobStartedAt = Date.now();
-    state._ospJobMessage   = '';
+    if (mode !== 'attach') {
+      const resp = await fetch(`${API_URL}/run/ospharm`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!resp.ok) { window._setConnProgress?.('osp', 'reset'); return; }
+
+      // Démarrage : marquer le job en cours + afficher la barre de progression
+      state._ospJobRunning   = true;
+      state._ospJobStartedAt = Date.now();
+      state._ospJobMessage   = '';
+    }
     if (state.currentPageId === 'recap') renderRecap();
 
     // Polling toutes les 5 s, 10 min max
@@ -6180,14 +6184,44 @@ async function saveProfile() {
       // Re-scrape uniquement si données absentes ou âgées de plus de 24h
       const ageMs = state._monthSavedAt ? Date.now() - state._monthSavedAt : Infinity;
       const needsRefresh = !Object.keys(state._monthStats || {}).length || ageMs > 24 * 3600 * 1000;
-      if (!isAdmin && needsRefresh) {
-        setTimeout(() => autoRunOspharm().catch(() => {}), 1500);
+      if (!isAdmin) {
+        setTimeout(async () => {
+          try {
+            const { data: { session } } = await window._sbClient.auth.getSession();
+            if (!session) return;
+            const { data: row } = await window._sbClient.from('user_state')
+              .select('state_json').eq('user_id', session.user.id).maybeSingle();
+            const ospJob = row?.state_json?.ospharm_job;
+            if (ospJob?.status === 'running') {
+              // Job déjà en cours sur GitHub Actions — rattacher le polling sans relancer
+              state._ospJobRunning   = true;
+              state._ospJobStartedAt = state._ospJobStartedAt || Date.now();
+              state._ospJobMessage   = ospJob.message || '';
+              autoRunOspharm('attach').catch(() => {});
+            } else if (needsRefresh) {
+              autoRunOspharm().catch(() => {});
+            }
+          } catch(_) {}
+        }, 1500);
       }
     }
     if (saved.connectors?.digipharmacie?.connected) {
       const hasDigi = Object.keys(state._digiMonthStats || {}).length > 0;
       if (!hasDigi) {
         setTimeout(() => autoRunDigi().catch(() => {}), 3000);
+      } else {
+        // Données présentes — re-attacher uniquement si un job est encore en cours
+        setTimeout(async () => {
+          try {
+            const { data: { session } } = await window._sbClient.auth.getSession();
+            if (!session) return;
+            const { data: row } = await window._sbClient.from('user_state')
+              .select('state_json').eq('user_id', session.user.id).maybeSingle();
+            if (row?.state_json?.verif_job?.status === 'running') {
+              autoRunDigi().catch(() => {});
+            }
+          } catch(_) {}
+        }, 3000);
       }
     }
     const savedPages = saved.labPages || [];
