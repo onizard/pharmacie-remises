@@ -1321,7 +1321,6 @@
           <span style="font-size:12px;color:var(--text-dim)">€</span>
           <button class="btn btn-reset-hold admin-only" id="btnResetConditions" style="display:none" title="Maintenir 3 secondes pour réinitialiser">↺ RESET</button>
           <button class="btn btn-primary admin-only" id="btnSaveConditions" style="display:none">↑ SAVE</button>
-          <button class="btn btn-secondary" id="btnLabsInfo" style="display:none">ℹ INFOS</button>
         </div>
       </div>
       <div class="lab-grid" id="labGridMain"></div>
@@ -3054,6 +3053,7 @@ function initLabPage(conf) {
             <input type="text" id="coopInp-${uid}-${cond.uid}" class="rsf-input" style="width:80px;border-color:rgba(0,255,136,.35)" placeholder="ex : 5" title="Remise 3 — dupliquée sur tous les paliers RSF" />
             <span class="rg-unit" style="color:var(--green)">%</span>
             ` : ''}
+            <button id="labInfoBtn-${uid}-${cond.uid}" class="btn btn-secondary labs-info-inline-btn" style="display:none;font-size:11px;padding:4px 10px;margin-left:8px">ℹ INFOS</button>
           </div>
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
             <div class="rg-label">C.A ANNUEL DEMANDÉ (BRUT)</div>
@@ -3143,6 +3143,13 @@ function initLabPage(conf) {
           saveState();
         });
       }
+    }
+
+    // ── Bouton INFOS inline (visible uniquement pour non-admin, palier 1 seulement)
+    const _infoBtn = document.getElementById(`labInfoBtn-${uid}-${cond.uid}`);
+    if (_infoBtn && !isAdmin) {
+      _infoBtn.style.display = '';
+      _infoBtn.addEventListener('click', () => _openLabsInfo(s.selectedLab));
     }
 
     const rsfToggle = document.getElementById(`rsfToggle-${uid}-${cond.uid}`);
@@ -6380,11 +6387,11 @@ async function saveProfile() {
   }
 
   // ── Modal INFOS conditions ─────────────────────────────────────────────────────
-  function _buildLabsInfoHtml() {
+  function _buildLabsInfoHtml(filterLab) {
     const fmt = n => n != null ? Number(n).toLocaleString('fr-FR') : '—';
     const pct = v => (v !== '' && v != null && v !== '0') ? `${parseFloat(v).toFixed(2).replace('.', ',')} %` : null;
     let html = '';
-    const labs = state.labPages.filter(lp => lp.selectedLab);
+    const labs = state.labPages.filter(lp => lp.selectedLab && (!filterLab || lp.selectedLab === filterLab));
     if (!labs.length) {
       return '<div class="labs-info-empty">Aucun laboratoire sélectionné.</div>';
     }
@@ -6417,7 +6424,7 @@ async function saveProfile() {
     return html;
   }
 
-  async function _openLabsInfo() {
+  async function _openLabsInfo(filterLab) {
     const modal = document.getElementById('labsInfoModal');
     const content = document.getElementById('labsInfoContent');
     if (!modal || !content) return;
@@ -6434,10 +6441,10 @@ async function saveProfile() {
         if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
       });
     });
-    content.innerHTML = _buildLabsInfoHtml();
+    content.innerHTML = _buildLabsInfoHtml(filterLab || null);
   }
 
-  document.getElementById('btnLabsInfo')?.addEventListener('click', _openLabsInfo);
+  document.getElementById('btnLabsInfo')?.addEventListener('click', () => _openLabsInfo(null));
   document.getElementById('labsInfoClose')?.addEventListener('click', () => document.getElementById('labsInfoModal')?.classList.remove('open'));
   document.getElementById('labsInfoModal')?.addEventListener('click', e => { if (e.target === document.getElementById('labsInfoModal')) document.getElementById('labsInfoModal').classList.remove('open'); });
 
