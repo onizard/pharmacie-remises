@@ -306,6 +306,33 @@
   .page { display: none; }
   .page.active { display: block; }
 
+  /* ── Vue simplifiée non-admin dans le modal conditions ── */
+  .labs-user-view .mon-btns,
+  .labs-user-view [id^="condTabs-"],
+  .labs-user-view [id^="condTabs25-"],
+  .labs-user-view [id^="condPanels25-"],
+  .labs-user-view [id^="monBtns25-"],
+  .labs-user-view [id^="yearBody25-"],
+  .labs-user-view .year-label-toggle,
+  .labs-user-view .cond-tab-idem,
+  .labs-user-view [id^="copy26to25-"],
+  .labs-user-view .rsf-section { display: none !important; }
+  .labs-user-view [id^="condPanels-"] .cond-panel:not(:first-child) { display: none !important; }
+  .labs-user-view .rg-section input { pointer-events: none; opacity: .75; }
+
+  /* ── Modal INFOS conditions ── */
+  #labsInfoModal .bp-modal-box { width: min(680px, 96vw); }
+  .labs-info-lab { margin-bottom: 28px; }
+  .labs-info-lab-title { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 900; color: var(--cyan); letter-spacing: 3px; margin-bottom: 12px; border-bottom: 1px solid rgba(0,229,255,.2); padding-bottom: 8px; }
+  .labs-info-palier { margin-bottom: 14px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--border); }
+  .labs-info-palier-title { font-size: 12px; color: var(--amber); font-weight: 700; letter-spacing: 1px; margin-bottom: 8px; }
+  .labs-info-row { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--text-dim); padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+  .labs-info-row:last-child { border-bottom: none; }
+  .labs-info-row strong { color: var(--text); }
+  .labs-info-note { margin-top: 20px; padding: 14px; background: rgba(0,229,255,.06); border: 1px solid rgba(0,229,255,.2); font-size: 12px; color: var(--cyan); line-height: 1.6; }
+  .labs-info-loading { text-align: center; color: var(--text-dim); font-size: 13px; padding: 20px; }
+  .labs-info-empty { color: var(--text-dim); font-size: 13px; font-style: italic; }
+
   /* ── Page Labs → modal overlay ── */
   #page-labs.active {
     display: flex !important;
@@ -1297,6 +1324,7 @@
           <span style="font-size:12px;color:var(--text-dim)">€</span>
           <button class="btn btn-reset-hold admin-only" id="btnResetConditions" style="display:none" title="Maintenir 3 secondes pour réinitialiser">↺ RESET</button>
           <button class="btn btn-primary admin-only" id="btnSaveConditions" style="display:none">↑ SAVE</button>
+          <button class="btn btn-secondary" id="btnLabsInfo" style="display:none">ℹ INFOS</button>
         </div>
       </div>
       <div class="lab-grid" id="labGridMain"></div>
@@ -6347,6 +6375,75 @@ async function saveProfile() {
   renderLabGrid();
   renderStepBar();
 
+  // ── Vue simplifiée pour non-admin ─────────────────────────────────────────────
+  if (!isAdmin) {
+    document.getElementById('page-labs')?.classList.add('labs-user-view');
+    const _btnInfo = document.getElementById('btnLabsInfo');
+    if (_btnInfo) _btnInfo.style.display = '';
+  }
+
+  // ── Modal INFOS conditions ─────────────────────────────────────────────────────
+  function _buildLabsInfoHtml() {
+    const fmt = n => n != null ? Number(n).toLocaleString('fr-FR') : '—';
+    const pct = v => (v !== '' && v != null && v !== '0') ? `${parseFloat(v).toFixed(2).replace('.', ',')} %` : null;
+    let html = '';
+    const labs = state.labPages.filter(lp => lp.selectedLab);
+    if (!labs.length) {
+      return '<div class="labs-info-empty">Aucun laboratoire sélectionné.</div>';
+    }
+    for (const lp of labs) {
+      const conds = lp._baseConds2026 || lp.conditions || [];
+      html += `<div class="labs-info-lab">
+        <div class="labs-info-lab-title">◈ ${lp.selectedLab}</div>`;
+      if (!conds.length) { html += '<div class="labs-info-empty">Aucune condition configurée.</div>'; }
+      conds.forEach((cond, idx) => {
+        const rg = cond.remiseGlobale != null ? `Remise cible : <strong>${cond.remiseGlobale} %</strong>` : '';
+        const ca = cond.caCondition  != null ? `CA demandé : <strong>${fmt(cond.caCondition)} €</strong>` : '';
+        const header = [rg, ca].filter(Boolean).join(' &nbsp;·&nbsp; ');
+        const rows = (cond.rsfValues || []).filter(r => r.remise2 || r.remise3 || r.excluded);
+        html += `<div class="labs-info-palier">
+          <div class="labs-info-palier-title">Palier ${idx + 1}${header ? ' — ' + header : ''}</div>
+          ${rows.length ? rows.map(r => {
+            const r2 = pct(r.remise2); const r3 = pct(r.remise3);
+            const excl = r.excluded ? '<span style="color:var(--red)">Exclu</span>' : '';
+            const parts = [
+              `<strong>RSF ${r.rsf_pct} %</strong>`,
+              excl || [r2 ? `Remise 2 : ${r2}` : '', r3 ? `Coop : ${r3}` : ''].filter(Boolean).join(' | ')
+            ].filter(Boolean).join(' → ');
+            return `<div class="labs-info-row">${parts}</div>`;
+          }).join('') : '<div class="labs-info-row" style="font-style:italic">Aucun palier RSF configuré.</div>'}
+        </div>`;
+      });
+      html += '</div>';
+    }
+    html += `<div class="labs-info-note">ℹ️ Ces conditions sont utilisées par le comparateur pour calculer vos simulations de remises sur génériques. Les valeurs reflètent les derniers paramètres enregistrés.</div>`;
+    return html;
+  }
+
+  async function _openLabsInfo() {
+    const modal = document.getElementById('labsInfoModal');
+    const content = document.getElementById('labsInfoContent');
+    if (!modal || !content) return;
+    content.innerHTML = '<div class="labs-info-loading">Actualisation…</div>';
+    modal.classList.add('open');
+    // Recharger rsf_defaults pour avoir la dernière version admin
+    await loadRsfDefaults();
+    // Ré-appliquer les defaults aux conditions du user
+    state.labPages.forEach(lp => {
+      if (!lp.selectedLab) return;
+      const defs = window._rsfDefaults?.[lp.selectedLab];
+      const conds = [...(lp._baseConds2026 || lp.conditions || []), ...(lp._baseConds2025 || lp.conditions2025 || [])];
+      conds.forEach(cond => {
+        if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+      });
+    });
+    content.innerHTML = _buildLabsInfoHtml();
+  }
+
+  document.getElementById('btnLabsInfo')?.addEventListener('click', _openLabsInfo);
+  document.getElementById('labsInfoClose')?.addEventListener('click', () => document.getElementById('labsInfoModal')?.classList.remove('open'));
+  document.getElementById('labsInfoModal')?.addEventListener('click', e => { if (e.target === document.getElementById('labsInfoModal')) document.getElementById('labsInfoModal').classList.remove('open'); });
+
   // ── CONDITIONS LABO button (toggle : aller/revenir) ───────────────────────────
   document.getElementById('btnConditionsLabo')?.addEventListener('click', () => {
     if (state.currentPageId === 'labs') goTo('recap');
@@ -7374,6 +7471,14 @@ document.addEventListener('DOMContentLoaded', function() {
 </footer>
 
 <!-- ── Modale Feedback ────────────────────────────────────────────────────── -->
+<div id="labsInfoModal" class="bp-modal">
+  <div class="bp-modal-box">
+    <button class="bp-modal-close" id="labsInfoClose">✕</button>
+    <div class="bp-modal-title">MES CONDITIONS LABO</div>
+    <div id="labsInfoContent"><div class="labs-info-loading">Chargement…</div></div>
+  </div>
+</div>
+
 <div id="feedbackModal" class="bp-modal">
   <div class="bp-modal-box">
     <button class="bp-modal-close" id="feedbackClose">✕</button>
