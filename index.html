@@ -6397,7 +6397,7 @@ async function saveProfile() {
       return '<div class="labs-info-empty">Aucun laboratoire sélectionné.</div>';
     }
     for (const lp of labs) {
-      const conds = lp._baseConds2026 || lp.conditions || [];
+      const conds = lp.conditions || lp._baseConds2026 || [];
       html += `<div class="labs-info-lab">
         <div class="labs-info-lab-title">◈ ${lp.selectedLab}</div>`;
       if (!conds.length) { html += '<div class="labs-info-empty">Aucune condition configurée.</div>'; }
