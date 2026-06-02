@@ -3504,7 +3504,8 @@ function initLabPage(conf) {
       s[condKey][0].rsfValues = mkRsfValues(lab, paliers);
       if (!isAdmin) {
         const defs = window._rsfDefaults?.[lab];
-        if (defs) s[condKey][0].rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+        if (defs) s[condKey][0].rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; if (s[condKey][0].coopR3 == null) r.remise3 = d.remise3 || ''; } });
+        if (s[condKey][0].coopR3 != null) s[condKey][0].rsfValues.forEach(r => { r.remise3 = String(s[condKey][0].coopR3); });
         const exc = window._labExceptions?.[lab];
         if (exc) { Object.assign(s[condKey][0].exceptions, exc.exceptions || {}); Object.assign(s[condKey][0].remise2Except, exc.remise2Except || {}); }
       }
@@ -6455,13 +6456,25 @@ async function saveProfile() {
     modal.classList.add('open');
     // Recharger rsf_defaults pour avoir la dernière version admin
     await loadRsfDefaults();
-    // Ré-appliquer les defaults aux conditions du user
+    // Ré-appliquer les defaults aux conditions : remise2 depuis admin,
+    // mais remise3 (Coop) préservée si l'user a saisi sa propre valeur (coopR3 != null)
     state.labPages.forEach(lp => {
       if (!lp.selectedLab) return;
       const defs = window._rsfDefaults?.[lp.selectedLab];
       const conds = [...(lp._baseConds2026 || lp.conditions || []), ...(lp._baseConds2025 || lp.conditions2025 || [])];
       conds.forEach(cond => {
-        if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+        if (defs) cond.rsfValues.forEach(r => {
+          const d = defs[String(r.rsf_pct)];
+          if (d) {
+            r.remise2 = d.remise2 || '';
+            // Ne pas écraser remise3 si l'user a entré sa propre valeur Coop
+            if (cond.coopR3 == null) r.remise3 = d.remise3 || '';
+          }
+        });
+        // Re-appliquer la valeur Coop de l'user si elle existe
+        if (cond.coopR3 != null) {
+          cond.rsfValues.forEach(r => { r.remise3 = String(cond.coopR3); });
+        }
       });
     });
     content.innerHTML = _buildLabsInfoHtml(filterLab || null);
