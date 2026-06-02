@@ -3149,7 +3149,7 @@ function initLabPage(conf) {
     const _infoBtn = document.getElementById(`labInfoBtn-${uid}-${cond.uid}`);
     if (_infoBtn && !isAdmin) {
       _infoBtn.style.display = '';
-      _infoBtn.addEventListener('click', () => _openLabsInfo(s.selectedLab));
+      _infoBtn.addEventListener('click', () => window._openLabsInfo?.(s.selectedLab));
     }
 
     const rsfToggle = document.getElementById(`rsfToggle-${uid}-${cond.uid}`);
@@ -6424,7 +6424,7 @@ async function saveProfile() {
     return html;
   }
 
-  async function _openLabsInfo(filterLab) {
+  window._openLabsInfo = async function _openLabsInfo(filterLab) {
     const modal = document.getElementById('labsInfoModal');
     const content = document.getElementById('labsInfoContent');
     if (!modal || !content) return;
@@ -6444,7 +6444,7 @@ async function saveProfile() {
     content.innerHTML = _buildLabsInfoHtml(filterLab || null);
   }
 
-  document.getElementById('btnLabsInfo')?.addEventListener('click', () => _openLabsInfo(null));
+  document.getElementById('btnLabsInfo')?.addEventListener('click', () => window._openLabsInfo?.(null));
   document.getElementById('labsInfoClose')?.addEventListener('click', () => document.getElementById('labsInfoModal')?.classList.remove('open'));
   document.getElementById('labsInfoModal')?.addEventListener('click', e => { if (e.target === document.getElementById('labsInfoModal')) document.getElementById('labsInfoModal').classList.remove('open'); });
 
