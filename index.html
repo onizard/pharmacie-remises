@@ -6407,7 +6407,10 @@ async function saveProfile() {
         const rows = (cond.rsfValues || []).filter(r => r.remise2 || r.remise3 || r.excluded);
         const hasExcept = (cond.rsfValues || []).some(r => r.hasExcept);
         html += `<div class="labs-info-palier">
-          <div class="labs-info-palier-title">Palier ${idx + 1}${hasExcept ? ' <span style="color:var(--amber)" title="Références avec conditions particulières">*</span>' : ''}${header ? ' — ' + header : ''}</div>
+          <div class="labs-info-palier-title" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Palier ${idx + 1}${header ? ' — ' + header : ''}</span>
+            ${hasExcept ? '<span style="color:var(--amber);font-size:20px;line-height:1;font-weight:900" title="Références avec conditions particulières">*</span>' : ''}
+          </div>
           ${rows.length ? rows.map(r => {
             const r2 = pct(r.remise2); const r3 = pct(r.remise3);
             const r2part = r.excluded ? 'Remise 2 : 0 %' : (r2 ? `Remise 2 : ${r2}` : '');
@@ -6424,7 +6427,7 @@ async function saveProfile() {
         .filter(([, exc]) => exc?.libelles?.length);
       if (excEntries.length) {
         html += `<div class="labs-info-palier" style="border-color:rgba(255,171,0,.3)">
-          <div class="labs-info-palier-title" style="color:var(--amber)">⚠ Références avec conditions particulières</div>`;
+          <div class="labs-info-palier-title" style="color:var(--amber)">* Références avec conditions particulières</div>`;
         excEntries.forEach(([rsf_pct, exc]) => {
           const r2 = pct(exc.remise2); const r3 = pct(exc.remise3);
           const rates = [r2 ? `Remise 2 : ${r2}` : '', r3 ? `Coop : ${r3}` : ''].filter(Boolean).join(' | ') || '—';
