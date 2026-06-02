@@ -6308,10 +6308,22 @@ async function saveProfile() {
       const defs = window._rsfDefaults?.[lp.selectedLab];
       const exc  = window._labExceptions?.[lp.selectedLab];
       if (!defs && !exc) return;
-      [...(lp.conditions || []), ...(lp.conditions2025 || [])].forEach(cond => {
+      // Applique les defaults à TOUTES les conditions : actives, base et overrides mensuels.
+      // Sans ça, si l'admin est sur un mois, _baseConds2026 n'est pas mis à jour
+      // et serializeState() y lit remise3='' alors que conditions (mensuel) a remise3 correct.
+      const _allCondsArrays = [
+        lp.conditions, lp._baseConds2026,
+        lp.conditions2025, lp._baseConds2025,
+        ...Object.values(lp.condsByMonth?.[2026] || {}),
+        ...Object.values(lp.condsByMonth?.[2025] || {}),
+      ].filter(Boolean);
+      const _seen = new Set();
+      _allCondsArrays.forEach(arr => (Array.isArray(arr) ? arr : [arr]).forEach(cond => {
+        if (!cond || _seen.has(cond)) return;
+        _seen.add(cond);
         if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
         if (exc) { Object.assign(cond.exceptions, exc.exceptions); Object.assign(cond.remise2Except, exc.remise2Except); }
-      });
+      }));
       if (lp._reRenderCondTables)     lp._reRenderCondTables();
       if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();
     });
