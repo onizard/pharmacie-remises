@@ -3133,6 +3133,14 @@ function initLabPage(conf) {
           cond.coopR3 = isNaN(fv) ? null : raw;
           const r3val = isNaN(fv) ? '' : raw;
           cond.rsfValues.forEach(r => { r.remise3 = r3val; });
+          // Arrow : dupliquer sur TOUS les paliers (toutes les conditions du labo)
+          if (s.selectedLab === 'Arrow') {
+            (s[condKey] || []).forEach(otherCond => {
+              if (otherCond === cond) return;
+              otherCond.coopR3 = cond.coopR3;
+              otherCond.rsfValues.forEach(r => { r.remise3 = r3val; });
+            });
+          }
           // Afficher la colonne remise 3 automatiquement si une valeur est saisie
           if (r3val && !cond.showR3) {
             cond.showR3 = true;
