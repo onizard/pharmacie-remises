@@ -6409,12 +6409,9 @@ async function saveProfile() {
           <div class="labs-info-palier-title">Palier ${idx + 1}${header ? ' — ' + header : ''}</div>
           ${rows.length ? rows.map(r => {
             const r2 = pct(r.remise2); const r3 = pct(r.remise3);
-            const excl = r.excluded ? '<span style="color:var(--red)">Exclu</span>' : '';
-            const parts = [
-              `<strong>RSF ${r.rsf_pct} %</strong>`,
-              excl || [r2 ? `Remise 2 : ${r2}` : '', r3 ? `Coop : ${r3}` : ''].filter(Boolean).join(' | ')
-            ].filter(Boolean).join(' → ');
-            return `<div class="labs-info-row">${parts}</div>`;
+            const r2part = r.excluded ? '<span style="color:var(--red)">Exclu</span>' : (r2 ? `Remise 2 : ${r2}` : '');
+            const rates = [r2part, r3 ? `Coop : ${r3}` : ''].filter(Boolean).join(' | ') || '—';
+            return `<div class="labs-info-row"><strong>RSF ${r.rsf_pct} %</strong> → ${rates}</div>`;
           }).join('') : '<div class="labs-info-row" style="font-style:italic">Aucun palier RSF configuré.</div>'}
         </div>`;
       });
