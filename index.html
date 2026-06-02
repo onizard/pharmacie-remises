@@ -6418,6 +6418,28 @@ async function saveProfile() {
           }).join('') : '<div class="labs-info-row" style="font-style:italic">Aucun palier RSF configuré.</div>'}
         </div>`;
       });
+
+      // ── Exceptions : références avec conditions particulières ──────────────────
+      // On prend les exceptions du premier palier (les libellés sont synchronisés entre paliers)
+      const refCond = conds[0];
+      const excEntries = Object.entries(refCond?.remise2Except || {})
+        .filter(([, exc]) => exc?.libelles?.length);
+      if (excEntries.length) {
+        html += `<div class="labs-info-palier" style="border-color:rgba(255,171,0,.3)">
+          <div class="labs-info-palier-title" style="color:var(--amber)">⚠ Références avec conditions particulières</div>`;
+        excEntries.forEach(([rsf_pct, exc]) => {
+          const r2 = pct(exc.remise2); const r3 = pct(exc.remise3);
+          const rates = [r2 ? `Remise 2 : ${r2}` : '', r3 ? `Coop : ${r3}` : ''].filter(Boolean).join(' | ') || '—';
+          html += `<div class="labs-info-row" style="padding-top:6px">
+            <strong>RSF ${rsf_pct} %</strong> → ${rates}
+            <ul style="margin:4px 0 4px 16px;padding:0;list-style:disc">
+              ${exc.libelles.map(l => `<li style="font-size:11px;color:var(--text-dim);padding:1px 0">${l.text}</li>`).join('')}
+            </ul>
+          </div>`;
+        });
+        html += `</div>`;
+      }
+
       html += '</div>';
     }
     html += `<div class="labs-info-note">ℹ️ Ces conditions sont utilisées par le comparateur pour calculer vos simulations de remises sur génériques. Les valeurs reflètent les derniers paramètres enregistrés.</div>`;
