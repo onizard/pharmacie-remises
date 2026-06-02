@@ -2788,28 +2788,41 @@ function createLabContDom(lp) {
   if (_copy26to25) {
     _copy26to25.addEventListener('click', async () => {
       if (!lp.selectedLab || !lp.conditions?.length) return;
-      if (!confirm(`Écraser les conditions 2025 avec une copie des conditions 2026 de ${lp.selectedLab} ?`)) return;
-      // Ouvrir le panneau 2025 si replié
+      if (!confirm(`Écraser les conditions 2025 avec une copie des conditions 2026 de ${lp.selectedLab} (base + mois) ?`)) return;
       if (_body25.style.display === 'none') {
         _body25.style.display = '';
         _toggle25.textContent = '2025 ▼';
       }
-      // Construire un faux savedLabData copié depuis les conditions 2026
+
+      // Deep-copy d'un tableau de conditions (génère de nouveaux uids)
+      const _deepCopyConds = conds => (conds || []).map(c => ({
+        uid:           'c' + Date.now() + '_' + Math.random().toString(36).slice(2),
+        remiseGlobale:  c.remiseGlobale,
+        caCondition:    c.caCondition,
+        exceptions:     JSON.parse(JSON.stringify(c.exceptions    || {})),
+        remise2Except:  JSON.parse(JSON.stringify(c.remise2Except || {})),
+        rsfOnly:        JSON.parse(JSON.stringify(c.rsfOnly       || { enabled: false, libelles: [] })),
+        showR3:         c.showR3      || false,
+        forceFirst:     c.forceFirst  || false,
+        rsfValues:      c.rsfValues.map(r => ({ ...r })),
+      }));
+
+      // 1. Copier les conditions de BASE 2026 → 2025
+      const base2026 = lp._baseConds2026 || lp.conditions;
       const fakeData = {
-        selectedLab: lp.selectedLab,
-        conditions2025: lp.conditions.map(c => ({
-          uid: 'c' + Date.now() + '_' + Math.random().toString(36).slice(2),
-          remiseGlobale:  c.remiseGlobale,
-          caCondition:    c.caCondition,
-          exceptions:     JSON.parse(JSON.stringify(c.exceptions    || {})),
-          remise2Except:  JSON.parse(JSON.stringify(c.remise2Except || {})),
-          rsfOnly:        JSON.parse(JSON.stringify(c.rsfOnly       || { enabled: false, libelles: [] })),
-          showR3:         c.showR3      || false,
-          forceFirst:     c.forceFirst  || false,
-          rsfValues:      c.rsfValues.map(r => ({ ...r })),
-        })),
+        selectedLab:   lp.selectedLab,
+        conditions2025: _deepCopyConds(base2026),
       };
       await lp._restoreFromSave2025(fakeData);
+
+      // 2. Copier les overrides MENSUELS 2026 → 2025
+      if (!lp.condsByMonth) lp.condsByMonth = { 2025: {}, 2026: {} };
+      if (!lp.condsByMonth[2025]) lp.condsByMonth[2025] = {};
+      Object.entries(lp.condsByMonth?.[2026] || {}).forEach(([mon, conds]) => {
+        lp.condsByMonth[2025][parseInt(mon)] = _deepCopyConds(Array.isArray(conds) ? conds : [conds]);
+      });
+
+      lp._refreshMonBtns25?.();
       saveState();
     });
   }
