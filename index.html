@@ -6412,12 +6412,17 @@ async function saveProfile() {
             <span>Palier ${idx + 1}${header ? ' — ' + header : ''}</span>
             ${hasExcept ? '<span style="color:var(--amber);font-size:20px;line-height:1;font-weight:900" title="Références avec conditions particulières">*</span>' : ''}
           </div>
-          ${rows.length ? rows.map(r => {
-            const r2 = pct(r.remise2); const r3 = pct(r.remise3);
+          ${rows.length ? (() => {
+            // Coop = valeur user (coopR3) si saisie, sinon première remise3 trouvée sur les paliers
+            const coopVal = cond.coopR3 != null
+              ? pct(String(cond.coopR3))
+              : pct((cond.rsfValues || []).find(r => r.remise3)?.remise3);
+            return rows.map(r => {
+            const r2 = pct(r.remise2);
             const r2part = r.excluded ? 'Remise 2 : 0 %' : (r2 ? `Remise 2 : ${r2}` : '');
-            const rates = [r2part, r3 ? `Coop : ${r3}` : ''].filter(Boolean).join(' | ') || '—';
+            const rates = [r2part, coopVal ? `Coop : ${coopVal}` : ''].filter(Boolean).join(' | ') || '—';
             return `<div class="labs-info-row"><strong>RSF ${r.rsf_pct} %</strong> → ${rates}</div>`;
-          }).join('') : '<div class="labs-info-row" style="font-style:italic">Aucun palier RSF configuré.</div>'}
+          }).join('');})() : '<div class="labs-info-row" style="font-style:italic">Aucun palier RSF configuré.</div>'}
         </div>`;
       });
 
