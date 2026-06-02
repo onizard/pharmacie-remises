@@ -1347,7 +1347,7 @@ const LABS_BRAND_EXCL = new Set(['WEGOVY','OZEMPIC','VICTOZA','TRULICITY','BYDUR
 
 // ── State ──────────────────────────────────────────────────────────────────────
 function mkCondState(uid) {
-  return { uid, remiseGlobale: null, caCondition: null, rsfValues: [], exceptions: {}, remise2Except: {}, rsfOnly: { enabled: false, libelles: [] }, showR3: false, forceFirst: false };
+  return { uid, remiseGlobale: null, caCondition: null, coopR3: null, rsfValues: [], exceptions: {}, remise2Except: {}, rsfOnly: { enabled: false, libelles: [] }, showR3: false, forceFirst: false };
 }
 
 const BIOGARAN_DEFAULT_EXCL = new Set([-2.5, -5, -7]);
@@ -1478,6 +1478,7 @@ function serializeState() {
         uid: c.uid,
         remiseGlobale: c.remiseGlobale,
         caCondition: c.caCondition,
+        coopR3: c.coopR3 ?? null,
         rsfValues: c.rsfValues.map(r => ({
           rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept, custom: r.custom || false,
         })),
@@ -1492,6 +1493,7 @@ function serializeState() {
         uid: c.uid,
         remiseGlobale: c.remiseGlobale,
         caCondition: c.caCondition,
+        coopR3: c.coopR3 ?? null,
         rsfValues: c.rsfValues.map(r => ({
           rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept, custom: r.custom || false,
         })),
@@ -2818,6 +2820,7 @@ function createLabContDom(lp) {
         uid:           'c' + Date.now() + '_' + Math.random().toString(36).slice(2),
         remiseGlobale:  c.remiseGlobale,
         caCondition:    c.caCondition,
+        coopR3:         c.coopR3 ?? null,
         exceptions:     JSON.parse(JSON.stringify(c.exceptions    || {})),
         remise2Except:  JSON.parse(JSON.stringify(c.remise2Except || {})),
         rsfOnly:        JSON.parse(JSON.stringify(c.rsfOnly       || { enabled: false, libelles: [] })),
@@ -3021,6 +3024,11 @@ function initLabPage(conf) {
             <div class="rg-label">REMISE GLOBALE CIBLE</div>
             <input type="text" id="rgInp-${uid}-${cond.uid}" class="rsf-input" style="width:130px" placeholder="ex : 35.00" />
             <span class="rg-unit">%</span>
+            ${['Teva','EG','Arrow'].includes(s.selectedLab) ? `
+            <div class="rg-label" style="margin-left:16px;color:var(--green)">COOP</div>
+            <input type="text" id="coopInp-${uid}-${cond.uid}" class="rsf-input" style="width:80px;border-color:rgba(0,255,136,.35)" placeholder="ex : 5" title="Remise 3 — dupliquée sur tous les paliers RSF" />
+            <span class="rg-unit" style="color:var(--green)">%</span>
+            ` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
             <div class="rg-label">C.A ANNUEL DEMANDÉ (BRUT)</div>
@@ -3089,6 +3097,29 @@ function initLabPage(conf) {
       renderCondTable(cond);
       saveState();
     });
+    // ── Champ COOP (Teva / EG / Arrow) — remise 3 globale dupliquée sur tous les paliers
+    if (['Teva', 'EG', 'Arrow'].includes(s.selectedLab)) {
+      const coopInp = document.getElementById(`coopInp-${uid}-${cond.uid}`);
+      if (coopInp) {
+        coopInp.value = cond.coopR3 !== null && cond.coopR3 !== undefined ? cond.coopR3 : '';
+        coopInp.addEventListener('input', () => {
+          const raw = coopInp.value.replace(',', '.').trim();
+          const fv  = parseFloat(raw);
+          cond.coopR3 = isNaN(fv) ? null : raw;
+          const r3val = isNaN(fv) ? '' : raw;
+          cond.rsfValues.forEach(r => { r.remise3 = r3val; });
+          // Afficher la colonne remise 3 automatiquement si une valeur est saisie
+          if (r3val && !cond.showR3) {
+            cond.showR3 = true;
+            const r3Btn = document.getElementById(`r3Btn-${uid}-${cond.uid}`);
+            if (r3Btn) r3Btn.textContent = `− REMISE 3`;
+          }
+          renderCondTable(cond);
+          saveState();
+        });
+      }
+    }
+
     const rsfToggle = document.getElementById(`rsfToggle-${uid}-${cond.uid}`);
     const rsfBody   = document.getElementById(`rsfBody-${uid}-${cond.uid}`);
     if (rsfToggle && rsfBody) {
@@ -3512,6 +3543,7 @@ function initLabPage(conf) {
         const cond = mkCondState(sc.uid);
         cond.remiseGlobale = sc.remiseGlobale;
         cond.caCondition   = sc.caCondition;
+        cond.coopR3        = sc.coopR3 ?? null;
         cond.exceptions    = sc.exceptions || {};
         cond.rsfOnly       = sc.rsfOnly || { enabled: false, libelles: [] };
         cond.showR3    = sc.showR3    || false;
