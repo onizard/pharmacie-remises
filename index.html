@@ -6405,8 +6405,9 @@ async function saveProfile() {
         const ca = cond.caCondition  != null ? `CA demandé : <strong>${fmt(cond.caCondition)} €</strong>` : '';
         const header = [rg, ca].filter(Boolean).join(' &nbsp;·&nbsp; ');
         const rows = (cond.rsfValues || []).filter(r => r.remise2 || r.remise3 || r.excluded);
+        const hasExcept = Object.values(cond.remise2Except || {}).some(e => e?.libelles?.length);
         html += `<div class="labs-info-palier">
-          <div class="labs-info-palier-title">Palier ${idx + 1}${header ? ' — ' + header : ''}</div>
+          <div class="labs-info-palier-title">Palier ${idx + 1}${hasExcept ? ' <span style="color:var(--amber)" title="Références avec conditions particulières">*</span>' : ''}${header ? ' — ' + header : ''}</div>
           ${rows.length ? rows.map(r => {
             const r2 = pct(r.remise2); const r3 = pct(r.remise3);
             const r2part = r.excluded ? 'Remise 2 : 0 %' : (r2 ? `Remise 2 : ${r2}` : '');
