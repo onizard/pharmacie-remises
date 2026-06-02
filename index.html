@@ -6405,7 +6405,7 @@ async function saveProfile() {
         const ca = cond.caCondition  != null ? `CA demandé : <strong>${fmt(cond.caCondition)} €</strong>` : '';
         const header = [rg, ca].filter(Boolean).join(' &nbsp;·&nbsp; ');
         const rows = (cond.rsfValues || []).filter(r => r.remise2 || r.remise3 || r.excluded);
-        const hasExcept = Object.values(cond.remise2Except || {}).some(e => e?.libelles?.length);
+        const hasExcept = (cond.rsfValues || []).some(r => r.hasExcept);
         html += `<div class="labs-info-palier">
           <div class="labs-info-palier-title">Palier ${idx + 1}${hasExcept ? ' <span style="color:var(--amber)" title="Références avec conditions particulières">*</span>' : ''}${header ? ' — ' + header : ''}</div>
           ${rows.length ? rows.map(r => {
@@ -6418,8 +6418,8 @@ async function saveProfile() {
       });
 
       // ── Exceptions : références avec conditions particulières ──────────────────
-      // On prend les exceptions du premier palier (les libellés sont synchronisés entre paliers)
-      const refCond = conds[0];
+      // On prend les exceptions du premier palier où hasExcept est activé (case cochée)
+      const refCond = conds.find(c => (c.rsfValues || []).some(r => r.hasExcept));
       const excEntries = Object.entries(refCond?.remise2Except || {})
         .filter(([, exc]) => exc?.libelles?.length);
       if (excEntries.length) {
