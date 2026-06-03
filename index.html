@@ -446,6 +446,10 @@
   .rg-section.visible { display: flex; }
   .rg-label { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--cyan); letter-spacing: 2px; white-space: nowrap; }
   .rg-unit  { font-family: 'Orbitron', monospace; font-size: 13px; color: var(--cyan); font-weight: 700; }
+  .ca-slider { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--amber) 0%, var(--amber) var(--pct,50%), rgba(255,255,255,.15) var(--pct,50%)); outline: none; cursor: pointer; width: 120px; }
+  .ca-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: 2px solid var(--bg); cursor: pointer; }
+  .ca-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: 2px solid var(--bg); cursor: pointer; }
+  .ca-slider-pct { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--amber); min-width: 32px; font-weight: 700; }
 
   /* ── RSF table ── */
   .rsf-section { display: none; margin-top: 8px; animation: fadeIn .4s ease; }
@@ -3059,6 +3063,8 @@ function initLabPage(conf) {
             <div class="rg-label">C.A ANNUEL DEMANDÉ (BRUT)</div>
             <input type="text" id="caInp-${uid}-${cond.uid}" class="rsf-input" style="width:160px" placeholder="ex : 50000.00" />
             <span class="rg-unit" style="font-size:13px;color:var(--text-dim)">€</span>
+            <input type="range" id="caSlider-${uid}-${cond.uid}" class="ca-slider" min="60" max="90" step="5" value="75" title="% du potentiel générique" />
+            <span id="caSliderPct-${uid}-${cond.uid}" class="ca-slider-pct">75%</span>
           </div>
         </div>
       </div>
@@ -3120,8 +3126,44 @@ function initLabPage(conf) {
       applyRsf25Default(cond);
       if (cond.remiseGlobale !== null) autoFillCond(cond);
       renderCondTable(cond);
+      _syncCaSlider();
       saveState();
     });
+
+    // ── Curseur % du potentiel générique → CA cible ───────────────────────────
+    const caSlider  = document.getElementById(`caSlider-${uid}-${cond.uid}`);
+    const caSliderPct = document.getElementById(`caSliderPct-${uid}-${cond.uid}`);
+    function _syncCaSlider() {
+      if (!caSlider || !caSliderPct) return;
+      if (state.gers != null && cond.caCondition != null) {
+        const raw = Math.round(cond.caCondition / state.gers * 100);
+        const clamped = Math.max(60, Math.min(90, Math.round(raw / 5) * 5));
+        caSlider.value = clamped;
+      }
+      const pct = parseInt(caSlider.value);
+      caSliderPct.textContent = `${pct}%`;
+      const ratio = (pct - 60) / (90 - 60) * 100;
+      caSlider.style.setProperty('--pct', ratio + '%');
+    }
+    if (caSlider) {
+      _syncCaSlider();
+      caSlider.addEventListener('input', () => {
+        const pct = parseInt(caSlider.value);
+        caSliderPct.textContent = `${pct}%`;
+        const ratio = (pct - 60) / (90 - 60) * 100;
+        caSlider.style.setProperty('--pct', ratio + '%');
+        if (state.gers != null) {
+          const caVal = Math.round(state.gers * pct / 100);
+          cond.caCondition = caVal;
+          caInp.value = caVal;
+          caInp.classList.remove('auto-c');
+          applyRsf25Default(cond);
+          if (cond.remiseGlobale !== null) autoFillCond(cond);
+          renderCondTable(cond);
+          saveState();
+        }
+      });
+    }
     // ── Champ COOP (Teva / EG / Arrow) — remise 3 globale dupliquée sur tous les paliers
     if (['Teva', 'EG', 'Arrow'].includes(s.selectedLab)) {
       const coopInp = document.getElementById(`coopInp-${uid}-${cond.uid}`);
