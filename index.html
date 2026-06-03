@@ -6503,9 +6503,16 @@ async function saveProfile() {
       }
     }
     if (saved.connectors?.ospharm?.connected) {
-      // Re-scrape uniquement si données absentes ou âgées de plus de 24h
+      // Re-scrape si données absentes, âgées de plus de 24h, ou si le mois courant manque
       const ageMs = state._monthSavedAt ? Date.now() - state._monthSavedAt : Infinity;
-      const needsRefresh = !Object.keys(state._monthStats || {}).length || ageMs > 24 * 3600 * 1000;
+      const _now = new Date();
+      const _curKey = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}`;
+      const _hasCurrentMonth = (state._monthMeta || []).some(
+        m => `${m.year}-${String(m.month).padStart(2, '0')}` === _curKey
+      );
+      const needsRefresh = !Object.keys(state._monthStats || {}).length
+        || ageMs > 24 * 3600 * 1000
+        || !_hasCurrentMonth;
       setTimeout(async () => {
         try {
           const { data: { session } } = await window._sbClient.auth.getSession();
