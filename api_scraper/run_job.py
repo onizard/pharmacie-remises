@@ -154,6 +154,20 @@ def _get_creds() -> dict:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
+    import signal as _sig
+
+    # Handler SIGTERM : GitHub Actions tue le job avec SIGTERM à timeout-minutes
+    # Sans ce handler, verif_job.status reste bloqué à "running" pour toujours
+    def _on_sigterm(sig, frame):
+        print("\n⚠️  SIGTERM reçu — mise à jour du statut avant arrêt…", flush=True)
+        try:
+            _update_job("error", error="Job interrompu (timeout GitHub Actions — 60 min)")
+        except Exception:
+            pass
+        sys.exit(1)
+
+    _sig.signal(_sig.SIGTERM, _on_sigterm)
+
     print(f"🚀  Job démarré pour user_id={USER_ID}")
     _update_job("running", "Initialisation…")
 

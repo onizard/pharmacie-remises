@@ -280,40 +280,21 @@ async def _js_fetch_json(page, url: str, csrf: str) -> dict:
 
 # ── PDF download + extraction ──────────────────────────────────────────────────
 
-def _extract_pdf_timed(tmp_path: Path, provider: str, billing_date: str, timeout: int = 20) -> list[dict]:
-    """
-    Appelle extract_invoice_lines avec un hard timeout SIGALRM (Linux).
-    asyncio.wait_for + run_in_executor ne suffit pas : le thread pdfplumber
-    reste bloqué et empêche wait_for de rendre la main.
-    SIGALRM interrompt directement l'appel bloquant depuis le main thread.
-    """
-    import signal as _sig
-    if not hasattr(_sig, 'SIGALRM'):
-        # Windows / environnement sans SIGALRM — pas de hard timeout
-        try:
-            return extract_invoice_lines(tmp_path, provider, billing_date)
-        except Exception:
-            return []
-
-    class _Timeout(Exception):
-        pass
-
-    def _handler(sig, frame):
-        raise _Timeout()
-
-    old = _sig.signal(_sig.SIGALRM, _handler)
-    _sig.alarm(timeout)
+def _extract_pdf_in_thread(tmp_path: Path, provider: str, billing_date: str) -> list[dict]:
+    """Extraction pdfplumber dans un thread — appelée via run_in_executor."""
     try:
         return extract_invoice_lines(tmp_path, provider, billing_date)
-    except _Timeout:
-        print(f"[PDF] TIMEOUT {timeout}s — {provider} {billing_date} ignoré", flush=True)
-        return []
     except Exception as e:
-        print(f"[PDF] Erreur — {provider} {billing_date} : {e}", flush=True)
+        print(f"[PDF] Erreur extraction — {provider} {billing_date} : {e}", flush=True)
         return []
-    finally:
-        _sig.alarm(0)
-        _sig.signal(_sig.SIGALRM, old)
+
+
+def _download_pdf_sync(file_url: str) -> bytes:
+    """Téléchargement synchrone dans un thread — appelé via run_in_executor."""
+    import urllib.request as _ul
+    req = _ul.Request(file_url, headers={"User-Agent": "Mozilla/5.0"})
+    with _ul.urlopen(req, timeout=30) as r:
+        return r.read()
 
 
 async def _process_pdf(page, inv: dict) -> list[dict]:
@@ -323,29 +304,25 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
 
     provider     = inv.get("provider_ref") or inv.get("provider_name") or ""
     billing_date = inv.get("billing_date", "")
+    loop         = asyncio.get_event_loop()
 
+    # ── Téléchargement dans un thread (libère le event loop, timeout réel de 35s) ─
     import os as _os
-    import urllib.request as _ul
     if _os.environ.get("PDF_DEBUG") == "1":
         print(f"[PDF] Téléchargement : {file_url[:140]}", flush=True)
-
-    # Télécharger directement depuis Python (pas browser fetch) pour éviter les
-    # erreurs CORS sur les URLs signées Google Cloud Storage
-    content = b""
     try:
-        req = _ul.Request(file_url, headers={"User-Agent": "Mozilla/5.0"})
-        with _ul.urlopen(req, timeout=30) as r:
-            content = r.read()
+        content = await asyncio.wait_for(
+            loop.run_in_executor(None, _download_pdf_sync, file_url),
+            timeout=35,
+        )
         if _os.environ.get("PDF_DEBUG") == "1":
             print(f"[PDF] OK : {len(content)} bytes", flush=True)
-    except Exception as _e:
+    except (asyncio.TimeoutError, Exception) as _e:
         if _os.environ.get("PDF_DEBUG") == "1":
-            print(f"[PDF] Échec urllib : {_e}", flush=True)
+            print(f"[PDF] Échec download : {_e}", flush=True)
         return []
 
     if len(content) < 500:
-        if _os.environ.get("PDF_DEBUG") == "1":
-            print(f"[PDF] Trop petit ({len(content)} bytes), ignoré", flush=True)
         return []
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -353,24 +330,23 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
         tmp_path = Path(tmp.name)
 
     try:
-        # Mode diagnostic : imprimer la structure pdfplumber
-        import pdfplumber, os
-        if os.environ.get("PDF_DEBUG") == "1":
-            print(f"\n{'='*60}")
-            print(f"PDF DEBUG : {provider} | {billing_date} | {len(content)} bytes", flush=True)
-            print(f"{'='*60}", flush=True)
+        # Mode diagnostic
+        if _os.environ.get("PDF_DEBUG") == "1":
+            import pdfplumber
+            print(f"\n{'='*60}\nPDF DEBUG : {provider} | {billing_date} | {len(content)} bytes\n{'='*60}", flush=True)
             with pdfplumber.open(str(tmp_path)) as _pdf:
                 for _pn, _pg in enumerate(_pdf.pages, 1):
-                    print(f"\n--- PAGE {_pn} ---", flush=True)
-                    _txt = _pg.extract_text() or ""
-                    print(_txt[:4000], flush=True)
-                    for _ti, _tbl in enumerate(_pg.extract_tables()):
-                        print(f"\n  [TABLE {_ti+1}] {len(_tbl)} lignes", flush=True)
-                        for _row in _tbl[:20]:
-                            print(f"    {_row}", flush=True)
-            print(f"{'='*60}\n", flush=True)
+                    print(f"\n--- PAGE {_pn} ---\n{(_pg.extract_text() or '')[:4000]}", flush=True)
 
-        lines = _extract_pdf_timed(tmp_path, provider, billing_date, timeout=20)
+        # ── Extraction dans un thread (libère le event loop, timeout réel de 25s) ──
+        try:
+            lines = await asyncio.wait_for(
+                loop.run_in_executor(None, _extract_pdf_in_thread, tmp_path, provider, billing_date),
+                timeout=25,
+            )
+        except asyncio.TimeoutError:
+            print(f"[PDF] TIMEOUT extraction 25s — {provider} {billing_date} ignoré", flush=True)
+            lines = []
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -563,10 +539,17 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
 
         progress(f"{len(invoices)} factures à extraire (PDF)…")
 
-        all_lines = []
+        all_lines  = []
+        _t0_loop   = time.time()
+        _MAX_LOOP  = 50 * 60  # budget total 50 min pour les PDFs
         for i, inv in enumerate(invoices, 1):
             provider = inv.get("provider_ref") or inv.get("provider_name") or "?"
-            lines = await _process_pdf(page, inv)
+            # Timeout enveloppe par PDF : download(35s) + extraction(25s) + marge = 70s max
+            try:
+                lines = await asyncio.wait_for(_process_pdf(page, inv), timeout=70)
+            except asyncio.TimeoutError:
+                progress(f"PDF {i}/{len(invoices)} — {provider} TIMEOUT global 70s, ignoré")
+                lines = []
             if lines:
                 labo = lines[0].get("labo", "")
                 progress(f"PDF {i}/{len(invoices)} — {provider} ({inv.get('billing_date','?')}) → {len(lines)} lignes [{labo}]")
@@ -574,6 +557,10 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                 progress(f"PDF {i}/{len(invoices)} — {provider} ({inv.get('billing_date','?')}) → 0 lignes")
             all_lines.extend(lines)
             await page.wait_for_timeout(150)
+            # Vérifier le budget temps global — sauvegarder les résultats partiels si dépassé
+            if time.time() - _t0_loop > _MAX_LOOP:
+                progress(f"⚠ Budget 50 min atteint à PDF {i}/{len(invoices)} — arrêt et sauvegarde partielle")
+                break
 
         # Synthèse par labo
         labos_count: dict[str, int] = {}
