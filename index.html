@@ -3241,8 +3241,13 @@ function initLabPage(conf) {
       if (!caSlider || !caSliderPct) return;
       if (state.gers != null && cond.caCondition != null) {
         const raw = Math.round(cond.caCondition / state.gers * 100);
-        const clamped = Math.max(60, Math.min(100, raw));
-        caSlider.value = clamped;
+        if (raw < 60) {
+          caSlider.value = 60;
+          caSliderPct.textContent = '—';
+          caSlider.style.setProperty('--pct', '0%');
+          return;
+        }
+        caSlider.value = Math.min(100, raw);
       }
       const pct = parseInt(caSlider.value);
       caSliderPct.textContent = `${pct}%`;
