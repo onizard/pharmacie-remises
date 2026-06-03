@@ -432,6 +432,10 @@
     cursor: pointer; transition: color .15s; line-height: 1;
   }
   .cond-tab-close:hover { color: var(--red); }
+  .cond-tab[draggable="true"] { cursor: grab; }
+  .cond-tab[draggable="true"]:active { cursor: grabbing; }
+  .cond-tab.dragging { opacity: .35; }
+  .cond-tab.drag-over { border-color: var(--amber); color: var(--amber); background: rgba(255,171,0,.08); }
 
   .cond-panel { display: none; }
   .cond-panel.active { display: block; }
@@ -1652,10 +1656,13 @@ async function saveRsfDefaults() {
   const excRows = [];
   state.labPages.forEach(lp => {
     if (!lp.selectedLab) return;
+    // Toujours utiliser les conditions de BASE, pas la vue mensuelle courante
+    const base26 = lp._baseConds2026 || lp.conditions       || [];
+    const base25 = lp._baseConds2025 || lp.conditions2025   || [];
     const seen = {};
     const mergedExc = {};
     const mergedR2Exc = {};
-    [...(lp.conditions || []), ...(lp.conditions2025 || [])].forEach(cond => {
+    [...base26, ...base25].forEach(cond => {
       (cond.rsfValues || []).forEach(r => {
         const key = String(r.rsf_pct);
         if (!seen[key] && (r.remise2 || r.remise3)) {
@@ -1668,6 +1675,22 @@ async function saveRsfDefaults() {
     Object.entries(seen).forEach(([rsf_pct, vals]) => {
       rows.push({ lab: lp.selectedLab, rsf_pct, ...vals });
     });
+    // Sentinel : flags comportement des conditions (rsfOnly, showR3, forceFirst)
+    // NE contient PAS remiseGlobale/caCondition — valeurs propres à chaque user
+    if (base26.length) {
+      const compact26 = base26.map(c => ({
+        rsfOnly: c.rsfOnly || { enabled: false, libelles: [] },
+        showR3: c.showR3 || false, forceFirst: c.forceFirst || false,
+      }));
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds26', remise2: JSON.stringify(compact26), remise3: '' });
+    }
+    if (base25.length) {
+      const compact25 = base25.map(c => ({
+        rsfOnly: c.rsfOnly || { enabled: false, libelles: [] },
+        showR3: c.showR3 || false, forceFirst: c.forceFirst || false,
+      }));
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds25', remise2: JSON.stringify(compact25), remise3: '' });
+    }
     if (Object.keys(mergedExc).length || Object.keys(mergedR2Exc).length) {
       excRows.push({
         lab: lp.selectedLab,
@@ -1699,12 +1722,21 @@ async function loadRsfDefaults() {
     if (e1) { console.error('[BP] loadRsfDefaults rsf_defaults ERREUR:', e1); }
     else if (!data?.length) { console.warn('[BP] loadRsfDefaults: rsf_defaults vide'); }
     else {
-      window._rsfDefaults = {};
+      window._rsfDefaults   = {};
+      window._labConditions = {};
       data.forEach(r => {
+        const k = String(r.rsf_pct);
+        // Parser les sentinels de structure de conditions
+        if (k === '__conds26' && r.remise2) {
+          try { if (!window._labConditions[r.lab]) window._labConditions[r.lab] = {}; window._labConditions[r.lab].conds26 = JSON.parse(r.remise2); } catch(_) {}
+        } else if (k === '__conds25' && r.remise2) {
+          try { if (!window._labConditions[r.lab]) window._labConditions[r.lab] = {}; window._labConditions[r.lab].conds25 = JSON.parse(r.remise2); } catch(_) {}
+        }
+        // Tout mettre dans _rsfDefaults (les sentinels __cgv_* sont utilisés pour les LEDs)
         if (!window._rsfDefaults[r.lab]) window._rsfDefaults[r.lab] = {};
-        window._rsfDefaults[r.lab][String(r.rsf_pct)] = { remise2: r.remise2, remise3: r.remise3 };
+        window._rsfDefaults[r.lab][k] = { remise2: r.remise2, remise3: r.remise3 };
       });
-      console.log('[BP] loadRsfDefaults OK:', Object.keys(window._rsfDefaults).length, 'labs —', Object.keys(window._rsfDefaults).join(', '));
+      console.log('[BP] loadRsfDefaults OK:', Object.keys(window._rsfDefaults).length, 'labs —', Object.keys(window._rsfDefaults).join(', '), '| _labConditions:', Object.keys(window._labConditions).length, 'labs');
     }
   } catch(e) { console.error('[BP] loadRsfDefaults catch:', e); }
   try {
@@ -2959,6 +2991,8 @@ function initLabPage(conf) {
   };
 
   // ── Condition tab bar ────────────────────────────────────────────────────────
+  let _dragSrcIdx = null;
+
   function renderCondTabs() {
     el.condTabs.innerHTML = '';
     s[condKey].forEach((cond, i) => {
@@ -2974,6 +3008,51 @@ function initLabPage(conf) {
         tab.appendChild(x);
       }
       tab.addEventListener('click', () => activateCondition(i));
+
+      // ── Drag & drop (admin) ──
+      if (isAdmin) {
+        tab.draggable = true;
+        tab.addEventListener('dragstart', e => {
+          _dragSrcIdx = i;
+          tab.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        tab.addEventListener('dragend', () => {
+          _dragSrcIdx = null;
+          el.condTabs.querySelectorAll('.cond-tab').forEach(t => t.classList.remove('dragging', 'drag-over'));
+        });
+        tab.addEventListener('dragover', e => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          el.condTabs.querySelectorAll('.cond-tab').forEach(t => t.classList.remove('drag-over'));
+          if (_dragSrcIdx !== null && _dragSrcIdx !== i) tab.classList.add('drag-over');
+        });
+        tab.addEventListener('dragleave', () => tab.classList.remove('drag-over'));
+        tab.addEventListener('drop', e => {
+          e.preventDefault();
+          tab.classList.remove('drag-over');
+          if (_dragSrcIdx === null || _dragSrcIdx === i) return;
+          const src = _dragSrcIdx;
+          const dst = i;
+          // Mettre à jour l'index actif
+          const activeCond = s[condKey][s[aciKey]];
+          // Déplacer dans le tableau
+          const [moved] = s[condKey].splice(src, 1);
+          s[condKey].splice(dst, 0, moved);
+          s[aciKey] = s[condKey].indexOf(activeCond);
+          // Réordonner les panels DOM
+          s[condKey].forEach((c, j) => {
+            const panel = document.getElementById(`condPanel-${uid}-${c.uid}`);
+            if (panel) {
+              panel.classList.toggle('active', j === s[aciKey]);
+              el.condPanels.appendChild(panel);
+            }
+          });
+          renderCondTabs();
+          saveState();
+        });
+      }
+
       el.condTabs.appendChild(tab);
     });
     const addBtn = document.createElement('div');
@@ -3040,6 +3119,29 @@ function initLabPage(conf) {
     saveState();
   }
 
+  // ── Tri décroissant des onglets/panels par CA cible (admin) ────────────────
+  function _sortCondsByCA(activeCond) {
+    if (!isAdmin || s[condKey].length <= 1) return;
+    const prevActive = activeCond || s[condKey][s[aciKey]];
+    s[condKey].sort((a, b) => (parseFloat(b.caCondition) || 0) - (parseFloat(a.caCondition) || 0));
+    s[aciKey] = prevActive ? Math.max(0, s[condKey].indexOf(prevActive)) : 0;
+    // Rebuild complet garanti — détruit les anciens éléments, recrée dans l'ordre trié
+    el.condPanels.innerHTML = '';
+    s[condKey].forEach((c, i) => {
+      const p = buildCondPanel(c);
+      if (i === s[aciKey]) p.classList.add('active');
+      el.condPanels.appendChild(p);
+      wireCondition(c);
+      if (s.rsfPaliers?.length) {
+        document.getElementById(`rgSec-${uid}-${c.uid}`)?.classList.add('visible');
+        renderCondTable(c);
+      }
+    });
+    renderCondTabs();
+    saveState();
+  }
+  s[`_sortConds${year === '2025' ? '25' : '26'}`] = _sortCondsByCA;
+
   // ── Condition panel DOM builder ──────────────────────────────────────────────
   function buildCondPanel(cond) {
     const div = document.createElement('div');
@@ -3063,7 +3165,7 @@ function initLabPage(conf) {
             <div class="rg-label">C.A ANNUEL DEMANDÉ (BRUT)</div>
             <input type="text" id="caInp-${uid}-${cond.uid}" class="rsf-input" style="width:160px" placeholder="ex : 50000.00" />
             <span class="rg-unit" style="font-size:13px;color:var(--text-dim)">€</span>
-            <input type="range" id="caSlider-${uid}-${cond.uid}" class="ca-slider" min="60" max="90" step="5" value="75" title="% du potentiel générique" />
+            <input type="range" id="caSlider-${uid}-${cond.uid}" class="ca-slider" min="1" max="200" step="1" value="75" title="% du potentiel générique" />
             <span id="caSliderPct-${uid}-${cond.uid}" class="ca-slider-pct">75%</span>
           </div>
         </div>
@@ -3129,6 +3231,8 @@ function initLabPage(conf) {
       _syncCaSlider();
       saveState();
     });
+    // Tri décroissant des paliers par CA cible au départ du champ (admin seulement)
+    if (isAdmin) caInp.addEventListener('blur', () => _sortCondsByCA(cond));
 
     // ── Curseur % du potentiel générique → CA cible ───────────────────────────
     const caSlider  = document.getElementById(`caSlider-${uid}-${cond.uid}`);
@@ -3137,12 +3241,12 @@ function initLabPage(conf) {
       if (!caSlider || !caSliderPct) return;
       if (state.gers != null && cond.caCondition != null) {
         const raw = Math.round(cond.caCondition / state.gers * 100);
-        const clamped = Math.max(60, Math.min(90, Math.round(raw / 5) * 5));
+        const clamped = Math.max(1, Math.min(200, raw));
         caSlider.value = clamped;
       }
       const pct = parseInt(caSlider.value);
       caSliderPct.textContent = `${pct}%`;
-      const ratio = (pct - 60) / (90 - 60) * 100;
+      const ratio = Math.max(0, Math.min(100, (pct - 1) / (200 - 1) * 100));
       caSlider.style.setProperty('--pct', ratio + '%');
     }
     if (caSlider) {
@@ -3150,7 +3254,7 @@ function initLabPage(conf) {
       caSlider.addEventListener('input', () => {
         const pct = parseInt(caSlider.value);
         caSliderPct.textContent = `${pct}%`;
-        const ratio = (pct - 60) / (90 - 60) * 100;
+        const ratio = Math.max(0, Math.min(100, (pct - 1) / (200 - 1) * 100));
         caSlider.style.setProperty('--pct', ratio + '%');
         if (state.gers != null) {
           const caVal = Math.round(state.gers * pct / 100);
@@ -3553,10 +3657,18 @@ function initLabPage(conf) {
       s.rsfCountMap = countMap || new Map();
       s[condKey][0].rsfValues = mkRsfValues(lab, paliers);
       if (!isAdmin) {
-        const defs = window._rsfDefaults?.[lab];
+        const _tKey = year === '2025' ? 'conds25' : 'conds26';
+        const tmpl0 = window._labConditions?.[lab]?.[_tKey]?.[0] || null;
+        const defs  = window._rsfDefaults?.[lab];
+        const exc   = window._labExceptions?.[lab];
+        // Flags comportement depuis admin — NE touche PAS caCondition/remiseGlobale (valeurs user)
+        if (tmpl0) {
+          s[condKey][0].rsfOnly    = { ...(tmpl0.rsfOnly || { enabled: false, libelles: [] }) };
+          s[condKey][0].showR3     = tmpl0.showR3     || false;
+          s[condKey][0].forceFirst = tmpl0.forceFirst || false;
+        }
         if (defs) s[condKey][0].rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; if (s[condKey][0].coopR3 == null) r.remise3 = d.remise3 || ''; } });
         if (s[condKey][0].coopR3 != null) s[condKey][0].rsfValues.forEach(r => { r.remise3 = String(s[condKey][0].coopR3); });
-        const exc = window._labExceptions?.[lab];
         if (exc) { Object.assign(s[condKey][0].exceptions, exc.exceptions || {}); Object.assign(s[condKey][0].remise2Except, exc.remise2Except || {}); }
       }
       applyDefaultExcepts(s[condKey][0], lab);
@@ -3565,7 +3677,7 @@ function initLabPage(conf) {
       panel.classList.add('active');
       el.condPanels.appendChild(panel);
       wireCondition(s[condKey][0]);
-      document.getElementById(`rgSec-${uid}-${s[condKey][0].uid}`).classList.add('visible');
+      document.getElementById(`rgSec-${uid}-${s[condKey][0].uid}`)?.classList.add('visible');
       renderCondTable(s[condKey][0]);
 
       el.condTabs.classList.add('visible');
@@ -3573,6 +3685,7 @@ function initLabPage(conf) {
     } catch(err) { console.error(err); }
     finally { el.loading.classList.remove('visible'); }
 
+    if (isAdmin) _sortCondsByCA(s[condKey][s[aciKey]]);
     if (conf.onLabSelected) conf.onLabSelected();
     saveState();
   }
@@ -3622,16 +3735,24 @@ function initLabPage(conf) {
       s.rsfCountMap = countMap || new Map();
       // Pré-charger rsf_defaults pour la récupération si besoin (doit être hors du forEach)
       if (isAdmin && !window._rsfDefaults) await loadRsfDefaults();
+      // Template admin : flags comportement uniquement (rsfOnly, showR3, forceFirst)
+      // NE touche PAS caCondition/remiseGlobale/coopR3 — valeurs propres à l'user
+      const _templateKey = year === '2025' ? 'conds25' : 'conds26';
+      const _condTemplate = !isAdmin ? (window._labConditions?.[lab]?.[_templateKey] || null) : null;
+
       (savedLabData[savedCondKey] || []).forEach((sc, idx) => {
         const cond = mkCondState(sc.uid);
+        // Valeurs user — intouchables par l'admin
         cond.remiseGlobale = sc.remiseGlobale;
         cond.caCondition   = sc.caCondition;
         cond.coopR3        = sc.coopR3 ?? null;
-        cond.exceptions    = sc.exceptions || {};
-        cond.rsfOnly       = sc.rsfOnly || { enabled: false, libelles: [] };
-        cond.showR3    = sc.showR3    || false;
-        cond.forceFirst = sc.forceFirst || false;
+        cond.exceptions    = sc.exceptions    || {};
         cond.remise2Except = sc.remise2Except || {};
+        // Flags comportement : depuis le template admin si disponible, sinon sauvegarde user
+        const tc = _condTemplate?.[idx];
+        cond.rsfOnly    = tc ? { ...(tc.rsfOnly    || { enabled: false, libelles: [] }) } : (sc.rsfOnly    || { enabled: false, libelles: [] });
+        cond.showR3     = tc ? (tc.showR3     || false) : (sc.showR3     || false);
+        cond.forceFirst = tc ? (tc.forceFirst || false) : (sc.forceFirst || false);
         cond.rsfValues = paliers.map(v => {
           const sv = sc.rsfValues.find(r => String(r.rsf_pct) === String(v));
           return sv
@@ -3652,7 +3773,14 @@ function initLabPage(conf) {
         if (!isAdmin) {
           const defs = window._rsfDefaults?.[lab];
           if (defs) {
-            cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+            cond.rsfValues.forEach(r => {
+              const d = defs[String(r.rsf_pct)];
+              if (d) {
+                r.remise2 = d.remise2 || '';
+                if (cond.coopR3 == null) r.remise3 = d.remise3 || '';
+              }
+            });
+            if (cond.coopR3 != null) cond.rsfValues.forEach(r => { r.remise3 = String(cond.coopR3); });
             console.log('[BP] defaults appliqués non-admin:', lab, 'paliers:', cond.rsfValues.map(r => r.rsf_pct + '→' + r.remise2).join(' | '));
           } else {
             console.warn('[BP] pas de defaults pour', lab, '— _rsfDefaults:', window._rsfDefaults ? Object.keys(window._rsfDefaults).join(', ') : 'undefined');
@@ -3666,7 +3794,7 @@ function initLabPage(conf) {
         if (idx === s[aciKey]) panel.classList.add('active');
         el.condPanels.appendChild(panel);
         wireCondition(cond);
-        document.getElementById(`rgSec-${uid}-${cond.uid}`).classList.add('visible');
+        document.getElementById(`rgSec-${uid}-${cond.uid}`)?.classList.add('visible');
         renderCondTable(cond);
       });
       el.condTabs.classList.add('visible');
@@ -3679,6 +3807,8 @@ function initLabPage(conf) {
     window._syncCgvLeds?.(uid, s.selectedLab);
     if (year === '2025') s._baseConds2025 = s[condKey];
     else                 s._baseConds2026 = s[condKey];
+    // Trier les onglets/panels par CA cible décroissant après restauration
+    if (isAdmin) _sortCondsByCA(s[condKey][s[aciKey]]);
     // Pendant la restauration, ne pas déclencher onLabSelected (qui appellerait _selectLab2025
     // sans await, créant une race condition avec _restoreFromSave2025 qui suit).
     // On appelle uniquement les mises à jour visuelles nécessaires.
@@ -4854,7 +4984,7 @@ async function launchSimulation() {
     //    rsfOnly=true  → RSF uniquement (scénario N-1)
     //    forceMarketMet=true → marché toujours atteint (optimisé 1)
     //    prorataRatios → { ratio2025, ratio2026 } — split CA par année
-    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false, forcedConds = null, prorataRatios = null } = {}) {
+    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false, forcedConds = null, prorataRatios = null, use2025Conds = false } = {}) {
       const labMap = new Map();
       // Phase 1 : CA par labo
       // Le PUHT utilisé pour le CA BRUT est toujours celui du CIP réellement acheté
@@ -4903,7 +5033,13 @@ async function launchSimulation() {
           });
           e.bestCond    = cond26 || cond25;
           e.firstMet    = fm25 || fm26;
-          e.met         = (ratio2025 === 0 || !!cond25 || !e.isSelected) && (ratio2026 === 0 || !!cond26 || !e.isSelected);
+          // met = vrai si chaque portion annuelle atteint son palier
+          //        OU si le CA total dépasse n'importe quel seuil (évite les faux ✗ dus au split prorata)
+          const _totalCondMet = e.isSelected && getBestCondFromArray(
+            [...(e.lp?.conditions || []), ...(e.lp?.conditions2025 || [])], e.ca, forceMarketMet
+          ) !== null;
+          e.met = ((ratio2025 === 0 || !!cond25 || !e.isSelected) && (ratio2026 === 0 || !!cond26 || !e.isSelected))
+               || _totalCondMet;
           const _achT   = ratio2026 > 0 ? _ca26 : _ca25;
           if (_achT) {
             e.caThreshold = _achT;
@@ -4918,6 +5054,7 @@ async function launchSimulation() {
           // ── Comportement existant ───────────────────────────────────────────
           const bestCond = rsfOnly ? null
             : isForced ? forcedConds.get(e.lp.selectedLab)
+            : use2025Conds ? getBestCondFromArray(e.lp?.conditions2025 || [], e.ca, forceMarketMet)
             : getBestCond(e.lp, e.ca, forceMarketMet, applyProrata);
           const pr = applyProrata ? getProrata(e.lp?.selectedLab) : 1;
           // Palier forcé : si CA < seuil → RSF base ; si CA ≥ seuil → meilleur palier atteint
@@ -4977,11 +5114,11 @@ async function launchSimulation() {
       return { labResults, totalRemise, totalCA, totalPaNet: totalCA - totalRemise };
     }
 
-    await _yield(); _sp(82, '// Scénario actuel calculé', 'Optimisation des affectations…');
-    // 6a. Scénario N-1 : CIP → premier match Supabase, RSF uniquement
+    await _yield(); _sp(82, '// Scénario N-1 calculé', 'Optimisation des affectations…');
+    // 6a. Scénario N-1 : conditions 2025 sur données N-1 complètes (jan–déc), sans prorata
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
-    const actuel = calcScenario(naturalAssignment, { applyProrata: true, prorataRatios: state.prorataRatios || null });
+    const actuel = calcScenario(naturalAssignment, { use2025Conds: true });
     const totalCA = actuel.totalCA;
 
     // 6c. Optimisé 2 : réalisation des marchés (seuils les plus serrés en priorité)
@@ -5810,8 +5947,8 @@ async function launchSimulation() {
         </div>
       </div>
       <div class="sim-kpi-row">
-        <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL ACTUEL</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
-        <div class="sim-kpi"><div class="sim-kpi-label">PA NET ACTUEL</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL N-1</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">PA NET ANNÉE N-1</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">SCÉNARIOS ÉVALUÉS</div><div class="sim-kpi-value amber">${totalScenarios}</div></div>
       </div>
@@ -5831,7 +5968,7 @@ async function launchSimulation() {
     // ── Scénario N-1 ───────────────────────────────────────────────────────────
     html += `<div class="sim-section">
       <div class="sim-scenario-header">
-        <span>▸ SCÉNARIO ACTUEL</span>
+        <span>▸ SCÉNARIO ANNÉE N-1</span>
         ${dlBtn('actuel')}
       </div>
       ${mkScenarioTable(actuel.labResults, true, null)}
@@ -5958,7 +6095,7 @@ async function launchSimulation() {
 
       resDiv.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-          <span style="font-family:'Orbitron',monospace;font-size:12px;color:var(--amber);letter-spacing:2px">RÉSULTAT — PA NET : ${fmtE(scenario.totalPaNet)} &nbsp;·&nbsp; GAIN vs ACTUEL : <span style="color:${gain>=0?'var(--green)':'var(--red)'}">${gain>=0?'+':''}${fmtE(gain)}</span></span>
+          <span style="font-family:'Orbitron',monospace;font-size:12px;color:var(--amber);letter-spacing:2px">RÉSULTAT — PA NET : ${fmtE(scenario.totalPaNet)} &nbsp;·&nbsp; GAIN vs N-1 : <span style="color:${gain>=0?'var(--green)':'var(--red)'}">${gain>=0?'+':''}${fmtE(gain)}</span></span>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${dlInline}</div>
         </div>
         ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}`;
@@ -6364,26 +6501,24 @@ async function saveProfile() {
       // Re-scrape uniquement si données absentes ou âgées de plus de 24h
       const ageMs = state._monthSavedAt ? Date.now() - state._monthSavedAt : Infinity;
       const needsRefresh = !Object.keys(state._monthStats || {}).length || ageMs > 24 * 3600 * 1000;
-      if (!isAdmin) {
-        setTimeout(async () => {
-          try {
-            const { data: { session } } = await window._sbClient.auth.getSession();
-            if (!session) return;
-            const { data: row } = await window._sbClient.from('user_state')
-              .select('state_json').eq('user_id', session.user.id).maybeSingle();
-            const ospJob = row?.state_json?.ospharm_job;
-            if (ospJob?.status === 'running') {
-              // Job déjà en cours sur GitHub Actions — rattacher le polling sans relancer
-              state._ospJobRunning   = true;
-              state._ospJobStartedAt = state._ospJobStartedAt || Date.now();
-              state._ospJobMessage   = ospJob.message || '';
-              autoRunOspharm('attach').catch(() => {});
-            } else if (needsRefresh) {
-              autoRunOspharm().catch(() => {});
-            }
-          } catch(_) {}
-        }, 1500);
-      }
+      setTimeout(async () => {
+        try {
+          const { data: { session } } = await window._sbClient.auth.getSession();
+          if (!session) return;
+          const { data: row } = await window._sbClient.from('user_state')
+            .select('state_json').eq('user_id', session.user.id).maybeSingle();
+          const ospJob = row?.state_json?.ospharm_job;
+          if (ospJob?.status === 'running') {
+            // Job déjà en cours sur GitHub Actions — rattacher le polling sans relancer
+            state._ospJobRunning   = true;
+            state._ospJobStartedAt = state._ospJobStartedAt || Date.now();
+            state._ospJobMessage   = ospJob.message || '';
+            autoRunOspharm('attach').catch(() => {});
+          } else if (needsRefresh) {
+            autoRunOspharm().catch(() => {});
+          }
+        } catch(_) {}
+      }, 1500);
     }
     if (saved.connectors?.digipharmacie?.connected) {
       const hasDigi = Object.keys(state._digiMonthStats || {}).length > 0;
@@ -6668,6 +6803,8 @@ async function saveProfile() {
         lp._refreshMonBtns25?.();
         lp._switchCondMon26?.();
         lp._switchCondMon25?.();
+        // Trier les onglets après que tout soit chargé et les overrides mensuels appliqués
+        if (isAdmin) { lp._sortConds26?.(); lp._sortConds25?.(); }
       }
     }
     applyRsfDefaults();
