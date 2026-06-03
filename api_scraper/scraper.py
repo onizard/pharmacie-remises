@@ -537,29 +537,51 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
             progress(f"{len(invoices)} factures → {len(filtered)} après filtre '{LABS_FILTER}'")
             invoices = filtered
 
-        progress(f"{len(invoices)} factures à extraire (PDF)…")
+        # ── Cache incrémental : clé = "billing_date|provider_ref" ────────────────
+        # On ne télécharge que les PDFs non encore en cache — comme OSPHARM.
+        _cache_in  = _run_scraper_async._invoice_cache  # dict passé via attribut
+        _cache_out = {}                                  # cache mis à jour cette run
+        _on_progress = _run_scraper_async._on_progress  # callback enrichi (pour SIGTERM)
 
-        all_lines  = []
-        _t0_loop   = time.time()
-        _MAX_LOOP  = 50 * 60  # budget total 50 min pour les PDFs
+        n_cached   = sum(1 for inv in invoices
+                         if _inv_key(inv) in _cache_in)
+        n_new      = len(invoices) - n_cached
+        progress(f"{len(invoices)} factures ({n_cached} en cache, {n_new} à télécharger)…")
+
+        all_lines = []
+        _t0_loop  = time.time()
+        _MAX_LOOP = 50 * 60  # budget 50 min pour les PDFs nouveaux
+
         for i, inv in enumerate(invoices, 1):
-            provider = inv.get("provider_ref") or inv.get("provider_name") or "?"
-            # Timeout enveloppe par PDF : download(35s) + extraction(25s) + marge = 70s max
-            try:
-                lines = await asyncio.wait_for(_process_pdf(page, inv), timeout=70)
-            except asyncio.TimeoutError:
-                progress(f"PDF {i}/{len(invoices)} — {provider} TIMEOUT global 70s, ignoré")
-                lines = []
-            if lines:
-                labo = lines[0].get("labo", "")
-                progress(f"PDF {i}/{len(invoices)} — {provider} ({inv.get('billing_date','?')}) → {len(lines)} lignes [{labo}]")
+            provider     = inv.get("provider_ref") or inv.get("provider_name") or "?"
+            billing_date = inv.get("billing_date", "?")
+            ck           = _inv_key(inv)
+
+            if ck in _cache_in:
+                lines = _cache_in[ck]
+                _cache_out[ck] = lines
+                # Pas de message de progression pour les entrées cachées (trop bavard)
             else:
-                progress(f"PDF {i}/{len(invoices)} — {provider} ({inv.get('billing_date','?')}) → 0 lignes")
+                # Timeout enveloppe : download(35s) + extraction(25s) + marge
+                try:
+                    lines = await asyncio.wait_for(_process_pdf(page, inv), timeout=70)
+                except asyncio.TimeoutError:
+                    progress(f"PDF {i}/{len(invoices)} — {provider} TIMEOUT 70s, ignoré")
+                    lines = []
+                _cache_out[ck] = lines
+                if lines:
+                    labo = lines[0].get("labo", "")
+                    progress(f"PDF {i}/{len(invoices)} — {provider} ({billing_date}) → {len(lines)} lignes [{labo}]")
+                else:
+                    progress(f"PDF {i}/{len(invoices)} — {provider} ({billing_date}) → 0 lignes")
+                await page.wait_for_timeout(150)
+
             all_lines.extend(lines)
-            await page.wait_for_timeout(150)
-            # Vérifier le budget temps global — sauvegarder les résultats partiels si dépassé
+            if _on_progress:
+                _on_progress(all_lines, _cache_out)  # mise à jour pour SIGTERM
+
             if time.time() - _t0_loop > _MAX_LOOP:
-                progress(f"⚠ Budget 50 min atteint à PDF {i}/{len(invoices)} — arrêt et sauvegarde partielle")
+                progress(f"⚠ Budget 50 min atteint à PDF {i}/{len(invoices)} — sauvegarde partielle")
                 break
 
         # Synthèse par labo
@@ -569,8 +591,18 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
             labos_count[k] = labos_count.get(k, 0) + 1
         progress(f"Extraction terminée — {len(all_lines)} lignes : {labos_count}")
 
-    return all_lines
+    return all_lines, _cache_out
 
 
-def run_scraper(creds: dict, progress: Callable) -> list[dict]:
+def _inv_key(inv: dict) -> str:
+    """Clé stable pour une facture : date + fournisseur."""
+    return f"{inv.get('billing_date','?')}|{inv.get('provider_ref') or inv.get('provider_name','?')}"
+
+
+def run_scraper(creds: dict, progress: Callable,
+                invoice_cache: dict = None,
+                on_partial: Callable = None) -> tuple[list, dict]:
+    """Retourne (lignes, cache_mis_à_jour). on_partial(lines, cache) est appelé après chaque PDF."""
+    _run_scraper_async._invoice_cache = invoice_cache or {}
+    _run_scraper_async._on_progress   = on_partial
     return asyncio.run(_run_scraper_async(creds, progress))

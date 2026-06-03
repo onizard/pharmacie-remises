@@ -153,17 +153,45 @@ def _get_creds() -> dict:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+def _save_results(lines: list, cache: dict, partial: bool = False):
+    """Sauvegarde les lignes + cache dans verif_job. Marque 'done' même si partiel."""
+    label = f"Partiel : {len(lines)} lignes ({len(cache)} factures traitées)" if partial \
+            else f"{len(lines)} lignes extraites"
+    state = _supa_get_state()
+    state["verif_job"] = {
+        "status":        "done",
+        "message":       label,
+        "invoices":      lines,
+        "invoice_cache": cache,
+        "error":         "",
+    }
+    digi_stats = _compute_digi_month_stats(lines)
+    if digi_stats:
+        state["digi_month_stats"] = digi_stats
+        months = sorted(digi_stats)
+        print(f"  📊  digi_month_stats : {len(digi_stats)} mois ({months[0]} → {months[-1]})")
+    _supa_patch_state(state)
+
+
 def main():
     import signal as _sig
 
-    # Handler SIGTERM : GitHub Actions tue le job avec SIGTERM à timeout-minutes
-    # Sans ce handler, verif_job.status reste bloqué à "running" pour toujours
+    # État partagé — mis à jour après chaque PDF pour que SIGTERM puisse sauver
+    _partial: dict = {"lines": [], "cache": {}}
+
+    def _on_partial(lines: list, cache: dict):
+        _partial["lines"] = lines
+        _partial["cache"] = cache
+
+    # Handler SIGTERM : GitHub Actions tue le job à timeout-minutes
+    # Sauve les résultats partiels pour que la prochaine run reprenne en cache
     def _on_sigterm(sig, frame):
-        print("\n⚠️  SIGTERM reçu — mise à jour du statut avant arrêt…", flush=True)
+        print("\n⚠️  SIGTERM — sauvegarde des résultats partiels…", flush=True)
         try:
-            _update_job("error", error="Job interrompu (timeout GitHub Actions — 60 min)")
-        except Exception:
-            pass
+            _save_results(_partial["lines"], _partial["cache"], partial=True)
+            print(f"  ✓ {len(_partial['lines'])} lignes / {len(_partial['cache'])} factures sauvées", flush=True)
+        except Exception as _e:
+            print(f"  ✗ Sauvegarde partielle échouée : {_e}", flush=True)
         sys.exit(1)
 
     _sig.signal(_sig.SIGTERM, _on_sigterm)
@@ -178,24 +206,24 @@ def main():
         _update_job("error", error=str(e))
         sys.exit(1)
 
+    # Charger le cache incrémental depuis la dernière run
+    try:
+        _ex_state = _supa_get_state()
+        existing_cache = (_ex_state.get("verif_job") or {}).get("invoice_cache") or {}
+        print(f"  → Cache incrémental : {len(existing_cache)} factures déjà traitées")
+    except Exception:
+        existing_cache = {}
+
     def progress(msg: str):
         print(f"  → {msg}")
         _update_job("running", msg)
 
     try:
-        invoices = run_scraper(creds, progress)
-        _update_job("done", f"{len(invoices)} lignes extraites", invoices)
-
-        # Agrégation mensuelle par labo → stockée dans state_json pour la page Recap
-        digi_stats = _compute_digi_month_stats(invoices)
-        if digi_stats:
-            st = _supa_get_state()
-            st["digi_month_stats"] = digi_stats
-            _supa_patch_state(st)
-            months = sorted(digi_stats)
-            print(f"  📊  digi_month_stats : {len(digi_stats)} mois ({months[0]} → {months[-1]})")
-
-        print(f"\n✅  {len(invoices)} lignes produits extraites et sauvegardées.")
+        invoices, updated_cache = run_scraper(creds, progress,
+                                              invoice_cache=existing_cache,
+                                              on_partial=_on_partial)
+        _save_results(invoices, updated_cache)
+        print(f"\n✅  {len(invoices)} lignes sauvegardées ({len(updated_cache)} factures en cache).")
     except Exception as e:
         _update_job("error", error=str(e))
         print(f"\n❌  {e}")
