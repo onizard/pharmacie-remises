@@ -2312,6 +2312,13 @@ async function autoRunDigi() {
       // Job déjà lancé — se greffer dessus
       state._digiJobRunning   = true;
       state._digiJobStartedAt = state._digiJobStartedAt || Date.now();
+    } else if (row0?.state_json?.digi_month_stats &&
+               Object.keys(row0.state_json.digi_month_stats).length) {
+      // Données déjà présentes dans Supabase — les charger sans relancer de job
+      state._digiMonthStats = row0.state_json.digi_month_stats;
+      saveState();
+      if (state.currentPageId === 'recap') renderRecap();
+      return;
     } else {
       const resp = await fetch(`${API_URL}/run/digipharmacie`, {
         method: 'POST',
@@ -7507,7 +7514,8 @@ function initConnecteurModal() {
         if (!job) return;
         const refreshBtn = document.getElementById(_jobRefreshMap[elId]);
         if (job.status === 'done') {
-          _setJobStatusEl(elId, 'done', '');
+          const _cnt = job.invoices?.length;
+          _setJobStatusEl(elId, 'done', _cnt != null ? `✓ ${_cnt} lignes extraites` : '');
           // Admin : toujours permettre de relancer depuis "done"
           if (isAdmin && refreshBtn) refreshBtn.style.display = '';
         } else if (job.status === 'running') {
