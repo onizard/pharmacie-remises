@@ -362,16 +362,7 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             print(f"  [snap] {label} ERR: {_se}")
 
     def _upload_screenshots():
-        if not user_id or not _screenshots:
-            return
-        try:
-            from supabase_client import upload_file_sync
-            ts = datetime.datetime.now().strftime("%H%M%S")
-            for label, data in _screenshots:
-                safe = label.replace(" ", "_").replace("/", "-")
-                upload_file_sync(user_id, "ospharm_debug", f"{ts}_{safe}.png", data, "image/png")
-        except Exception as _ue:
-            print(f"  [snap-upload] ERR: {_ue}")
+        pass  # désactivé — quota Storage Supabase
 
     def _strip_html(v):
         if isinstance(v, str) and "<" in v:
@@ -1232,19 +1223,9 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             if not _excel_bytes:
                 raise RuntimeError(f"Aucun fichier Excel reçu ({lbl})")
 
-            # Upload Storage
+            # Upload Storage désactivé — les Excel sont parsés en mémoire,
+            # les stats agrégées dans month_stats suffisent (quota Supabase)
             _file_url = ""
-            if user_id:
-                try:
-                    from supabase_client import upload_file_sync, get_signed_url_sync
-                    date_str = datetime.date.today().strftime("%Y-%m-%d")
-                    fname = f"ospharm_{lbl}_{date_str}.xlsx"
-                    path = upload_file_sync(user_id, "ospharm", fname, _excel_bytes,
-                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                    _file_url = get_signed_url_sync(path)
-                    print(f"  [{lbl}] storage: {fname}")
-                except Exception as _ue:
-                    print(f"  [{lbl}] storage ERR: {_ue}")
 
             # Lecture Excel
             _tmp_fd2, _tmp2 = tempfile.mkstemp(suffix=".xlsx")
