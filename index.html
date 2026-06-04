@@ -7691,7 +7691,27 @@ function initConnecteurModal() {
       _updateGrossisteBtn();
       const listEl = document.getElementById('grossisteFileList');
       if (listEl && listEl.style.display !== 'none') _renderGrossisteList();
-      if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${file.name} enregistré`; }
+      if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Parsing ${file.name}…`; }
+
+      // Appeler le serveur pour parser le XLSX et mettre à jour grossiste_month_stats
+      try {
+        const parseResp = await fetch(`${API_URL}/parse/grossiste`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storage_path: path }),
+        });
+        if (!parseResp.ok) throw new Error(`HTTP ${parseResp.status}`);
+        const parsed = await parseResp.json();
+        if (parsed.grossiste_month_stats) {
+          state._grossisteMonthStats = parsed.grossiste_month_stats;
+          saveState();
+          if (state.currentPageId === 'recap') renderRecap();
+        }
+        const months = (parsed.months || []).join(', ');
+        if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${parsed.labos} labos · ${(parsed.total_ht || 0).toLocaleString('fr', {minimumFractionDigits:2})} € HT (${months})`; }
+      } catch(pe) {
+        if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ Parsing échoué : ${pe.message}`; }
+      }
     } catch(e) {
       const msg = e?.message || String(e);
       if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ ${msg}`; }

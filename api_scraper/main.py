@@ -203,6 +203,130 @@ def get_status(job_id: str):
     return job
 
 
+# ── Parse grossiste XLSX ───────────────────────────────────────────────────────
+
+class ParseGrossisteBody(BaseModel):
+    storage_path: str  # chemin dans le bucket 'grossiste', ex: "user_id/ts_filename.xlsx"
+
+@app.post("/parse/grossiste")
+async def parse_grossiste(
+    body: ParseGrossisteBody,
+    authorization: str = Header(default=""),
+):
+    """Télécharge le XLSX grossiste depuis Supabase Storage, parse et sauvegarde grossiste_month_stats."""
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        _executor,
+        lambda: _parse_grossiste_sync(user_id, body.storage_path)
+    )
+    return result
+
+
+def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
+    import io, re, openpyxl
+
+    from supabase_client import SUPA_URL, SERVICE_KEY
+    HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
+
+    _LABO_MAP = {
+        "biogaran": "BIOGARAN", "teva": "TEVA", "mylan": "MYLAN",
+        "viatris": "VIATRIS", "zydus": "ZYDUS", "sandoz": "SANDOZ",
+        "zentiva": "ZENTIVA", "arrow": "ARROW", "cristers": "CRISTERS",
+        "eg labo": "EG LABO", "eg labs": "EG LABO", "evolupharm": "EVOLUPHARM",
+        "ranbaxy": "RANBAXY", "actavis": "ACTAVIS", "aurobindo": "AUROBINDO",
+        "intas": "INTAS", "almus": "ALMUS",
+    }
+
+    def norm_labo(raw):
+        n = (raw or "").lower()
+        for kw, canon in _LABO_MAP.items():
+            if kw in n:
+                return canon
+        m = re.match(r"([A-Z][A-Z\-\']+)", (raw or "").strip())
+        return m.group(1) if m else (raw or "").upper().split()[0] if raw else "?"
+
+    # 1. Télécharger le XLSX depuis Storage
+    dl_url = f"{SUPA_URL}/storage/v1/object/grossiste/{storage_path}"
+    req = urllib.request.Request(dl_url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        xlsx_bytes = r.read()
+
+    # 2. Parser la feuille "Récap par mois"
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    if "Récap par mois" not in wb.sheetnames:
+        raise HTTPException(status_code=422, detail="Feuille 'Récap par mois' introuvable dans le fichier.")
+    ws = wb["Récap par mois"]
+
+    month_acc: dict[str, dict] = {}
+    current_month = None
+    for row in ws.iter_rows(values_only=True):
+        if not any(v is not None for v in row):
+            continue
+        cell0 = str(row[0] or "")
+        if "Mois comptable" in cell0:
+            m = re.search(r"(\d{4})\s+(\d{2})", cell0)
+            if m:
+                current_month = f"{m.group(1)}-{m.group(2)}"
+                month_acc.setdefault(current_month, {})
+            continue
+        if current_month is None:
+            continue
+        rep_dep, labo_raw, _, qty, _, _, ca_net = (list(row) + [None]*7)[:7]
+        if rep_dep == "Rep G" and labo_raw and qty:
+            labo = norm_labo(labo_raw)
+            acc  = month_acc[current_month].setdefault(labo, {"qty": 0, "total_ht": 0.0})
+            acc["qty"]      += int(qty or 0)
+            acc["total_ht"] += float(ca_net or 0)
+
+    grossiste_stats = {
+        mk: sorted(
+            [{"labo": l, "qty": d["qty"], "total_ht": round(d["total_ht"], 2)}
+             for l, d in labos.items()],
+            key=lambda r: r["labo"],
+        )
+        for mk, labos in sorted(month_acc.items())
+    }
+    if not grossiste_stats:
+        raise HTTPException(status_code=422, detail="Aucune donnée extractible — vérifie le format du fichier.")
+
+    # 3. Lire l'état courant et patcher grossiste_month_stats
+    state_url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1"
+    req2 = urllib.request.Request(state_url, headers=HEADERS)
+    with urllib.request.urlopen(req2, timeout=15) as r:
+        rows = json.loads(r.read())
+    state = (rows[0]["state_json"] if rows else {}) or {}
+    # Fusionner avec les stats existantes (mois déjà présents conservés si absents du nouveau fichier)
+    existing = state.get("grossiste_month_stats") or {}
+    state["grossiste_month_stats"] = {**existing, **grossiste_stats}
+
+    patch_body = json.dumps({"state_json": state}).encode()
+    patch_req  = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
+        data=patch_body, method="PATCH",
+        headers={**HEADERS, "Content-Type": "application/json", "Prefer": "return=minimal"},
+    )
+    with urllib.request.urlopen(patch_req, timeout=15):
+        pass
+
+    months = sorted(grossiste_stats)
+    total_q  = sum(r["qty"]      for rows in grossiste_stats.values() for r in rows)
+    total_ht = sum(r["total_ht"] for rows in grossiste_stats.values() for r in rows)
+    return {
+        "status":  "done",
+        "months":  months,
+        "labos":   len({r["labo"] for rows in grossiste_stats.values() for r in rows}),
+        "qty":     total_q,
+        "total_ht": round(total_ht, 2),
+        "grossiste_month_stats": grossiste_stats,
+    }
+
+
 # ── Conn test (async wrapper) ──────────────────────────────────────────────────
 
 async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
