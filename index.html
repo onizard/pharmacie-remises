@@ -868,6 +868,18 @@
   .conn-lock-hint { font-size:10px; color:var(--text-dim); letter-spacing:.5px; margin-top:3px; }
   .conn-change-link { font-size:10px; color:var(--text-dim); background:none; border:none; cursor:pointer; text-decoration:underline dotted; padding:0; font-family:'Share Tech Mono',monospace; letter-spacing:.5px; }
   .conn-change-link:hover { color:var(--amber); }
+  .conn-drop-zone { border:1px dashed rgba(255,255,255,.18); padding:18px 12px; text-align:center; cursor:pointer; transition:border-color .2s,background .2s; }
+  .conn-drop-zone.drag-over { border-color:var(--cyan-dim); background:rgba(0,229,255,.05); }
+  .conn-drop-zone:hover { border-color:rgba(0,229,255,.35); }
+  .conn-drop-icon { font-size:22px; color:var(--cyan-dim); margin-bottom:6px; }
+  .conn-drop-label { font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim); letter-spacing:.5px; margin-bottom:4px; }
+  .conn-drop-browse { font-size:10px; color:var(--text-dim); text-decoration:underline dotted; cursor:pointer; font-family:'Share Tech Mono',monospace; }
+  .conn-drop-browse:hover { color:var(--amber); }
+  .conn-file-item { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.04); font-family:'Share Tech Mono',monospace; font-size:10px; }
+  .conn-file-name { flex:1; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .conn-file-meta { color:var(--text-dim); white-space:nowrap; }
+  .conn-file-del { background:none; border:none; color:var(--red); cursor:pointer; font-size:13px; padding:0 2px; opacity:.7; flex-shrink:0; }
+  .conn-file-del:hover { opacity:1; }
   .conn-req-status { font-size:10px; font-family:'Share Tech Mono',monospace; margin-top:2px; min-height:14px; }
   .btn-connecteur { position:relative; }
   .conn-notif-badge { position:absolute; top:-4px; right:-4px; width:8px; height:8px; background:var(--red); border-radius:50%; display:none; pointer-events:none; }
@@ -1197,6 +1209,21 @@
       <button class="conn-close" id="connClose">✕</button>
       <div class="conn-title">CONNECTEURS</div>
       <div class="conn-sites">
+        <!-- GROSSISTE LISTINGS -->
+        <div class="conn-site" id="grossisteSection" style="flex:0 0 100%;min-width:0">
+          <div class="conn-site-title" style="color:var(--green)">LISTING GROSSISTE &nbsp;<span style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px">XLSX</span></div>
+          <div id="grossisteDropZone" class="conn-drop-zone">
+            <div class="conn-drop-icon">⬇</div>
+            <div class="conn-drop-label">Déposer un fichier XLSX d'achats grossiste ici</div>
+            <label class="conn-drop-browse" for="grossisteFileInput">ou cliquer pour sélectionner</label>
+            <input type="file" id="grossisteFileInput" accept=".xlsx,.xls" style="display:none">
+          </div>
+          <div id="grossisteUploadStatus" class="conn-job-status" style="text-align:center;margin-top:6px;min-height:16px"></div>
+          <div style="text-align:center;margin-top:8px">
+            <button class="conn-change-link" id="grossisteDetailsBtn">Détails (0 fichier)</button>
+          </div>
+          <div id="grossisteFileList" style="display:none;margin-top:10px"></div>
+        </div>
         <!-- DIGIPHARMACIE -->
         <div class="conn-site">
           <div id="digiFormView">
@@ -1477,6 +1504,7 @@ let state = {
   currentPageId: 'labs',
   prorataRatios: null,
   condTolerance: 1.0,
+  _grossisteUploads: [],
 };
 
 
@@ -1501,7 +1529,8 @@ function serializeState() {
     monthStats:     state._monthStats     || null,
     monthMeta:      state._monthMeta      || null,
     monthSavedAt:   state._monthSavedAt   || null,
-    digiMonthStats: state._digiMonthStats || null,
+    digiMonthStats:    state._digiMonthStats    || null,
+    grossisteUploads:  state._grossisteUploads  || [],
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -6492,6 +6521,9 @@ async function saveProfile() {
       state.csvRows = saved.csvRows || saved.csvData.length;
     }
     // Charger month_stats depuis localStorage (chargement instantané)
+    if (saved.grossisteUploads?.length) {
+      state._grossisteUploads = saved.grossisteUploads;
+    }
     if (saved.digiMonthStats && Object.keys(saved.digiMonthStats).length) {
       state._digiMonthStats = saved.digiMonthStats;
     }
@@ -7543,6 +7575,129 @@ function initConnecteurModal() {
     } catch(_) {}
   }
 
+
+  // ── Grossiste drop zone ───────────────────────────────────────────────────────
+
+  const GROSSISTE_BUCKET = 'grossiste';
+
+  function _fmtSize(b) {
+    return b < 1024 ? `${b} o` : b < 1048576 ? `${(b/1024).toFixed(0)} ko` : `${(b/1048576).toFixed(1)} Mo`;
+  }
+
+  function _fmtDate(ts) {
+    const d = new Date(ts);
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  }
+
+  function _updateGrossisteBtn() {
+    const n = (state._grossisteUploads || []).length;
+    const btn = document.getElementById('grossisteDetailsBtn');
+    if (btn) btn.textContent = `Détails (${n} fichier${n !== 1 ? 's' : ''})`;
+  }
+
+  function _renderGrossisteList() {
+    const el = document.getElementById('grossisteFileList');
+    if (!el) return;
+    const uploads = state._grossisteUploads || [];
+    if (!uploads.length) {
+      el.innerHTML = `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0">// Aucun fichier déposé</div>`;
+      return;
+    }
+    el.innerHTML = uploads.map((f, i) => `
+      <div class="conn-file-item">
+        <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
+        <span class="conn-file-meta">${_fmtSize(f.size)} &nbsp;·&nbsp; ${_fmtDate(f.uploaded_at)}</span>
+        <button class="conn-file-del" title="Supprimer" data-idx="${i}">✕</button>
+      </div>`).join('');
+    el.querySelectorAll('.conn-file-del').forEach(btn => {
+      btn.addEventListener('click', () => _deleteGrossiste(parseInt(btn.dataset.idx)));
+    });
+  }
+
+  async function _deleteGrossiste(idx) {
+    const uploads = state._grossisteUploads || [];
+    const item = uploads[idx];
+    if (!item) return;
+    const statusEl = document.getElementById('grossisteUploadStatus');
+    if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Suppression de ${item.name}…`; }
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (session) {
+        await window._sbClient.storage.from(GROSSISTE_BUCKET).remove([item.path]);
+      }
+    } catch(_) {}
+    state._grossisteUploads = uploads.filter((_, i) => i !== idx);
+    saveState();
+    saveCloudState(serializeState());
+    _updateGrossisteBtn();
+    _renderGrossisteList();
+    if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${item.name} supprimé`; }
+    setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+  }
+
+  async function _uploadGrossiste(file) {
+    if (!file) return;
+    const exts = ['.xlsx', '.xls'];
+    const hasExt = exts.some(e => file.name.toLowerCase().endsWith(e));
+    if (!hasExt) {
+      showToast('Format non supporté — déposez un fichier .xlsx ou .xls');
+      return;
+    }
+    const statusEl = document.getElementById('grossisteUploadStatus');
+    const dropZone = document.getElementById('grossisteDropZone');
+    if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Envoi de ${file.name}…`; }
+    if (dropZone) dropZone.style.pointerEvents = 'none';
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) throw new Error('Session expirée');
+      const userId = session.user.id;
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${userId}/${Date.now()}_${safeName}`;
+      const { error } = await window._sbClient.storage
+        .from(GROSSISTE_BUCKET)
+        .upload(path, file, { upsert: false });
+      if (error) throw error;
+      const entry = { name: file.name, path, size: file.size, uploaded_at: Date.now() };
+      state._grossisteUploads = [entry, ...(state._grossisteUploads || [])];
+      saveState();
+      saveCloudState(serializeState());
+      _updateGrossisteBtn();
+      const listEl = document.getElementById('grossisteFileList');
+      if (listEl && listEl.style.display !== 'none') _renderGrossisteList();
+      if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${file.name} enregistré`; }
+    } catch(e) {
+      const msg = e?.message || String(e);
+      if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ ${msg}`; }
+    } finally {
+      if (dropZone) dropZone.style.pointerEvents = '';
+    }
+  }
+
+  (() => {
+    const zone  = document.getElementById('grossisteDropZone');
+    const input = document.getElementById('grossisteFileInput');
+    const detailsBtn = document.getElementById('grossisteDetailsBtn');
+    const listEl = document.getElementById('grossisteFileList');
+
+    zone.addEventListener('click', e => { if (e.target.tagName !== 'LABEL') input.click(); });
+    zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) _uploadGrossiste(f);
+    });
+    input.addEventListener('change', () => { if (input.files[0]) { _uploadGrossiste(input.files[0]); input.value = ''; } });
+
+    detailsBtn.addEventListener('click', () => {
+      const open = listEl.style.display !== 'none';
+      if (!open) _renderGrossisteList();
+      listEl.style.display = open ? 'none' : '';
+    });
+
+    _updateGrossisteBtn();
+  })();
 
   document.getElementById('ospTest').addEventListener('click',       () => connectConn('ospharm', 'osp'));
   document.getElementById('digiTest').addEventListener('click',      () => connectConn('digipharmacie', 'digi'));
