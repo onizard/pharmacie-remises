@@ -1256,10 +1256,7 @@
             <div class="conn-check-big" id="digiCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
-            <button class="conn-test-btn" id="digiRefreshBtn" style="display:none">RAFRAÎCHIR</button>
             <button class="conn-test-btn" id="digiReconnectBtn">RECONNECTER</button>
-            <button class="conn-change-link admin-only" id="digiEditCredsBtn" style="display:none" title="Admin : modifier les identifiants sans déconnexion">✏ Modifier les identifiants</button>
-            <button class="conn-change-link" id="digiChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
           <div class="conn-ring-wrap" id="digiProgBar">
@@ -1295,10 +1292,7 @@
             <div class="conn-check-big" id="ospCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
-            <button class="conn-test-btn" id="ospRefreshBtn" style="display:none">RAFRAÎCHIR</button>
             <button class="conn-test-btn" id="ospReconnectBtn">RECONNECTER</button>
-            <button class="conn-change-link admin-only" id="ospEditCredsBtn" style="display:none" title="Admin : modifier les identifiants sans déconnexion">✏ Modifier les identifiants</button>
-            <button class="conn-change-link" id="ospChangeLink">Changer de compte ?</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
           </div>
           <div class="conn-ring-wrap" id="ospProgBar">
@@ -7162,8 +7156,7 @@ function initConnecteurModal() {
     if (isAdmin) {
       document.getElementById('connAdminPanel').style.display = '';
       loadAdminRequests();
-      document.getElementById('digiEditCredsBtn').style.display = '';
-      document.getElementById('ospEditCredsBtn').style.display  = '';
+      // boutons edit/refresh supprimés de l'UI
     }
   }
 
@@ -7546,7 +7539,6 @@ function initConnecteurModal() {
     return { status: 'timeout', message: 'Délai dépassé — réessayez.' };
   }
 
-  const _jobRefreshMap = { ospJobStatus: 'ospRefreshBtn', digiJobStatus: 'digiRefreshBtn' };
   const _jobCheckMap   = { ospJobStatus: 'ospCheckBig',  digiJobStatus: 'digiCheckBig' };
 
   function _setJobStatusEl(elId, cls, text) {
@@ -7557,8 +7549,6 @@ function initConnecteurModal() {
       checkEl.classList.toggle('error', cls === 'error');
     }
     el.className = `conn-job-status ${cls}`;
-    const refreshBtn = document.getElementById(_jobRefreshMap[elId]);
-    if (refreshBtn) refreshBtn.style.display = cls === 'error' ? '' : 'none';
     if (cls === 'running') {
       el.textContent = text ?? '';
     } else {
@@ -7601,18 +7591,10 @@ function initConnecteurModal() {
       map.forEach(({ jobKey, elId }) => {
         const job = sj[jobKey];
         if (!job) return;
-        const refreshBtn = document.getElementById(_jobRefreshMap[elId]);
         if (job.status === 'done') {
           _setJobStatusEl(elId, 'done', job.message || '');
-          // Admin : toujours permettre de relancer depuis "done"
-          if (isAdmin && refreshBtn) refreshBtn.style.display = '';
         } else if (job.status === 'running') {
           _setJobStatusEl(elId, 'running', job.message ? `⏳ ${job.message}` : '⏳ En cours…');
-          // Admin : montrer RAFRAÎCHIR même en running pour débloquer un job figé
-          if (isAdmin && refreshBtn) {
-            refreshBtn.style.display = '';
-            refreshBtn.title = 'Job bloqué ? Cliquer pour forcer une nouvelle exécution';
-          }
         } else if (job.status === 'error') {
           _setJobStatusEl(elId, 'error', `❌ ${job.error || 'erreur'}`);
         }
@@ -7782,36 +7764,28 @@ function initConnecteurModal() {
     _updateGrossisteBtn();
   })();
 
-  document.getElementById('ospTest').addEventListener('click',       () => connectConn('ospharm', 'osp'));
-  document.getElementById('digiTest').addEventListener('click',      () => connectConn('digipharmacie', 'digi'));
+  document.getElementById('ospTest').addEventListener('click',  () => connectConn('ospharm', 'osp'));
+  document.getElementById('digiTest').addEventListener('click', () => connectConn('digipharmacie', 'digi'));
   ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
   });
-  document.getElementById('ospRefreshBtn').addEventListener('click',   () => _triggerWorkflow('ospharm', 'osp'));
-  document.getElementById('digiRefreshBtn').addEventListener('click',  () => _triggerWorkflow('digipharmacie', 'digi'));
-  document.getElementById('ospReconnectBtn').addEventListener('click', () => {
-    const c = state.connectors.ospharm;
-    document.getElementById('ospUser').value = c.user;
-    document.getElementById('ospPass').value = c.pass;
-    connectConn('ospharm', 'osp');
-  });
-  document.getElementById('digiReconnectBtn').addEventListener('click', () => {
-    const c = state.connectors.digipharmacie;
-    document.getElementById('digiUser').value = c.user;
-    document.getElementById('digiPass').value = c.pass;
-    connectConn('digipharmacie', 'digi');
-  });
+  // RECONNECTER : affiche le form avec identifiant pré-rempli (readonly) + mot de passe vide
+  function _showReconnectForm(prefix, connKey) {
+    const c       = state.connectors[connKey] || {};
+    const userInp = document.getElementById(prefix + 'User');
+    const passInp = document.getElementById(prefix + 'Pass');
+    if (userInp) userInp.value = c.user || '';
+    if (passInp) passInp.value = '';
+    showView(prefix, false);  // bascule vers formView (showView gère readOnly si connected)
+    setTimeout(() => passInp?.focus(), 80);
+  }
+  document.getElementById('ospReconnectBtn').addEventListener('click', () => _showReconnectForm('osp', 'ospharm'));
+  document.getElementById('digiReconnectBtn').addEventListener('click', () => _showReconnectForm('digi', 'digipharmacie'));
+
+
   document.getElementById('compRefreshBtn').addEventListener('click', () => {
     document.getElementById('connecteurModal').classList.add('open');
-    const ospRefresh = document.getElementById('ospRefreshBtn');
-    if (ospRefresh) ospRefresh.style.display = '';
   });
-  document.getElementById('ospChangeLink').addEventListener('click',  () => requestAccountChange('ospharm', 'osp'));
-  document.getElementById('digiChangeLink').addEventListener('click', () => requestAccountChange('digipharmacie', 'digi'));
-
-  // Admin : boutons de modification directe des identifiants
-  document.getElementById('digiEditCredsBtn').addEventListener('click', () => adminEditCreds('digipharmacie', 'digi'));
-  document.getElementById('ospEditCredsBtn').addEventListener('click',  () => adminEditCreds('ospharm', 'osp'));
 
 }
 </script>
