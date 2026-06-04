@@ -154,14 +154,15 @@ def _get_creds() -> dict:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def _save_results(lines: list, cache: dict, partial: bool = False):
-    """Sauvegarde les lignes + cache dans verif_job. Marque 'done' même si partiel."""
+    """Sauvegarde digi_month_stats + statut dans verif_job. Les lignes brutes ne sont pas stockées."""
     label = f"Partiel : {len(lines)} lignes ({len(cache)} factures traitées)" if partial \
             else f"{len(lines)} lignes extraites"
     state = _supa_get_state()
+    # invoices supprimés (redondants avec digi_month_stats) — cache conservé pour l'incrémental
     state["verif_job"] = {
         "status":        "done",
         "message":       label,
-        "invoices":      lines,
+        "invoices":      [],   # vidé : les agrégats sont dans digi_month_stats
         "invoice_cache": cache,
         "error":         "",
     }

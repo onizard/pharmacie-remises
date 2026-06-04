@@ -70,7 +70,8 @@ def _update_job(status: str, message: str = "", rows=None, error: str = "",
             job = {
                 "status":      status,
                 "message":     message,
-                "rows":        rows or [],
+                # rows non stockés — trop volumineux (quota Supabase). L'incrémental
+                # utilise month_meta à la place pour savoir quels mois sont déjà traités.
                 "total":       len(rows) if rows else 0,
                 "error":       error,
                 "month_meta":  month_meta or [],
@@ -1276,14 +1277,15 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
         month_errors: list[str]      = []
 
         # Scraping incrémental : réutiliser les mois déjà en base (sauf mois courant)
+        # Les rows ne sont plus stockés — on utilise month_meta comme source de vérité
         try:
             _ex_job  = _supa_get_state().get("ospharm_job", {})
-            _ex_rows = [r for r in (_ex_job.get("rows", []) or []) if r.get("month")]
             _ex_meta = {(m["year"], m["month"]): m for m in (_ex_job.get("month_meta", []) or [])}
-            _have_months = {(r["year"], r["month"]) for r in _ex_rows}
-            print(f"  [incr] {len(_have_months)} mois existants en base")
+            _ex_month_stats = _ex_job.get("month_stats") or {}
+            _have_months = set(_ex_meta.keys())
+            print(f"  [incr] {len(_have_months)} mois existants en base (via month_meta)")
         except Exception as _ex_err:
-            _ex_rows, _ex_meta, _have_months = [], {}, set()
+            _ex_meta, _ex_month_stats, _have_months = {}, {}, set()
             print(f"  [incr] lecture base échouée: {_ex_err}")
 
         total_months = (end_year - start_year) * 12 + (end_month - start_month) + 1
@@ -1296,12 +1298,11 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             is_current = (year == today.year and month == today.month)
 
             # Réutiliser le mois s'il est déjà en base et n'est pas le mois courant
+            # Les rows ne sont plus stockés : on réutilise month_meta + month_stats directement
             if (year, month) in _have_months and not is_current:
-                existing = [r for r in _ex_rows if r["year"] == year and r["month"] == month]
-                all_compact_rows.extend(existing)
                 if (year, month) in _ex_meta:
                     month_meta.append(_ex_meta[(year, month)])
-                print(f"  [{lbl}] ✓ réutilisé ({len(existing)} lignes cache)")
+                print(f"  [{lbl}] ✓ réutilisé depuis month_meta")
             else:
                 progress(f"Mois {m_idx}/{total_months} : {lbl}…")
                 try:
@@ -1330,20 +1331,21 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
         _upload_screenshots()
         browser.close()
 
-    if not all_compact_rows:
+    if not all_compact_rows and not _have_months:
         raise RuntimeError(
             f"Aucune donnée extraite sur {total_months} mois. "
             f"Erreurs: {month_errors[:3]}"
         )
 
-    print(f"  [total] {len(all_compact_rows)} lignes compactes sur {len(month_meta)} mois OK "
+    print(f"  [total] {len(all_compact_rows)} nouvelles lignes + "
+          f"{len(_have_months)} mois réutilisés, {len(month_meta)} mois OK "
           f"({len(month_errors)} erreurs)")
 
-    # Période globale (pour backward compat simulation)
+    # Période globale
     first_meta = month_meta[0]  if month_meta else {}
     last_meta  = month_meta[-1] if month_meta else {}
 
-    return all_compact_rows, month_meta, first_meta.get("period_start", ""), last_meta.get("period_end", "")
+    return all_compact_rows, month_meta, first_meta.get("period_start", ""), last_meta.get("period_end", ""), _ex_month_stats
 
 
 # ── Sync PUHT → references_pharmacie ─────────────────────────────────────────
@@ -1403,28 +1405,34 @@ def main():
         _update_job("running", msg)
 
     try:
-        all_rows, month_meta, ps_global, pe_global = run_ospharm(
+        all_rows, month_meta, ps_global, pe_global, ex_month_stats = run_ospharm(
             creds, progress, user_id=USER_ID
         )
 
-        # Mise à jour PUHT Supabase
+        # Mise à jour PUHT pour les nouvelles lignes uniquement
         puht_dict: dict = {r["cip13"]: r["puht"] for r in all_rows if r.get("puht")}
         if puht_dict:
             progress(f"Mise à jour PUHT ({len(puht_dict)} CIPs)…")
             _sync_puht_supabase(puht_dict)
 
-        # Calcul des stats mensuellespar labo
+        # Calcul des stats pour les nouveaux mois, fusion avec les stats existantes
         progress("Calcul stats mensuelles par laboratoire…")
-        cip_list = list({r["cip13"] for r in all_rows})
-        refs_by_cip = _query_refs(cip_list)
-        rsf_defs    = _query_rsf_defaults()
-        month_stats = _build_month_stats(all_rows, refs_by_cip, rsf_defs)
-        print(f"  [stats] {len(month_stats)} mois agrégés, {len(refs_by_cip)} refs trouvées")
+        if all_rows:
+            cip_list    = list({r["cip13"] for r in all_rows})
+            refs_by_cip = _query_refs(cip_list)
+            rsf_defs    = _query_rsf_defaults()
+            new_stats   = _build_month_stats(all_rows, refs_by_cip, rsf_defs)
+            # Les nouveaux mois écrasent les anciens, les anciens réutilisés sont conservés
+            month_stats = {**ex_month_stats, **new_stats}
+        else:
+            month_stats = ex_month_stats
+        print(f"  [stats] {len(month_stats)} mois agrégés")
 
+        total_refs = sum(len(s) for s in month_stats.values())
         _update_job(
             "done",
-            f"{len(all_rows)} références — {len(month_meta)} mois",
-            rows=all_rows,
+            f"{total_refs} références — {len(month_meta)} mois",
+            rows=None,
             blocking=True,
             month_meta=month_meta,
             month_stats=month_stats,
