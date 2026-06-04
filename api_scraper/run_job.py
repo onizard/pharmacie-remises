@@ -100,6 +100,25 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
     }
 
 
+def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
+    """Fusionne les nouvelles stats partielles (nouvelles factures) avec les stats existantes."""
+    result = {mk: [dict(r) for r in rows] for mk, rows in existing.items()}
+    for mk, new_rows in new_partial.items():
+        if mk not in result:
+            result[mk] = new_rows
+        else:
+            labo_map = {r["labo"]: r for r in result[mk]}
+            for nr in new_rows:
+                labo = nr["labo"]
+                if labo in labo_map:
+                    labo_map[labo]["qty"]      += nr["qty"]
+                    labo_map[labo]["total_ht"]  = round(labo_map[labo]["total_ht"] + nr["total_ht"], 2)
+                else:
+                    labo_map[labo] = dict(nr)
+            result[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])
+    return result
+
+
 def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
     try:
         state = _supa_get_state()
@@ -153,24 +172,29 @@ def _get_creds() -> dict:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-def _save_results(lines: list, cache: dict, partial: bool = False):
-    """Sauvegarde digi_month_stats + statut dans verif_job. Les lignes brutes ne sont pas stockées."""
-    label = f"Partiel : {len(lines)} lignes ({len(cache)} factures traitées)" if partial \
-            else f"{len(lines)} lignes extraites"
+def _save_results(lines: list, cache: dict, existing_stats: dict,
+                  partial: bool = False):
+    """Fusionne nouvelles lignes avec stats existantes, stocke le cache compact {key: True}."""
+    n_cache = sum(1 for v in cache.values() if v is True)
+    n_new   = len(lines)
+    label   = (f"Partiel : {n_new} nouvelles lignes ({n_cache} en cache)"
+               if partial else
+               f"{n_new} nouvelles lignes ({n_cache} en cache)")
     state = _supa_get_state()
-    # invoices supprimés (redondants avec digi_month_stats) — cache conservé pour l'incrémental
+    compact_cache = {k: True for k in cache}
     state["verif_job"] = {
         "status":        "done",
         "message":       label,
-        "invoices":      [],   # vidé : les agrégats sont dans digi_month_stats
-        "invoice_cache": cache,
+        "invoices":      [],
+        "invoice_cache": compact_cache,
         "error":         "",
     }
-    digi_stats = _compute_digi_month_stats(lines)
-    if digi_stats:
-        state["digi_month_stats"] = digi_stats
-        months = sorted(digi_stats)
-        print(f"  📊  digi_month_stats : {len(digi_stats)} mois ({months[0]} → {months[-1]})")
+    new_partial = _compute_digi_month_stats(lines)
+    merged      = _merge_digi_stats(existing_stats, new_partial)
+    if merged:
+        state["digi_month_stats"] = merged
+        months = sorted(merged)
+        print(f"  📊  digi_month_stats : {len(merged)} mois ({months[0]} → {months[-1]})")
     _supa_patch_state(state)
 
 
@@ -178,19 +202,16 @@ def main():
     import signal as _sig
 
     # État partagé — mis à jour après chaque PDF pour que SIGTERM puisse sauver
-    _partial: dict = {"lines": [], "cache": {}}
-
-    def _on_partial(lines: list, cache: dict):
-        _partial["lines"] = lines
-        _partial["cache"] = cache
+    _partial: dict = {"lines": [], "cache": {}, "existing_stats": {}}
 
     # Handler SIGTERM : GitHub Actions tue le job à timeout-minutes
     # Sauve les résultats partiels pour que la prochaine run reprenne en cache
     def _on_sigterm(sig, frame):
         print("\n⚠️  SIGTERM — sauvegarde des résultats partiels…", flush=True)
         try:
-            _save_results(_partial["lines"], _partial["cache"], partial=True)
-            print(f"  ✓ {len(_partial['lines'])} lignes / {len(_partial['cache'])} factures sauvées", flush=True)
+            _save_results(_partial["lines"], _partial["cache"],
+                          _partial["existing_stats"], partial=True)
+            print(f"  ✓ {len(_partial['lines'])} nouvelles lignes / {len(_partial['cache'])} en cache", flush=True)
         except Exception as _e:
             print(f"  ✗ Sauvegarde partielle échouée : {_e}", flush=True)
         sys.exit(1)
@@ -207,13 +228,21 @@ def main():
         _update_job("error", error=str(e))
         sys.exit(1)
 
-    # Charger le cache incrémental depuis la dernière run
+    # Charger le cache compact et les stats existantes
     try:
-        _ex_state = _supa_get_state()
+        _ex_state      = _supa_get_state()
         existing_cache = (_ex_state.get("verif_job") or {}).get("invoice_cache") or {}
-        print(f"  → Cache incrémental : {len(existing_cache)} factures déjà traitées")
+        existing_stats = _ex_state.get("digi_month_stats") or {}
+        print(f"  → Cache : {len(existing_cache)} factures déjà traitées")
+        print(f"  → Stats existantes : {len(existing_stats)} mois")
     except Exception:
-        existing_cache = {}
+        existing_cache, existing_stats = {}, {}
+
+    _partial["existing_stats"] = existing_stats
+
+    def _on_partial(lines: list, cache: dict):
+        _partial["lines"] = lines
+        _partial["cache"] = cache
 
     def progress(msg: str):
         print(f"  → {msg}")
@@ -223,8 +252,9 @@ def main():
         invoices, updated_cache = run_scraper(creds, progress,
                                               invoice_cache=existing_cache,
                                               on_partial=_on_partial)
-        _save_results(invoices, updated_cache)
-        print(f"\n✅  {len(invoices)} lignes sauvegardées ({len(updated_cache)} factures en cache).")
+        _save_results(invoices, updated_cache, existing_stats)
+        n_cache = sum(1 for v in updated_cache.values() if v is True)
+        print(f"\n✅  {len(invoices)} nouvelles lignes ({n_cache} en cache).")
     except Exception as e:
         _update_job("error", error=str(e))
         print(f"\n❌  {e}")

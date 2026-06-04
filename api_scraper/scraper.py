@@ -558,9 +558,10 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
             ck           = _inv_key(inv)
 
             if ck in _cache_in:
-                lines = _cache_in[ck]
-                _cache_out[ck] = lines
-                # Pas de message de progression pour les entrées cachées (trop bavard)
+                # Facture déjà traitée — marquée True dans le cache compact.
+                # Ses lignes sont déjà intégrées dans digi_month_stats existant,
+                # on ne les réintègre pas dans all_lines pour éviter les doublons.
+                _cache_out[ck] = True
             else:
                 # Timeout enveloppe : download(35s) + extraction(25s) + marge
                 try:
