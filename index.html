@@ -198,6 +198,11 @@
   .month-btn { font-family:'Orbitron',monospace; font-size:10px; font-weight:700; letter-spacing:1px; padding:5px 10px; background:none; border:1px solid var(--border); color:var(--text-dim); cursor:pointer; transition:border-color .15s,color .15s,background .15s; white-space:nowrap; text-align:center; }
   .month-btn:hover { border-color:var(--cyan-dim); color:var(--text); }
   .month-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,.07); }
+  .month-btn.has-partial { border-color:var(--green); background:linear-gradient(to right,rgba(0,255,136,.18) 50%,transparent 50%); }
+  .month-btn.has-partial:hover { border-color:var(--green); }
+  .month-btn.has-all { border-color:var(--green); background:rgba(0,255,136,.18); color:var(--green); }
+  .month-btn.has-all:hover { border-color:var(--green); }
+  .month-btn.active.has-partial,.month-btn.active.has-all { border-color:var(--cyan); }
   .month-btn-empty { display:block; }
   [data-theme="light"] .month-btn { border-color:#ccd6e0; color:#7a8a99; }
   [data-theme="light"] .month-btn.active { border-color:#0066cc; color:#0066cc; background:#e8f0fb; }
@@ -2331,7 +2336,10 @@ function renderMonthlySection(container) {
     for (let mo = 1; mo <= 12; mo++) {
       const mk = byYear[y][mo];
       if (mk) {
-        const cls = ['month-btn', mk === _selectedMonth ? 'active' : ''].filter(Boolean).join(' ');
+        const hasDigi = !!((state._digiMonthStats      || {})[mk]?.length);
+        const hasGros = !!((state._grossisteMonthStats || {})[mk]?.length);
+        const coverCls = (hasDigi && hasGros) ? 'has-all' : (hasDigi || hasGros) ? 'has-partial' : '';
+        const cls = ['month-btn', mk === _selectedMonth ? 'active' : '', coverCls].filter(Boolean).join(' ');
         btnsHtml += `<button class="${cls}" data-mk="${mk}">${_MONTH_LABELS[mo-1]} ${String(y).slice(2)}</button>`;
       } else {
         btnsHtml += `<span class="month-btn-empty"></span>`;
