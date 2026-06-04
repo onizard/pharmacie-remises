@@ -1618,8 +1618,11 @@ async function saveCloudState(data) {
       if (_localLen === 0 && _guardLen > 0) {
         payload.labPages = _guardPages;
       } else if (_localLen > 0 && _guardLen > _localLen + 1) {
-        // Local a perdu plus d'1 labo vs cloud → probable bug, garder le cloud
-        payload.labPages = _guardPages;
+        // Local a moins de labs que le cloud : fusionner — valeurs locales prioritaires
+        // pour les labs ouverts, cloud pour les labs absents localement
+        const localByUid = Object.fromEntries(payload.labPages.map(lp => [lp.uid, lp]));
+        payload.labPages = _guardPages.map(gp => localByUid[gp.uid] ?? gp);
+        _lastGoodLabPages = payload.labPages;
       } else if (_localLen > 0) {
         _lastGoodLabPages = payload.labPages;
       }
