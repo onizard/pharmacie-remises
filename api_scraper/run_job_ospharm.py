@@ -172,6 +172,8 @@ def _query_rsf_defaults() -> dict:
         return {}
 
 
+_LABOS_NON_GENERIQUES = {"WEGOVY", "WEGOVI"}
+
 def _build_month_stats(all_rows: list, refs_by_cip: dict, rsf_defs: dict) -> dict:
     """Agrège par (year, month, labo) → month_stats dict pour le frontend."""
     by_key: dict = {}
@@ -181,6 +183,8 @@ def _build_month_stats(all_rows: list, refs_by_cip: dict, rsf_defs: dict) -> dic
         if not ref:
             continue
         labo = ref["labo"] or ""
+        if labo.upper() in _LABOS_NON_GENERIQUES:
+            continue
         try:
             rsf_f = float(ref.get("rsf_pct") or 0)
         except (TypeError, ValueError):
