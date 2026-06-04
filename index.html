@@ -6541,22 +6541,33 @@ async function saveProfile() {
     }
     if (saved.connectors?.digipharmacie?.connected) {
       const hasDigi = Object.keys(state._digiMonthStats || {}).length > 0;
-      if (!hasDigi) {
-        setTimeout(() => autoRunDigi().catch(() => {}), 3000);
-      } else {
-        // Données présentes — re-attacher uniquement si un job est encore en cours
-        setTimeout(async () => {
-          try {
-            const { data: { session } } = await window._sbClient.auth.getSession();
-            if (!session) return;
-            const { data: row } = await window._sbClient.from('user_state')
-              .select('state_json').eq('user_id', session.user.id).maybeSingle();
-            if (row?.state_json?.verif_job?.status === 'running') {
-              autoRunDigi().catch(() => {});
-            }
-          } catch(_) {}
-        }, 3000);
-      }
+      setTimeout(async () => {
+        try {
+          const { data: { session } } = await window._sbClient.auth.getSession();
+          if (!session) return;
+          const { data: row } = await window._sbClient.from('user_state')
+            .select('state_json').eq('user_id', session.user.id).maybeSingle();
+          const sj = row?.state_json || {};
+          // Toujours charger digi_month_stats depuis Supabase si absent localement
+          if (!hasDigi && sj.digi_month_stats && Object.keys(sj.digi_month_stats).length) {
+            state._digiMonthStats = sj.digi_month_stats;
+            saveState();
+            if (state.currentPageId === 'recap') renderRecap();
+            // Si un job est aussi en cours, s'y accrocher pour les mises à jour
+            if (sj.verif_job?.status === 'running') autoRunDigi().catch(() => {});
+            return;
+          }
+          // Re-attacher à un job en cours
+          if (sj.verif_job?.status === 'running') {
+            autoRunDigi().catch(() => {});
+          } else if (!hasDigi) {
+            // Aucune donnée nulle part — lancer un nouveau job
+            autoRunDigi().catch(() => {});
+          }
+        } catch(_) {
+          if (!hasDigi) autoRunDigi().catch(() => {});
+        }
+      }, 3000);
     }
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 1) {
