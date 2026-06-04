@@ -2276,15 +2276,7 @@ function _renderMonthTable(mk) {
   const totGrosHT = rows.reduce((s, r) => s + (r.grosTotal  || 0), 0);
   const totCaBrut = ospStats.reduce((s, r) => s + (r.ca_brut || 0), 0);
 
-  const achatsSummary = [
-    hasDigi      ? `Digi : ${fmtE(totTotal)}`       : null,
-    hasGrossiste ? `Grossiste : ${fmtE(totGrosHT)}` : null,
-  ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-
-  return `<div style="margin-bottom:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan)">
-    ▶ ${mkLabel} &nbsp;·&nbsp; ${rows.length} labo${rows.length>1?'s':''} &nbsp;·&nbsp; Ventes CA brut : ${fmtE(totCaBrut)}${achatsSummary ? ` &nbsp;·&nbsp; ${achatsSummary}` : ''}
-  </div>
-  <div class="recap-table-wrap">
+  return `<div class="recap-table-wrap">
     <table class="recap-table month-recap-table">
       <thead><tr>
         <th>LABO</th>
