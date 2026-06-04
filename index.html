@@ -2267,30 +2267,46 @@ function _renderMonthTable(mk) {
     }
   });
 
-  const hasDigi      = rows.some(r => r.achatQty  != null);
-  const hasGrossiste = rows.some(r => r.grosQty   != null);
-  const totAchat  = rows.reduce((s, r) => s + (r.achatQty  || 0), 0);
-  const totTotal  = rows.reduce((s, r) => s + (r.achatTotal || 0), 0);
-  const totGrosQ  = rows.reduce((s, r) => s + (r.grosQty   || 0), 0);
-  const totGrosHT = rows.reduce((s, r) => s + (r.grosTotal  || 0), 0);
+  const hasDigi      = rows.some(r => r.achatQty != null);
+  const hasGrossiste = rows.some(r => r.grosQty  != null);
+  const totDiQ  = rows.reduce((s, r) => s + (r.achatQty  || 0), 0);
+  const totDiHT = rows.reduce((s, r) => s + (r.achatTotal || 0), 0);
+  const totGrQ  = rows.reduce((s, r) => s + (r.grosQty   || 0), 0);
+  const totGrHT = rows.reduce((s, r) => s + (r.grosTotal  || 0), 0);
 
   return `<div class="recap-table-wrap">
     <table class="recap-table month-recap-table">
       <thead><tr>
         <th>LABO</th>
-        ${hasDigi      ? '<th class="num">DIRECT QTÉ</th><th class="num">DIRECT HT</th>' : ''}
-        ${hasGrossiste ? '<th class="num">GROSSISTE QTÉ</th><th class="num">GROSSISTE HT</th>' : ''}
+        ${hasDigi      ? '<th class="num">QTÉ DIRECT</th>'    : ''}
+        ${hasGrossiste ? '<th class="num">QTÉ GROSSISTE</th>' : ''}
+        ${(hasDigi && hasGrossiste) ? '<th class="num">QTÉ TOTALE</th>' : ''}
+        ${hasDigi      ? '<th class="num">PA DIRECT HT</th>'    : ''}
+        ${hasGrossiste ? '<th class="num">PA GROSSISTE HT</th>' : ''}
+        ${(hasDigi || hasGrossiste) ? '<th class="num">PA TOTAL</th>' : ''}
       </tr></thead>
       <tbody>
-      ${rows.map(r => `<tr>
+      ${rows.map(r => {
+        const qTot  = (r.achatQty  || 0) + (r.grosQty   || 0);
+        const htTot = (r.achatTotal || 0) + (r.grosTotal  || 0);
+        return `<tr>
           <td class="labo-col">${r.labo}</td>
-          ${hasDigi      ? `<td class="num">${r.achatQty  != null ? fmtN(r.achatQty)  : '—'}</td><td class="num">${r.achatTotal != null ? fmtE(r.achatTotal) : '—'}</td>` : ''}
-          ${hasGrossiste ? `<td class="num">${r.grosQty   != null ? fmtN(r.grosQty)   : '—'}</td><td class="num">${r.grosTotal  != null ? fmtE(r.grosTotal)  : '—'}</td>` : ''}
-        </tr>`).join('')}
+          ${hasDigi      ? `<td class="num">${r.achatQty  != null ? fmtN(r.achatQty)  : '—'}</td>` : ''}
+          ${hasGrossiste ? `<td class="num">${r.grosQty   != null ? fmtN(r.grosQty)   : '—'}</td>` : ''}
+          ${(hasDigi && hasGrossiste) ? `<td class="num">${(r.achatQty != null || r.grosQty != null) ? fmtN(qTot) : '—'}</td>` : ''}
+          ${hasDigi      ? `<td class="num">${r.achatTotal != null ? fmtE(r.achatTotal) : '—'}</td>` : ''}
+          ${hasGrossiste ? `<td class="num">${r.grosTotal  != null ? fmtE(r.grosTotal)  : '—'}</td>` : ''}
+          ${(hasDigi || hasGrossiste) ? `<td class="num panet-col">${(r.achatTotal != null || r.grosTotal != null) ? fmtE(htTot) : '—'}</td>` : ''}
+        </tr>`;
+      }).join('')}
       ${rows.length > 1 ? `<tr style="border-top:1px solid var(--border);font-weight:700">
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
-          ${hasDigi      ? `<td class="num">${fmtN(totAchat)}</td><td class="num">${fmtE(totTotal)}</td>`    : ''}
-          ${hasGrossiste ? `<td class="num">${fmtN(totGrosQ)}</td><td class="num">${fmtE(totGrosHT)}</td>` : ''}
+          ${hasDigi      ? `<td class="num">${fmtN(totDiQ)}</td>`  : ''}
+          ${hasGrossiste ? `<td class="num">${fmtN(totGrQ)}</td>`  : ''}
+          ${(hasDigi && hasGrossiste) ? `<td class="num">${fmtN(totDiQ + totGrQ)}</td>` : ''}
+          ${hasDigi      ? `<td class="num">${fmtE(totDiHT)}</td>` : ''}
+          ${hasGrossiste ? `<td class="num">${fmtE(totGrHT)}</td>` : ''}
+          ${(hasDigi || hasGrossiste) ? `<td class="num panet-col">${fmtE(totDiHT + totGrHT)}</td>` : ''}
         </tr>` : ''}
       </tbody>
     </table>
