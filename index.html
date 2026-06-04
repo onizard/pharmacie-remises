@@ -1505,6 +1505,7 @@ let state = {
   prorataRatios: null,
   condTolerance: 1.0,
   _grossisteUploads: [],
+  _grossisteMonthStats: null,
 };
 
 
@@ -1530,7 +1531,8 @@ function serializeState() {
     monthMeta:      state._monthMeta      || null,
     monthSavedAt:   state._monthSavedAt   || null,
     digiMonthStats:    state._digiMonthStats    || null,
-    grossisteUploads:  state._grossisteUploads  || [],
+    grossisteUploads:      state._grossisteUploads      || [],
+    grossisteMonthStats:   state._grossisteMonthStats   || null,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -2205,17 +2207,17 @@ function renderRecapTable(rows, title) {
 const _MONTH_LABELS = ['JANV','FÉVR','MARS','AVRL','MAI','JUIN','JUIL','AOÛT','SEPT','OCT','NOV','DÉC'];
 
 function _renderMonthTable(mk) {
-  const ospStats  = (state._monthStats    || {})[mk] || [];
-  const digiStats = (state._digiMonthStats || {})[mk] || [];
+  const ospStats        = (state._monthStats          || {})[mk] || [];
+  const digiStats       = (state._digiMonthStats      || {})[mk] || [];
+  const grossisteStats  = (state._grossisteMonthStats || {})[mk] || [];
   const fmtE = v => (v || 0).toLocaleString('fr', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
   const fmtN = v => v != null ? (v || 0).toLocaleString('fr') : '—';
   const [mkY, mkM] = (mk || '').split('-').map(Number);
   const mkLabel = (mkM >= 1 && mkM <= 12) ? `${_MONTH_LABELS[mkM-1]} ${String(mkY).slice(2)}` : mk;
-  if (!ospStats.length && !digiStats.length) {
+  if (!ospStats.length && !digiStats.length && !grossisteStats.length) {
     return `<div style="color:var(--text-dim);font-size:12px;font-family:'Share Tech Mono',monospace;padding:12px 0">// Aucune donnée pour ${mkLabel}</div>`;
   }
 
-  // Normalisation des noms de labos pour le rapprochement OSPHARM ↔ DIGI
   const _normL = n => {
     n = (n || '').toUpperCase();
     const MAP = {BIOGARAN:'BIOGARAN',TEVA:'TEVA',MYLAN:'MYLAN',VIATRIS:'VIATRIS',ZYDUS:'ZYDUS',SANDOZ:'SANDOZ',ZENTIVA:'ZENTIVA',ARROW:'ARROW',CRISTERS:'CRISTERS','EG LABO':'EG LABO','EG LABS':'EG LABO',EVOLUPHARM:'EVOLUPHARM'};
@@ -2223,59 +2225,79 @@ function _renderMonthTable(mk) {
     return n;
   };
 
-  // Index digi par labo normalisé
-  const digiMap = {};
-  digiStats.forEach(r => { digiMap[_normL(r.labo)] = r; });
+  const digiMap       = {};
+  const grossisteMap  = {};
+  digiStats.forEach(r      => { digiMap[_normL(r.labo)]      = r; });
+  grossisteStats.forEach(r => { grossisteMap[_normL(r.labo)] = r; });
 
-  // Fusion : base OSPHARM + digi correspondant
   const seen = new Set();
   const rows = [];
   ospStats.forEach(r => {
     const key  = _normL(r.labo);
     seen.add(key);
     const digi = digiMap[key] || {};
-    rows.push({ labo: r.labo, venteQty: r.qty, achatQty: digi.qty ?? null, achatTotal: digi.total_ht ?? null });
+    const gros = grossisteMap[key] || {};
+    rows.push({ labo: r.labo, venteQty: r.qty,
+      achatQty: digi.qty ?? null, achatTotal: digi.total_ht ?? null,
+      grosQty:  gros.qty ?? null, grosTotal:  gros.total_ht ?? null });
   });
-  // Lignes digi sans correspondance OSPHARM
+  // Labos digi sans correspondance OSPHARM
   digiStats.forEach(r => {
     const key = _normL(r.labo);
-    if (!seen.has(key)) rows.push({ labo: r.labo, venteQty: null, achatQty: r.qty, achatTotal: r.total_ht });
+    if (!seen.has(key)) {
+      seen.add(key);
+      const gros = grossisteMap[key] || {};
+      rows.push({ labo: r.labo, venteQty: null, achatQty: r.qty, achatTotal: r.total_ht,
+        grosQty: gros.qty ?? null, grosTotal: gros.total_ht ?? null });
+    }
+  });
+  // Labos grossiste sans correspondance OSP ni Digi
+  grossisteStats.forEach(r => {
+    const key = _normL(r.labo);
+    if (!seen.has(key)) {
+      rows.push({ labo: r.labo, venteQty: null, achatQty: null, achatTotal: null,
+        grosQty: r.qty, grosTotal: r.total_ht });
+    }
   });
 
-  const hasDigi   = rows.some(r => r.achatQty != null);
+  const hasDigi      = rows.some(r => r.achatQty  != null);
+  const hasGrossiste = rows.some(r => r.grosQty   != null);
   const totVente  = rows.reduce((s, r) => s + (r.venteQty  || 0), 0);
   const totAchat  = rows.reduce((s, r) => s + (r.achatQty  || 0), 0);
   const totTotal  = rows.reduce((s, r) => s + (r.achatTotal || 0), 0);
+  const totGrosQ  = rows.reduce((s, r) => s + (r.grosQty   || 0), 0);
+  const totGrosHT = rows.reduce((s, r) => s + (r.grosTotal  || 0), 0);
   const totCaBrut = ospStats.reduce((s, r) => s + (r.ca_brut || 0), 0);
 
+  const achatsSummary = [
+    hasDigi      ? `Digi : ${fmtE(totTotal)}`       : null,
+    hasGrossiste ? `Grossiste : ${fmtE(totGrosHT)}` : null,
+  ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
   return `<div style="margin-bottom:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan)">
-    ▶ ${mkLabel} &nbsp;·&nbsp; ${rows.length} labo${rows.length>1?'s':''} &nbsp;·&nbsp; Ventes CA brut : ${fmtE(totCaBrut)}${hasDigi ? ` &nbsp;·&nbsp; Achats HT : ${fmtE(totTotal)}` : ''}
+    ▶ ${mkLabel} &nbsp;·&nbsp; ${rows.length} labo${rows.length>1?'s':''} &nbsp;·&nbsp; Ventes CA brut : ${fmtE(totCaBrut)}${achatsSummary ? ` &nbsp;·&nbsp; ${achatsSummary}` : ''}
   </div>
   <div class="recap-table-wrap">
     <table class="recap-table month-recap-table">
       <thead><tr>
         <th>LABO</th>
         <th class="num">VENTE NBR BOITES</th>
-        <th class="num">ACHAT NBR BOITES</th>
-        <th class="num">PA BRUT HT</th>
+        ${hasDigi      ? '<th class="num">ACHAT DIRECT QTÉ</th><th class="num">ACHAT DIRECT HT</th>' : ''}
+        ${hasGrossiste ? '<th class="num">GROSSISTE QTÉ</th><th class="num">GROSSISTE HT</th>'       : ''}
       </tr></thead>
       <tbody>
-      ${rows.map(r => {
-        return `<tr>
+      ${rows.map(r => `<tr>
           <td class="labo-col">${r.labo}</td>
-          <td class="num">${r.venteQty != null ? fmtN(r.venteQty) : '—'}</td>
-          <td class="num">${r.achatQty != null ? fmtN(r.achatQty) : '—'}</td>
-          <td class="num">${r.achatTotal != null ? fmtE(r.achatTotal) : '—'}</td>
-        </tr>`;
-      }).join('')}
-      ${rows.length > 1 ? (() => {
-        return `<tr style="border-top:1px solid var(--border);font-weight:700">
+          <td class="num">${r.venteQty  != null ? fmtN(r.venteQty)  : '—'}</td>
+          ${hasDigi      ? `<td class="num">${r.achatQty  != null ? fmtN(r.achatQty)  : '—'}</td><td class="num">${r.achatTotal != null ? fmtE(r.achatTotal) : '—'}</td>` : ''}
+          ${hasGrossiste ? `<td class="num">${r.grosQty   != null ? fmtN(r.grosQty)   : '—'}</td><td class="num">${r.grosTotal  != null ? fmtE(r.grosTotal)  : '—'}</td>` : ''}
+        </tr>`).join('')}
+      ${rows.length > 1 ? `<tr style="border-top:1px solid var(--border);font-weight:700">
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
           <td class="num">${fmtN(totVente)}</td>
-          <td class="num">${hasDigi ? fmtN(totAchat) : '—'}</td>
-          <td class="num">${hasDigi ? fmtE(totTotal) : '—'}</td>
-        </tr>`;
-      })() : ''}
+          ${hasDigi      ? `<td class="num">${fmtN(totAchat)}</td><td class="num">${fmtE(totTotal)}</td>`    : ''}
+          ${hasGrossiste ? `<td class="num">${fmtN(totGrosQ)}</td><td class="num">${fmtE(totGrosHT)}</td>` : ''}
+        </tr>` : ''}
       </tbody>
     </table>
   </div>`;
@@ -6524,6 +6546,9 @@ async function saveProfile() {
     if (saved.grossisteUploads?.length) {
       state._grossisteUploads = saved.grossisteUploads;
     }
+    if (saved.grossisteMonthStats && Object.keys(saved.grossisteMonthStats).length) {
+      state._grossisteMonthStats = saved.grossisteMonthStats;
+    }
     if (saved.digiMonthStats && Object.keys(saved.digiMonthStats).length) {
       state._digiMonthStats = saved.digiMonthStats;
     }
@@ -6581,6 +6606,9 @@ async function saveProfile() {
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           const sj = row?.state_json || {};
           // Toujours charger digi_month_stats depuis Supabase si absent localement
+          if (sj.grossiste_month_stats && Object.keys(sj.grossiste_month_stats).length) {
+            state._grossisteMonthStats = sj.grossiste_month_stats;
+          }
           if (!hasDigi && sj.digi_month_stats && Object.keys(sj.digi_month_stats).length) {
             state._digiMonthStats = sj.digi_month_stats;
             saveState();
