@@ -301,9 +301,22 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
     with urllib.request.urlopen(req2, timeout=15) as r:
         rows = json.loads(r.read())
     state = (rows[0]["state_json"] if rows else {}) or {}
-    # Fusionner avec les stats existantes (mois déjà présents conservés si absents du nouveau fichier)
+    # Fusion additive : mois distincts → union ; mois communs → addition par labo
     existing = state.get("grossiste_month_stats") or {}
-    state["grossiste_month_stats"] = {**existing, **grossiste_stats}
+    merged = dict(existing)
+    for mk, new_rows in grossiste_stats.items():
+        if mk not in merged:
+            merged[mk] = new_rows
+        else:
+            labo_map = {r["labo"]: dict(r) for r in merged[mk]}
+            for nr in new_rows:
+                if nr["labo"] in labo_map:
+                    labo_map[nr["labo"]]["qty"]      += nr["qty"]
+                    labo_map[nr["labo"]]["total_ht"]  = round(labo_map[nr["labo"]]["total_ht"] + nr["total_ht"], 2)
+                else:
+                    labo_map[nr["labo"]] = dict(nr)
+            merged[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])
+    state["grossiste_month_stats"] = merged
 
     patch_body = json.dumps({"state_json": state}).encode()
     patch_req  = urllib.request.Request(
