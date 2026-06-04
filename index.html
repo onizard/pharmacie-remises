@@ -2136,8 +2136,12 @@ async function launchComparateur() {
       showCompError(`Erreur OSPHARM : ${job.error || 'inconnue'}`);
       return;
     }
-    if (job.status !== 'done' || !job.rows?.length) {
+    if (job.status !== 'done') {
       showCompError('Données OSPHARM non disponibles — connectez OSPHARM DATASTAT.');
+      return;
+    }
+    if (!job.rows?.length) {
+      showCompError('Données OSPHARM à régénérer — relancez le connecteur OSPHARM (les données brutes ont été nettoyées).');
       return;
     }
 

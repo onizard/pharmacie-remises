@@ -67,11 +67,17 @@ def _update_job(status: str, message: str = "", rows=None, error: str = "",
     def _do():
         try:
             state = _supa_get_state()
+            # Stocker uniquement les 12 derniers mois de rows (comparateur en a besoin)
+            import datetime as _dt
+            _cutoff_year  = (_dt.date.today().replace(day=1) - _dt.timedelta(days=335)).year
+            _cutoff_month = (_dt.date.today().replace(day=1) - _dt.timedelta(days=335)).month
+            rows_12m = [r for r in (rows or [])
+                        if (r.get("year", 0), r.get("month", 0)) >=
+                           (_cutoff_year, _cutoff_month)] if rows else []
             job = {
                 "status":      status,
                 "message":     message,
-                # rows non stockés — trop volumineux (quota Supabase). L'incrémental
-                # utilise month_meta à la place pour savoir quels mois sont déjà traités.
+                "rows":        rows_12m,
                 "total":       len(rows) if rows else 0,
                 "error":       error,
                 "month_meta":  month_meta or [],
