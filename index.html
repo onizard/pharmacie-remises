@@ -6685,9 +6685,9 @@ async function saveProfile() {
       return '<div class="labs-info-empty">Aucun laboratoire sélectionné.</div>';
     }
     for (const lp of labs) {
-      // Palier 1 = CA le plus bas (ordre croissant, contraire du tri admin)
+      // Palier 1 = CA le plus élevé (même ordre que la vue admin)
       const conds = [...(lp.conditions || lp._baseConds2026 || [])]
-        .sort((a, b) => (parseFloat(a.caCondition) || 0) - (parseFloat(b.caCondition) || 0));
+        .sort((a, b) => (parseFloat(b.caCondition) || 0) - (parseFloat(a.caCondition) || 0));
       html += `<div class="labs-info-lab">
         <div class="labs-info-lab-title">◈ ${lp.selectedLab}</div>`;
       if (!conds.length) { html += '<div class="labs-info-empty">Aucune condition configurée.</div>'; }
