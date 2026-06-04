@@ -6685,7 +6685,7 @@ async function saveProfile() {
       return '<div class="labs-info-empty">Aucun laboratoire sélectionné.</div>';
     }
     for (const lp of labs) {
-      // Palier 1 = CA le plus élevé (même ordre que la vue admin)
+      // Palier 1 = CA le plus élevé (tri décroissant, cohérent avec la vue admin)
       const conds = [...(lp.conditions || lp._baseConds2026 || [])]
         .sort((a, b) => (parseFloat(b.caCondition) || 0) - (parseFloat(a.caCondition) || 0));
       html += `<div class="labs-info-lab">
