@@ -4689,9 +4689,10 @@ function renderVerificateur() {
 
   // ── Tabs ──────────────────────────────────────────────────────────────────
   tb.innerHTML = `
-    <button class="verif-tab-btn${_verifTab==='mensuel'  ?' active':''}" onclick="verifSetTab('mensuel')">MENSUEL</button>
-    <button class="verif-tab-btn${_verifTab==='annuel'   ?' active':''}" onclick="verifSetTab('annuel')">ANNUEL YTD</button>
-    <button class="verif-tab-btn${_verifTab==='suivi_r3' ?' active':''}" onclick="verifSetTab('suivi_r3')">SUIVI R3</button>
+    <button class="verif-tab-btn${_verifTab==='mensuel'   ?' active':''}" onclick="verifSetTab('mensuel')">MENSUEL</button>
+    <button class="verif-tab-btn${_verifTab==='annuel'    ?' active':''}" onclick="verifSetTab('annuel')">ANNUEL YTD</button>
+    <button class="verif-tab-btn${_verifTab==='suivi_r3'  ?' active':''}" onclick="verifSetTab('suivi_r3')">SUIVI R3</button>
+    <button class="verif-tab-btn${_verifTab==='fse_banque'?' active':''}" onclick="verifSetTab('fse_banque')" style="position:relative">FSE BANQUE${state._fseMonthStats && Object.keys(state._fseMonthStats).length ? '<span style="position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--green)"></span>' : ''}</button>
   `;
 
   cnt.innerHTML = `
@@ -4736,9 +4737,10 @@ function _verifSetContractCond(lab, idx) {
 
 function _verifRenderAnalysis() {
   const wrap = document.getElementById('verifAnalysis'); if (!wrap) return;
-  if      (_verifTab === 'mensuel')  _verifRenderMensuel(wrap);
-  else if (_verifTab === 'annuel')   _verifRenderAnnuel(wrap);
-  else                               _verifRenderSuiviR3(wrap);
+  if      (_verifTab === 'mensuel')    _verifRenderMensuel(wrap);
+  else if (_verifTab === 'annuel')     _verifRenderAnnuel(wrap);
+  else if (_verifTab === 'fse_banque') _verifRenderFseBanque(wrap);
+  else                                 _verifRenderSuiviR3(wrap);
 }
 
 // ── VUE MENSUELLE ─────────────────────────────────────────────────────────────
@@ -5294,6 +5296,122 @@ function _verifFillSuiviR3(year) {
   }).join('<hr style="border:none;border-top:1px solid var(--border);margin:12px 0">');
 
   wrap.innerHTML = labHtml || `<div class="verif-note">// Aucun labo configuré</div>`;
+}
+
+// ── FSE BANQUE — rapprochement virements reçus vs attendus ────────────────────
+
+function _verifRenderFseBanque(cnt) {
+  const fseAll = state._fseMonthStats || {};
+  const ospAll = state._monthStats    || {};
+
+  const mks = [...new Set([...Object.keys(fseAll), ...Object.keys(ospAll)])].sort();
+
+  if (!mks.length) {
+    cnt.innerHTML = `<div class="verif-note" style="padding:24px 0;text-align:center">
+      // Aucune donnée — déposez un fichier XLSX OSPHARM FSE Banque dans la dropzone Connecteurs<br>
+      <span style="font-size:11px;color:var(--text-dim)">(Connecteurs → GROSSISTE LISTINGS → glisser le fichier XLSX)</span>
+    </div>`;
+    return;
+  }
+
+  if (!_verifMonMk || !mks.includes(_verifMonMk)) _verifMonMk = mks[mks.length - 1];
+
+  const byYear = {};
+  mks.forEach(mk => { const [y, m] = mk.split('-').map(Number); (byYear[y] = byYear[y]||{})[m] = mk; });
+  const years = Object.keys(byYear).map(Number).sort();
+  let btns = '';
+  years.forEach(y => {
+    for (let m = 1; m <= 12; m++) {
+      const mk = byYear[y]?.[m];
+      if (mk) btns += `<button class="verif-mon-btn${mk===_verifMonMk?' active':''}" data-mk="${mk}">${_MONTH_LABELS[m-1]} ${String(y).slice(2)}</button>`;
+      else    btns += `<span class="month-btn-empty"></span>`;
+    }
+  });
+
+  cnt.innerHTML = `<div class="month-btns" id="verifMkGridFse" style="margin-bottom:14px">${btns}</div><div id="verifFseWrap"></div>`;
+
+  document.getElementById('verifMkGridFse')?.addEventListener('click', e => {
+    const mk = e.target.dataset?.mk; if (!mk) return;
+    _verifMonMk = mk;
+    document.querySelectorAll('#verifMkGridFse .verif-mon-btn').forEach(b => b.classList.toggle('active', b.dataset.mk === mk));
+    _verifFillFseBanque(mk);
+  });
+  _verifFillFseBanque(_verifMonMk);
+}
+
+function _verifFillFseBanque(mk) {
+  const wrap = document.getElementById('verifFseWrap'); if (!wrap) return;
+  const [mkY, mkM] = mk.split('-').map(Number);
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+
+  const fseRows = (state._fseMonthStats?.[mk] || []);
+  const ospRows = (state._monthStats?.[mk]    || []);
+
+  // Maps labo → data
+  const fseMap = {};
+  fseRows.forEach(r => { fseMap[_verifNormLab(r.labo)] = r; });
+  const ospMap = {};
+  ospRows.forEach(r => { ospMap[_verifNormLab(r.labo)] = r; });
+
+  const allLabos = [...new Set([...Object.keys(fseMap), ...Object.keys(ospMap)])].sort();
+
+  if (!allLabos.length) {
+    wrap.innerHTML = `<div class="verif-note">// Aucune donnée pour ce mois</div>`;
+    return;
+  }
+
+  let totRecu = 0, totAttendu = 0;
+  const rows = allLabos.map(labo => {
+    const fse      = fseMap[labo];
+    const osp      = ospMap[labo];
+    const recu     = fse?.montant_ttc || 0;
+    const attendu  = osp?.remise_totale || 0;  // remise OSPHARM Datastat = virement attendu
+    const ecart    = (recu > 0 || attendu > 0) ? recu - attendu : null;
+    const abs      = ecart != null ? Math.abs(ecart) : null;
+    const statut   = abs == null ? '—'
+                   : abs < 1    ? '<span style="color:var(--green)">✓ OK</span>'
+                   : ecart > 0  ? `<span style="color:var(--amber)">↑ +${fmtE(ecart)}</span>`
+                                : `<span style="color:var(--red)">↓ ${fmtE(ecart)}</span>`;
+    const ecartCls = abs == null || abs < 1 ? '' : ecart > 0 ? 'style="color:var(--amber)"' : 'style="color:var(--red)"';
+    const cntBadge = fse?.count > 1 ? `<span style="font-size:9px;color:var(--text-dim);margin-left:4px">(${fse.count} vir.)</span>` : '';
+
+    if (recu     > 0) totRecu     += recu;
+    if (attendu  > 0) totAttendu  += attendu;
+
+    return `<tr>
+      <td style="font-weight:700;letter-spacing:.3px">${escH(labo)}</td>
+      <td>${attendu > 0 ? fmtE(attendu) : '—'}</td>
+      <td>${recu    > 0 ? fmtE(recu) + cntBadge : '—'}</td>
+      <td ${ecartCls}>${ecart != null ? (ecart > 0 ? '+' : '') + fmtE(ecart) : '—'}</td>
+      <td>${statut}</td>
+    </tr>`;
+  }).join('');
+
+  const totEcart   = totAttendu > 0 && totRecu > 0 ? totRecu - totAttendu : null;
+  const totEcartCls = totEcart == null || Math.abs(totEcart) < 1 ? '' : totEcart > 0 ? 'style="color:var(--amber)"' : 'style="color:var(--red)"';
+  const mkLabel    = (mkM >= 1 && mkM <= 12) ? `${_MONTH_LABELS[mkM-1]} ${String(mkY).slice(2)}` : mk;
+
+  wrap.innerHTML = `
+    <div class="verif-note">// Attendu = remise OSPHARM Datastat · Reçu = virements banque (FSE) · Écart rouge = sous-payé, orange = sur-payé — ${escH(mkLabel)}</div>
+    <div style="overflow-x:auto">
+      <table class="verif-tbl">
+        <thead><tr>
+          <th style="text-align:left">LABO</th>
+          <th>ATTENDU (OSPHARM)</th>
+          <th>REÇU (FSE BANQUE)</th>
+          <th>ÉCART</th>
+          <th>STATUT</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        ${allLabos.length > 1 ? `<tfoot><tr>
+          <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
+          <td>${totAttendu > 0 ? fmtE(totAttendu) : '—'}</td>
+          <td>${totRecu    > 0 ? fmtE(totRecu)    : '—'}</td>
+          <td ${totEcartCls}>${totEcart != null ? (totEcart > 0 ? '+' : '') + fmtE(totEcart) : '—'}</td>
+          <td></td>
+        </tr></tfoot>` : ''}
+      </table>
+    </div>`;
 }
 
 // ── Breakout loader animation ──────────────────────────────────────────────────
@@ -8741,14 +8859,16 @@ function initConnecteurModal() {
   async function _univDetectXlsx(file) {
     try {
       const buf = await file.arrayBuffer();
-      const wb  = XLSX.read(buf, { type: 'array', sheetRows: 5 });
+      const wb  = XLSX.read(buf, { type: 'array', sheetRows: 8 });
       if (wb.SheetNames.includes('Récap par mois') || wb.SheetNames.includes('Recap par mois')) return 'grossiste';
-      // Essai de détection FSE banque : chercher mots-clés dans les premières cellules
-      const ws    = wb.Sheets[wb.SheetNames[0]];
-      const data  = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-      const flat  = data.slice(0, 5).flat().join(' ').toLowerCase();
-      if (/virement|htp|tiers.payant|banque|remise|origine/i.test(flat)) return 'fse';
-      return 'grossiste';  // fallback XLSX
+      // FSE Banque OSPHARM : header "Date" + "Libellé" + "Montant" (pas de feuille grossiste)
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const flat = data.slice(0, 8).flat().join(' ').toLowerCase();
+      const hasDateLibel = /\bdate\b/.test(flat) && /libell/.test(flat);
+      if (hasDateLibel) return 'fse';
+      if (/virement|\bvir\s+[a-z]|tiers.payant|banque/i.test(flat)) return 'fse';
+      return 'grossiste';
     } catch (_) { return 'grossiste'; }
   }
 

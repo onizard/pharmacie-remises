@@ -477,7 +477,7 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         ("BIOGARAN", "BIOGARAN"), ("TEVA", "TEVA"), ("VIATRIS", "VIATRIS"),
         ("MYLAN", "VIATRIS"), ("SANDOZ", "SANDOZ"), ("ZENTIVA", "ZENTIVA"),
         ("ARROW", "ARROW"), ("CRISTERS", "CRISTERS"), ("ZYDUS", "ZYDUS"),
-        ("EG LABO", "EG LABO"), ("EVOLUPHARM", "EVOLUPHARM"),
+        ("EG LABO", "EG LABO"), ("EG LABS", "EG LABO"), ("EVOLUPHARM", "EVOLUPHARM"),
         ("RANBAXY", "RANBAXY"), ("AUROBINDO", "AUROBINDO"), ("INTAS", "INTAS"),
         ("ALMUS", "ALMUS"), ("QUALIMED", "QUALIMED"),
         # Dépositaires qui virent au nom du labo
@@ -485,15 +485,22 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
     ]
 
     def _identify_labo(libelle: str) -> str | None:
-        """Extrait le labo depuis le libellé de virement (après 'VIR ')."""
-        lib = libelle.upper()
-        if not lib.startswith("VIR "):
+        """Extrait le labo depuis le libellé VIR {NOM} - {REF} - ..."""
+        lib = libelle.upper().strip()
+        # Extraire tout ce qui est entre "VIR " et le premier " - "
+        m = _re.match(r'VIR\s+(.+?)\s+-\s', lib)
+        if not m:
             return None
-        after_vir = lib[4:]
+        name_part = m.group(1)  # ex: "BIOGARAN", "SAS BIOGARAN", "EG LABO"
         for key, canon in _LABO_KEYS:
-            if after_vir.startswith(key):
+            if name_part.startswith(key) or key in name_part:
                 return canon
         return None
+
+    def _extract_ref(libelle: str) -> str:
+        """Extrait la première référence après le nom du labo."""
+        m = _re.match(r'VIR\s+.+?\s+-\s+(\S+)', libelle, _re.IGNORECASE)
+        return m.group(1) if m else ""
 
     def _parse_date(val) -> str | None:
         """Convertit DD/MM/YYYY ou datetime en YYYY-MM-DD."""
@@ -531,13 +538,14 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         if any('date' in c for c in cells) and any('libell' in c for c in cells):
             hdr_row_idx = ri
             for ci, c in enumerate(cells):
-                if 'date' in c:    col_date = ci
-                if 'libell' in c:  col_lib  = ci
-                if 'montant' in c: col_amt  = ci
+                if 'date' in c and col_date == 0: col_date = ci
+                if 'libell' in c:                  col_lib  = ci
+                if 'montant' in c:                 col_amt  = ci
             break
 
-    # Accumulateur : {month_key: {labo: {montant_ttc, count, refs}}}
+    # Accumulateur : {month_key: {labo: {montant_ttc, count, virements}}}
     acc: dict[str, dict] = {}
+    virements_list: list[dict] = []  # virements individuels pour rapprochement
     row_num = 0
     for row in ws.iter_rows(min_row=hdr_row_idx + 2, values_only=True):
         if not any(c for c in row):
@@ -550,14 +558,21 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         labo = _identify_labo(libelle)
         if not labo:
             continue
-        mk = date_str[:7]  # YYYY-MM
+        ref = _extract_ref(libelle)
+        mk  = date_str[:7]  # YYYY-MM
         acc.setdefault(mk, {}).setdefault(labo, {"montant_ttc": 0.0, "count": 0, "refs": []})
         acc[mk][labo]["montant_ttc"] += amount
         acc[mk][labo]["count"]       += 1
-        # Extraire la référence (premier token après le nom du labo dans le libellé)
-        ref_match = _re.search(r'VIR\s+\S+\s+-\s+(\S+)', libelle, _re.IGNORECASE)
-        if ref_match:
-            acc[mk][labo]["refs"].append(ref_match.group(1))
+        if ref:
+            acc[mk][labo]["refs"].append(ref)
+        virements_list.append({
+            "date":        date_str,
+            "mois":        mk,
+            "labo":        labo,
+            "montant_ttc": amount,
+            "ref":         ref,
+            "libelle":     libelle[:100],
+        })
         row_num += 1
 
     if not acc:
@@ -617,6 +632,7 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         "rows_parsed":     row_num,
         "total_ttc":       round(total_ttc, 2),
         "fse_month_stats": merged,
+        "virements":       virements_list[:500],  # max 500 pour le payload
     }
 
 
