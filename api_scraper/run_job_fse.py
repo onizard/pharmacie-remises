@@ -23,11 +23,16 @@ import sys
 import urllib.request
 from pathlib import Path
 
+import datetime as _dt_module
+
 SUPA_URL    = "https://fmterazwesiwpwjpkyqi.supabase.co"
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 USER_ID     = os.environ["USER_ID"]
-DATE_FROM   = os.environ.get("DATE_FROM", "")
-DATE_TO     = os.environ.get("DATE_TO",   "")
+
+# Dates auto si non fournies : jan N-1 → aujourd'hui
+_today    = _dt_module.date.today()
+DATE_FROM = os.environ.get("DATE_FROM", "") or f"{_today.year - 1}-01-01"
+DATE_TO   = os.environ.get("DATE_TO",   "") or _today.strftime("%Y-%m-%d")
 
 FSE_URL     = "https://fse.ospharm.org"
 LOGIN_URL   = "https://accounts.dev.ospharm.org"
@@ -182,8 +187,8 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
 
         # ── 2. Navigation vers Banque ────────────────────────────────────────────
         print("  → Navigation vers Banque…")
-        await page.goto(f"{FSE_URL}/#!/top/manager.fse.bank", wait_until="networkidle", timeout=30_000)
-        await page.wait_for_timeout(2000)
+        await page.goto(f"{FSE_URL}/#!/top/manager.fse.bank", wait_until="networkidle", timeout=60_000)
+        await page.wait_for_timeout(5_000)  # Angular SPA init
 
         # ── 3. Filtre HTP+OI ──────────────────────────────────────────────────────
         print("  → Sélection filtre HTP+OI…")
@@ -230,7 +235,7 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
                 if 'clicked' in str(_r3): break
                 await page.wait_for_timeout(500)
 
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(3_000)
 
         # ── 4. Filtre "Tous les virements" ────────────────────────────────────────
         print("  → Sélection 'Tous les virements'…")
@@ -250,7 +255,7 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
                 if ((it.textContent||'').includes('Tous les virements')) { it.click(); break; }
             }
         }""")
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(3_000)
 
         # ── 5. Plage de dates ──────────────────────────────────────────────────────
         if date_from and date_to:
@@ -280,7 +285,9 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
                 return 'no-date-inputs:' + inputs.length;
             }}""", [date_from_fr, date_to_fr])
             print(f"  date-set: {_date_set}")
-            await page.wait_for_timeout(2000)
+            # Le site recharge les virements côté serveur (~20s) avant de pouvoir exporter
+            print("  → Attente chargement des virements (~20s)…")
+            await page.wait_for_timeout(25_000)
 
         # ── 6. Export ──────────────────────────────────────────────────────────────
         print("  → Clic sur Export…")
@@ -318,12 +325,6 @@ def main():
     except ValueError as e:
         _update_job("error", error=str(e))
         print(f"❌  {e}")
-        sys.exit(1)
-
-    # Vérifier les dates
-    if not DATE_FROM or not DATE_TO:
-        _update_job("error", error="DATE_FROM et DATE_TO requis (YYYY-MM-DD)")
-        print("❌  Dates manquantes")
         sys.exit(1)
 
     print(f"  → Période : {DATE_FROM} → {DATE_TO}")

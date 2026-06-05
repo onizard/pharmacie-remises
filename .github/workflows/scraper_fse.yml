@@ -7,12 +7,12 @@ on:
         description: 'Supabase user ID'
         required: true
       date_from:
-        description: 'Date début YYYY-MM-DD (ex: 2025-01-01)'
-        required: true
-        default: '2025-01-01'
+        description: 'Date début YYYY-MM-DD (défaut : jan N-1)'
+        required: false
+        default: ''
       date_to:
-        description: 'Date fin YYYY-MM-DD (ex: 2026-04-30)'
-        required: true
+        description: 'Date fin YYYY-MM-DD (défaut : aujourd''hui)'
+        required: false
         default: ''
 
 jobs:

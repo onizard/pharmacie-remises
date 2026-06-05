@@ -8808,11 +8808,10 @@ function initConnecteurModal() {
       btn.disabled = false; return;
     }
 
-    // Demander les dates
-    const dateFrom = prompt('Date début (YYYY-MM-DD) :', `${new Date().getFullYear() - 1}-01-01`);
-    if (!dateFrom) { btn.disabled = false; return; }
-    const dateTo   = prompt('Date fin (YYYY-MM-DD) :', `${new Date().getFullYear()}-12-31`);
-    if (!dateTo)   { btn.disabled = false; return; }
+    // Plage fixe : jan N-1 → aujourd'hui
+    const _now     = new Date();
+    const dateFrom = `${_now.getFullYear() - 1}-01-01`;
+    const dateTo   = _now.toISOString().slice(0, 10);
 
     try {
       const { data: { session: sess2 } } = await window._sbClient.auth.getSession();
