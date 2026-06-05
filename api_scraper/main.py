@@ -432,6 +432,194 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
     }
 
 
+# ── Parse XLSX FSE Banque (HTP+OI) ───────────────────────────────────────────
+#
+# Format export OSPHARM FSE Banque → XLSX avec colonnes :
+#   Date (DD/MM/YYYY) | Libellé | Montant (TTC, euros)
+#
+# Libellé format labo : "VIR BIOGARAN - 9006671913 - 2000065455 - Emetteur 300030154000020476361"
+# Montant en TTC (virements bancaires incluent TVA si applicable).
+# RDP (R2) : hors TVA → montant = HT = TTC
+# Presta (R3) : TVA 20% → montant TTC
+
+class ParseFseBankBody(BaseModel):
+    storage_path: str  # chemin dans bucket 'fse-bank', ex: "user_id/ts_filename.xlsx"
+
+@app.post("/parse/fse-bank")
+async def parse_fse_bank(
+    body: ParseFseBankBody,
+    authorization: str = Header(default=""),
+):
+    """Parse le XLSX d'export FSE Banque (HTP+OI) et sauvegarde fse_month_stats."""
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        _executor,
+        lambda: _parse_fse_bank_sync(user_id, body.storage_path),
+    )
+    return result
+
+
+def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
+    import io, re as _re, datetime as _dt
+    import openpyxl
+
+    from supabase_client import SERVICE_KEY, SUPA_URL
+    HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
+
+    # ── Labos génériqueurs connus ──────────────────────────────────────────────
+    _LABO_KEYS = [
+        ("BIOGARAN", "BIOGARAN"), ("TEVA", "TEVA"), ("VIATRIS", "VIATRIS"),
+        ("MYLAN", "VIATRIS"), ("SANDOZ", "SANDOZ"), ("ZENTIVA", "ZENTIVA"),
+        ("ARROW", "ARROW"), ("CRISTERS", "CRISTERS"), ("ZYDUS", "ZYDUS"),
+        ("EG LABO", "EG LABO"), ("EVOLUPHARM", "EVOLUPHARM"),
+        ("RANBAXY", "RANBAXY"), ("AUROBINDO", "AUROBINDO"), ("INTAS", "INTAS"),
+        ("ALMUS", "ALMUS"), ("QUALIMED", "QUALIMED"),
+        # Dépositaires qui virent au nom du labo
+        ("MOVIANTO", "MOVIANTO"), ("ALLOGA", "ALLOGA"), ("CEGEDIM", "CEGEDIM"),
+    ]
+
+    def _identify_labo(libelle: str) -> str | None:
+        """Extrait le labo depuis le libellé de virement (après 'VIR ')."""
+        lib = libelle.upper()
+        if not lib.startswith("VIR "):
+            return None
+        after_vir = lib[4:]
+        for key, canon in _LABO_KEYS:
+            if after_vir.startswith(key):
+                return canon
+        return None
+
+    def _parse_date(val) -> str | None:
+        """Convertit DD/MM/YYYY ou datetime en YYYY-MM-DD."""
+        if isinstance(val, (_dt.date, _dt.datetime)):
+            return val.strftime("%Y-%m-%d")
+        s = str(val or "").strip()
+        m = _re.match(r'(\d{2})/(\d{2})/(\d{4})', s)
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else None
+
+    def _parse_amount(val) -> float | None:
+        """Parse '2 161,74' ou '2161.74' ou '2 994€' → float."""
+        if isinstance(val, (int, float)):
+            return float(val)
+        s = str(val or "").replace('\xa0', '').replace(' ', '').replace('€', '').replace(',', '.').strip()
+        try:
+            return float(s) if s else None
+        except ValueError:
+            return None
+
+    # 1. Télécharger le XLSX depuis Storage (bucket 'fse-bank')
+    dl_url = f"{SUPA_URL}/storage/v1/object/fse-bank/{storage_path}"
+    req = urllib.request.Request(dl_url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        xlsx_bytes = r.read()
+
+    # 2. Parser le XLSX
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    ws = wb.active
+
+    # Détecter la ligne d'en-tête (cherche "Date" + "Libellé"/"Libelle" + "Montant")
+    hdr_row_idx = 0
+    col_date, col_lib, col_amt = 0, 1, 2  # valeurs par défaut
+    for ri, row in enumerate(ws.iter_rows(max_row=10, values_only=True)):
+        cells = [str(c or '').lower() for c in row]
+        if any('date' in c for c in cells) and any('libell' in c for c in cells):
+            hdr_row_idx = ri
+            for ci, c in enumerate(cells):
+                if 'date' in c:    col_date = ci
+                if 'libell' in c:  col_lib  = ci
+                if 'montant' in c: col_amt  = ci
+            break
+
+    # Accumulateur : {month_key: {labo: {montant_ttc, count, refs}}}
+    acc: dict[str, dict] = {}
+    row_num = 0
+    for row in ws.iter_rows(min_row=hdr_row_idx + 2, values_only=True):
+        if not any(c for c in row):
+            continue
+        date_str = _parse_date(row[col_date] if col_date < len(row) else None)
+        libelle  = str(row[col_lib] if col_lib < len(row) else '') or ''
+        amount   = _parse_amount(row[col_amt] if col_amt < len(row) else None)
+        if not date_str or not libelle or amount is None or amount <= 0:
+            continue
+        labo = _identify_labo(libelle)
+        if not labo:
+            continue
+        mk = date_str[:7]  # YYYY-MM
+        acc.setdefault(mk, {}).setdefault(labo, {"montant_ttc": 0.0, "count": 0, "refs": []})
+        acc[mk][labo]["montant_ttc"] += amount
+        acc[mk][labo]["count"]       += 1
+        # Extraire la référence (premier token après le nom du labo dans le libellé)
+        ref_match = _re.search(r'VIR\s+\S+\s+-\s+(\S+)', libelle, _re.IGNORECASE)
+        if ref_match:
+            acc[mk][labo]["refs"].append(ref_match.group(1))
+        row_num += 1
+
+    if not acc:
+        raise HTTPException(status_code=422, detail="Aucun virement de labo génériqueur trouvé — vérifiez les filtres (HTP+OI, Tous les virements).")
+
+    fse_stats = {
+        mk: sorted(
+            [{"labo":       labo,
+              "montant_ttc": round(d["montant_ttc"], 2),
+              "count":       d["count"],
+              "refs":        d["refs"][:10]}   # garder les 10 premières refs
+             for labo, d in labos.items()],
+            key=lambda r: r["labo"],
+        )
+        for mk, labos in sorted(acc.items())
+    }
+
+    # 3. Fusionner avec l'état existant
+    req2 = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1",
+        headers=HEADERS,
+    )
+    with urllib.request.urlopen(req2, timeout=15) as r:
+        rows2 = json.loads(r.read())
+    state = (rows2[0]["state_json"] if rows2 else {}) or {}
+    existing = state.get("fse_month_stats") or {}
+    merged = dict(existing)
+    for mk, new_rows in fse_stats.items():
+        if mk not in merged:
+            merged[mk] = new_rows
+        else:
+            lm = {r["labo"]: dict(r) for r in merged[mk]}
+            for nr in new_rows:
+                if nr["labo"] in lm:
+                    lm[nr["labo"]]["montant_ttc"]  = round(lm[nr["labo"]]["montant_ttc"] + nr["montant_ttc"], 2)
+                    lm[nr["labo"]]["count"]        += nr["count"]
+                    lm[nr["labo"]]["refs"]          = (lm[nr["labo"]]["refs"] + nr["refs"])[:20]
+                else:
+                    lm[nr["labo"]] = dict(nr)
+            merged[mk] = sorted(lm.values(), key=lambda r: r["labo"])
+    state["fse_month_stats"] = merged
+
+    patch = json.dumps({"state_json": state}).encode()
+    preq  = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
+        data=patch, method="PATCH",
+        headers={**HEADERS, "Content-Type": "application/json", "Prefer": "return=minimal"},
+    )
+    with urllib.request.urlopen(preq, timeout=15):
+        pass
+
+    months = sorted(fse_stats)
+    total_ttc = sum(r["montant_ttc"] for rows in fse_stats.values() for r in rows)
+    return {
+        "status":          "done",
+        "months":          months,
+        "rows_parsed":     row_num,
+        "total_ttc":       round(total_ttc, 2),
+        "fse_month_stats": merged,
+    }
+
+
 # ── Conn test (async wrapper) ──────────────────────────────────────────────────
 
 async def _run_conn_test_async(user_id: str, connector: str, creds: dict):

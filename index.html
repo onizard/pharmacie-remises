@@ -1387,8 +1387,14 @@
           <div class="conn-connected-view" id="concConnView" style="display:none">
             <div class="conn-check-big" id="concCheckBig"><span class="conn-check-tick">✓</span></div>
             <div class="conn-connected-name" id="concConnName">CONCENTRATEUR</div>
-            <div class="conn-job-status" id="concJobStatus" style="font-size:10px;color:var(--text-dim)">// Déposez le fichier XLSX exporté dans la dropzone ci-dessus</div>
-            <button class="conn-test-btn" id="concReconnectBtn">RECONNECTER</button>
+            <div class="conn-job-status" id="concJobStatus" style="font-size:10px;color:var(--text-dim);max-width:260px;text-align:center"></div>
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:center;width:100%">
+              <button class="conn-test-btn" id="concLaunchBtn" style="border-color:var(--cyan);color:var(--cyan)">LANCER L'EXPORT FSE</button>
+              <div style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:.5px;text-align:center">
+                ou déposez le XLSX manuellement<br>dans la dropzone ci-dessus
+              </div>
+              <button class="conn-change-link" id="concReconnectBtn">RECONNECTER</button>
+            </div>
           </div>
         </div>
         <!-- OSPHARM -->
@@ -1632,6 +1638,7 @@ let state = {
   condTolerance: 1.0,
   _grossisteUploads: [],
   _grossisteMonthStats: null,
+  _fseMonthStats: null,
   verifContracts: {},  // { labKey: { active, type, startDate, condYear, condIdx } }
 };
 
@@ -1660,6 +1667,7 @@ function serializeState() {
     digiMonthStats:    state._digiMonthStats    || null,
     grossisteUploads:      state._grossisteUploads      || [],
     grossisteMonthStats:   state._grossisteMonthStats   || null,
+    fseMonthStats:         state._fseMonthStats         || null,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -7430,6 +7438,9 @@ async function saveProfile() {
     if (saved.digiMonthStats && Object.keys(saved.digiMonthStats).length) {
       state._digiMonthStats = saved.digiMonthStats;
     }
+    if (saved.fseMonthStats && Object.keys(saved.fseMonthStats).length) {
+      state._fseMonthStats = saved.fseMonthStats;
+    }
     if (saved.verifContracts && Object.keys(saved.verifContracts).length) {
       state.verifContracts = saved.verifContracts;
     }
@@ -8670,6 +8681,52 @@ function initConnecteurModal() {
     setTimeout(() => { showView('conc', true); res.textContent = ''; }, 800);
   });
 
+  // Bouton LANCER L'EXPORT FSE → workflow_dispatch sur GitHub Actions
+  document.getElementById('concLaunchBtn')?.addEventListener('click', async () => {
+    const btn    = document.getElementById('concLaunchBtn');
+    const statEl = document.getElementById('concJobStatus');
+    btn.disabled = true;
+    if (statEl) { statEl.textContent = '⏳ Lancement…'; statEl.style.color = 'var(--amber)'; }
+
+    let userId = '';
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      userId = session?.user?.id || '';
+    } catch(_) {}
+    if (!userId) {
+      if (statEl) { statEl.textContent = '❌ Session expirée'; statEl.style.color = 'var(--red)'; }
+      btn.disabled = false; return;
+    }
+
+    // Demander les dates
+    const dateFrom = prompt('Date début (YYYY-MM-DD) :', `${new Date().getFullYear() - 1}-01-01`);
+    if (!dateFrom) { btn.disabled = false; return; }
+    const dateTo   = prompt('Date fin (YYYY-MM-DD) :', `${new Date().getFullYear()}-12-31`);
+    if (!dateTo)   { btn.disabled = false; return; }
+
+    try {
+      const { data: { session: sess2 } } = await window._sbClient.auth.getSession();
+      const resp = await fetch(
+        'https://api.github.com/repos/onizard/pharmacie-remises/actions/workflows/scraper_fse.yml/dispatches',
+        {
+          method: 'POST',
+          headers: { 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json',
+                     'Authorization': `Bearer ${sess2?.access_token || ''}` },
+          body: JSON.stringify({ ref: 'master', inputs: { user_id: userId, date_from: dateFrom, date_to: dateTo } }),
+        }
+      );
+      if (resp.ok || resp.status === 204) {
+        if (statEl) { statEl.textContent = `✓ Export lancé (${dateFrom} → ${dateTo}) — déposez le XLSX quand prêt`; statEl.style.color = 'var(--green)'; }
+      } else {
+        // Le token Supabase ne peut pas déclencher GitHub Actions → guide manuel
+        if (statEl) { statEl.innerHTML = `// Téléchargez le XLSX manuellement depuis<br><a href="https://fse.ospharm.org/#!/top/manager.fse.bank" target="_blank" style="color:var(--cyan)">fse.ospharm.org</a><br>puis déposez-le dans la dropzone ci-dessus`; statEl.style.color = 'var(--text-dim)'; }
+      }
+    } catch(e) {
+      if (statEl) { statEl.innerHTML = `// Déposez le XLSX manuellement (HTP+OI, Tous virements, Export)<br><small style="color:var(--text-dim)">${escH(e.message||String(e))}</small>`; statEl.style.color = 'var(--amber)'; }
+    }
+    btn.disabled = false;
+  });
+
   document.getElementById('concReconnectBtn').addEventListener('click', () => {
     const c = state.connectors.concentrateur || {};
     document.getElementById('concUser').value = c.user || '';
@@ -8780,7 +8837,24 @@ function initConnecteurModal() {
           entry.status = 'done'; entry.statusMsg = `${data.labos || 0} labo(s) · ${(data.months||[]).join(', ')}`;
 
         } else if (entry.type === 'fse') {
-          entry.status = 'error'; entry.statusMsg = '// Parser FSE en attente — déposez le fichier manuellement pour calibration';
+          // XLSX FSE Banque → upload bucket 'fse-bank' → /parse/fse-bank
+          const userId   = session.user.id;
+          const safeName = entry.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const path     = `${userId}/${Date.now()}_${safeName}`;
+          const { error: upErr } = await window._sbClient.storage.from('fse-bank').upload(path, entry.file, { upsert: false });
+          if (upErr) throw upErr;
+          const resp = await fetch(`${API_URL}/parse/fse-bank`, {
+            method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storage_path: path }),
+          });
+          if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
+          const data = await resp.json();
+          if (data.fse_month_stats) {
+            state._fseMonthStats = data.fse_month_stats;
+            saveState();
+            if (state.currentPageId === 'verificateur') renderVerificateur();
+          }
+          entry.status = 'done'; entry.statusMsg = `${(data.months||[]).length} mois · ${(data.total_ttc||0).toLocaleString('fr',{minimumFractionDigits:2})} € TTC`;
         } else if (entry.type === 'csv') {
           entry.status = 'error'; entry.statusMsg = '// CSV OSPHARM : parser en cours de développement';
         } else {
