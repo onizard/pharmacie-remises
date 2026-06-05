@@ -8791,47 +8791,30 @@ function initConnecteurModal() {
     setTimeout(() => { showView('conc', true); res.textContent = ''; }, 800);
   });
 
-  // Bouton LANCER L'EXPORT FSE → workflow_dispatch sur GitHub Actions
+  // Bouton LANCER L'EXPORT FSE → via API Render (qui dispatch GitHub Actions avec GH_TOKEN)
   document.getElementById('concLaunchBtn')?.addEventListener('click', async () => {
     const btn    = document.getElementById('concLaunchBtn');
     const statEl = document.getElementById('concJobStatus');
     btn.disabled = true;
     if (statEl) { statEl.textContent = '⏳ Lancement…'; statEl.style.color = 'var(--amber)'; }
 
-    let userId = '';
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
-      userId = session?.user?.id || '';
-    } catch(_) {}
-    if (!userId) {
-      if (statEl) { statEl.textContent = '❌ Session expirée'; statEl.style.color = 'var(--red)'; }
-      btn.disabled = false; return;
-    }
+      const token = session?.access_token || '';
+      if (!token) throw new Error('Session expirée');
 
-    // Plage fixe : jan N-1 → aujourd'hui
-    const _now     = new Date();
-    const dateFrom = `${_now.getFullYear() - 1}-01-01`;
-    const dateTo   = _now.toISOString().slice(0, 10);
+      const resp = await fetch(`${API_URL}/run/fse-export`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.detail || `HTTP ${resp.status}`); }
 
-    try {
-      const { data: { session: sess2 } } = await window._sbClient.auth.getSession();
-      const resp = await fetch(
-        'https://api.github.com/repos/onizard/pharmacie-remises/actions/workflows/scraper_fse.yml/dispatches',
-        {
-          method: 'POST',
-          headers: { 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json',
-                     'Authorization': `Bearer ${sess2?.access_token || ''}` },
-          body: JSON.stringify({ ref: 'master', inputs: { user_id: userId, date_from: dateFrom, date_to: dateTo } }),
-        }
-      );
-      if (resp.ok || resp.status === 204) {
-        if (statEl) { statEl.textContent = `✓ Export lancé (${dateFrom} → ${dateTo}) — déposez le XLSX quand prêt`; statEl.style.color = 'var(--green)'; }
-      } else {
-        // Le token Supabase ne peut pas déclencher GitHub Actions → guide manuel
-        if (statEl) { statEl.innerHTML = `// Téléchargez le XLSX manuellement depuis<br><a href="https://fse.ospharm.org/#!/top/manager.fse.bank" target="_blank" style="color:var(--cyan)">fse.ospharm.org</a><br>puis déposez-le dans la dropzone ci-dessus`; statEl.style.color = 'var(--text-dim)'; }
-      }
+      const _now = new Date();
+      const dateFrom = `${_now.getFullYear() - 1}-01-01`;
+      const dateTo   = _now.toISOString().slice(0, 10);
+      if (statEl) { statEl.textContent = `✓ Export FSE lancé (${dateFrom} → ${dateTo}) — le XLSX sera déposé automatiquement`; statEl.style.color = 'var(--green)'; }
     } catch(e) {
-      if (statEl) { statEl.innerHTML = `// Déposez le XLSX manuellement (HTP+OI, Tous virements, Export)<br><small style="color:var(--text-dim)">${escH(e.message||String(e))}</small>`; statEl.style.color = 'var(--amber)'; }
+      if (statEl) { statEl.textContent = `❌ ${e.message || String(e)}`; statEl.style.color = 'var(--red)'; }
     }
     btn.disabled = false;
   });

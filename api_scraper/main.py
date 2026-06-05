@@ -39,6 +39,7 @@ GH_REPO  = "onizard/pharmacie-remises"
 GH_WORKFLOW      = "scraper_ospharm.yml"
 GH_DIGI_WORKFLOW = "scraper.yml"
 GH_TEST_WORKFLOW = "test_connector.yml"
+GH_FSE_WORKFLOW  = "scraper_fse.yml"
 
 
 class ConnectBody(BaseModel):
@@ -193,6 +194,91 @@ async def _dispatch_gh_ospharm(user_id: str):
         print(f"  [gh-dispatch] ERREUR: {e}")
         await patch_job_status(user_id, "ospharm_job", "error",
                                f"Impossible de lancer le workflow GitHub: {e}", [])
+
+
+@app.post("/run/fse-export")
+async def run_fse_export(
+    background_tasks: BackgroundTasks,
+    authorization: str = Header(default=""),
+):
+    """Déclenche le scraper FSE Banque via GitHub Actions."""
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    background_tasks.add_task(_dispatch_gh_fse, user_id)
+    return {"status": "dispatched"}
+
+
+async def _dispatch_gh_fse(user_id: str):
+    """Déclenche scraper_fse.yml sur GitHub Actions (dates auto : jan N-1 → aujourd'hui)."""
+    import datetime as _dt
+    today     = _dt.date.today()
+    date_from = f"{today.year - 1}-01-01"
+    date_to   = today.strftime("%Y-%m-%d")
+
+    # Mise à jour statut
+    try:
+        state = _supa_get_state_for(user_id)
+        state["fse_job"] = {"status": "running", "message": f"Export FSE lancé ({date_from} → {date_to})…", "error": ""}
+        _supa_patch_state_for(user_id, state)
+    except Exception:
+        pass
+
+    if not GH_TOKEN:
+        try:
+            state = _supa_get_state_for(user_id)
+            state["fse_job"] = {"status": "error", "message": "", "error": "GH_TOKEN manquant sur le serveur"}
+            _supa_patch_state_for(user_id, state)
+        except Exception:
+            pass
+        return
+
+    url  = f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{GH_FSE_WORKFLOW}/dispatches"
+    body = json.dumps({"ref": "master", "inputs": {
+        "user_id":   user_id,
+        "date_from": date_from,
+        "date_to":   date_to,
+    }}).encode()
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "Authorization":        f"Bearer {GH_TOKEN}",
+        "Accept":               "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type":         "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            print(f"  [gh-dispatch] HTTP {r.status} — fse-export déclenché pour {user_id[:8]} ({date_from}→{date_to})")
+    except Exception as e:
+        print(f"  [gh-dispatch] ERREUR fse: {e}")
+        try:
+            state = _supa_get_state_for(user_id)
+            state["fse_job"] = {"status": "error", "message": "", "error": str(e)}
+            _supa_patch_state_for(user_id, state)
+        except Exception:
+            pass
+
+
+def _supa_get_state_for(user_id: str) -> dict:
+    from supabase_client import SERVICE_KEY, SUPA_URL
+    headers = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
+    url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1"
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=15) as r:
+        rows = json.loads(r.read())
+    return (rows[0]["state_json"] if rows else {}) or {}
+
+
+def _supa_patch_state_for(user_id: str, state: dict):
+    from supabase_client import SERVICE_KEY, SUPA_URL
+    headers = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+               "Content-Type": "application/json", "Prefer": "return=minimal"}
+    url  = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}"
+    body = json.dumps({"state_json": state}).encode()
+    req  = urllib.request.Request(url, data=body, method="PATCH", headers=headers)
+    with urllib.request.urlopen(req, timeout=15):
+        pass
 
 
 @app.get("/status/{job_id}")
