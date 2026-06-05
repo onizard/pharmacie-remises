@@ -616,36 +616,82 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     ws = wb.active
 
-    # Détecter la ligne d'en-tête (cherche "Date" + "Libellé"/"Libelle" + "Montant")
-    hdr_row_idx = 0
-    col_date, col_lib, col_amt = 0, 1, 2  # valeurs par défaut
-    for ri, row in enumerate(ws.iter_rows(max_row=10, values_only=True)):
-        cells = [str(c or '').lower() for c in row]
-        if any('date' in c for c in cells) and any('libell' in c for c in cells):
-            hdr_row_idx = ri
+    # Charger toutes les lignes d'un coup (max 5000 lignes)
+    all_rows = list(ws.iter_rows(max_row=5000, values_only=True))
+
+    # ── Détection des colonnes ─────────────────────────────────────────────────
+    # Approche 1 : chercher la ligne d'en-tête par nom de colonne
+    _DATE_KW   = ('date',)
+    _LIB_KW    = ('libell', 'libellé', 'description', 'opération', 'operation', 'désignation')
+    _AMT_KW    = ('montant', 'crédit', 'credit', 'débit', 'debit', 'valeur', 'amount')
+    hdr_idx    = -1
+    col_date, col_lib, col_amt = 0, 1, 2  # defaults
+
+    for ri, row in enumerate(all_rows[:15]):
+        cells = [str(c or '').lower().strip() for c in row]
+        has_date = any(any(k in c for k in _DATE_KW) for c in cells)
+        has_lib  = any(any(k in c for k in _LIB_KW)  for c in cells)
+        if has_date and has_lib:
+            hdr_idx = ri
             for ci, c in enumerate(cells):
-                if 'date' in c and col_date == 0: col_date = ci
-                if 'libell' in c:                  col_lib  = ci
-                if 'montant' in c:                 col_amt  = ci
+                if any(k in c for k in _DATE_KW) and 'mise' not in c and 'update' not in c:
+                    col_date = ci
+                if any(k in c for k in _LIB_KW):
+                    col_lib  = ci
+                if any(k in c for k in _AMT_KW):
+                    col_amt  = ci
             break
 
-    # Accumulateur : {month_key: {labo: {montant_ttc, count, virements}}}
+    # Approche 2 : détection par contenu — chercher la colonne avec "VIR " dans les cellules
+    if hdr_idx < 0:
+        for ri, row in enumerate(all_rows[:30]):
+            for ci, c in enumerate(row):
+                s = str(c or '').upper().strip()
+                if s.startswith('VIR ') and len(s) > 6:
+                    # data starts here; header probably 1 row above
+                    hdr_idx  = max(0, ri - 1)
+                    col_lib  = ci
+                    col_date = max(0, ci - 1)   # date probablement à gauche
+                    col_amt  = ci + 1            # montant probablement à droite
+                    break
+            if hdr_idx >= 0:
+                break
+
+    data_start = hdr_idx + 2  # 0-indexed; openpyxl min_row est 1-indexed donc +1
+
+    # ── Parcours des lignes de données ─────────────────────────────────────────
     acc: dict[str, dict] = {}
-    virements_list: list[dict] = []  # virements individuels pour rapprochement
-    row_num = 0
-    for row in ws.iter_rows(min_row=hdr_row_idx + 2, values_only=True):
+    virements_list: list[dict] = []
+    row_num   = 0
+    skipped_lib: list[str] = []   # libellés non reconnus (debug)
+
+    for row in all_rows[data_start:]:
         if not any(c for c in row):
             continue
-        date_str = _parse_date(row[col_date] if col_date < len(row) else None)
-        libelle  = str(row[col_lib] if col_lib < len(row) else '') or ''
-        amount   = _parse_amount(row[col_amt] if col_amt < len(row) else None)
-        if not date_str or not libelle or amount is None or amount <= 0:
+        n = len(row)
+        date_str = _parse_date(row[col_date] if col_date < n else None)
+        libelle  = str(row[col_lib] if col_lib < n else '') or ''
+        amount   = _parse_amount(row[col_amt] if col_amt < n else None)
+
+        # Si montant ≤ 0, essayer les colonnes adjacentes (débit/crédit séparés)
+        if (amount is None or amount <= 0) and col_amt + 1 < n:
+            amount = _parse_amount(row[col_amt + 1])
+
+        if not date_str or not libelle:
             continue
+        if amount is None or amount <= 0:
+            continue
+        if not libelle.upper().strip().startswith('VIR '):
+            continue  # ignorer les lignes qui ne sont pas des virements
+
         labo = _identify_labo(libelle)
         if not labo:
+            if len(skipped_lib) < 10:
+                skipped_lib.append(libelle[:60])
             continue
+
         ref = _extract_ref(libelle)
-        mk  = date_str[:7]  # YYYY-MM
+        mk  = date_str[:7]
         acc.setdefault(mk, {}).setdefault(labo, {"montant_ttc": 0.0, "count": 0, "refs": []})
         acc[mk][labo]["montant_ttc"] += amount
         acc[mk][labo]["count"]       += 1
@@ -662,7 +708,15 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         row_num += 1
 
     if not acc:
-        raise HTTPException(status_code=422, detail="Aucun virement de labo génériqueur trouvé — vérifiez les filtres (HTP+OI, Tous les virements).")
+        # Collecter infos de debug : premières lignes + colonnes détectées
+        sample = [[str(c)[:25] for c in r if c] for r in all_rows[max(0,hdr_idx):hdr_idx+5] if any(c for c in r)]
+        debug  = (
+            f"Colonnes détectées : date={col_date}, libellé={col_lib}, montant={col_amt}. "
+            f"Ligne header={hdr_idx}. "
+            f"Premières lignes : {sample[:3]}. "
+            f"Libellés VIR non reconnus : {skipped_lib[:5]}"
+        )
+        raise HTTPException(status_code=422, detail=debug)
 
     fse_stats = {
         mk: sorted(
