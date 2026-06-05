@@ -864,7 +864,7 @@
   /* ── Connecteur modal ── */
   #connecteurModal { display: none; position: fixed; inset: 0; z-index: 9000; background: rgba(4,6,15,.85); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
   #connecteurModal.open { display: flex; }
-  .conn-box { background: var(--bg2); border: 1px solid var(--border); padding: 32px; width: min(600px, 94vw); position: relative; }
+  .conn-box { background: var(--bg2); border: 1px solid var(--border); padding: 32px; width: min(860px, 94vw); max-height: 92vh; overflow-y: auto; position: relative; }
   .conn-title { font-family: 'Orbitron', monospace; font-size: 16px; font-weight: 900; color: var(--cyan); letter-spacing: 4px; margin-bottom: 24px; text-align: center; }
   .conn-close { position: absolute; top: 14px; right: 18px; background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; line-height: 1; }
   .conn-close:hover { color: var(--red); }
@@ -1288,31 +1288,23 @@
     <div class="conn-box">
       <button class="conn-close" id="connClose">✕</button>
       <div class="conn-title">CONNECTEURS</div>
+      <!-- Éléments cachés de la dropzone universelle (JS seul, pas de UI visible ici) -->
+      <input type="file" id="univFileInput" multiple accept=".pdf,.xlsx,.xls,.csv" style="display:none">
+      <div id="univFileList" style="display:none"></div>
+      <div id="univStatus"   style="display:none"></div>
+      <button id="univAnalyseBtn" style="display:none">ANALYSER</button>
+      <div id="univDropZone"  style="display:none"></div>
+
       <div class="conn-sites">
-        <!-- DROPZONE UNIVERSELLE -->
-        <div class="conn-site" id="univDropSection" style="flex:0 0 100%;min-width:0">
-          <div class="conn-site-title" style="color:var(--cyan)">DÉPÔT DE FICHIERS &nbsp;<span style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px">PDF · XLSX · CSV</span></div>
-          <div id="univDropZone" class="univ-drop-zone">
-            <div class="conn-drop-icon" style="color:var(--cyan-dim)">⬇</div>
-            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px;margin-bottom:3px">Déposez vos fichiers ici — plusieurs fichiers acceptés</div>
-            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(255,255,255,.2)">PDF DIGI &nbsp;·&nbsp; XLSX grossiste ou FSE banque &nbsp;·&nbsp; CSV OSPHARM</div>
-            <label class="conn-drop-browse" style="display:block;margin-top:6px" for="univFileInput">ou cliquer pour sélectionner</label>
-            <input type="file" id="univFileInput" multiple accept=".pdf,.xlsx,.xls,.csv" style="display:none">
-          </div>
-          <div id="univFileList" class="univ-file-list"></div>
-          <div id="univStatus" class="conn-job-status" style="text-align:center;margin-top:8px;min-height:16px"></div>
-          <div style="text-align:center;margin-top:10px">
-            <button class="conn-test-btn" id="univAnalyseBtn" style="display:none">ANALYSER</button>
-          </div>
-        </div>
-        <!-- GROSSISTE LISTINGS -->
+        <!-- GROSSISTE LISTINGS — dropzone étendue : XLSX grossiste + PDF DIGI + XLSX FSE -->
         <div class="conn-site" id="grossisteSection" style="flex:0 0 100%;min-width:0">
-          <div class="conn-site-title" style="color:var(--green)">LISTING GROSSISTE &nbsp;<span style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px">XLSX</span></div>
+          <div class="conn-site-title" style="color:var(--green)">DÉPÔT DE FICHIERS &nbsp;<span style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px">XLSX GROSSISTE · PDF DIGI · XLSX FSE BANQUE</span></div>
           <div id="grossisteDropZone" class="conn-drop-zone">
             <div class="conn-drop-icon">⬇</div>
-            <div class="conn-drop-label">Déposer un fichier XLSX d'achats grossiste ici</div>
+            <div class="conn-drop-label">Déposer les fichiers ici — plusieurs fichiers acceptés</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(255,255,255,.18);margin:3px 0">XLSX grossiste · PDF DIGI (factures, RDP, presta) · XLSX FSE banque</div>
             <label class="conn-drop-browse" for="grossisteFileInput">ou cliquer pour sélectionner</label>
-            <input type="file" id="grossisteFileInput" accept=".xlsx,.xls" style="display:none">
+            <input type="file" id="grossisteFileInput" multiple accept=".xlsx,.xls,.pdf,.csv" style="display:none">
           </div>
           <div id="grossisteUploadStatus" class="conn-job-status" style="text-align:center;margin-top:6px;min-height:16px"></div>
           <div style="text-align:center;margin-top:8px;display:flex;gap:16px;justify-content:center;align-items:center">
