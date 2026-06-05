@@ -77,22 +77,53 @@ def _norm_labo(raw: str) -> str:
 
 
 def _compute_digi_month_stats(lines: list[dict]) -> dict:
-    """Agrège les lignes digi → {year-MM: [{labo, qty, total_ht}]}."""
+    """Agrège les lignes digi → {year-MM: [{labo, qty, total_ht, rdp_total, presta_total}]}.
+
+    - Lignes produits  : clé = billing_date[:7], cumule qty + total_ht
+    - Lignes rdp       : clé = period_month,     cumule rdp_total (valeur absolue)
+    - Lignes presta    : clé = period_month,      cumule presta_total
+    """
+    def _zero():
+        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0}
+
     acc: dict[str, dict] = {}
     for line in lines:
-        date = str(line.get("billing_date", ""))
-        if len(date) < 7:
-            continue
-        mk    = date[:7]
-        labo  = _norm_labo(line.get("labo") or line.get("fournisseur") or "")
-        qty   = int(line.get("quantite") or 0)
-        total = float(line.get("total_ht") or 0)
-        acc.setdefault(mk, {}).setdefault(labo, {"qty": 0, "total_ht": 0.0})
-        acc[mk][labo]["qty"]      += qty
-        acc[mk][labo]["total_ht"] += total
+        line_type = line.get("type")
+
+        if line_type == "rdp":
+            mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
+            labo = _norm_labo(line.get("labo") or "")
+            if len(mk) < 7 or not labo: continue
+            amt  = abs(float(line.get("montant") or 0))   # montant négatif → valeur absolue
+            acc.setdefault(mk, {}).setdefault(labo, _zero())
+            acc[mk][labo]["rdp_total"] = round(acc[mk][labo]["rdp_total"] + amt, 2)
+
+        elif line_type == "presta":
+            mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
+            labo = _norm_labo(line.get("labo") or "")
+            if len(mk) < 7 or not labo: continue
+            amt  = float(line.get("montant") or 0)
+            acc.setdefault(mk, {}).setdefault(labo, _zero())
+            acc[mk][labo]["presta_total"] = round(acc[mk][labo]["presta_total"] + amt, 2)
+
+        else:
+            date = str(line.get("billing_date", ""))
+            if len(date) < 7: continue
+            mk   = date[:7]
+            labo = _norm_labo(line.get("labo") or line.get("fournisseur") or "")
+            qty  = int(line.get("quantite") or 0)
+            tot  = float(line.get("total_ht") or 0)
+            acc.setdefault(mk, {}).setdefault(labo, _zero())
+            acc[mk][labo]["qty"]      += qty
+            acc[mk][labo]["total_ht"]  = round(acc[mk][labo]["total_ht"] + tot, 2)
+
     return {
         mk: sorted(
-            [{"labo": labo, "qty": d["qty"], "total_ht": round(d["total_ht"], 2)}
+            [{"labo":         labo,
+              "qty":          d["qty"],
+              "total_ht":     round(d["total_ht"], 2),
+              "rdp_total":    round(d["rdp_total"], 2),
+              "presta_total": round(d["presta_total"], 2)}
              for labo, d in labos.items()],
             key=lambda r: r["labo"],
         )
@@ -101,7 +132,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
 
 
 def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
-    """Fusionne les nouvelles stats partielles (nouvelles factures) avec les stats existantes."""
+    """Fusionne les nouvelles stats partielles avec les stats existantes."""
     result = {mk: [dict(r) for r in rows] for mk, rows in existing.items()}
     for mk, new_rows in new_partial.items():
         if mk not in result:
@@ -111,8 +142,10 @@ def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
             for nr in new_rows:
                 labo = nr["labo"]
                 if labo in labo_map:
-                    labo_map[labo]["qty"]      += nr["qty"]
-                    labo_map[labo]["total_ht"]  = round(labo_map[labo]["total_ht"] + nr["total_ht"], 2)
+                    labo_map[labo]["qty"]          += nr["qty"]
+                    labo_map[labo]["total_ht"]       = round(labo_map[labo]["total_ht"]       + nr["total_ht"],     2)
+                    labo_map[labo]["rdp_total"]      = round(labo_map[labo].get("rdp_total",0)    + nr.get("rdp_total",0),    2)
+                    labo_map[labo]["presta_total"]   = round(labo_map[labo].get("presta_total",0) + nr.get("presta_total",0), 2)
                 else:
                     labo_map[labo] = dict(nr)
             result[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])

@@ -4727,26 +4727,37 @@ function _verifFillMensuel(mk) {
 
   if (!keys.length) { wrap.innerHTML = `<div class="verif-note">// Aucune donnée pour ce mois</div>`; return; }
 
-  let totR2 = 0, totR3 = 0, totTot = 0, rowCount = 0;
+  let totR2est = 0, totR2rec = 0, totR3est = 0, totR3rec = 0, rowCount = 0;
   const rows = keys.map(key => {
     const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
     const pa_osp  = osp.pa_net ?? ((osp.ca_brut||0) - (osp.remise_totale||0));
     const pa_di   = digi.total_ht || 0;
     const pa_gr   = gros.total_ht || 0;
     const pa_tot  = pa_osp + pa_di + pa_gr;
-    if (pa_tot <= 0) return '';
+    if (pa_tot <= 0 && !(digi.rdp_total > 0) && !(digi.presta_total > 0)) return '';
 
     const labDisplay = osp.labo || digi.labo || gros.labo || key;
     const cond  = _verifGetCond(labDisplay, mkY, mkM);
     const r2avg = _verifR2avg(cond);
     const r3pct = cond ? (parseFloat(cond.coopR3) || 0) : null;
 
-    const r2amt  = r2avg != null ? pa_tot * r2avg / 100 : null;
-    const r3amt  = r3pct != null ? pa_tot * r3pct / 100 : null;
-    const totAmt = (r2amt||0) + (r3amt||0);
-    if (r2amt != null) totR2 += r2amt;
-    if (r3amt != null) totR3 += r3amt;
-    totTot += totAmt; rowCount++;
+    const r2est  = r2avg != null ? pa_tot * r2avg / 100 : null;
+    const r3est  = r3pct != null ? pa_tot * r3pct / 100 : null;
+    // R2/R3 réellement reçus (depuis avoirs DIGI)
+    const r2rec  = digi.rdp_total    > 0 ? digi.rdp_total    : null;
+    const r3rec  = digi.presta_total > 0 ? digi.presta_total : null;
+
+    const r2gap  = (r2est != null && r2rec != null) ? r2est - r2rec : null;
+    const r3gap  = (r3est != null && r3rec != null) ? r3est - r3rec : null;
+
+    if (r2est != null) totR2est += r2est;
+    if (r2rec != null) totR2rec += r2rec;
+    if (r3est != null) totR3est += r3est;
+    if (r3rec != null) totR3rec += r3rec;
+    rowCount++;
+
+    const gapCls = v => v == null ? '' : v > 0.5 ? 'style="color:var(--red)"' : v < -0.5 ? 'style="color:var(--green)"' : '';
+    const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
 
     return `<tr>
       <td>${escH(labDisplay)}</td>
@@ -4754,37 +4765,38 @@ function _verifFillMensuel(mk) {
       <td>${pa_osp > 0 && osp.pond_pct != null ? fmtP(osp.pond_pct) : '—'}</td>
       <td>${pa_di > 0 ? fmtE(pa_di) : '—'}</td>
       <td>${pa_gr > 0 ? fmtE(pa_gr) : '—'}</td>
-      <td style="color:var(--text)">${fmtE(pa_tot)}</td>
-      <td class="verif-r2">${r2avg != null ? fmtP(r2avg) : '—'}</td>
-      <td class="verif-r2">${r2amt != null ? fmtE(r2amt) : '—'}</td>
-      <td class="verif-r3">${r3pct != null && r3pct > 0 ? fmtP(r3pct) : '—'}</td>
-      <td class="verif-r3">${r3amt != null && r3amt > 0 ? fmtE(r3amt) : '—'}</td>
-      <td class="verif-total">${totAmt > 0 ? fmtE(totAmt) : '—'}</td>
+      <td style="color:var(--text)">${pa_tot > 0 ? fmtE(pa_tot) : '—'}</td>
+      <td class="verif-r2">${r2est != null ? fmtE(r2est) : '—'}</td>
+      <td class="verif-r2">${r2rec != null ? fmtE(r2rec) : '—'}</td>
+      <td ${gapCls(r2gap)}>${fmtGap(r2gap)}</td>
+      <td class="verif-r3">${r3est != null && r3est > 0 ? fmtE(r3est) : '—'}</td>
+      <td class="verif-r3">${r3rec != null ? fmtE(r3rec) : '—'}</td>
+      <td ${gapCls(r3gap)}>${fmtGap(r3gap)}</td>
     </tr>`;
   }).filter(Boolean).join('');
 
   const mkLabel = (mkM >= 1 && mkM <= 12) ? `${_MONTH_LABELS[mkM-1]} ${String(mkY).slice(2)}` : mk;
   wrap.innerHTML = `
-    <div class="verif-note">// R2 = moyenne pondérée des paliers actifs × PA NET total · R3 = coop × PA NET total · estimations à percevoir en avoir — ${escH(mkLabel)}</div>
+    <div class="verif-note">// R2/R3 estimées (calcul) vs réellement reçues (avoirs DIGI) · Écart rouge = sous-payé, vert = sur-payé — ${escH(mkLabel)}</div>
     <div style="overflow-x:auto">
       <table class="verif-tbl">
         <thead><tr>
           <th style="text-align:left">LABO</th>
           <th>PA NET OSP</th><th>RSF OSP</th>
           <th>PA NET DIRECT</th><th>PA NET GROS</th><th>PA NET TOTAL</th>
-          <th>R2 MOY</th><th>R2 ESTIMÉE</th>
-          <th>COOP R3</th><th>R3 ESTIMÉE</th>
-          <th>TOTAL</th>
+          <th>R2 EST.</th><th>R2 REÇUE</th><th>ÉCART R2</th>
+          <th>R3 EST.</th><th>R3 REÇUE</th><th>ÉCART R3</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
           <td colspan="5"></td>
-          <td colspan="1"></td>
-          <td class="verif-r2">${fmtE(totR2)}</td>
-          <td colspan="1"></td>
-          <td class="verif-r3">${fmtE(totR3)}</td>
-          <td class="verif-total">${fmtE(totTot)}</td>
+          <td class="verif-r2">${fmtE(totR2est)}</td>
+          <td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
+          <td>${totR2rec > 0 ? (totR2est - totR2rec > 0.5 ? '<span style="color:var(--red)">+' + fmtE(totR2est-totR2rec) + '</span>' : fmtE(totR2est-totR2rec)) : '—'}</td>
+          <td class="verif-r3">${fmtE(totR3est)}</td>
+          <td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
+          <td>${totR3rec > 0 ? (totR3est - totR3rec > 0.5 ? '<span style="color:var(--red)">+' + fmtE(totR3est-totR3rec) + '</span>' : fmtE(totR3est-totR3rec)) : '—'}</td>
         </tr></tfoot>` : ''}
       </table>
     </div>`;
@@ -5040,6 +5052,16 @@ function _verifFillSuiviR3(year) {
     const prorMo     = (contract?.type === 'N1') ? _verifProrataMonths(contract?.startDate, yr) : 12;
     const startMo    = (contract?.type === 'N1' && contract?.startDate) ? (new Date(contract.startDate).getMonth() + 1) : 1;
 
+    // RDP (R2) et presta (R3) réellement reçus par mois (depuis digi_month_stats)
+    const normKey = _verifNormLab(lab);
+    const monthlyRdp = Array(12).fill(0);
+    const monthlyPresta = Array(12).fill(0);
+    Object.entries(state._digiMonthStats||{}).filter(([mk]) => mk.startsWith(year+'-')).forEach(([mk, arr]) => {
+      const m = parseInt(mk.split('-')[1]) - 1;
+      const r = (arr||[]).find(r => _verifNormLab(r.labo) === normKey);
+      if (r) { monthlyRdp[m] += r.rdp_total || 0; monthlyPresta[m] += r.presta_total || 0; }
+    });
+
     // Algorithme : pour chaque mois, statut R3
     let cumCa = 0, pendingR3 = 0;
     let totTriggered = 0, totBlocked = 0;
@@ -5085,16 +5107,21 @@ function _verifFillSuiviR3(year) {
         totBlocked += r3Mo;
       }
 
-      monthData.push({ mo, ca, avgCa, pctMo, pctAvg, r3Mo, r2Mo, status, payMo, payLabel, pendingRelease });
+      const r2Rec = monthlyRdp[i]    || 0;
+      const r3Rec = monthlyPresta[i] || 0;
+      monthData.push({ mo, ca, avgCa, pctMo, pctAvg, r3Mo, r2Mo, r2Rec, r3Rec, status, payMo, payLabel, pendingRelease });
     }
 
     // Solde de fin d'année
     const soldeFinAnnee = pendingR3;
     if (soldeFinAnnee > 0) totBlocked = Math.max(0, totBlocked - soldeFinAnnee);
 
+    const totR2rec = monthlyRdp.reduce((s,v) => s+v, 0);
+    const totR3rec = monthlyPresta.reduce((s,v) => s+v, 0);
+
     const rows = monthData.map(d => {
-      if (d.skip)   return `<tr><td>${_MONTH_LABELS[d.mo-1]}</td><td colspan="8" style="color:var(--text-dim);font-style:italic;text-align:center">// avant début de contrat</td></tr>`;
-      if (d.noData) return `<tr><td style="color:var(--text-dim)">${_MONTH_LABELS[d.mo-1]}</td><td colspan="8" style="color:var(--text-dim);text-align:center">—</td></tr>`;
+      if (d.skip)   return `<tr><td>${_MONTH_LABELS[d.mo-1]}</td><td colspan="11" style="color:var(--text-dim);font-style:italic;text-align:center">// avant début de contrat</td></tr>`;
+      if (d.noData) return `<tr><td style="color:var(--text-dim)">${_MONTH_LABELS[d.mo-1]}</td><td colspan="11" style="color:var(--text-dim);text-align:center">—</td></tr>`;
 
       const pctCls   = d.pctMo  >= 100 ? 'verif-r3-ok' : d.pctMo  >= 80 ? 'verif-r3-warn' : 'verif-r3-blk';
       const avgCls   = d.pctAvg >= 100 ? 'verif-r3-ok' : d.pctAvg >= 80 ? 'verif-r3-warn' : 'verif-r3-blk';
@@ -5105,6 +5132,8 @@ function _verifFillSuiviR3(year) {
         ? `<span class="verif-r3-pay">${d.payLabel}${d.pendingRelease > 0 ? ' (+rattrapage)' : ''}</span>`
         : `<span class="verif-r3-blk-pay">mars/avr ${yr+1}</span>`;
       const r3Extra  = d.pendingRelease > 0 ? ` <span style="color:var(--text-dim);font-size:10px">(+${fmtE(d.pendingRelease)})</span>` : '';
+      const r2GapCls = d.r2Rec > 0 && d.r2Mo - d.r2Rec > 0.5 ? 'style="color:var(--red)"' : d.r2Rec > 0 ? 'style="color:var(--green)"' : '';
+      const r3GapCls = d.r3Rec > 0 && d.r3Mo - d.r3Rec > 0.5 ? 'style="color:var(--red)"' : d.r3Rec > 0 ? 'style="color:var(--green)"' : '';
 
       return `<tr>
         <td>${_MONTH_LABELS[d.mo-1]}</td>
@@ -5114,7 +5143,11 @@ function _verifFillSuiviR3(year) {
         <td>${fmtE(d.avgCa)}</td>
         <td class="${avgCls}">${d.pctAvg != null ? fmtP(d.pctAvg) : '—'}</td>
         <td class="verif-r2">${d.r2Mo > 0 ? fmtE(d.r2Mo) : '—'}</td>
+        <td class="verif-r2">${d.r2Rec > 0 ? fmtE(d.r2Rec) : '—'}</td>
+        <td ${r2GapCls}>${d.r2Rec > 0 ? (d.r2Mo - d.r2Rec > 0 ? '+' : '') + fmtE(d.r2Mo - d.r2Rec) : '—'}</td>
         <td class="verif-r3">${d.r3Mo > 0 ? fmtE(d.r3Mo) + r3Extra : '—'}</td>
+        <td class="verif-r3">${d.r3Rec > 0 ? fmtE(d.r3Rec) : '—'}</td>
+        <td ${r3GapCls}>${d.r3Rec > 0 ? (d.r3Mo - d.r3Rec > 0 ? '+' : '') + fmtE(d.r3Mo - d.r3Rec) : '—'}</td>
         <td>${statLbl}</td>
         <td>${payCell}</td>
       </tr>`;
@@ -5123,10 +5156,13 @@ function _verifFillSuiviR3(year) {
     const soldeHtml = soldeFinAnnee > 0
       ? `<tr style="border-top:1px solid var(--border)">
            <td style="color:var(--text-dim);font-size:10px">SOLDE N+1</td>
-           <td colspan="7"></td>
-           <td><span class="verif-r3-blk-pay">mars/avr ${yr+1}</span></td>
+           <td colspan="10"></td>
            <td class="verif-r3">${fmtE(soldeFinAnnee)}</td>
+           <td colspan="2"></td>
          </tr>` : '';
+
+    const r2TotEst = monthlyCa.reduce((s,v) => s + v*r2avg/100, 0);
+    const r3TotEst = totTriggered + soldeFinAnnee;
 
     return `<div class="verif-r3-lab">
       <div class="verif-r3-lab-title">
@@ -5139,7 +5175,8 @@ function _verifFillSuiviR3(year) {
             <th style="text-align:left">MOIS</th>
             <th>CA RÉEL</th><th>CIBLE MENS.</th><th>% CIBLE</th>
             <th>MOY CUMUL</th><th>% MOY</th>
-            <th>R2 EST.</th><th>R3 CE MOIS</th>
+            <th>R2 EST.</th><th>R2 REÇUE</th><th>ÉCART R2</th>
+            <th>R3 CE MOIS</th><th>R3 REÇUE</th><th>ÉCART R3</th>
             <th>STATUT R3</th><th>VERSEMENT PRÉVU</th>
           </tr></thead>
           <tbody>${rows}${soldeHtml}</tbody>
@@ -5148,7 +5185,9 @@ function _verifFillSuiviR3(year) {
       <div class="verif-r3-sum">
         <div>R3 déclenchée : <span class="verif-r3-ok">${fmtE(totTriggered)}</span></div>
         <div>R3 restante mars/avr : <span class="verif-r3-blk">${fmtE(soldeFinAnnee)}</span></div>
-        <div>R2 totale estimée : <span class="verif-r2">${fmtE(monthlyCa.reduce((s,v) => s + v*r2avg/100, 0))}</span></div>
+        <div>R2 estimée : <span class="verif-r2">${fmtE(r2TotEst)}</span></div>
+        ${totR2rec > 0 ? `<div>R2 reçue : <span class="verif-r2">${fmtE(totR2rec)}</span></div>` : ''}
+        ${totR3rec > 0 ? `<div>R3 reçue (coop) : <span class="verif-r3">${fmtE(totR3rec)}</span></div>` : ''}
       </div>
     </div>`;
   }).join('<hr style="border:none;border-top:1px solid var(--border);margin:12px 0">');

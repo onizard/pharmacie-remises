@@ -49,6 +49,24 @@ def _to_float(s: str) -> float | None:
         return None
 
 
+def _to_float_signed(s: str) -> float | None:
+    """Comme _to_float mais préserve le signe négatif (pour les avoirs RDP)."""
+    if not s:
+        return None
+    s = str(s).strip().replace('\xa0', '').replace('\u202f', '').replace(' ', '')
+    s = s.replace('€', '').replace('\u2212', '-').replace('\u2013', '-').replace(',', '.')
+    neg = s.startswith('-')
+    s   = s.lstrip('-')
+    import re as _re
+    m   = _re.search(r'[\d.]+', s)
+    try:
+        val = float(m.group()) if m else None
+        return (-val if neg else val) if val is not None else None
+    except (ValueError, AttributeError):
+        return None
+
+
+
 def _parse_remise_str(s: str) -> float | None:
     """Parse '5-%', '5,00%', '17.5%' → float."""
     if not s:
@@ -398,12 +416,141 @@ def _extract_text_fallback(text: str, provider: str, billing_date: str) -> list[
     return lines
 
 
+# ── 6. RDP — Récapitulatif Des remises (R2 mensuelle / R3 trimestrielle) ──────
+#
+# Format Biogaran : AVOIR "RÉCAPITULATIF DES REMISES"
+# Texte pdfplumber (ex) :
+#   RECAPITULATIF DES REMISES \nBIOGARAN \n...
+#   Du 01/04/2026 au 30/04/2026
+#   Date document : 22/05/2026
+#   RDP 10.00% *** SUR [desc]\nACHATS GROSSISTES** [desc] 1 10,00 -870,43 € 0,00\n
+#   C.A brut de référence grossistes partenaires :8 703,88 €
+#   TOTAL -1 866,24 €
+
+def _extract_rdp(text: str, provider: str, billing_date: str) -> list[dict]:
+    # Labo : ligne après "RECAPITULATIF DES REMISES"
+    labo = ""
+    m = re.search(r'RECAPITULATIF\s+DES\s+REMISES\s*\n([\w ]+)', text, re.IGNORECASE)
+    if m:
+        labo = m.group(1).strip().split()[0]  # premier mot = nom du labo
+    if not labo:
+        for kw in sorted(LABOS_CIBLES, key=len, reverse=True):
+            if kw.upper() in text[:1200].upper():
+                labo = kw.upper(); break
+
+    # Période de référence → clé du mois d'achat
+    m_per = re.search(r'Du\s+(\d{2})/(\d{2})/(\d{4})\s+au\s+\d{2}/\d{2}/\d{4}', text, re.IGNORECASE)
+    period_month = billing_date[:7]  # fallback = mois du document
+    if m_per:
+        period_month = f"{m_per.group(3)}-{m_per.group(2)}"
+
+    # Date document → billing_date normalisé ISO
+    m_date = re.search(r'Date\s+document\s*:\s*(\d{2})/(\d{2})/(\d{4})', text, re.IGNORECASE)
+    if m_date:
+        billing_date = f"{m_date.group(3)}-{m_date.group(2)}-{m_date.group(1)}"
+
+    # Total avoir
+    m_tot = re.search(r'\bTOTAL\b\s+([-−][\d\s,\.]+)\s*€', text)
+    total = _to_float_signed(m_tot.group(1)) if m_tot else None
+    if total is None:
+        return []
+
+    # Lignes détail RDP :
+    # La ligne "ACHATS GROSSISTES** ... 1 10,00 -870,43 € 0,00" contient taux et montant
+    rdp_lines = []
+    for m_achats in re.finditer(
+        r'(ACHATS\s+(?:GROSSISTE\w*|DIRECT\w*))[^\n]*?'
+        r'\b1\b\s+([\d,\.]+)\s+([-−][\d\s,]+)\s*€',
+        text, re.IGNORECASE
+    ):
+        canal   = 'GROSSISTE' if 'GROS' in m_achats.group(1).upper() else 'DIRECT'
+        taux    = _to_float(m_achats.group(2))
+        montant = _to_float_signed(m_achats.group(3))
+        # CA brut de référence sur la ligne suivante
+        tail    = text[m_achats.start():][:400]
+        m_ca    = re.search(r'C\.A\s+brut\s+de\s+r[eé]f[eé]rence[^:]+:\s*([\d\s,\.]+)\s*€', tail, re.IGNORECASE)
+        ca_brut = _to_float(m_ca.group(1)) if m_ca else None
+        rdp_lines.append({"canal": canal, "taux": taux, "montant": montant, "ca_brut": ca_brut})
+
+    return [{
+        "type":         "rdp",
+        "labo":         labo,
+        "fournisseur":  provider,
+        "billing_date": billing_date,
+        "period_month": period_month,
+        "montant":      total,      # négatif = avoir (argent reçu par la pharmacie)
+        "total_ht":     total,
+        "rdp_lines":    rdp_lines,
+        "quantite":     0,
+    }]
+
+
+# ── 7. PRESTA — Facture de prestations de services / Coopération (R3) ─────────
+#
+# Format Movianto pour Biogaran : "FACTURE DE PRESTATIONS DE SERVICES CONVENTION COMMERCIALE"
+# Texte pdfplumber dégradé (colonnes mélangées) — on extrait uniquement les données fiables :
+#   BIOGARAN (dans les 1 000 premiers caractères)
+#   Date Facture : 18/09/25
+#   PAIEMENT ... 5450.00 20 1090.00 6540.00  (BRUT HT, TVA%, MONTANT TVA, NET TTC)
+#   ou TOTAL 5 5450,00
+
+def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
+    # Labo
+    labo = ""
+    for kw in sorted(LABOS_CIBLES, key=len, reverse=True):
+        if kw.upper() in text[:1200].upper():
+            labo = kw.upper(); break
+    if not labo:
+        return []
+
+    # Date (format DD/MM/YY ou DD/MM/YYYY)
+    m_date = re.search(r'Date\s+Facture\s*:\s*(\d{2})/(\d{2})/(\d{2,4})', text, re.IGNORECASE)
+    if m_date:
+        yr = m_date.group(3)
+        if len(yr) == 2:
+            yr = "20" + yr
+        billing_date = f"{yr}-{m_date.group(2)}-{m_date.group(1)}"
+
+    # Total HT — chercher dans la ligne PAIEMENT (la plus fiable)
+    # Forme : "5450.00 20 1090.00 6540.00"  ou  "5450,00 20% 1090,00 6540,00"
+    total_ht = None
+    m_pay = re.search(
+        r'Mode\s*:\s*VIREMENT\s+([\d\s,\.]+)\s+\d+\s+[\d\s,\.]+\s+[\d\s,\.]+',
+        text, re.IGNORECASE
+    )
+    if m_pay:
+        total_ht = _to_float(m_pay.group(1))
+
+    # Fallback : ligne TOTAL (ex: "TOTAL 5 5450,00" → le dernier nombre)
+    if total_ht is None:
+        m_tot = re.search(r'\bTOTAL\b[^\n]*?([\d\s,\.]+)\s*$', text, re.MULTILINE)
+        if m_tot:
+            total_ht = _to_float(m_tot.group(1))
+
+    if not total_ht:
+        return []
+
+    period_month = billing_date[:7]
+
+    return [{
+        "type":         "presta",
+        "labo":         labo,
+        "fournisseur":  provider,
+        "billing_date": billing_date,
+        "period_month": period_month,
+        "montant":      total_ht,   # positif = facture de coop (argent reçu)
+        "total_ht":     total_ht,
+        "quantite":     0,
+    }]
+
+
 # ── Point d'entrée public ──────────────────────────────────────────────────────
 
 def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> list[dict]:
     """
-    Extrait les lignes produits d'une facture PDF et retourne uniquement
-    les lignes dont le labo est un génériqueur cible (LABOS_CIBLES).
+    Extrait les lignes d'une facture PDF. Pour les formats produits (alloga, csp,
+    viatris, cooperation), retourne les lignes CIP. Pour les formats avoirs (rdp,
+    presta), retourne une ligne de synthèse avec type="rdp" ou type="presta".
     """
     try:
         with pdfplumber.open(str(pdf_path)) as pdf:
@@ -418,21 +565,25 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
                 lines = _extract_viatris(pdf, provider, billing_date)
             elif fmt == "cooperation":
                 lines = _extract_cooperation(full_text, provider, billing_date)
-            elif fmt in ("rdp", "presta"):
-                # RDP (remise de perf.) et prestations : pas de données par référence CIP
-                lines = []
+            elif fmt == "rdp":
+                lines = _extract_rdp(full_text, provider, billing_date)
+            elif fmt == "presta":
+                lines = _extract_presta(full_text, provider, billing_date)
             else:
                 lines = _extract_text_fallback(full_text, provider, billing_date)
     except Exception:
         return []
 
-    # Filtrer sur les labos génériqueurs cibles
+    # Filtrer sur les labos génériqueurs cibles (s'applique à rdp/presta aussi)
     lines = [l for l in lines if _is_labo_cible(l.get("labo", ""))]
 
-    # Déduplication légère
+    # Déduplication : clé différente selon le type
     seen, dedup = set(), []
     for line in lines:
-        key = (line["cip"], line["billing_date"], line.get("libelle", "")[:20])
+        if line.get("type") in ("rdp", "presta"):
+            key = (line["type"], line["billing_date"], line.get("labo", ""), line.get("montant", 0))
+        else:
+            key = (line.get("cip"), line["billing_date"], line.get("libelle", "")[:20])
         if key not in seen:
             seen.add(key)
             dedup.append(line)
