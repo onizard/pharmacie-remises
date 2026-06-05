@@ -556,6 +556,7 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
             provider     = inv.get("provider_ref") or inv.get("provider_name") or "?"
             billing_date = inv.get("billing_date", "?")
             ck           = _inv_key(inv)
+            lines        = []  # reset pour chaque itération — évite la fuite de valeur entre itérations
 
             if ck in _cache_in:
                 # Facture déjà traitée — marquée True dans le cache compact.

@@ -681,6 +681,43 @@
   .verif-table td.pa-net { color: var(--green); }
   .verif-table td.remise { color: var(--amber); }
   .verif-summary { font-family: 'Orbitron', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 16px; }
+  /* ── Vérificateur de remise (nouvelle UI) ── */
+  .verif-tab-btn { background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 20px 10px; font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--text-dim); cursor: pointer; transition: color .15s, border-color .15s; }
+  .verif-tab-btn.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+  .verif-tab-btn:hover:not(.active) { color: var(--text); }
+  .verif-mon-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 1px; padding: 4px 7px; cursor: pointer; border-radius: 2px; transition: border-color .12s, color .12s; }
+  .verif-mon-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,229,255,.07); }
+  .verif-mon-btn:hover:not(.active) { border-color: var(--text); color: var(--text); }
+  .verif-year-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; padding: 5px 18px; cursor: pointer; border-radius: 2px; }
+  .verif-year-btn.active { border-color: var(--amber); color: var(--amber); background: rgba(255,171,0,.07); }
+  .verif-tbl { width: 100%; border-collapse: collapse; font-family: 'Share Tech Mono', monospace; font-size: 12px; }
+  .verif-tbl th { font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--cyan); border-bottom: 1px solid var(--border); padding: 7px 10px; text-align: right; white-space: nowrap; }
+  .verif-tbl th:first-child { text-align: left; }
+  .verif-tbl td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--text); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+  .verif-tbl td:first-child { text-align: left; font-weight: 700; letter-spacing: .3px; }
+  .verif-tbl tr:hover td { background: var(--bg2); }
+  .verif-tbl tfoot td { border-top: 1px solid var(--border); border-bottom: none; font-weight: 700; }
+  .verif-r2 { color: var(--amber); }
+  .verif-r3 { color: var(--green); }
+  .verif-total { color: var(--cyan); font-weight: 700; }
+  .verif-cond-ok   { color: var(--green); }
+  .verif-cond-warn { color: var(--amber); }
+  .verif-cond-miss { color: var(--red); }
+  .verif-note { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: .8px; margin-bottom: 10px; }
+  .verif-lab-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .verif-lab-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; padding: 6px 14px; cursor: pointer; border-radius: 2px; transition: border-color .12s, color .12s, background .12s; }
+  .verif-lab-btn.active { border-color: var(--amber); color: var(--amber); background: rgba(255,171,0,.08); }
+  .verif-lab-btn:hover:not(.active) { border-color: var(--text); color: var(--text); }
+  .verif-contract-card { border: 1px solid var(--amber); background: rgba(255,171,0,.04); border-radius: 3px; padding: 12px 16px; margin-bottom: 8px; }
+  .verif-contract-title { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; color: var(--amber); letter-spacing: 2px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+  .verif-contract-fields { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+  .verif-contract-field { display: flex; flex-direction: column; gap: 4px; }
+  .verif-contract-label { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); letter-spacing: 1px; }
+  .verif-type-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 1px; padding: 4px 10px; cursor: pointer; border-radius: 2px; margin-right: 4px; }
+  .verif-type-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,229,255,.08); }
+  .verif-cond-select { background: var(--bg2); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 11px; padding: 4px 8px; border-radius: 2px; outline: none; cursor: pointer; min-width: 200px; }
+  .verif-date-input { background: var(--bg2); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 11px; padding: 4px 8px; border-radius: 2px; outline: none; width: 130px; }
+  .verif-prorate-badge { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--cyan); background: rgba(0,229,255,.08); border: 1px solid rgba(0,229,255,.2); padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
   @keyframes blink { 50% { opacity: 0; } }
   .sim-section { margin-bottom: 28px; }
   .sim-title { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--cyan); letter-spacing: 3px; text-shadow: var(--glow-c); margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
@@ -1381,9 +1418,10 @@
 
   <!-- ── PAGE VÉRIFICATEUR ── -->
   <div id="page-verificateur" class="page">
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:320px;gap:18px;padding:40px">
-      <div style="font-family:'Orbitron',monospace;font-size:28px;font-weight:900;color:var(--cyan);letter-spacing:6px;text-transform:uppercase">Coming Soon</div>
-      <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--text-dim);letter-spacing:2px">// Vérificateur de remise — en cours de développement</div>
+    <div class="panel" style="padding:0 0 28px">
+      <div class="panel-title" style="padding:16px 20px 12px">◈ VÉRIFICATEUR DE REMISE</div>
+      <div id="verifTabBar" style="display:flex;border-bottom:1px solid var(--border);padding:0 20px"></div>
+      <div id="verifContent" style="padding:16px 20px 0"></div>
     </div>
   </div>
 
@@ -1506,6 +1544,7 @@ let state = {
   condTolerance: 1.0,
   _grossisteUploads: [],
   _grossisteMonthStats: null,
+  verifContracts: {},  // { labKey: { active, type, startDate, condYear, condIdx } }
 };
 
 
@@ -1570,6 +1609,7 @@ function serializeState() {
       activeMon2025: lp.activeMon2025 ?? (new Date().getMonth() + 1),
       condsByMonth: lp.condsByMonth || { 2025: {}, 2026: {} },
     })),
+    verifContracts: state.verifContracts || {},
   };
 }
 
@@ -1943,6 +1983,7 @@ document.querySelectorAll('.main-tab').forEach(btn => {
       }
     } else {
       goTo(page);
+      if (page === 'verificateur') renderVerificateur();
     }
   });
 });
@@ -4431,6 +4472,461 @@ function renderVerificateurResults(invoices) {
     </div>`;
 }
 
+// ── Vérificateur de remise ────────────────────────────────────────────────────
+
+let _verifTab   = 'mensuel';
+let _verifMonMk = null;
+let _verifYear  = String(new Date().getFullYear());
+
+const _verifNormLab = n => {
+  n = (n || '').toUpperCase();
+  const MAP = { BIOGARAN:'BIOGARAN', TEVA:'TEVA', MYLAN:'MYLAN', VIATRIS:'VIATRIS', ZYDUS:'ZYDUS',
+                SANDOZ:'SANDOZ', ZENTIVA:'ZENTIVA', ARROW:'ARROW', CRISTERS:'CRISTERS',
+                'EG LABO':'EG LABO', 'EG LABS':'EG LABO', EVOLUPHARM:'EVOLUPHARM' };
+  for (const [kw, canon] of Object.entries(MAP)) if (n.includes(kw)) return canon;
+  return n;
+};
+
+// Condition active pour un labo, en tenant compte du contrat configuré
+function _verifGetCond(labDisplay, year, month) {
+  const contract = state.verifContracts?.[labDisplay];
+  const lp = (state.labPages || []).find(p => p.selectedLab === labDisplay);
+  if (!lp) return null;
+  const condYear = contract?.condYear || year;
+  const conds    = getEffectiveCondsForMonth(lp, condYear, month);
+  const idx      = contract?.condIdx ?? (condYear === 2025 ? (lp.activeCondIdx2025 ?? 0) : (lp.activeCondIdx ?? 0));
+  return conds?.[idx] ?? conds?.[0] ?? null;
+}
+
+// R2 moyenne pondérée des paliers actifs (non exclus, remise2 > 0)
+function _verifR2avg(cond) {
+  const vals = (cond?.rsfValues || []).filter(r => !r.excluded && parseFloat(r.remise2) > 0);
+  if (!vals.length) return null;
+  return vals.reduce((s, r) => s + parseFloat(r.remise2), 0) / vals.length;
+}
+
+// Liste des conditions d'un labo pour le dropdown
+function _verifLabCondsForDropdown(lab, condYear) {
+  const lp = (state.labPages || []).find(p => p.selectedLab === lab);
+  if (!lp) return [];
+  const conds = condYear === 2025
+    ? (lp._baseConds2025 || lp.conditions2025 || [])
+    : (lp._baseConds2026 || lp.conditions     || []);
+  return conds.map((c, i) => ({
+    idx: i,
+    label: [
+      c.remiseGlobale != null ? c.remiseGlobale + '%' : null,
+      c.caCondition   != null ? 'Seuil ' + (+c.caCondition).toLocaleString('fr') + ' €' : null,
+    ].filter(Boolean).join(' — ') || `Condition ${i+1}`,
+  }));
+}
+
+// Mois de contrat dans l'année pour la proratisation (N°1 uniquement)
+function _verifProrataMonths(startDateStr, year) {
+  if (!startDateStr) return 12;
+  const d = new Date(startDateStr);
+  if (isNaN(d)) return 12;
+  if (d.getFullYear() > year) return 0;
+  if (d.getFullYear() < year) return 12;
+  return 12 - d.getMonth(); // getMonth() 0-based : janv=0 → 12 mois
+}
+
+function renderVerificateur() {
+  const tb  = document.getElementById('verifTabBar');
+  const cnt = document.getElementById('verifContent');
+  if (!tb || !cnt) return;
+
+  const activeContracts = state.verifContracts || {};
+
+  // ── Grille des labos ──────────────────────────────────────────────────────
+  const labBtns = LABS_ALL.map(lab => {
+    const isOn = !!activeContracts[lab]?.active;
+    return `<button class="verif-lab-btn${isOn?' active':''}" onclick="_verifToggleLab('${escH(lab)}')">${escH(lab)}</button>`;
+  }).join('');
+
+  // ── Panneaux de configuration ──────────────────────────────────────────────
+  const configCards = LABS_ALL.filter(lab => activeContracts[lab]?.active).map(lab => {
+    const c    = activeContracts[lab];
+    const type = c.type || 'N1';
+    const cy   = c.condYear || new Date().getFullYear();
+    const opts = _verifLabCondsForDropdown(lab, cy);
+    const prorMo = (type === 'N1') ? _verifProrataMonths(c.startDate, cy) : 12;
+    const prorBadge = (type === 'N1' && c.startDate && prorMo < 12)
+      ? `<span class="verif-prorate-badge">Prorata ${prorMo}/12 mois</span>` : '';
+
+    const typeButtons = [
+      { key:'N1', lbl:'GÉNÉ. N°1' },
+      { key:'N2', lbl:'GÉNÉ. N°2' },
+      { key:'GROSSISTE', lbl:'GROSSISTE' },
+    ].map(t => `<button class="verif-type-btn${type===t.key?' active':''}" onclick="_verifSetContractType('${lab}','${t.key}')">${t.lbl}</button>`).join('');
+
+    const yearBtns = [2025,2026].map(y =>
+      `<button class="verif-type-btn${cy===y?' active':''}" onclick="_verifSetContractYear('${lab}',${y})">${y}</button>`
+    ).join('');
+
+    const condSel = !opts.length
+      ? `<span style="color:var(--amber);font-family:'Share Tech Mono',monospace;font-size:11px">Configurez ce labo dans « Mes Conditions Labo »</span>`
+      : `<select class="verif-cond-select" onchange="_verifSetContractCond('${lab}',+this.value)">
+           ${opts.map(o => `<option value="${o.idx}"${(c.condIdx??0)===o.idx?' selected':''}>${escH(o.label)}</option>`).join('')}
+         </select>`;
+
+    return `<div class="verif-contract-card">
+      <div class="verif-contract-title">
+        <span>◈ ${escH(lab)}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${prorBadge}
+          <button class="verif-type-btn" onclick="_verifToggleLab('${lab}')" style="font-size:9px;padding:2px 8px;border-color:var(--red);color:var(--red)">✕ RETIRER</button>
+        </div>
+      </div>
+      <div class="verif-contract-fields">
+        <div class="verif-contract-field">
+          <span class="verif-contract-label">TYPE DE CONTRAT</span>
+          <div>${typeButtons}</div>
+        </div>
+        ${type === 'N1' ? `<div class="verif-contract-field">
+          <span class="verif-contract-label">DÉBUT DE CONTRAT</span>
+          <input type="date" class="verif-date-input" value="${c.startDate||''}" onchange="_verifSetContractDate('${lab}',this.value)">
+        </div>` : ''}
+        <div class="verif-contract-field">
+          <span class="verif-contract-label">ANNÉE CONDITIONS</span>
+          <div>${yearBtns}</div>
+        </div>
+        <div class="verif-contract-field">
+          <span class="verif-contract-label">CONDITION (depuis Mes Conditions Labo)</span>
+          ${condSel}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  tb.innerHTML = `
+    <button class="verif-tab-btn${_verifTab==='mensuel'?' active':''}" onclick="verifSetTab('mensuel')">MENSUEL</button>
+    <button class="verif-tab-btn${_verifTab==='annuel' ?' active':''}" onclick="verifSetTab('annuel')">ANNUEL YTD</button>
+  `;
+
+  cnt.innerHTML = `
+    <div style="margin-bottom:12px">
+      <div class="verif-contract-label" style="margin-bottom:6px">LABOS GÉNÉRIQUEURS — cliquer pour activer/désactiver</div>
+      <div class="verif-lab-grid">${labBtns}</div>
+    </div>
+    ${configCards ? `<div style="margin-bottom:16px">${configCards}</div>` : ''}
+    <div id="verifAnalysis"></div>
+  `;
+  _verifRenderAnalysis();
+}
+
+function verifSetTab(t) { _verifTab = t; renderVerificateur(); }
+
+function _verifToggleLab(lab) {
+  const c = state.verifContracts?.[lab];
+  if (c?.active) {
+    state.verifContracts[lab] = { ...c, active: false };
+  } else {
+    const yr = new Date().getFullYear();
+    state.verifContracts[lab] = { active: true, type: 'N1', startDate: `${yr}-01-01`, condYear: yr, condIdx: 0 };
+  }
+  saveState(); renderVerificateur();
+}
+function _verifSetContractType(lab, type) {
+  state.verifContracts[lab] = { ...(state.verifContracts[lab]||{}), type };
+  saveState(); renderVerificateur();
+}
+function _verifSetContractDate(lab, val) {
+  state.verifContracts[lab] = { ...(state.verifContracts[lab]||{}), startDate: val };
+  saveState(); renderVerificateur();
+}
+function _verifSetContractYear(lab, yr) {
+  state.verifContracts[lab] = { ...(state.verifContracts[lab]||{}), condYear: yr, condIdx: 0 };
+  saveState(); renderVerificateur();
+}
+function _verifSetContractCond(lab, idx) {
+  state.verifContracts[lab] = { ...(state.verifContracts[lab]||{}), condIdx: idx };
+  saveState(); _verifRenderAnalysis();
+}
+
+function _verifRenderAnalysis() {
+  const wrap = document.getElementById('verifAnalysis'); if (!wrap) return;
+  if (_verifTab === 'mensuel') _verifRenderMensuel(wrap);
+  else                          _verifRenderAnnuel(wrap);
+}
+
+// ── VUE MENSUELLE ─────────────────────────────────────────────────────────────
+
+function _verifRenderMensuel(cnt) {
+  const ospAll  = state._monthStats          || {};
+  const digiAll = state._digiMonthStats      || {};
+  const grosAll = state._grossisteMonthStats || {};
+  const mkSet   = new Set([...Object.keys(ospAll), ...Object.keys(digiAll), ...Object.keys(grosAll)]);
+  const mks     = [...mkSet].sort();
+
+  if (!mks.length) {
+    cnt.innerHTML = `<div class="verif-note" style="padding:20px 0;text-align:center">// Aucune donnée — connectez OSPHARM ou DIGI</div>`;
+    return;
+  }
+  if (!_verifMonMk || !mkSet.has(_verifMonMk)) _verifMonMk = mks[mks.length - 1];
+
+  const byYear = {};
+  mks.forEach(mk => { const [y, m] = mk.split('-').map(Number); (byYear[y] = byYear[y]||{})[m] = mk; });
+  const years = Object.keys(byYear).map(Number).sort();
+
+  let btns = '';
+  years.forEach(y => {
+    for (let m = 1; m <= 12; m++) {
+      const mk = byYear[y]?.[m];
+      if (mk) btns += `<button class="verif-mon-btn${mk===_verifMonMk?' active':''}" data-mk="${mk}">${_MONTH_LABELS[m-1]} ${String(y).slice(2)}</button>`;
+      else    btns += `<span class="month-btn-empty"></span>`;
+    }
+  });
+
+  cnt.innerHTML = `<div class="month-btns" id="verifMkGrid" style="margin-bottom:14px">${btns}</div><div id="verifMenWrap"></div>`;
+
+  document.getElementById('verifMkGrid')?.addEventListener('click', e => {
+    const mk = e.target.dataset?.mk; if (!mk) return;
+    _verifMonMk = mk;
+    document.querySelectorAll('#verifMkGrid .verif-mon-btn').forEach(b => b.classList.toggle('active', b.dataset.mk === mk));
+    _verifFillMensuel(mk);
+  });
+  _verifFillMensuel(_verifMonMk);
+}
+
+function _verifFillMensuel(mk) {
+  const wrap = document.getElementById('verifMenWrap'); if (!wrap) return;
+  const [mkY, mkM] = mk.split('-').map(Number);
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fmtP = v => v != null ? v.toFixed(1) + ' %' : '—';
+
+  const ospMap = {}, digiMap = {}, grosMap = {};
+  ((state._monthStats||{})[mk]||[]).forEach(r => ospMap[_verifNormLab(r.labo)] = r);
+  ((state._digiMonthStats||{})[mk]||[]).forEach(r => digiMap[_verifNormLab(r.labo)] = r);
+  ((state._grossisteMonthStats||{})[mk]||[]).forEach(r => grosMap[_verifNormLab(r.labo)] = r);
+
+  // Si des contrats sont configurés, filtrer sur ces labos uniquement
+  const activeContracts = Object.entries(state.verifContracts||{}).filter(([,c]) => c.active).map(([lab]) => _verifNormLab(lab));
+  const allKeys = [...new Set([...Object.keys(ospMap),...Object.keys(digiMap),...Object.keys(grosMap)])].sort();
+  const keys = activeContracts.length ? allKeys.filter(k => activeContracts.includes(k)) : allKeys;
+
+  if (!keys.length) { wrap.innerHTML = `<div class="verif-note">// Aucune donnée pour ce mois</div>`; return; }
+
+  let totR2 = 0, totR3 = 0, totTot = 0, rowCount = 0;
+  const rows = keys.map(key => {
+    const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
+    const pa_osp  = osp.pa_net ?? ((osp.ca_brut||0) - (osp.remise_totale||0));
+    const pa_di   = digi.total_ht || 0;
+    const pa_gr   = gros.total_ht || 0;
+    const pa_tot  = pa_osp + pa_di + pa_gr;
+    if (pa_tot <= 0) return '';
+
+    const labDisplay = osp.labo || digi.labo || gros.labo || key;
+    const cond  = _verifGetCond(labDisplay, mkY, mkM);
+    const r2avg = _verifR2avg(cond);
+    const r3pct = cond ? (parseFloat(cond.coopR3) || 0) : null;
+
+    const r2amt  = r2avg != null ? pa_tot * r2avg / 100 : null;
+    const r3amt  = r3pct != null ? pa_tot * r3pct / 100 : null;
+    const totAmt = (r2amt||0) + (r3amt||0);
+    if (r2amt != null) totR2 += r2amt;
+    if (r3amt != null) totR3 += r3amt;
+    totTot += totAmt; rowCount++;
+
+    return `<tr>
+      <td>${escH(labDisplay)}</td>
+      <td>${pa_osp > 0 ? fmtE(pa_osp) : '—'}</td>
+      <td>${pa_osp > 0 && osp.pond_pct != null ? fmtP(osp.pond_pct) : '—'}</td>
+      <td>${pa_di > 0 ? fmtE(pa_di) : '—'}</td>
+      <td>${pa_gr > 0 ? fmtE(pa_gr) : '—'}</td>
+      <td style="color:var(--text)">${fmtE(pa_tot)}</td>
+      <td class="verif-r2">${r2avg != null ? fmtP(r2avg) : '—'}</td>
+      <td class="verif-r2">${r2amt != null ? fmtE(r2amt) : '—'}</td>
+      <td class="verif-r3">${r3pct != null && r3pct > 0 ? fmtP(r3pct) : '—'}</td>
+      <td class="verif-r3">${r3amt != null && r3amt > 0 ? fmtE(r3amt) : '—'}</td>
+      <td class="verif-total">${totAmt > 0 ? fmtE(totAmt) : '—'}</td>
+    </tr>`;
+  }).filter(Boolean).join('');
+
+  const mkLabel = (mkM >= 1 && mkM <= 12) ? `${_MONTH_LABELS[mkM-1]} ${String(mkY).slice(2)}` : mk;
+  wrap.innerHTML = `
+    <div class="verif-note">// R2 = moyenne pondérée des paliers actifs × PA NET total · R3 = coop × PA NET total · estimations à percevoir en avoir — ${escH(mkLabel)}</div>
+    <div style="overflow-x:auto">
+      <table class="verif-tbl">
+        <thead><tr>
+          <th style="text-align:left">LABO</th>
+          <th>PA NET OSP</th><th>RSF OSP</th>
+          <th>PA NET DIRECT</th><th>PA NET GROS</th><th>PA NET TOTAL</th>
+          <th>R2 MOY</th><th>R2 ESTIMÉE</th>
+          <th>COOP R3</th><th>R3 ESTIMÉE</th>
+          <th>TOTAL</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        ${rowCount > 1 ? `<tfoot><tr>
+          <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
+          <td colspan="5"></td>
+          <td colspan="1"></td>
+          <td class="verif-r2">${fmtE(totR2)}</td>
+          <td colspan="1"></td>
+          <td class="verif-r3">${fmtE(totR3)}</td>
+          <td class="verif-total">${fmtE(totTot)}</td>
+        </tr></tfoot>` : ''}
+      </table>
+    </div>`;
+}
+
+// ── VUE ANNUELLE YTD ──────────────────────────────────────────────────────────
+
+function _verifRenderAnnuel(cnt) {
+  const ospAll  = state._monthStats          || {};
+  const digiAll = state._digiMonthStats      || {};
+  const grosAll = state._grossisteMonthStats || {};
+  const allYears = new Set();
+  [...Object.keys(ospAll),...Object.keys(digiAll),...Object.keys(grosAll)]
+    .forEach(mk => allYears.add(mk.split('-')[0]));
+  const years = [...allYears].sort();
+  if (!years.length) { cnt.innerHTML = `<div class="verif-note" style="padding:20px 0;text-align:center">// Aucune donnée disponible</div>`; return; }
+
+  if (!years.includes(_verifYear)) _verifYear = years[years.length - 1];
+
+  const yBtns = years.map(y =>
+    `<button class="verif-year-btn${y===_verifYear?' active':''}" onclick="_verifSetYear('${y}')">${y}</button>`
+  ).join('');
+
+  cnt.innerHTML = `<div style="display:flex;gap:8px;margin-bottom:16px">${yBtns}</div><div id="verifAnnuelWrap"></div>`;
+  _verifFillAnnuel(_verifYear);
+}
+
+function _verifSetYear(y) { _verifYear = y; _verifRenderAnnuel(document.getElementById('verifAnalysis')); }
+
+function _verifFillAnnuel(year) {
+  const wrap = document.getElementById('verifAnnuelWrap'); if (!wrap) return;
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fmtP = v => v != null ? v.toFixed(1) + ' %' : '—';
+  const yr   = parseInt(year);
+
+  // Accumule données par labo pour l'année
+  const labAcc = {};
+  const addRow = (normKey, displayName, pa, caBrut) => {
+    if (!labAcc[normKey]) labAcc[normKey] = { display: displayName, pa_osp: 0, ca_brut: 0, pa_di: 0, pa_gr: 0, monthsOsp: 0 };
+    if (caBrut != null) { labAcc[normKey].ca_brut += caBrut; labAcc[normKey].pa_osp += pa; labAcc[normKey].monthsOsp++; }
+    else                  labAcc[normKey].pa_gr = pa > 0 ? (labAcc[normKey].pa_gr||0) + pa : labAcc[normKey].pa_gr;
+  };
+
+  // Collecte par mois pour l'année sélectionnée
+  const mksYear = mk => mk.startsWith(year + '-');
+  Object.entries(state._monthStats||{}).filter(([mk]) => mksYear(mk)).forEach(([, arr]) =>
+    (arr||[]).forEach(r => {
+      const k = _verifNormLab(r.labo);
+      if (!labAcc[k]) labAcc[k] = { display: r.labo, pa_osp: 0, ca_brut: 0, pa_di: 0, pa_gr: 0, monthsOsp: 0 };
+      labAcc[k].pa_osp  += r.pa_net ?? ((r.ca_brut||0) - (r.remise_totale||0));
+      labAcc[k].ca_brut += r.ca_brut || 0;
+      labAcc[k].monthsOsp++;
+    })
+  );
+  Object.entries(state._digiMonthStats||{}).filter(([mk]) => mksYear(mk)).forEach(([, arr]) =>
+    (arr||[]).forEach(r => {
+      const k = _verifNormLab(r.labo);
+      if (!labAcc[k]) labAcc[k] = { display: r.labo, pa_osp: 0, ca_brut: 0, pa_di: 0, pa_gr: 0, monthsOsp: 0 };
+      labAcc[k].pa_di += r.total_ht || 0;
+    })
+  );
+  Object.entries(state._grossisteMonthStats||{}).filter(([mk]) => mksYear(mk)).forEach(([, arr]) =>
+    (arr||[]).forEach(r => {
+      const k = _verifNormLab(r.labo);
+      if (!labAcc[k]) labAcc[k] = { display: r.labo, pa_osp: 0, ca_brut: 0, pa_di: 0, pa_gr: 0, monthsOsp: 0 };
+      labAcc[k].pa_gr += r.total_ht || 0;
+    })
+  );
+
+  // Filtrer sur les labos configurés si des contrats sont actifs
+  const activeContracts2 = Object.entries(state.verifContracts||{}).filter(([,c]) => c.active).map(([lab]) => _verifNormLab(lab));
+  const allKeys2 = Object.keys(labAcc).sort();
+  const keys = activeContracts2.length ? allKeys2.filter(k => activeContracts2.includes(k)) : allKeys2;
+  if (!keys.length) { wrap.innerHTML = `<div class="verif-note">// Aucune donnée pour ${year}${activeContracts2.length ? ' (labos configurés)' : ''}</div>`; return; }
+
+  // Mois écoulés dans l'année
+  const today    = new Date();
+  const moActuel = today.getFullYear() === yr ? today.getMonth() + 1 : (yr < today.getFullYear() ? 12 : 1);
+
+  let totPA = 0, totR2 = 0, totR3 = 0, totTot = 0, rowCount = 0;
+  const rows = keys.map(key => {
+    const d      = labAcc[key];
+    const pa_tot = d.pa_osp + d.pa_di + d.pa_gr;
+    if (pa_tot <= 0) return '';
+
+    const mRef = yr < today.getFullYear() ? 12 : moActuel;
+    const cond = _verifGetCond(d.display, yr, mRef);
+    const r2avg = _verifR2avg(cond);
+    const r3pct = cond ? (parseFloat(cond.coopR3) || 0) : null;
+    const caCondTarget = cond ? (parseFloat(cond.caCondition) || 0) : 0;
+
+    // Contrat configuré → proratisation éventuelle (N°1 uniquement)
+    const contract  = state.verifContracts?.[d.display] || Object.values(state.verifContracts||{}).find((_, i) => _verifNormLab(Object.keys(state.verifContracts||{})[i]) === key);
+    const isN1      = contract?.type === 'N1';
+    const prorMo    = isN1 ? _verifProrataMonths(contract?.startDate, yr) : 12;
+    const startMo   = isN1 && contract?.startDate ? new Date(contract.startDate).getMonth() + 1 : 1;
+    const caTarget  = caCondTarget > 0 ? caCondTarget * prorMo / 12 : 0;  // CA cible proraté
+
+    // CA YTD depuis le mois de début (si N°1)
+    const caYtd = d.ca_brut + d.pa_di + d.pa_gr;
+    const condPct = caTarget > 0 ? Math.min(caYtd / caTarget * 100, 999) : (caCondTarget > 0 ? Math.min(caYtd / caCondTarget * 100, 999) : null);
+    const condCls = condPct == null ? '' : condPct >= 100 ? 'verif-cond-ok' : condPct >= 75 ? 'verif-cond-warn' : 'verif-cond-miss';
+    const condLbl = condPct == null ? '—' : (condPct >= 100 ? '✓ ' : '') + condPct.toFixed(0) + '%';
+
+    // Projection fin d'année depuis le mois de début
+    const moEcoulés  = Math.max(1, moActuel - startMo + 1);
+    const projAnnuel = moEcoulés > 0 ? caYtd / moEcoulés * prorMo : caYtd;
+    const projCls    = caTarget > 0 ? (projAnnuel >= caTarget ? 'verif-cond-ok' : projAnnuel >= caTarget * 0.75 ? 'verif-cond-warn' : 'verif-cond-miss') : '';
+
+    const prorLabel = isN1 && prorMo < 12 ? ` <span class="verif-prorate-badge" style="font-size:9px">${prorMo}/12</span>` : '';
+
+    const r2amt  = r2avg != null ? pa_tot * r2avg / 100 : null;
+    const r3amt  = r3pct != null ? pa_tot * r3pct / 100 : null;
+    const totAmt = (r2amt||0) + (r3amt||0);
+    totPA += pa_tot;
+    if (r2amt != null) totR2 += r2amt;
+    if (r3amt != null) totR3 += r3amt;
+    totTot += totAmt; rowCount++;
+
+    return `<tr>
+      <td>${escH(d.display)}${prorLabel}</td>
+      <td>${fmtE(caYtd)}</td>
+      <td>${caTarget > 0 ? fmtE(caTarget) : caCondTarget > 0 ? fmtE(caCondTarget) : '—'}</td>
+      <td class="${condCls}">${condLbl}</td>
+      <td class="${projCls}">${caTarget > 0 && moActuel < 12 ? fmtE(projAnnuel) : '—'}</td>
+      <td style="color:var(--text)">${fmtE(pa_tot)}</td>
+      <td class="verif-r2">${r2avg != null ? fmtP(r2avg) : '—'}</td>
+      <td class="verif-r2">${r2amt != null ? fmtE(r2amt) : '—'}</td>
+      <td class="verif-r3">${r3pct != null && r3pct > 0 ? fmtP(r3pct) : '—'}</td>
+      <td class="verif-r3">${r3amt != null && r3amt > 0 ? fmtE(r3amt) : '—'}</td>
+      <td class="verif-total">${totAmt > 0 ? fmtE(totAmt) : '—'}</td>
+    </tr>`;
+  }).filter(Boolean).join('');
+
+  wrap.innerHTML = `
+    <div class="verif-note">// CA = CA brut OSPHARM + PA net direct/grossiste · Condition = seuil caCondition négocié · Projection sur ${12} mois</div>
+    <div style="overflow-x:auto">
+      <table class="verif-tbl">
+        <thead><tr>
+          <th style="text-align:left">LABO</th>
+          <th>CA YTD</th><th>SEUIL COND.</th><th>ATTEINTE</th><th>PROJ. FIN ANNÉE</th>
+          <th>PA NET TOTAL</th>
+          <th>R2 MOY</th><th>R2 ANNUELLE</th>
+          <th>COOP R3</th><th>R3 ANNUELLE</th>
+          <th>TOTAL ATTENDU</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        ${rowCount > 1 ? `<tfoot><tr>
+          <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
+          <td colspan="4"></td>
+          <td>${fmtE(totPA)}</td>
+          <td colspan="1"></td>
+          <td class="verif-r2">${fmtE(totR2)}</td>
+          <td colspan="1"></td>
+          <td class="verif-r3">${fmtE(totR3)}</td>
+          <td class="verif-total">${fmtE(totTot)}</td>
+        </tr></tfoot>` : ''}
+      </table>
+    </div>`;
+}
+
 // ── Breakout loader animation ──────────────────────────────────────────────────
 function startBrickGame(canvasId = 'brickCanvas') {
   const canvas = document.getElementById(canvasId);
@@ -6564,6 +7060,9 @@ async function saveProfile() {
     }
     if (saved.digiMonthStats && Object.keys(saved.digiMonthStats).length) {
       state._digiMonthStats = saved.digiMonthStats;
+    }
+    if (saved.verifContracts && Object.keys(saved.verifContracts).length) {
+      state.verifContracts = saved.verifContracts;
     }
     if (saved.monthStats && Object.keys(saved.monthStats).length) {
       state._monthStats   = saved.monthStats;
