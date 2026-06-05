@@ -718,6 +718,23 @@
   .verif-cond-select { background: var(--bg2); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 11px; padding: 4px 8px; border-radius: 2px; outline: none; cursor: pointer; min-width: 200px; }
   .verif-date-input { background: var(--bg2); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 11px; padding: 4px 8px; border-radius: 2px; outline: none; width: 130px; }
   .verif-prorate-badge { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--cyan); background: rgba(0,229,255,.08); border: 1px solid rgba(0,229,255,.2); padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  /* ── Suivi R3 ── */
+  .verif-r3-lab { margin-bottom: 20px; }
+  .verif-r3-lab-title { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; color: var(--amber); letter-spacing: 2px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+  .verif-r3-info { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); margin-left: auto; }
+  .verif-r3-tbl { width: 100%; border-collapse: collapse; font-family: 'Share Tech Mono', monospace; font-size: 11px; }
+  .verif-r3-tbl th { font-family: 'Orbitron', monospace; font-size: 8px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); padding: 5px 10px; text-align: right; white-space: nowrap; }
+  .verif-r3-tbl th:first-child { text-align: left; }
+  .verif-r3-tbl td { padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,.04); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .verif-r3-tbl td:first-child { text-align: left; color: var(--text-dim); font-weight: 700; }
+  .verif-r3-tbl tr:hover td { background: var(--bg2); }
+  .verif-r3-ok   { color: var(--green); }
+  .verif-r3-warn { color: var(--amber); }
+  .verif-r3-blk  { color: var(--red); }
+  .verif-r3-pay  { color: var(--cyan); font-weight: 700; }
+  .verif-r3-blk-pay { color: var(--text-dim); font-style: italic; }
+  .verif-r3-sum { margin-top: 8px; display: flex; gap: 20px; flex-wrap: wrap; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); }
+  .verif-r3-sum span { color: var(--text); }
   @keyframes blink { 50% { opacity: 0; } }
   .sim-section { margin-bottom: 28px; }
   .sim-title { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--cyan); letter-spacing: 3px; text-shadow: var(--glow-c); margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
@@ -4601,8 +4618,9 @@ function renderVerificateur() {
 
   // ── Tabs ──────────────────────────────────────────────────────────────────
   tb.innerHTML = `
-    <button class="verif-tab-btn${_verifTab==='mensuel'?' active':''}" onclick="verifSetTab('mensuel')">MENSUEL</button>
-    <button class="verif-tab-btn${_verifTab==='annuel' ?' active':''}" onclick="verifSetTab('annuel')">ANNUEL YTD</button>
+    <button class="verif-tab-btn${_verifTab==='mensuel'  ?' active':''}" onclick="verifSetTab('mensuel')">MENSUEL</button>
+    <button class="verif-tab-btn${_verifTab==='annuel'   ?' active':''}" onclick="verifSetTab('annuel')">ANNUEL YTD</button>
+    <button class="verif-tab-btn${_verifTab==='suivi_r3' ?' active':''}" onclick="verifSetTab('suivi_r3')">SUIVI R3</button>
   `;
 
   cnt.innerHTML = `
@@ -4647,8 +4665,9 @@ function _verifSetContractCond(lab, idx) {
 
 function _verifRenderAnalysis() {
   const wrap = document.getElementById('verifAnalysis'); if (!wrap) return;
-  if (_verifTab === 'mensuel') _verifRenderMensuel(wrap);
-  else                          _verifRenderAnnuel(wrap);
+  if      (_verifTab === 'mensuel')  _verifRenderMensuel(wrap);
+  else if (_verifTab === 'annuel')   _verifRenderAnnuel(wrap);
+  else                               _verifRenderSuiviR3(wrap);
 }
 
 // ── VUE MENSUELLE ─────────────────────────────────────────────────────────────
@@ -4925,6 +4944,216 @@ function _verifFillAnnuel(year) {
         </tr></tfoot>` : ''}
       </table>
     </div>`;
+}
+
+// ── SUIVI R3 — règle 80% mensuelle ───────────────────────────────────────────
+
+function _verifRenderSuiviR3(cnt) {
+  const ospAll  = state._monthStats          || {};
+  const digiAll = state._digiMonthStats      || {};
+  const grosAll = state._grossisteMonthStats || {};
+  const allYears = new Set();
+  [...Object.keys(ospAll),...Object.keys(digiAll),...Object.keys(grosAll)]
+    .forEach(mk => allYears.add(mk.split('-')[0]));
+  const years = [...allYears].sort();
+
+  if (!years.length) {
+    cnt.innerHTML = `<div class="verif-note" style="padding:20px 0;text-align:center">// Aucune donnée disponible</div>`;
+    return;
+  }
+  if (!years.includes(_verifYear)) _verifYear = years[years.length - 1];
+
+  const yBtns = years.map(y =>
+    `<button class="verif-year-btn${y===_verifYear?' active':''}" onclick="_verifSetYearR3('${y}')">${y}</button>`
+  ).join('');
+
+  cnt.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:14px">${yBtns}</div>
+    <div class="verif-note">// Règle 80% : versement R3 déclenché si CA mensuel ≥ 80% de la cible mensuelle, OU si la moyenne cumulée Jan→M ≥ 80% · Versement en M+2 · Solde annuel en mars/avril N+1</div>
+    <div id="verifR3Wrap"></div>
+  `;
+  _verifFillSuiviR3(_verifYear);
+}
+
+function _verifSetYearR3(y) { _verifYear = y; _verifFillSuiviR3(y); }
+
+function _verifFillSuiviR3(year) {
+  const wrap = document.getElementById('verifR3Wrap'); if (!wrap) return;
+  const yr   = parseInt(year);
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fmtP = v => v.toFixed(0) + '%';
+
+  // Labos configurés actifs (N°1 principalement, mais on affiche pour tous)
+  const activeLabs = LABS_ALL.filter(lab => state.verifContracts?.[lab]?.active);
+  if (!activeLabs.length) {
+    wrap.innerHTML = `<div class="verif-note">// Activez des labos ci-dessus pour voir le suivi R3</div>`;
+    return;
+  }
+
+  const today   = new Date();
+  const mksYear = mk => mk.startsWith(year + '-');
+
+  // Construit CA mensuel par labo (toutes sources) pour l'année
+  function buildMonthlyCa(lab) {
+    const normKey = _verifNormLab(lab);
+    const ca = Array(12).fill(0);  // index 0 = janvier
+    Object.entries(state._monthStats||{}).filter(([mk]) => mksYear(mk)).forEach(([mk, arr]) => {
+      const m = parseInt(mk.split('-')[1]) - 1;
+      const r = (arr||[]).find(r => _verifNormLab(r.labo) === normKey);
+      if (r) ca[m] += r.ca_brut || 0;
+    });
+    Object.entries(state._digiMonthStats||{}).filter(([mk]) => mksYear(mk)).forEach(([mk, arr]) => {
+      const m = parseInt(mk.split('-')[1]) - 1;
+      const r = (arr||[]).find(r => _verifNormLab(r.labo) === normKey);
+      if (r) ca[m] += r.total_ht || 0;
+    });
+    Object.entries(state._grossisteMonthStats||{}).filter(([mk]) => mksYear(mk)).forEach(([mk, arr]) => {
+      const m = parseInt(mk.split('-')[1]) - 1;
+      const r = (arr||[]).find(r => _verifNormLab(r.labo) === normKey);
+      if (r) ca[m] += r.total_ht || 0;
+    });
+    return ca;
+  }
+
+  // Formatte un mois de versement en "MMM AA" ou "— (mars/avr N+1)"
+  function fmtPayMonth(payMo, yr2) {
+    if (payMo == null) return null;
+    let m = payMo, y = yr2;
+    while (m > 12) { m -= 12; y++; }
+    return `${_MONTH_LABELS[m-1]} ${String(y).slice(2)}`;
+  }
+
+  const labHtml = activeLabs.map(lab => {
+    const contract = state.verifContracts[lab];
+    const mRef     = yr < today.getFullYear() ? 12 : (today.getFullYear() === yr ? today.getMonth() + 1 : 1);
+    const cond     = _verifGetCond(lab, yr, mRef);
+    if (!cond) return `<div class="verif-r3-lab"><div class="verif-r3-lab-title">◈ ${escH(lab)} <span class="verif-r3-info">// Pas de condition configurée</span></div></div>`;
+
+    const caCondition  = parseFloat(cond.caCondition) || 0;
+    const coopR3       = parseFloat(cond.coopR3)      || 0;
+    const r2avg        = _verifR2avg(cond) || 0;
+    if (caCondition <= 0) return `<div class="verif-r3-lab"><div class="verif-r3-lab-title">◈ ${escH(lab)} <span class="verif-r3-info">// Seuil CA non défini</span></div></div>`;
+
+    const cibleMens  = caCondition / 12;
+    const seuil80    = cibleMens * 0.8;
+    const monthlyCa  = buildMonthlyCa(lab);
+    const prorMo     = (contract?.type === 'N1') ? _verifProrataMonths(contract?.startDate, yr) : 12;
+    const startMo    = (contract?.type === 'N1' && contract?.startDate) ? (new Date(contract.startDate).getMonth() + 1) : 1;
+
+    // Algorithme : pour chaque mois, statut R3
+    let cumCa = 0, pendingR3 = 0;
+    let totTriggered = 0, totBlocked = 0;
+    const monthData = [];
+
+    for (let i = 0; i < 12; i++) {
+      const mo   = i + 1;
+      const ca   = monthlyCa[i];
+      const hasData = ca > 0 || (yr < today.getFullYear()) || (yr === today.getFullYear() && mo <= today.getMonth() + 1);
+      if (mo < startMo) { monthData.push({ mo, skip: true }); continue; }
+      if (!hasData)     { monthData.push({ mo, noData: true }); continue; }
+
+      cumCa += ca;
+      const avgCa   = cumCa / (mo - startMo + 1);
+      const pctMo   = seuil80 > 0 ? ca / cibleMens * 100 : null;
+      const pctAvg  = seuil80 > 0 ? avgCa / cibleMens * 100 : null;
+      const r3Mo    = coopR3 > 0 ? ca * coopR3 / 100 : 0;  // R3 gagnée ce mois
+      const r2Mo    = r2avg > 0  ? ca * r2avg / 100  : 0;  // R2 estimée ce mois
+
+      let status, payMo, payLabel, pendingRelease = 0;
+      if (ca >= seuil80) {
+        // CA mensuel ≥ 80% → déclenché directement
+        pendingRelease = pendingR3;
+        pendingR3      = 0;
+        status   = 'ok';
+        payMo    = mo + 2;
+        payLabel = fmtPayMonth(payMo, yr);
+        totTriggered += r3Mo + pendingRelease;
+      } else if (avgCa >= seuil80) {
+        // CA mensuel < 80% mais moyenne cumulée ≥ 80% → déclenché par la moyenne
+        pendingRelease = pendingR3;
+        pendingR3      = 0;
+        status   = 'ok_avg';
+        payMo    = mo + 2;
+        payLabel = fmtPayMonth(payMo, yr);
+        totTriggered += r3Mo + pendingRelease;
+      } else {
+        // Bloqué
+        pendingR3 += r3Mo;
+        status    = 'blocked';
+        payMo     = null;
+        payLabel  = null;
+        totBlocked += r3Mo;
+      }
+
+      monthData.push({ mo, ca, avgCa, pctMo, pctAvg, r3Mo, r2Mo, status, payMo, payLabel, pendingRelease });
+    }
+
+    // Solde de fin d'année
+    const soldeFinAnnee = pendingR3;
+    if (soldeFinAnnee > 0) totBlocked = Math.max(0, totBlocked - soldeFinAnnee);
+
+    const rows = monthData.map(d => {
+      if (d.skip)   return `<tr><td>${_MONTH_LABELS[d.mo-1]}</td><td colspan="8" style="color:var(--text-dim);font-style:italic;text-align:center">// avant début de contrat</td></tr>`;
+      if (d.noData) return `<tr><td style="color:var(--text-dim)">${_MONTH_LABELS[d.mo-1]}</td><td colspan="8" style="color:var(--text-dim);text-align:center">—</td></tr>`;
+
+      const pctCls   = d.pctMo  >= 100 ? 'verif-r3-ok' : d.pctMo  >= 80 ? 'verif-r3-warn' : 'verif-r3-blk';
+      const avgCls   = d.pctAvg >= 100 ? 'verif-r3-ok' : d.pctAvg >= 80 ? 'verif-r3-warn' : 'verif-r3-blk';
+      const statLbl  = d.status === 'ok'      ? '<span class="verif-r3-ok">✓ DÉCLENCHÉ</span>'
+                     : d.status === 'ok_avg'  ? '<span class="verif-r3-warn">✓ DÉCL. MOY.</span>'
+                     :                          '<span class="verif-r3-blk">⊘ BLOQUÉ</span>';
+      const payCell  = d.payLabel
+        ? `<span class="verif-r3-pay">${d.payLabel}${d.pendingRelease > 0 ? ' (+rattrapage)' : ''}</span>`
+        : `<span class="verif-r3-blk-pay">mars/avr ${yr+1}</span>`;
+      const r3Extra  = d.pendingRelease > 0 ? ` <span style="color:var(--text-dim);font-size:10px">(+${fmtE(d.pendingRelease)})</span>` : '';
+
+      return `<tr>
+        <td>${_MONTH_LABELS[d.mo-1]}</td>
+        <td>${fmtE(d.ca)}</td>
+        <td>${fmtE(cibleMens)}</td>
+        <td class="${pctCls}">${d.pctMo != null ? fmtP(d.pctMo) : '—'}</td>
+        <td>${fmtE(d.avgCa)}</td>
+        <td class="${avgCls}">${d.pctAvg != null ? fmtP(d.pctAvg) : '—'}</td>
+        <td class="verif-r2">${d.r2Mo > 0 ? fmtE(d.r2Mo) : '—'}</td>
+        <td class="verif-r3">${d.r3Mo > 0 ? fmtE(d.r3Mo) + r3Extra : '—'}</td>
+        <td>${statLbl}</td>
+        <td>${payCell}</td>
+      </tr>`;
+    }).join('');
+
+    const soldeHtml = soldeFinAnnee > 0
+      ? `<tr style="border-top:1px solid var(--border)">
+           <td style="color:var(--text-dim);font-size:10px">SOLDE N+1</td>
+           <td colspan="7"></td>
+           <td><span class="verif-r3-blk-pay">mars/avr ${yr+1}</span></td>
+           <td class="verif-r3">${fmtE(soldeFinAnnee)}</td>
+         </tr>` : '';
+
+    return `<div class="verif-r3-lab">
+      <div class="verif-r3-lab-title">
+        ◈ ${escH(lab)}
+        <span class="verif-r3-info">Cible annuelle ${fmtE(caCondition)}${prorMo < 12 ? ' (proraté ' + prorMo + '/12 = ' + fmtE(caCondition * prorMo / 12) + ')' : ''} · R3 coop = ${coopR3}%</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="verif-r3-tbl">
+          <thead><tr>
+            <th style="text-align:left">MOIS</th>
+            <th>CA RÉEL</th><th>CIBLE MENS.</th><th>% CIBLE</th>
+            <th>MOY CUMUL</th><th>% MOY</th>
+            <th>R2 EST.</th><th>R3 CE MOIS</th>
+            <th>STATUT R3</th><th>VERSEMENT PRÉVU</th>
+          </tr></thead>
+          <tbody>${rows}${soldeHtml}</tbody>
+        </table>
+      </div>
+      <div class="verif-r3-sum">
+        <div>R3 déclenchée : <span class="verif-r3-ok">${fmtE(totTriggered)}</span></div>
+        <div>R3 restante mars/avr : <span class="verif-r3-blk">${fmtE(soldeFinAnnee)}</span></div>
+        <div>R2 totale estimée : <span class="verif-r2">${fmtE(monthlyCa.reduce((s,v) => s + v*r2avg/100, 0))}</span></div>
+      </div>
+    </div>`;
+  }).join('<hr style="border:none;border-top:1px solid var(--border);margin:12px 0">');
+
+  wrap.innerHTML = labHtml || `<div class="verif-note">// Aucun labo configuré</div>`;
 }
 
 // ── Breakout loader animation ──────────────────────────────────────────────────
