@@ -943,6 +943,27 @@
   .btn-connecteur { position:relative; }
   .conn-notif-badge { position:absolute; top:-4px; right:-4px; width:8px; height:8px; background:var(--red); border-radius:50%; display:none; pointer-events:none; }
   .conn-admin-panel { margin-top:18px; border-top:1px solid var(--border); padding-top:14px; }
+  /* ── Concentrateur ── */
+  .conc-type-row { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+  .conc-type-btn { background:none; border:1px solid var(--border); color:var(--text-dim); font-family:'Orbitron',monospace; font-size:9px; font-weight:700; letter-spacing:1.5px; padding:5px 10px; cursor:pointer; border-radius:2px; transition:border-color .12s,color .12s; }
+  .conc-type-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,.07); }
+  .conc-type-btn:hover:not(.active) { border-color:var(--text); color:var(--text); }
+  /* ── Dropzone universelle ── */
+  .univ-drop-zone { border:2px dashed rgba(0,229,255,.22); padding:22px 16px; text-align:center; cursor:pointer; transition:border-color .2s,background .2s; background:rgba(0,229,255,.02); }
+  .univ-drop-zone.drag-over { border-color:var(--cyan); background:rgba(0,229,255,.06); }
+  .univ-drop-zone:hover { border-color:rgba(0,229,255,.4); }
+  .univ-file-list { margin-top:10px; display:flex; flex-direction:column; gap:4px; }
+  .univ-file-row { display:flex; align-items:center; gap:8px; padding:5px 8px; background:var(--bg2); font-family:'Share Tech Mono',monospace; font-size:11px; border-radius:2px; }
+  .univ-file-name { flex:1; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .univ-file-badge { font-size:9px; font-family:'Orbitron',monospace; font-weight:700; letter-spacing:1px; padding:2px 7px; border-radius:10px; white-space:nowrap; flex-shrink:0; }
+  .univ-badge-pdf  { background:rgba(0,229,255,.12); color:var(--cyan); border:1px solid rgba(0,229,255,.3); }
+  .univ-badge-gros { background:rgba(0,255,136,.1);  color:var(--green); border:1px solid rgba(0,255,136,.3); }
+  .univ-badge-fse  { background:rgba(255,171,0,.12); color:var(--amber); border:1px solid rgba(255,171,0,.3); }
+  .univ-badge-csv  { background:rgba(100,100,255,.1); color:#aaa8ff; border:1px solid rgba(100,100,255,.3); }
+  .univ-badge-unk  { background:rgba(255,51,102,.08); color:var(--red); border:1px solid rgba(255,51,102,.25); }
+  .univ-file-del { background:none; border:none; color:var(--red); cursor:pointer; font-size:14px; padding:0 2px; opacity:.6; flex-shrink:0; }
+  .univ-file-del:hover { opacity:1; }
+  .univ-file-status { font-size:10px; color:var(--text-dim); white-space:nowrap; }
   .conn-req-item { font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text); padding:10px; border:1px solid var(--border); margin-bottom:8px; display:flex; flex-direction:column; gap:5px; }
   .conn-req-meta { font-size:10px; color:var(--text-dim); }
   .conn-req-actions { display:flex; gap:8px; margin-top:4px; }
@@ -1268,6 +1289,22 @@
       <button class="conn-close" id="connClose">✕</button>
       <div class="conn-title">CONNECTEURS</div>
       <div class="conn-sites">
+        <!-- DROPZONE UNIVERSELLE -->
+        <div class="conn-site" id="univDropSection" style="flex:0 0 100%;min-width:0">
+          <div class="conn-site-title" style="color:var(--cyan)">DÉPÔT DE FICHIERS &nbsp;<span style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px">PDF · XLSX · CSV</span></div>
+          <div id="univDropZone" class="univ-drop-zone">
+            <div class="conn-drop-icon" style="color:var(--cyan-dim)">⬇</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px;margin-bottom:3px">Déposez vos fichiers ici — plusieurs fichiers acceptés</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(255,255,255,.2)">PDF DIGI &nbsp;·&nbsp; XLSX grossiste ou FSE banque &nbsp;·&nbsp; CSV OSPHARM</div>
+            <label class="conn-drop-browse" style="display:block;margin-top:6px" for="univFileInput">ou cliquer pour sélectionner</label>
+            <input type="file" id="univFileInput" multiple accept=".pdf,.xlsx,.xls,.csv" style="display:none">
+          </div>
+          <div id="univFileList" class="univ-file-list"></div>
+          <div id="univStatus" class="conn-job-status" style="text-align:center;margin-top:8px;min-height:16px"></div>
+          <div style="text-align:center;margin-top:10px">
+            <button class="conn-test-btn" id="univAnalyseBtn" style="display:none">ANALYSER</button>
+          </div>
+        </div>
         <!-- GROSSISTE LISTINGS -->
         <div class="conn-site" id="grossisteSection" style="flex:0 0 100%;min-width:0">
           <div class="conn-site-title" style="color:var(--green)">LISTING GROSSISTE &nbsp;<span style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px">XLSX</span></div>
@@ -1318,6 +1355,40 @@
               <svg viewBox="0 0 44 44"><circle class="conn-ring-track" cx="22" cy="22" r="20"/><circle class="conn-ring-fill" cx="22" cy="22" r="20" id="digiProgArc"/></svg>
             </div>
             <div class="conn-ring-pct" id="digiProgPct"></div>
+          </div>
+        </div>
+        <!-- CONCENTRATEUR -->
+        <div class="conn-site">
+          <div id="concFormView">
+            <form action="javascript:void(0)" onsubmit="return false">
+              <div class="conn-site-title" style="color:var(--green)">CONCENTRATEUR</div>
+              <div class="conn-label" style="margin-bottom:6px">TYPE</div>
+              <div class="conc-type-row">
+                <button type="button" class="conc-type-btn active" id="concTypeFse"      onclick="_concSetType('fse')">OSPHARM FSE</button>
+                <button type="button" class="conc-type-btn"        id="concTypeReso"     onclick="_concSetType('resopharma')">RESOPHARMA</button>
+              </div>
+              <div class="conn-field">
+                <div class="conn-label">Identifiant</div>
+                <input class="conn-input" id="concUser" type="text" autocomplete="username" placeholder="Login" />
+              </div>
+              <div class="conn-field">
+                <div class="conn-label">Mot de passe</div>
+                <div class="conn-input-wrap">
+                  <input class="conn-input" id="concPass" type="password" autocomplete="current-password" placeholder="••••••••" />
+                  <button type="button" class="conn-eye" data-target="concPass" title="Afficher/masquer">👁</button>
+                </div>
+              </div>
+              <div class="conn-test-row">
+                <button class="conn-test-btn" id="concTest">ENREGISTRER</button>
+                <span class="conn-test-result" id="concTestResult"></span>
+              </div>
+            </form>
+          </div>
+          <div class="conn-connected-view" id="concConnView" style="display:none">
+            <div class="conn-check-big" id="concCheckBig"><span class="conn-check-tick">✓</span></div>
+            <div class="conn-connected-name" id="concConnName">CONCENTRATEUR</div>
+            <div class="conn-job-status" id="concJobStatus" style="font-size:10px;color:var(--text-dim)">// Déposez le fichier XLSX exporté dans la dropzone ci-dessus</div>
+            <button class="conn-test-btn" id="concReconnectBtn">RECONNECTER</button>
           </div>
         </div>
         <!-- OSPHARM -->
@@ -1554,7 +1625,7 @@ let state = {
   csvRows: 0, csvData: null,
   gers: null,
   userProfile: null,
-  connectors: { ospharm: { user: '', pass: '', connected: false }, digipharmacie: { user: '', pass: '', connected: false } },
+  connectors: { ospharm: { user: '', pass: '', connected: false }, digipharmacie: { user: '', pass: '', connected: false }, concentrateur: { user: '', pass: '', connected: false, type: 'fse' } },
   labPages: [],
   currentPageId: 'labs',
   prorataRatios: null,
@@ -7751,7 +7822,8 @@ function initConnecteurModal() {
     } else {
       if (fv) fv.style.display = '';
       if (cv) cv.style.display = 'none';
-      const connKey     = prefix === 'osp' ? 'ospharm' : 'digipharmacie';
+      const _prefixMap  = { osp: 'ospharm', digi: 'digipharmacie', conc: 'concentrateur' };
+      const connKey     = _prefixMap[prefix] || prefix;
       const isConnected = !!state.connectors[connKey]?.connected;
       if (userEl) {
         userEl.readOnly = isConnected;
@@ -7911,14 +7983,19 @@ function initConnecteurModal() {
     document.getElementById('ospPass').value  = '';
     document.getElementById('digiUser').value = c.digipharmacie.user;
     document.getElementById('digiPass').value = '';
+    document.getElementById('concUser').value = c.concentrateur?.user || '';
+    document.getElementById('concPass').value = '';
     document.getElementById('ospTestResult').textContent  = '';
     document.getElementById('digiTestResult').textContent = '';
+    document.getElementById('concTestResult').textContent = '';
     document.getElementById('ospReqStatus').textContent   = '';
     document.getElementById('digiReqStatus').textContent  = '';
     _setConnProgress('digi', 'reset');
     _setConnProgress('osp', 'reset');
+    _concRefreshTypeButtons();
     showView('osp',  c.ospharm.connected);
     showView('digi', c.digipharmacie.connected);
+    showView('conc', c.concentrateur?.connected || false);
     modal.classList.add('open');
     refreshConnJobStatuses();
     // Vérifications asynchrones
@@ -8532,6 +8609,176 @@ function initConnecteurModal() {
     });
 
     _updateGrossisteBtn();
+  })();
+
+  // ── Concentrateur ──────────────────────────────────────────────────────────
+  function _concRefreshTypeButtons() {
+    const t = state.connectors.concentrateur?.type || 'fse';
+    document.getElementById('concTypeFse')?.classList.toggle('active', t === 'fse');
+    document.getElementById('concTypeReso')?.classList.toggle('active', t === 'resopharma');
+    const nameEl = document.getElementById('concConnName');
+    if (nameEl) nameEl.textContent = t === 'fse' ? 'OSPHARM FSE' : 'RESOPHARMA';
+  }
+
+  function _concSetType(type) {
+    if (!state.connectors.concentrateur) state.connectors.concentrateur = {};
+    state.connectors.concentrateur.type = type;
+    _concRefreshTypeButtons();
+  }
+
+  // Enregistrement simple des credentials (pas de test API - vérification au premier export)
+  document.getElementById('concTest').addEventListener('click', () => {
+    const user = document.getElementById('concUser').value.trim();
+    const pass = document.getElementById('concPass').value;
+    const res  = document.getElementById('concTestResult');
+    if (!user) { res.className = 'conn-test-result ko'; res.textContent = '// Identifiant requis'; return; }
+    if (!pass) { res.className = 'conn-test-result ko'; res.textContent = '// Mot de passe requis'; return; }
+    state.connectors.concentrateur = { ...(state.connectors.concentrateur || {}), user, pass, connected: true };
+    _concRefreshTypeButtons();
+    saveState();
+    res.className = 'conn-test-result ok'; res.textContent = '✓ Credentials enregistrés';
+    setTimeout(() => { showView('conc', true); res.textContent = ''; }, 800);
+  });
+
+  document.getElementById('concReconnectBtn').addEventListener('click', () => {
+    const c = state.connectors.concentrateur || {};
+    document.getElementById('concUser').value = c.user || '';
+    document.getElementById('concPass').value = '';
+    showView('conc', false);
+    setTimeout(() => document.getElementById('concPass')?.focus(), 80);
+  });
+
+  // ── Dropzone universelle ────────────────────────────────────────────────────
+  const _univFiles = [];  // {file, type, status, statusMsg}
+
+  function _univDetectExt(file) {
+    const n = file.name.toLowerCase();
+    if (n.endsWith('.pdf'))  return 'pdf';
+    if (n.endsWith('.xlsx') || n.endsWith('.xls')) return 'xlsx';
+    if (n.endsWith('.csv'))  return 'csv';
+    return 'unknown';
+  }
+
+  async function _univDetectXlsx(file) {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf, { type: 'array', sheetRows: 5 });
+      if (wb.SheetNames.includes('Récap par mois') || wb.SheetNames.includes('Recap par mois')) return 'grossiste';
+      // Essai de détection FSE banque : chercher mots-clés dans les premières cellules
+      const ws    = wb.Sheets[wb.SheetNames[0]];
+      const data  = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const flat  = data.slice(0, 5).flat().join(' ').toLowerCase();
+      if (/virement|htp|tiers.payant|banque|remise|origine/i.test(flat)) return 'fse';
+      return 'grossiste';  // fallback XLSX
+    } catch (_) { return 'grossiste'; }
+  }
+
+  function _univBadgeClass(type) {
+    return { pdf:'univ-badge-pdf', grossiste:'univ-badge-gros', fse:'univ-badge-fse', csv:'univ-badge-csv', unknown:'univ-badge-unk', xlsx:'univ-badge-gros' }[type] || 'univ-badge-unk';
+  }
+
+  function _univBadgeLabel(type) {
+    return { pdf:'DIGI PDF', grossiste:'GROSSISTE', fse:'FSE BANQUE', csv:'OSPHARM CSV', unknown:'INCONNU', xlsx:'XLSX (auto)' }[type] || type.toUpperCase();
+  }
+
+  function _univRenderList() {
+    const listEl = document.getElementById('univFileList');
+    const btn    = document.getElementById('univAnalyseBtn');
+    if (!listEl) return;
+    if (!_univFiles.length) { listEl.innerHTML = ''; if (btn) btn.style.display = 'none'; return; }
+    listEl.innerHTML = _univFiles.map((f, i) => {
+      const bc = _univBadgeClass(f.type); const bl = _univBadgeLabel(f.type);
+      const st = f.status === 'done' ? '✓' : f.status === 'error' ? '✗' : f.status === 'processing' ? '⏳' : '';
+      const stStyle = f.status === 'done' ? 'color:var(--green)' : f.status === 'error' ? 'color:var(--red)' : 'color:var(--amber)';
+      return `<div class="univ-file-row">
+        <span class="univ-file-badge ${bc}">${bl}</span>
+        <span class="univ-file-name" title="${escH(f.file.name)}">${escH(f.file.name)}</span>
+        <span class="univ-file-status" style="${stStyle}">${st} ${escH(f.statusMsg || '')}</span>
+        ${f.status !== 'processing' ? `<button class="univ-file-del" data-idx="${i}">✕</button>` : ''}
+      </div>`;
+    }).join('');
+    listEl.querySelectorAll('.univ-file-del').forEach(btn2 =>
+      btn2.addEventListener('click', () => { _univFiles.splice(+btn2.dataset.idx, 1); _univRenderList(); })
+    );
+    if (btn) btn.style.display = _univFiles.some(f => f.status === 'pending') ? '' : 'none';
+  }
+
+  async function _univAddFiles(fileList) {
+    for (const file of fileList) {
+      const ext = _univDetectExt(file);
+      let type  = ext;
+      if (ext === 'xlsx') type = await _univDetectXlsx(file);
+      _univFiles.push({ file, type, status: 'pending', statusMsg: '' });
+    }
+    _univRenderList();
+  }
+
+  async function _univAnalyse() {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) { showToast('Session expirée'); return; }
+    const token = session.access_token;
+
+    for (const entry of _univFiles) {
+      if (entry.status !== 'pending') continue;
+      entry.status = 'processing'; entry.statusMsg = ''; _univRenderList();
+      try {
+        if (entry.type === 'pdf') {
+          // PDF DIGI → POST /parse/digi-pdf (multipart)
+          const form = new FormData(); form.append('file', entry.file);
+          const resp = await fetch(`${API_URL}/parse/digi-pdf`, {
+            method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+          });
+          if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
+          const data = await resp.json();
+          if (data.digi_month_stats) { state._digiMonthStats = data.digi_month_stats; saveState(); if (state.currentPageId === 'recap') renderRecap(); }
+          entry.status = 'done'; entry.statusMsg = `${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}`;
+
+        } else if (entry.type === 'grossiste') {
+          // XLSX grossiste → upload Storage → /parse/grossiste (existing flow)
+          const userId   = session.user.id;
+          const safeName = entry.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const path     = `${userId}/${Date.now()}_${safeName}`;
+          const { error: upErr } = await window._sbClient.storage.from('grossiste').upload(path, entry.file, { upsert: false });
+          if (upErr) throw upErr;
+          const resp = await fetch(`${API_URL}/parse/grossiste`, {
+            method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storage_path: path }),
+          });
+          if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
+          const data = await resp.json();
+          if (data.grossiste_month_stats) { state._grossisteMonthStats = data.grossiste_month_stats; saveState(); if (state.currentPageId === 'recap') renderRecap(); }
+          entry.status = 'done'; entry.statusMsg = `${data.labos || 0} labo(s) · ${(data.months||[]).join(', ')}`;
+
+        } else if (entry.type === 'fse') {
+          entry.status = 'error'; entry.statusMsg = '// Parser FSE en attente — déposez le fichier manuellement pour calibration';
+        } else if (entry.type === 'csv') {
+          entry.status = 'error'; entry.statusMsg = '// CSV OSPHARM : parser en cours de développement';
+        } else {
+          entry.status = 'error'; entry.statusMsg = '// Format non reconnu';
+        }
+      } catch(e) {
+        entry.status = 'error'; entry.statusMsg = e.message || String(e);
+      }
+      _univRenderList();
+    }
+    const statEl = document.getElementById('univStatus');
+    const ok = _univFiles.filter(f => f.status === 'done').length;
+    if (statEl) { statEl.className = 'conn-job-status done'; statEl.textContent = `✓ ${ok}/${_univFiles.length} traité(s)`; }
+  }
+
+  (() => {
+    const zone   = document.getElementById('univDropZone');
+    const input  = document.getElementById('univFileInput');
+    const anaBtn = document.getElementById('univAnalyseBtn');
+    zone.addEventListener('click', e => { if (!['LABEL','BUTTON'].includes(e.target.tagName)) input.click(); });
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault(); zone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) _univAddFiles([...e.dataTransfer.files]);
+    });
+    input.addEventListener('change', () => { if (input.files.length) { _univAddFiles([...input.files]); input.value = ''; } });
+    anaBtn.addEventListener('click', _univAnalyse);
   })();
 
   document.getElementById('ospTest').addEventListener('click',  () => connectConn('ospharm', 'osp'));

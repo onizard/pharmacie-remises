@@ -21,7 +21,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Path
+from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Path, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -337,6 +337,98 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
         "qty":     total_q,
         "total_ht": round(total_ht, 2),
         "grossiste_month_stats": grossiste_stats,
+    }
+
+
+# ── Parse PDF DIGI (upload direct) ───────────────────────────────────────────
+
+@app.post("/parse/digi-pdf")
+async def parse_digi_pdf(
+    file: UploadFile = File(...),
+    authorization: str = Header(default=""),
+):
+    """Upload direct d'un PDF DIGI (invoice, RDP, presta) → extraction → digi_month_stats."""
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    name = (file.filename or "").lower()
+    if not name.endswith(".pdf"):
+        raise HTTPException(status_code=422, detail="Fichier PDF requis (.pdf)")
+
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) < 200:
+        raise HTTPException(status_code=422, detail="PDF trop court ou vide")
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        _executor,
+        lambda: _parse_digi_pdf_sync(user_id, pdf_bytes, file.filename or "upload.pdf"),
+    )
+    return result
+
+
+def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
+    import os as _os, sys, tempfile
+    from pathlib import Path as _Path
+
+    sys.path.insert(0, _os.path.dirname(__file__))
+    from pdf_extractor import extract_invoice_lines
+    from run_job import _compute_digi_month_stats, _merge_digi_stats
+
+    from supabase_client import SERVICE_KEY, SUPA_URL
+    HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
+
+    # Écrire le PDF dans un fichier temp, extraire les lignes
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(pdf_bytes)
+        tmp_path = _Path(tmp.name)
+    try:
+        provider = filename.rsplit(".", 1)[0][:80]
+        lines    = extract_invoice_lines(tmp_path, provider, "")
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    if not lines:
+        raise HTTPException(status_code=422, detail="Aucune donnée extractible depuis ce PDF — format non reconnu ou labo hors cible.")
+
+    new_stats = _compute_digi_month_stats(lines)
+
+    # Charger l'état courant et fusionner
+    req = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1",
+        headers=HEADERS,
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        rows = json.loads(r.read())
+    state   = (rows[0]["state_json"] if rows else {}) or {}
+    existing = state.get("digi_month_stats") or {}
+    merged   = _merge_digi_stats(existing, new_stats)
+    state["digi_month_stats"] = merged
+
+    patch_body = json.dumps({"state_json": state}).encode()
+    patch_req  = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
+        data=patch_body, method="PATCH",
+        headers={**HEADERS, "Content-Type": "application/json", "Prefer": "return=minimal"},
+    )
+    with urllib.request.urlopen(patch_req, timeout=15):
+        pass
+
+    months = sorted(new_stats)
+    n_rdp    = sum(1 for l in lines if l.get("type") == "rdp")
+    n_presta = sum(1 for l in lines if l.get("type") == "presta")
+    n_prod   = len(lines) - n_rdp - n_presta
+    return {
+        "status":          "done",
+        "months":          months,
+        "lines":           len(lines),
+        "product_lines":   n_prod,
+        "rdp_avoirs":      n_rdp,
+        "presta_avoirs":   n_presta,
+        "digi_month_stats": merged,
     }
 
 
