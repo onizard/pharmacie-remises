@@ -84,7 +84,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
     - Lignes presta    : clé = period_month,      cumule presta_total
     """
     def _zero():
-        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0}
+        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0}
 
     acc: dict[str, dict] = {}
     for line in lines:
@@ -102,9 +102,11 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
             mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
             labo = _norm_labo(line.get("labo") or "")
             if len(mk) < 7 or not labo: continue
-            amt  = float(line.get("montant") or 0)
+            amt_ht  = float(line.get("total_ht")  or line.get("montant") or 0)
+            amt_ttc = float(line.get("total_ttc") or amt_ht * (1 + float(line.get("tva_pct", 20)) / 100))
             acc.setdefault(mk, {}).setdefault(labo, _zero())
-            acc[mk][labo]["presta_total"] = round(acc[mk][labo]["presta_total"] + amt, 2)
+            acc[mk][labo]["presta_total"]     = round(acc[mk][labo]["presta_total"]     + amt_ht,  2)
+            acc[mk][labo]["presta_total_ttc"] = round(acc[mk][labo]["presta_total_ttc"] + amt_ttc, 2)
 
         else:
             date = str(line.get("billing_date", ""))
@@ -120,10 +122,11 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
     return {
         mk: sorted(
             [{"labo":         labo,
-              "qty":          d["qty"],
-              "total_ht":     round(d["total_ht"], 2),
-              "rdp_total":    round(d["rdp_total"], 2),
-              "presta_total": round(d["presta_total"], 2)}
+              "qty":              d["qty"],
+              "total_ht":         round(d["total_ht"], 2),
+              "rdp_total":        round(d["rdp_total"], 2),
+              "presta_total":     round(d["presta_total"], 2),
+              "presta_total_ttc": round(d.get("presta_total_ttc", d["presta_total"] * 1.20), 2)}
              for labo, d in labos.items()],
             key=lambda r: r["labo"],
         )
@@ -144,8 +147,9 @@ def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
                 if labo in labo_map:
                     labo_map[labo]["qty"]          += nr["qty"]
                     labo_map[labo]["total_ht"]       = round(labo_map[labo]["total_ht"]       + nr["total_ht"],     2)
-                    labo_map[labo]["rdp_total"]      = round(labo_map[labo].get("rdp_total",0)    + nr.get("rdp_total",0),    2)
-                    labo_map[labo]["presta_total"]   = round(labo_map[labo].get("presta_total",0) + nr.get("presta_total",0), 2)
+                    labo_map[labo]["rdp_total"]          = round(labo_map[labo].get("rdp_total",0)          + nr.get("rdp_total",0),          2)
+                    labo_map[labo]["presta_total"]       = round(labo_map[labo].get("presta_total",0)       + nr.get("presta_total",0),       2)
+                    labo_map[labo]["presta_total_ttc"]   = round(labo_map[labo].get("presta_total_ttc",0)   + nr.get("presta_total_ttc",0),   2)
                 else:
                     labo_map[labo] = dict(nr)
             result[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])

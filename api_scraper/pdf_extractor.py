@@ -511,15 +511,20 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
             yr = "20" + yr
         billing_date = f"{yr}-{m_date.group(2)}-{m_date.group(1)}"
 
-    # Total HT — chercher dans la ligne PAIEMENT (la plus fiable)
-    # Forme : "5450.00 20 1090.00 6540.00"  ou  "5450,00 20% 1090,00 6540,00"
-    total_ht = None
+    # Ligne PAIEMENT : "Mode : VIREMENT  <HT>  <TVA%>  <TVA_MONTANT>  <TTC>"
+    # Ex pdfplumber : "Mode : VIREMENT 5450.00 20 1090.00 6540.00"
+    total_ht  = None
+    total_ttc = None
+    tva_pct   = None
+
     m_pay = re.search(
-        r'Mode\s*:\s*VIREMENT\s+([\d\s,\.]+)\s+\d+\s+[\d\s,\.]+\s+[\d\s,\.]+',
+        r'Mode\s*:\s*VIREMENT\s+([\d\s,\.]+)\s+(\d+(?:[.,]\d+)?)\s+[\d\s,\.]+\s+([\d\s,\.]+)',
         text, re.IGNORECASE
     )
     if m_pay:
-        total_ht = _to_float(m_pay.group(1))
+        total_ht  = _to_float(m_pay.group(1))
+        tva_pct   = _to_float(m_pay.group(2))   # ex: 20
+        total_ttc = _to_float(m_pay.group(3))   # ex: 6540.00
 
     # Fallback : ligne TOTAL (ex: "TOTAL 5 5450,00" → le dernier nombre)
     if total_ht is None:
@@ -530,6 +535,11 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
     if not total_ht:
         return []
 
+    # Si TTC non extrait, calcul depuis TVA
+    if total_ttc is None:
+        pct = tva_pct if tva_pct else 20.0  # TVA 20% par défaut pour les prestations
+        total_ttc = round(total_ht * (1 + pct / 100), 2)
+
     period_month = billing_date[:7]
 
     return [{
@@ -538,8 +548,10 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
         "fournisseur":  provider,
         "billing_date": billing_date,
         "period_month": period_month,
-        "montant":      total_ht,   # positif = facture de coop (argent reçu)
+        "montant":      total_ht,   # HT — positif = facture de coop (argent reçu)
         "total_ht":     total_ht,
+        "total_ttc":    total_ttc,  # TTC = montant du virement bancaire (TVA 20%)
+        "tva_pct":      tva_pct or 20.0,
         "quantite":     0,
     }]
 

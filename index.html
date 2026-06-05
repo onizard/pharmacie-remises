@@ -4798,7 +4798,10 @@ function _verifFillMensuel(mk) {
 
   if (!keys.length) { wrap.innerHTML = `<div class="verif-note">// Aucune donnée pour ce mois</div>`; return; }
 
-  let totR2est = 0, totR2rec = 0, totR3est = 0, totR3rec = 0, rowCount = 0;
+  // R2 (RDP) : hors champ TVA → HT = TTC (art. 267-II-1° CGI)
+  // R3 (presta coop) : TVA 20% → virement = facture HT × 1,20
+  const TVA_R3 = 1.20;
+  let totR2est = 0, totR2rec = 0, totR3estHT = 0, totR3recTTC = 0, rowCount = 0;
   const rows = keys.map(key => {
     const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
     const pa_osp  = osp.pa_net ?? ((osp.ca_brut||0) - (osp.remise_totale||0));
@@ -4812,19 +4815,27 @@ function _verifFillMensuel(mk) {
     const r2avg = _verifR2avg(cond);
     const r3pct = cond ? (parseFloat(cond.coopR3) || 0) : null;
 
-    const r2est  = r2avg != null ? pa_tot * r2avg / 100 : null;
-    const r3est  = r3pct != null ? pa_tot * r3pct / 100 : null;
-    // R2/R3 réellement reçus (depuis avoirs DIGI)
-    const r2rec  = digi.rdp_total    > 0 ? digi.rdp_total    : null;
-    const r3rec  = digi.presta_total > 0 ? digi.presta_total : null;
+    // Estimées (HT)
+    const r2est    = r2avg != null ? pa_tot * r2avg / 100 : null;
+    const r3estHT  = r3pct != null ? pa_tot * r3pct / 100 : null;
+    const r3estTTC = r3estHT != null ? r3estHT * TVA_R3 : null;
 
-    const r2gap  = (r2est != null && r2rec != null) ? r2est - r2rec : null;
-    const r3gap  = (r3est != null && r3rec != null) ? r3est - r3rec : null;
+    // Reçues depuis avoirs DIGI :
+    // R2 = RDP (hors TVA) → montant = HT = TTC
+    // R3 = presta coop (TVA 20%) → on affiche en TTC pour pointer avec le virement
+    const r2rec      = digi.rdp_total          > 0 ? digi.rdp_total          : null;
+    const r3recHT    = digi.presta_total        > 0 ? digi.presta_total        : null;
+    const r3recTTC   = digi.presta_total_ttc    > 0 ? digi.presta_total_ttc
+                     : r3recHT != null              ? r3recHT * TVA_R3        : null;
 
-    if (r2est != null) totR2est += r2est;
-    if (r2rec != null) totR2rec += r2rec;
-    if (r3est != null) totR3est += r3est;
-    if (r3rec != null) totR3rec += r3rec;
+    // Écarts (en TTC pour R3, en HT pour R2)
+    const r2gap    = (r2est   != null && r2rec   != null) ? r2est   - r2rec   : null;
+    const r3gapTTC = (r3estTTC != null && r3recTTC != null) ? r3estTTC - r3recTTC : null;
+
+    if (r2est   != null) totR2est   += r2est;
+    if (r2rec   != null) totR2rec   += r2rec;
+    if (r3estHT != null) totR3estHT += r3estHT;
+    if (r3recTTC!= null) totR3recTTC+= r3recTTC;
     rowCount++;
 
     const gapCls = v => v == null ? '' : v > 0.5 ? 'style="color:var(--red)"' : v < -0.5 ? 'style="color:var(--green)"' : '';
@@ -4840,15 +4851,17 @@ function _verifFillMensuel(mk) {
       <td class="verif-r2">${r2est != null ? fmtE(r2est) : '—'}</td>
       <td class="verif-r2">${r2rec != null ? fmtE(r2rec) : '—'}</td>
       <td ${gapCls(r2gap)}>${fmtGap(r2gap)}</td>
-      <td class="verif-r3">${r3est != null && r3est > 0 ? fmtE(r3est) : '—'}</td>
-      <td class="verif-r3">${r3rec != null ? fmtE(r3rec) : '—'}</td>
-      <td ${gapCls(r3gap)}>${fmtGap(r3gap)}</td>
+      <td class="verif-r3">${r3estHT != null && r3estHT > 0 ? fmtE(r3estHT) + '<span style="font-size:9px;color:var(--text-dim)"> HT</span>' : '—'}</td>
+      <td class="verif-r3">${r3estTTC != null && r3estTTC > 0 ? fmtE(r3estTTC) + '<span style="font-size:9px;color:var(--text-dim)"> TTC</span>' : '—'}</td>
+      <td class="verif-r3">${r3recHT != null ? fmtE(r3recHT) + '<span style="font-size:9px;color:var(--text-dim)"> HT</span>' : '—'}</td>
+      <td class="verif-r3">${r3recTTC != null ? fmtE(r3recTTC) + '<span style="font-size:9px;color:var(--text-dim)"> TTC</span>' : '—'}</td>
+      <td ${gapCls(r3gapTTC)}>${fmtGap(r3gapTTC)}</td>
     </tr>`;
   }).filter(Boolean).join('');
 
   const mkLabel = (mkM >= 1 && mkM <= 12) ? `${_MONTH_LABELS[mkM-1]} ${String(mkY).slice(2)}` : mk;
   wrap.innerHTML = `
-    <div class="verif-note">// R2/R3 estimées (calcul) vs réellement reçues (avoirs DIGI) · Écart rouge = sous-payé, vert = sur-payé — ${escH(mkLabel)}</div>
+    <div class="verif-note">// R2 hors TVA (RDP, art. 267-II CGI) — HT = TTC · R3 coop TVA 20% — virement en TTC · Écart rouge = sous-payé, vert = sur-payé — ${escH(mkLabel)}</div>
     <div style="overflow-x:auto">
       <table class="verif-tbl">
         <thead><tr>
@@ -4856,7 +4869,7 @@ function _verifFillMensuel(mk) {
           <th>PA NET OSP</th><th>RSF OSP</th>
           <th>PA NET DIRECT</th><th>PA NET GROS</th><th>PA NET TOTAL</th>
           <th>R2 EST.</th><th>R2 REÇUE</th><th>ÉCART R2</th>
-          <th>R3 EST.</th><th>R3 REÇUE</th><th>ÉCART R3</th>
+          <th>R3 EST. HT</th><th>R3 EST. TTC</th><th>R3 REÇUE HT</th><th>R3 REÇUE TTC</th><th>ÉCART TTC</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
@@ -4865,9 +4878,11 @@ function _verifFillMensuel(mk) {
           <td class="verif-r2">${fmtE(totR2est)}</td>
           <td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
           <td>${totR2rec > 0 ? (totR2est - totR2rec > 0.5 ? '<span style="color:var(--red)">+' + fmtE(totR2est-totR2rec) + '</span>' : fmtE(totR2est-totR2rec)) : '—'}</td>
-          <td class="verif-r3">${fmtE(totR3est)}</td>
-          <td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
-          <td>${totR3rec > 0 ? (totR3est - totR3rec > 0.5 ? '<span style="color:var(--red)">+' + fmtE(totR3est-totR3rec) + '</span>' : fmtE(totR3est-totR3rec)) : '—'}</td>
+          <td class="verif-r3">${fmtE(totR3estHT)}</td>
+          <td class="verif-r3">${fmtE(totR3estHT * TVA_R3)}</td>
+          <td colspan="1"></td>
+          <td class="verif-r3">${totR3recTTC > 0 ? fmtE(totR3recTTC) : '—'}</td>
+          <td>${totR3recTTC > 0 ? (totR3estHT * TVA_R3 - totR3recTTC > 0.5 ? '<span style="color:var(--red)">+' + fmtE(totR3estHT*TVA_R3 - totR3recTTC) + '</span>' : fmtE(totR3estHT*TVA_R3 - totR3recTTC)) : '—'}</td>
         </tr></tfoot>` : ''}
       </table>
     </div>`;
@@ -5124,13 +5139,21 @@ function _verifFillSuiviR3(year) {
     const startMo    = (contract?.type === 'N1' && contract?.startDate) ? (new Date(contract.startDate).getMonth() + 1) : 1;
 
     // RDP (R2) et presta (R3) réellement reçus par mois (depuis digi_month_stats)
+    // R2 (RDP) : hors champ TVA → HT = TTC
+    // R3 (presta coop) : TVA 20% → on stocke HT et TTC (montant du virement)
+    const TVA_PRESTA = 1.20;
     const normKey = _verifNormLab(lab);
-    const monthlyRdp = Array(12).fill(0);
-    const monthlyPresta = Array(12).fill(0);
+    const monthlyRdp      = Array(12).fill(0);  // R2 HT = TTC (hors TVA)
+    const monthlyPrestaHT = Array(12).fill(0);  // R3 HT (facture)
+    const monthlyPrestaTTC= Array(12).fill(0);  // R3 TTC (virement bancaire)
     Object.entries(state._digiMonthStats||{}).filter(([mk]) => mk.startsWith(year+'-')).forEach(([mk, arr]) => {
       const m = parseInt(mk.split('-')[1]) - 1;
       const r = (arr||[]).find(r => _verifNormLab(r.labo) === normKey);
-      if (r) { monthlyRdp[m] += r.rdp_total || 0; monthlyPresta[m] += r.presta_total || 0; }
+      if (r) {
+        monthlyRdp[m]       += r.rdp_total || 0;
+        monthlyPrestaHT[m]  += r.presta_total || 0;
+        monthlyPrestaTTC[m] += r.presta_total_ttc > 0 ? r.presta_total_ttc : (r.presta_total || 0) * TVA_PRESTA;
+      }
     });
 
     // Algorithme : pour chaque mois, statut R3
@@ -5178,17 +5201,19 @@ function _verifFillSuiviR3(year) {
         totBlocked += r3Mo;
       }
 
-      const r2Rec = monthlyRdp[i]    || 0;
-      const r3Rec = monthlyPresta[i] || 0;
-      monthData.push({ mo, ca, avgCa, pctMo, pctAvg, r3Mo, r2Mo, r2Rec, r3Rec, status, payMo, payLabel, pendingRelease });
+      const r2Rec    = monthlyRdp[i]       || 0;
+      const r3RecHT  = monthlyPrestaHT[i]  || 0;
+      const r3RecTTC = monthlyPrestaTTC[i] || 0;
+      monthData.push({ mo, ca, avgCa, pctMo, pctAvg, r3Mo, r2Mo, r2Rec, r3RecHT, r3RecTTC, status, payMo, payLabel, pendingRelease });
     }
 
     // Solde de fin d'année
     const soldeFinAnnee = pendingR3;
     if (soldeFinAnnee > 0) totBlocked = Math.max(0, totBlocked - soldeFinAnnee);
 
-    const totR2rec = monthlyRdp.reduce((s,v) => s+v, 0);
-    const totR3rec = monthlyPresta.reduce((s,v) => s+v, 0);
+    const totR2rec     = monthlyRdp.reduce((s,v) => s+v, 0);
+    const totR3recHT   = monthlyPrestaHT.reduce((s,v) => s+v, 0);
+    const totR3recTTC  = monthlyPrestaTTC.reduce((s,v) => s+v, 0);
 
     const rows = monthData.map(d => {
       if (d.skip)   return `<tr><td>${_MONTH_LABELS[d.mo-1]}</td><td colspan="11" style="color:var(--text-dim);font-style:italic;text-align:center">// avant début de contrat</td></tr>`;
@@ -5203,8 +5228,10 @@ function _verifFillSuiviR3(year) {
         ? `<span class="verif-r3-pay">${d.payLabel}${d.pendingRelease > 0 ? ' (+rattrapage)' : ''}</span>`
         : `<span class="verif-r3-blk-pay">mars/avr ${yr+1}</span>`;
       const r3Extra  = d.pendingRelease > 0 ? ` <span style="color:var(--text-dim);font-size:10px">(+${fmtE(d.pendingRelease)})</span>` : '';
-      const r2GapCls = d.r2Rec > 0 && d.r2Mo - d.r2Rec > 0.5 ? 'style="color:var(--red)"' : d.r2Rec > 0 ? 'style="color:var(--green)"' : '';
-      const r3GapCls = d.r3Rec > 0 && d.r3Mo - d.r3Rec > 0.5 ? 'style="color:var(--red)"' : d.r3Rec > 0 ? 'style="color:var(--green)"' : '';
+      // R2 : hors TVA → HT = TTC ; R3 : TVA 20% → comparaison en TTC (virement)
+      const r3MoTTC  = d.r3Mo * TVA_PRESTA;
+      const r2GapCls = d.r2Rec > 0 && d.r2Mo - d.r2Rec > 0.5 ? 'style="color:var(--red)"' : d.r2Rec > 0 && d.r2Rec - d.r2Mo > 0.5 ? 'style="color:var(--green)"' : '';
+      const r3GapCls = d.r3RecTTC > 0 && r3MoTTC - d.r3RecTTC > 0.5 ? 'style="color:var(--red)"' : d.r3RecTTC > 0 && d.r3RecTTC - r3MoTTC > 0.5 ? 'style="color:var(--green)"' : '';
 
       return `<tr>
         <td>${_MONTH_LABELS[d.mo-1]}</td>
@@ -5216,9 +5243,11 @@ function _verifFillSuiviR3(year) {
         <td class="verif-r2">${d.r2Mo > 0 ? fmtE(d.r2Mo) : '—'}</td>
         <td class="verif-r2">${d.r2Rec > 0 ? fmtE(d.r2Rec) : '—'}</td>
         <td ${r2GapCls}>${d.r2Rec > 0 ? (d.r2Mo - d.r2Rec > 0 ? '+' : '') + fmtE(d.r2Mo - d.r2Rec) : '—'}</td>
-        <td class="verif-r3">${d.r3Mo > 0 ? fmtE(d.r3Mo) + r3Extra : '—'}</td>
-        <td class="verif-r3">${d.r3Rec > 0 ? fmtE(d.r3Rec) : '—'}</td>
-        <td ${r3GapCls}>${d.r3Rec > 0 ? (d.r3Mo - d.r3Rec > 0 ? '+' : '') + fmtE(d.r3Mo - d.r3Rec) : '—'}</td>
+        <td class="verif-r3">${d.r3Mo > 0 ? fmtE(d.r3Mo) + '<span style="font-size:9px;opacity:.6"> HT</span>' + r3Extra : '—'}</td>
+        <td class="verif-r3">${d.r3Mo > 0 ? fmtE(r3MoTTC) + '<span style="font-size:9px;opacity:.6"> TTC</span>' : '—'}</td>
+        <td class="verif-r3">${d.r3RecHT > 0 ? fmtE(d.r3RecHT) + '<span style="font-size:9px;opacity:.6"> HT</span>' : '—'}</td>
+        <td class="verif-r3">${d.r3RecTTC > 0 ? fmtE(d.r3RecTTC) + '<span style="font-size:9px;opacity:.6"> TTC</span>' : '—'}</td>
+        <td ${r3GapCls}>${d.r3RecTTC > 0 ? (r3MoTTC - d.r3RecTTC > 0 ? '+' : '') + fmtE(r3MoTTC - d.r3RecTTC) : '—'}</td>
         <td>${statLbl}</td>
         <td>${payCell}</td>
       </tr>`;
@@ -5227,9 +5256,10 @@ function _verifFillSuiviR3(year) {
     const soldeHtml = soldeFinAnnee > 0
       ? `<tr style="border-top:1px solid var(--border)">
            <td style="color:var(--text-dim);font-size:10px">SOLDE N+1</td>
-           <td colspan="10"></td>
+           <td colspan="9"></td>
            <td class="verif-r3">${fmtE(soldeFinAnnee)}</td>
-           <td colspan="2"></td>
+           <td class="verif-r3">${fmtE(soldeFinAnnee * TVA_PRESTA)}</td>
+           <td colspan="4"></td>
          </tr>` : '';
 
     const r2TotEst = monthlyCa.reduce((s,v) => s + v*r2avg/100, 0);
@@ -5247,18 +5277,18 @@ function _verifFillSuiviR3(year) {
             <th>CA RÉEL</th><th>CIBLE MENS.</th><th>% CIBLE</th>
             <th>MOY CUMUL</th><th>% MOY</th>
             <th>R2 EST.</th><th>R2 REÇUE</th><th>ÉCART R2</th>
-            <th>R3 CE MOIS</th><th>R3 REÇUE</th><th>ÉCART R3</th>
+            <th>R3 CE MOIS HT</th><th>R3 CE MOIS TTC</th><th>R3 REÇUE HT</th><th>R3 REÇUE TTC</th><th>ÉCART TTC</th>
             <th>STATUT R3</th><th>VERSEMENT PRÉVU</th>
           </tr></thead>
           <tbody>${rows}${soldeHtml}</tbody>
         </table>
       </div>
       <div class="verif-r3-sum">
-        <div>R3 déclenchée : <span class="verif-r3-ok">${fmtE(totTriggered)}</span></div>
-        <div>R3 restante mars/avr : <span class="verif-r3-blk">${fmtE(soldeFinAnnee)}</span></div>
-        <div>R2 estimée : <span class="verif-r2">${fmtE(r2TotEst)}</span></div>
-        ${totR2rec > 0 ? `<div>R2 reçue : <span class="verif-r2">${fmtE(totR2rec)}</span></div>` : ''}
-        ${totR3rec > 0 ? `<div>R3 reçue (coop) : <span class="verif-r3">${fmtE(totR3rec)}</span></div>` : ''}
+        <div>R3 déclenchée : <span class="verif-r3-ok">${fmtE(totTriggered)} HT / ${fmtE(totTriggered * TVA_PRESTA)} TTC</span></div>
+        <div>R3 restante mars/avr : <span class="verif-r3-blk">${fmtE(soldeFinAnnee)} HT / ${fmtE(soldeFinAnnee * TVA_PRESTA)} TTC</span></div>
+        <div>R2 estimée (hors TVA) : <span class="verif-r2">${fmtE(r2TotEst)}</span></div>
+        ${totR2rec > 0 ? `<div>R2 reçue (hors TVA) : <span class="verif-r2">${fmtE(totR2rec)}</span></div>` : ''}
+        ${totR3recHT > 0 ? `<div>R3 reçue : <span class="verif-r3">${fmtE(totR3recHT)} HT / ${fmtE(totR3recTTC)} TTC (virement)</span></div>` : ''}
       </div>
     </div>`;
   }).join('<hr style="border:none;border-top:1px solid var(--border);margin:12px 0">');
