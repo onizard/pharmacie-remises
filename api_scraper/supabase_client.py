@@ -7,8 +7,8 @@ import json
 import os
 import urllib.request
 
-SUPA_URL    = "https://fmterazwesiwpwjpkyqi.supabase.co"
-SUPA_KEY    = "sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w"
+SUPA_URL    = "https://jrchtwrqvlmnrudrstrf.supabase.co"
+SUPA_KEY    = "sb_publishable_W3MQoXiMe4ouW2LDp2xJDw_ejKWHjLv"
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 
