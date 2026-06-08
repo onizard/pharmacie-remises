@@ -14,13 +14,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium --with-deps
 
 # Dépendances système de Firefox/camoufox via playwright (liste maintenue automatiquement)
-# Évite la dérive manuelle (ex: libgtk-3-0 → libgtk-3-0t64 sur Bookworm récent)
 RUN playwright install-deps firefox
-
-# camoufox télécharge son propre binaire Firefox patchisé
-RUN python -m camoufox fetch
 
 COPY . .
 
+# camoufox télécharge son binaire Firefox au démarrage (évite timeout build Render)
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/start.sh"]
