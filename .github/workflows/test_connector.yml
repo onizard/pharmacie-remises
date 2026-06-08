@@ -7,30 +7,16 @@ on:
         description: 'Supabase user ID'
         required: true
       connector:
-        description: 'ospharm or digipharmacie'
+        description: 'ospharm, concentrateur or digipharmacie'
         required: true
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Python deps
-        run: pip3 install --quiet camoufox curl_cffi
-
-      - name: Fetch camoufox browser
-        run: python3 -m camoufox fetch
-
-      - name: Patch Playwright (null-check pageError.location)
-        run: |
-          BUNDLE=$(python3 -c "import os,playwright; print(os.path.join(os.path.dirname(playwright.__file__),'driver/package/lib/coreBundle.js'))")
-          sed -i "s/pageError\.location\.url/pageError.location?.url||''/g" "$BUNDLE"
-          sed -i "s/pageError\.location\.lineNumber/pageError.location?.lineNumber||0/g" "$BUNDLE"
-          sed -i "s/pageError\.location\.columnNumber/pageError.location?.columnNumber||0/g" "$BUNDLE"
-          echo "Patched OK"
 
       - name: Test connexion
         env:
