@@ -9,7 +9,7 @@ import json
 import os
 import urllib.request
 
-SUPA_URL    = "https://fmterazwesiwpwjpkyqi.supabase.co"
+SUPA_URL    = "https://api.break-pharma.fr"
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 USER_ID     = os.environ.get("USER_ID", "")
 PROXY_URL   = os.environ.get("PROXY_URL", "")

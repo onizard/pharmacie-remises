@@ -25,7 +25,7 @@ from pathlib import Path
 
 import datetime as _dt_module
 
-SUPA_URL    = "https://fmterazwesiwpwjpkyqi.supabase.co"
+SUPA_URL    = "https://api.break-pharma.fr"
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 USER_ID     = os.environ["USER_ID"]
 

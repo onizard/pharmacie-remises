@@ -13,7 +13,7 @@ import io
 # Force UTF-8 output on Windows
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-SUPA_URL     = "https://fmterazwesiwpwjpkyqi.supabase.co"
+SUPA_URL     = "https://api.break-pharma.fr"
 SERVICE_KEY  = os.environ.get("SUPABASE_SERVICE_KEY", "")
 OSPHARM_URL  = "https://datastat.ospharm.org/"
 

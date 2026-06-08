@@ -6,7 +6,7 @@ import json, sys, io, urllib.request, asyncio, os
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 asyncio.set_event_loop(asyncio.new_event_loop())
 
-SUPA_URL    = "https://fmterazwesiwpwjpkyqi.supabase.co"
+SUPA_URL    = "https://api.break-pharma.fr"
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 
