@@ -1204,6 +1204,14 @@
   document.getElementById('aLPwd').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   document.getElementById('aLEmail').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('aLPwd').focus(); });
 
+  // Enter sur les autres écrans auth
+  document.getElementById('aSUEmail').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('aSUPwd').focus(); });
+  document.getElementById('aSUPwd').addEventListener('keydown',   e => { if (e.key === 'Enter') document.getElementById('aSUPwd2').focus(); });
+  document.getElementById('aSUPwd2').addEventListener('keydown',  e => { if (e.key === 'Enter') document.getElementById('aSUBtn').click(); });
+  document.getElementById('aFPEmail').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('aFPBtn').click(); });
+  document.getElementById('aRPPwd').addEventListener('keydown',   e => { if (e.key === 'Enter') document.getElementById('aRPPwd2').focus(); });
+  document.getElementById('aRPPwd2').addEventListener('keydown',  e => { if (e.key === 'Enter') document.getElementById('aRPBtn').click(); });
+
   // ── Navigation ───────────────────────────────────────────────────────────
   document.getElementById('toSignup').addEventListener('click',   () => showScreen('sSU'));
   document.getElementById('toForgot').addEventListener('click',   () => showScreen('sFP'));
@@ -8177,6 +8185,15 @@ function initConnecteurModal() {
       if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
     });
   });
+
+  // Enter sur les champs connecteurs
+  const _connEnter = (userId, passId, btnId) => {
+    document.getElementById(userId)?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById(passId)?.focus(); });
+    document.getElementById(passId)?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById(btnId)?.click(); });
+  };
+  _connEnter('ospUser',  'ospPass',  'ospTest');
+  _connEnter('digiUser', 'digiPass', 'digiTest');
+  _connEnter('concUser', 'concPass', 'concTest');
 
   function _showConnResult(el, html, cls) {
     el.className = `conn-test-result ${cls}`;
