@@ -1164,6 +1164,14 @@
   }
   function lock()   { overlay.classList.remove('hidden'); showScreen('sLogin'); }
 
+  // ── Détecte les erreurs dans le hash (lien expiré, etc.) ───────────────
+  const _hashParams = new URLSearchParams(location.hash.slice(1));
+  if (_hashParams.get('error')) {
+    const desc = decodeURIComponent((_hashParams.get('error_description') || _hashParams.get('error')).replace(/\+/g, ' '));
+    document.getElementById('aLErr').textContent = '⚠ ' + (desc.includes('invalid or has expired') ? 'Ce lien est expiré. Faites une nouvelle demande.' : desc);
+    history.replaceState(null, '', location.pathname);
+  }
+
   // ── Détecte le lien de reset mot de passe dans l'URL ────────────────────
   // onAuthStateChange doit être enregistré AVANT getSession pour capter PASSWORD_RECOVERY
   sb.auth.onAuthStateChange((event) => {
@@ -8691,9 +8699,8 @@ function initConnecteurModal() {
       _updateGrossisteBtn();
       const listEl = document.getElementById('grossisteFileList');
       if (listEl && listEl.style.display !== 'none') _renderGrossisteList();
-      if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${file.name} — prêt à extraire`; }
-      // Afficher le bouton ENVOYER avec le storage_path en attribut
-      if (sendBtn) { sendBtn.dataset.path = path; sendBtn.dataset.token = session.access_token; sendBtn.style.display = ''; }
+      // Parser automatiquement sans attendre un clic ENVOYER
+      await _parseGrossiste(path, session.access_token);
     } catch(e) {
       const msg = e?.message || String(e);
       if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ ${msg}`; }
@@ -8718,7 +8725,9 @@ function initConnecteurModal() {
       if (parsed.grossiste_month_stats) {
         state._grossisteMonthStats = parsed.grossiste_month_stats;
         saveState();
+        saveCloudState(serializeState());
         if (state.currentPageId === 'recap') renderRecap();
+        else if (state.currentPageId === 'verificateur') renderVerificateur();
       }
       const months = (parsed.months || []).join(', ');
       if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${parsed.labos} labos · ${(parsed.total_ht || 0).toLocaleString('fr', {minimumFractionDigits:2})} € HT (${months})`; }
