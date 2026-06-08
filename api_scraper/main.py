@@ -62,7 +62,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-SUPPORTED_CONNECTORS = {"ospharm", "digipharmacie"}
+SUPPORTED_CONNECTORS = {"ospharm", "digipharmacie", "concentrateur"}
 
 # ── Job store (in-memory) ──────────────────────────────────────────────────────
 
@@ -825,11 +825,14 @@ async def _dispatch_gh_conn_test(user_id: str, connector: str):
 # ── Test connector (synchronous, called from executor) ─────────────────────────
 
 def _test_connector(connector: str, creds: dict, user_id: str = ""):
-    if connector == "ospharm":
-        # sync_playwright nécessite une boucle non-démarrée dans le thread
+    if connector in ("ospharm", "concentrateur"):
         asyncio.set_event_loop(asyncio.new_event_loop())
-        from test_connector import test_ospharm
-        test_ospharm(creds)
+        if connector == "ospharm":
+            from test_connector import test_ospharm
+            test_ospharm(creds)
+        else:
+            from test_connector import test_concentrateur
+            test_concentrateur(creds)
     elif connector == "digipharmacie":
         # Chemin rapide : curl_cffi en-processus (~5-10s, pas de navigateur)
         try:

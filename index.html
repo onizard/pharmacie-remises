@@ -8270,7 +8270,7 @@ function initConnecteurModal() {
 
       // Sauvegarde immédiate dans state + cloud avant d'appeler Render
       // (garantit que run_job.py lira les bons credentials même si la RPC échoue)
-      state.connectors[connKey] = { user, pass, connected: false };
+      state.connectors[connKey] = { ...state.connectors[connKey], user, pass, connected: false };
       saveState();
       try {
         await window._sbClient.rpc('upsert_connector', {
@@ -8311,7 +8311,8 @@ function initConnecteurModal() {
 
       if (result.status !== 'ok') throw new Error(result.message || 'Identifiants incorrects');
 
-      state.connectors[connKey] = { user, pass, connected: true };
+      state.connectors[connKey] = { ...state.connectors[connKey], user, pass, connected: true };
+      if (connKey === 'concentrateur') _concRefreshTypeButtons();
       updateConnecteurBtn();
       saveState();
       // Persiste les credentials dans la colonne dédiée (atomique)
@@ -8326,7 +8327,10 @@ function initConnecteurModal() {
       } catch (_) {}
       resultEl.textContent = '';
       showView(prefix, true);
-      if (connKey === 'ospharm') {
+      if (connKey === 'concentrateur') {
+        closeModal();
+        return;
+      } else if (connKey === 'ospharm') {
         closeModal();
         state._ospJobStartedAt = Date.now();
         state._ospJobMessage   = '';
@@ -8810,45 +8814,7 @@ function initConnecteurModal() {
   }
 
   // Enregistrement simple des credentials (pas de test API - vérification au premier export)
-  document.getElementById('concTest').addEventListener('click', async () => {
-    const user = document.getElementById('concUser').value.trim();
-    const pass = document.getElementById('concPass').value;
-    const res  = document.getElementById('concTestResult');
-    const btn  = document.getElementById('concTest');
-    if (!user || !pass) {
-      _showConnResult(res, '⚠ Identifiants vides', 'warn');
-      return;
-    }
-    btn.disabled = true;
-    res.textContent = '';
-    res.className = 'conn-test-result';
-    _setConnProgress('conc', 'serveur');
-    try {
-      const { data: { session } } = await window._sbClient.auth.getSession();
-      if (!session) throw new Error('Session expirée — reconnectez-vous.');
-      _setConnProgress('conc', 'envoi');
-      const type = state.connectors.concentrateur?.type || 'fse';
-      state.connectors.concentrateur = { user, pass, connected: true, type };
-      saveState();
-      await window._sbClient.rpc('upsert_connector', {
-        p_user_id:   session.user.id,
-        p_connector: 'concentrateur',
-        p_login:     user,
-        p_pass:      pass,
-        p_connected: true,
-      });
-      saveCloudState(serializeState());
-      _concRefreshTypeButtons();
-      updateConnecteurBtn();
-      _setConnProgress('conc', 'ready');
-      setTimeout(() => { showView('conc', true); res.textContent = ''; }, 800);
-    } catch(e) {
-      _setConnProgress('conc', 'reset');
-      _showConnResult(res, `❌ ${e.message}`, 'error');
-    } finally {
-      btn.disabled = false;
-    }
-  });
+  document.getElementById('concTest').addEventListener('click', () => connectConn('concentrateur', 'conc'));
 
   // Bouton LANCER L'EXPORT FSE → via API Render (qui dispatch GitHub Actions avec GH_TOKEN)
   document.getElementById('concLaunchBtn')?.addEventListener('click', async () => {

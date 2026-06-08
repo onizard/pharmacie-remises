@@ -145,6 +145,40 @@ def test_ospharm(creds: dict):
         raise RuntimeError("Identifiants OSPHARM incorrects")
 
 
+# ── Test CONCENTRATEUR (OSPHARM FSE / Resopharma) ─────────────────────────────
+
+def test_concentrateur(creds: dict):
+    """Teste le login sur accounts.dev.ospharm.org et vérifie la redirection vers fse.ospharm.org."""
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+    FSE_URL   = "https://fse.ospharm.org"
+    LOGIN_URL = "https://accounts.dev.ospharm.org"
+    login_url = f"{LOGIN_URL}/?client_id=test&redirect_uri={FSE_URL}/"
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page    = browser.new_context().new_page()
+
+        try:
+            page.goto(login_url, wait_until="domcontentloaded", timeout=30_000)
+            page.locator("input[type='email'],input[name='email'],input[name='username'],input[type='text']").first.fill(creds["user"], timeout=15_000)
+            page.locator("input[type='password']").first.fill(creds["pass"], timeout=5_000)
+            page.locator("input[type='password']").first.press("Enter")
+            try:
+                page.wait_for_url(f"{FSE_URL}/**", timeout=25_000)
+            except PWTimeout:
+                pass
+        except PWTimeout as e:
+            browser.close()
+            raise RuntimeError(f"Timeout formulaire FSE : {e}")
+
+        ok = FSE_URL in page.url and LOGIN_URL not in page.url
+        browser.close()
+
+    if not ok:
+        raise RuntimeError("Identifiants FSE/Concentrateur incorrects")
+
+
 # ── Test DIGIPHARMACIE — chemin rapide curl_cffi ───────────────────────────────
 
 def test_digi_curl(creds: dict):
