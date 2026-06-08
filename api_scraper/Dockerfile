@@ -18,9 +18,5 @@ RUN playwright install-deps firefox
 
 COPY . .
 
-# camoufox télécharge son binaire Firefox au démarrage (évite timeout build Render)
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
-
 EXPOSE 8000
-CMD ["/app/start.sh"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

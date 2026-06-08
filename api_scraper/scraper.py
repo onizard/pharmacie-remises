@@ -355,8 +355,25 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+_camoufox_ready = False
+
+async def _ensure_camoufox():
+    global _camoufox_ready
+    if _camoufox_ready:
+        return
+    import subprocess, sys
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "camoufox", "fetch",
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    await proc.wait()
+    _camoufox_ready = True
+
+
 async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
     from camoufox.async_api import AsyncCamoufox
+    await _ensure_camoufox()
 
     username = creds["user"]
     password = creds["pass"]
