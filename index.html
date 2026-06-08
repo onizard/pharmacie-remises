@@ -8305,7 +8305,7 @@ function initConnecteurModal() {
         updateConnecteurBtn();
         saveState();
         _setConnProgress(prefix, 'reset');
-        _showConnResult(resultEl, `⏳ Identifiants enregistrés.<br><span style="color:var(--text-dim)">La vérification s'effectuera automatiquement quand votre machine sera allumée.</span>`, 'warn');
+        _showConnResult(resultEl, `⏳ Identifiants enregistrés — vérification en attente.<br><span style="color:var(--text-dim)">Cloudflare bloque les IPs serveur. La vérification s'effectuera automatiquement au prochain scraping (runner résidentiel).</span>`, 'warn');
         return;
       }
 

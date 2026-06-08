@@ -779,14 +779,27 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
 # ── Conn test (async wrapper) ──────────────────────────────────────────────────
 
 async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
+    loop = asyncio.get_event_loop()
+
     if connector == "digipharmacie":
-        # curl_cffi seul ne bypass pas Cloudflare Bot Management → camoufox (vrai Firefox)
-        # requis. On dispatch sur Hetzner (runner self-hosted) avec proxy résidentiel.
+        # 1. Tenter curl_cffi directement sur Render (rapide, pas de runner)
+        try:
+            await loop.run_in_executor(_executor, lambda: _test_digi_curl_only(creds))
+            await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
+            await patch_conn_test(user_id, connector, True, "Connexion réussie")
+            return
+        except RuntimeError as e:
+            # Mauvais credentials → fail immédiat, pas besoin du runner
+            await patch_conn_test(user_id, connector, False, str(e))
+            return
+        except Exception:
+            pass  # Cloudflare bloque Render → fallback runner self-hosted
+
+        # 2. Cloudflare bloque → dispatch vers runner self-hosted (IP résidentielle)
         await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
         await _dispatch_gh_conn_test(user_id, connector)
         return
 
-    loop = asyncio.get_event_loop()
     try:
         await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds, user_id))
         await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
@@ -823,6 +836,13 @@ async def _dispatch_gh_conn_test(user_id: str, connector: str):
 
 
 # ── Test connector (synchronous, called from executor) ─────────────────────────
+
+def _test_digi_curl_only(creds: dict):
+    """Test Digipharmacie via curl_cffi uniquement — RuntimeError si mauvais credentials,
+    autre Exception si Cloudflare bloque (le caller dispatch alors vers le runner self-hosted)."""
+    from test_connector import test_digi_curl
+    test_digi_curl(creds)
+
 
 def _test_connector(connector: str, creds: dict, user_id: str = ""):
     if connector in ("ospharm", "concentrateur"):
