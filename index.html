@@ -1387,10 +1387,16 @@
                 </div>
               </div>
               <div class="conn-test-row">
-                <button class="conn-test-btn" id="concTest">ENREGISTRER</button>
+                <button class="conn-test-btn" id="concTest">CONNECTER</button>
                 <span class="conn-test-result" id="concTestResult"></span>
               </div>
             </form>
+          </div>
+          <div class="conn-ring-wrap" id="concProgBar">
+            <div class="conn-ring" id="concProgRing">
+              <svg viewBox="0 0 44 44"><circle class="conn-ring-track" cx="22" cy="22" r="20"/><circle class="conn-ring-fill" cx="22" cy="22" r="20" id="concProgArc"/></svg>
+            </div>
+            <div class="conn-ring-pct" id="concProgPct"></div>
           </div>
           <div class="conn-connected-view" id="concConnView" style="display:none">
             <div class="conn-check-big" id="concCheckBig"><span class="conn-check-tick">✓</span></div>
@@ -8156,6 +8162,7 @@ function initConnecteurModal() {
     document.getElementById('concTestResult').textContent = '';
     document.getElementById('ospReqStatus').textContent   = '';
     document.getElementById('digiReqStatus').textContent  = '';
+    _setConnProgress('conc', 'reset');
     _setConnProgress('digi', 'reset');
     _setConnProgress('osp', 'reset');
     _concRefreshTypeButtons();
@@ -8803,17 +8810,44 @@ function initConnecteurModal() {
   }
 
   // Enregistrement simple des credentials (pas de test API - vérification au premier export)
-  document.getElementById('concTest').addEventListener('click', () => {
+  document.getElementById('concTest').addEventListener('click', async () => {
     const user = document.getElementById('concUser').value.trim();
     const pass = document.getElementById('concPass').value;
     const res  = document.getElementById('concTestResult');
-    if (!user) { res.className = 'conn-test-result ko'; res.textContent = '// Identifiant requis'; return; }
-    if (!pass) { res.className = 'conn-test-result ko'; res.textContent = '// Mot de passe requis'; return; }
-    state.connectors.concentrateur = { ...(state.connectors.concentrateur || {}), user, pass, connected: true };
-    _concRefreshTypeButtons();
-    saveState();
-    res.className = 'conn-test-result ok'; res.textContent = '✓ Credentials enregistrés';
-    setTimeout(() => { showView('conc', true); res.textContent = ''; }, 800);
+    const btn  = document.getElementById('concTest');
+    if (!user || !pass) {
+      _showConnResult(res, '⚠ Identifiants vides', 'warn');
+      return;
+    }
+    btn.disabled = true;
+    res.textContent = '';
+    res.className = 'conn-test-result';
+    _setConnProgress('conc', 'serveur');
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) throw new Error('Session expirée — reconnectez-vous.');
+      _setConnProgress('conc', 'envoi');
+      const type = state.connectors.concentrateur?.type || 'fse';
+      state.connectors.concentrateur = { user, pass, connected: true, type };
+      saveState();
+      await window._sbClient.rpc('upsert_connector', {
+        p_user_id:   session.user.id,
+        p_connector: 'concentrateur',
+        p_login:     user,
+        p_pass:      pass,
+        p_connected: true,
+      });
+      saveCloudState(serializeState());
+      _concRefreshTypeButtons();
+      updateConnecteurBtn();
+      _setConnProgress('conc', 'ready');
+      setTimeout(() => { showView('conc', true); res.textContent = ''; }, 800);
+    } catch(e) {
+      _setConnProgress('conc', 'reset');
+      _showConnResult(res, `❌ ${e.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // Bouton LANCER L'EXPORT FSE → via API Render (qui dispatch GitHub Actions avec GH_TOKEN)
