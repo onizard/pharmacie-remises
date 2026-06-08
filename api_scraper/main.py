@@ -800,6 +800,12 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
         await _dispatch_gh_conn_test(user_id, connector)
         return
 
+    if connector in ("ospharm", "concentrateur"):
+        # Playwright Chromium ne peut pas tourner sur Render (512 MB) → dispatch GH Actions
+        await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
+        await _dispatch_gh_conn_test(user_id, connector)
+        return
+
     try:
         await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds, user_id))
         await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)

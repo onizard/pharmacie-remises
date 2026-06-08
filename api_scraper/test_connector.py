@@ -421,6 +421,8 @@ def main():
     try:
         if CONNECTOR == "ospharm":
             test_ospharm(creds)
+        elif CONNECTOR == "concentrateur":
+            test_concentrateur(creds)
         elif CONNECTOR == "digipharmacie":
             test_digipharmacie(creds)
         else:
