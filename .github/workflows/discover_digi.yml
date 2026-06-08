@@ -1,4 +1,4 @@
-name: Test Connecteur
+name: Découverte API Digipharmacie
 
 on:
   workflow_dispatch:
@@ -6,12 +6,9 @@ on:
       user_id:
         description: 'Supabase user ID'
         required: true
-      connector:
-        description: 'ospharm or digipharmacie'
-        required: true
 
 jobs:
-  test:
+  discover:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -19,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Python deps
-        run: pip3 install --quiet camoufox curl_cffi
+        run: pip3 install --quiet camoufox curl_cffi pdfplumber
 
       - name: Fetch camoufox browser
         run: python3 -m camoufox fetch
@@ -32,10 +29,9 @@ jobs:
           sed -i "s/pageError\.location\.columnNumber/pageError.location?.columnNumber||0/g" "$BUNDLE"
           echo "Patched OK"
 
-      - name: Test connexion
+      - name: Découverte structure API
         env:
           USER_ID:              ${{ inputs.user_id }}
-          CONNECTOR:            ${{ inputs.connector }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           PROXY_URL:            ${{ secrets.PROXY_URL }}
-        run: python3 api_scraper/test_connector.py
+        run: python3 api_scraper/discover_digi.py

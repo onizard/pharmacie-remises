@@ -1,5 +1,6 @@
 FROM python:3.12-slim
 
+# Dépendances système de base
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -9,11 +10,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# playwright installe Chromium + toutes ses dépendances système
+# playwright installe Chromium + toutes ses dépendances système (pour OSPHARM)
 RUN playwright install chromium --with-deps
 
-# camoufox télécharge Firefox (utilise les libs déjà présentes)
-RUN python -m camoufox fetch
+# Dépendances système de Firefox/camoufox via playwright (liste maintenue automatiquement)
+RUN playwright install-deps firefox
 
 COPY . .
 

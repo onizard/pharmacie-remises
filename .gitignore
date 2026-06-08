@@ -23,3 +23,8 @@ explorer_agora.py
 *.csv
 *.xlsx
 .claude/settings.local.json
+nas_tunnel_key
+nas_tunnel_key.pub
+*.png
+*.jpg
+.env

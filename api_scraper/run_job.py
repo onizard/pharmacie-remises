@@ -52,6 +52,110 @@ def _supa_patch_state(state: dict):
         pass
 
 
+_LABO_NORMALIZE = {
+    "biogaran": "BIOGARAN",
+    "teva": "TEVA",
+    "mylan": "MYLAN",
+    "viatris": "VIATRIS",
+    "zydus": "ZYDUS",
+    "sandoz": "SANDOZ",
+    "zentiva": "ZENTIVA",
+    "arrow": "ARROW",
+    "cristers": "CRISTERS",
+    "eg labo": "EG LABO",
+    "eg labs": "EG LABO",
+    "evolupharm": "EVOLUPHARM",
+}
+
+
+def _norm_labo(raw: str) -> str:
+    n = (raw or "").lower().strip()
+    for kw, canonical in _LABO_NORMALIZE.items():
+        if kw in n:
+            return canonical
+    return n.upper()
+
+
+def _compute_digi_month_stats(lines: list[dict]) -> dict:
+    """Agrège les lignes digi → {year-MM: [{labo, qty, total_ht, rdp_total, presta_total}]}.
+
+    - Lignes produits  : clé = billing_date[:7], cumule qty + total_ht
+    - Lignes rdp       : clé = period_month,     cumule rdp_total (valeur absolue)
+    - Lignes presta    : clé = period_month,      cumule presta_total
+    """
+    def _zero():
+        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0}
+
+    acc: dict[str, dict] = {}
+    for line in lines:
+        line_type = line.get("type")
+
+        if line_type == "rdp":
+            mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
+            labo = _norm_labo(line.get("labo") or "")
+            if len(mk) < 7 or not labo: continue
+            amt  = abs(float(line.get("montant") or 0))   # montant négatif → valeur absolue
+            acc.setdefault(mk, {}).setdefault(labo, _zero())
+            acc[mk][labo]["rdp_total"] = round(acc[mk][labo]["rdp_total"] + amt, 2)
+
+        elif line_type == "presta":
+            mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
+            labo = _norm_labo(line.get("labo") or "")
+            if len(mk) < 7 or not labo: continue
+            amt_ht  = float(line.get("total_ht")  or line.get("montant") or 0)
+            amt_ttc = float(line.get("total_ttc") or amt_ht * (1 + float(line.get("tva_pct", 20)) / 100))
+            acc.setdefault(mk, {}).setdefault(labo, _zero())
+            acc[mk][labo]["presta_total"]     = round(acc[mk][labo]["presta_total"]     + amt_ht,  2)
+            acc[mk][labo]["presta_total_ttc"] = round(acc[mk][labo]["presta_total_ttc"] + amt_ttc, 2)
+
+        else:
+            date = str(line.get("billing_date", ""))
+            if len(date) < 7: continue
+            mk   = date[:7]
+            labo = _norm_labo(line.get("labo") or line.get("fournisseur") or "")
+            qty  = int(line.get("quantite") or 0)
+            tot  = float(line.get("total_ht") or 0)
+            acc.setdefault(mk, {}).setdefault(labo, _zero())
+            acc[mk][labo]["qty"]      += qty
+            acc[mk][labo]["total_ht"]  = round(acc[mk][labo]["total_ht"] + tot, 2)
+
+    return {
+        mk: sorted(
+            [{"labo":         labo,
+              "qty":              d["qty"],
+              "total_ht":         round(d["total_ht"], 2),
+              "rdp_total":        round(d["rdp_total"], 2),
+              "presta_total":     round(d["presta_total"], 2),
+              "presta_total_ttc": round(d.get("presta_total_ttc", d["presta_total"] * 1.20), 2)}
+             for labo, d in labos.items()],
+            key=lambda r: r["labo"],
+        )
+        for mk, labos in acc.items()
+    }
+
+
+def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
+    """Fusionne les nouvelles stats partielles avec les stats existantes."""
+    result = {mk: [dict(r) for r in rows] for mk, rows in existing.items()}
+    for mk, new_rows in new_partial.items():
+        if mk not in result:
+            result[mk] = new_rows
+        else:
+            labo_map = {r["labo"]: r for r in result[mk]}
+            for nr in new_rows:
+                labo = nr["labo"]
+                if labo in labo_map:
+                    labo_map[labo]["qty"]          += nr["qty"]
+                    labo_map[labo]["total_ht"]       = round(labo_map[labo]["total_ht"]       + nr["total_ht"],     2)
+                    labo_map[labo]["rdp_total"]          = round(labo_map[labo].get("rdp_total",0)          + nr.get("rdp_total",0),          2)
+                    labo_map[labo]["presta_total"]       = round(labo_map[labo].get("presta_total",0)       + nr.get("presta_total",0),       2)
+                    labo_map[labo]["presta_total_ttc"]   = round(labo_map[labo].get("presta_total_ttc",0)   + nr.get("presta_total_ttc",0),   2)
+                else:
+                    labo_map[labo] = dict(nr)
+            result[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])
+    return result
+
+
 def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
     try:
         state = _supa_get_state()
@@ -66,40 +170,128 @@ def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
         print(f"  [warn] Supabase update failed : {e}")
 
 
+def _get_connectors_col() -> dict:
+    url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{USER_ID}&select=connectors&limit=1"
+    req = urllib.request.Request(url, headers={
+        "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        rows = json.loads(r.read())
+    return (rows[0].get("connectors") or {}) if rows else {}
+
+
 def _get_creds() -> dict:
-    state      = _supa_get_state()
-    connectors = state.get("connectors", {})
-    digi       = connectors.get("digipharmacie", {})
-    user       = digi.get("user", "")
-    passwd     = digi.get("pass", "")
-    if not user or not passwd:
-        raise ValueError(
-            "Identifiants DIGIPHARMACIE manquants dans Supabase.\n"
-            "Configure-les dans break-pharma.fr → CONNECTEUR."
-        )
-    return {"user": user, "pass": passwd}
+    # Priorité 1 : colonne connectors (mise à jour atomique via upsert_connector RPC)
+    try:
+        conns = _get_connectors_col()
+        cred  = conns.get("digipharmacie", {})
+        if cred.get("user") and cred.get("pass"):
+            return {"user": cred["user"], "pass": cred["pass"]}
+    except Exception:
+        pass
+
+    # Priorité 2 : state_json.connectors (fallback — peut être périmé si saveCloudState a timeout)
+    try:
+        state  = _supa_get_state()
+        digi   = state.get("connectors", {}).get("digipharmacie", {})
+        user   = digi.get("user", "")
+        passwd = digi.get("pass", "")
+        if user and passwd:
+            return {"user": user, "pass": passwd}
+    except Exception:
+        pass
+
+    raise ValueError(
+        "Identifiants DIGIPHARMACIE manquants dans Supabase.\n"
+        "Configure-les dans break-pharma.fr → CONNECTEUR."
+    )
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+def _save_results(lines: list, cache: dict, existing_stats: dict,
+                  partial: bool = False):
+    """Fusionne nouvelles lignes avec stats existantes, stocke le cache compact {key: True}."""
+    n_cache = sum(1 for v in cache.values() if v is True)
+    n_new   = len(lines)
+    label   = (f"Partiel : {n_new} nouvelles lignes ({n_cache} en cache)"
+               if partial else
+               f"{n_new} nouvelles lignes ({n_cache} en cache)")
+    state = _supa_get_state()
+    compact_cache = {k: True for k in cache}
+    state["verif_job"] = {
+        "status":        "done",
+        "message":       label,
+        "invoices":      [],
+        "invoice_cache": compact_cache,
+        "error":         "",
+    }
+    new_partial = _compute_digi_month_stats(lines)
+    merged      = _merge_digi_stats(existing_stats, new_partial)
+    if merged:
+        state["digi_month_stats"] = merged
+        months = sorted(merged)
+        print(f"  📊  digi_month_stats : {len(merged)} mois ({months[0]} → {months[-1]})")
+    _supa_patch_state(state)
+
+
 def main():
+    import signal as _sig
+
+    # État partagé — mis à jour après chaque PDF pour que SIGTERM puisse sauver
+    _partial: dict = {"lines": [], "cache": {}, "existing_stats": {}}
+
+    # Handler SIGTERM : GitHub Actions tue le job à timeout-minutes
+    # Sauve les résultats partiels pour que la prochaine run reprenne en cache
+    def _on_sigterm(sig, frame):
+        print("\n⚠️  SIGTERM — sauvegarde des résultats partiels…", flush=True)
+        try:
+            _save_results(_partial["lines"], _partial["cache"],
+                          _partial["existing_stats"], partial=True)
+            print(f"  ✓ {len(_partial['lines'])} nouvelles lignes / {len(_partial['cache'])} en cache", flush=True)
+        except Exception as _e:
+            print(f"  ✗ Sauvegarde partielle échouée : {_e}", flush=True)
+        sys.exit(1)
+
+    _sig.signal(_sig.SIGTERM, _on_sigterm)
+
     print(f"🚀  Job démarré pour user_id={USER_ID}")
     _update_job("running", "Initialisation…")
 
     try:
         creds = _get_creds()
+        print(f"  → Credentials chargés : user={creds['user'][:4]}*** pass={'ok' if creds.get('pass') else 'VIDE'}")
     except ValueError as e:
         _update_job("error", error=str(e))
         sys.exit(1)
+
+    # Charger le cache compact et les stats existantes
+    try:
+        _ex_state      = _supa_get_state()
+        existing_cache = (_ex_state.get("verif_job") or {}).get("invoice_cache") or {}
+        existing_stats = _ex_state.get("digi_month_stats") or {}
+        print(f"  → Cache : {len(existing_cache)} factures déjà traitées")
+        print(f"  → Stats existantes : {len(existing_stats)} mois")
+    except Exception:
+        existing_cache, existing_stats = {}, {}
+
+    _partial["existing_stats"] = existing_stats
+
+    def _on_partial(lines: list, cache: dict):
+        _partial["lines"] = lines
+        _partial["cache"] = cache
 
     def progress(msg: str):
         print(f"  → {msg}")
         _update_job("running", msg)
 
     try:
-        invoices = run_scraper(creds, progress)
-        _update_job("done", f"{len(invoices)} lignes extraites", invoices)
-        print(f"\n✅  {len(invoices)} lignes produits extraites et sauvegardées.")
+        invoices, updated_cache = run_scraper(creds, progress,
+                                              invoice_cache=existing_cache,
+                                              on_partial=_on_partial)
+        _save_results(invoices, updated_cache, existing_stats)
+        n_cache = sum(1 for v in updated_cache.values() if v is True)
+        print(f"\n✅  {len(invoices)} nouvelles lignes ({n_cache} en cache).")
     except Exception as e:
         _update_job("error", error=str(e))
         print(f"\n❌  {e}")

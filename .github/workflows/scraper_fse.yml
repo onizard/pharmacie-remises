@@ -1,0 +1,58 @@
+name: Scraper OSPHARM FSE Banque
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: 'Supabase user ID'
+        required: true
+      date_from:
+        description: 'Date début YYYY-MM-DD (défaut : jan N-1)'
+        required: false
+        default: ''
+      date_to:
+        description: 'Date fin YYYY-MM-DD (défaut : aujourd''hui)'
+        required: false
+        default: ''
+
+jobs:
+  scrape-fse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python deps
+        run: pip3 install --quiet camoufox openpyxl
+
+      - name: Fetch camoufox browser
+        run: python3 -m camoufox fetch || true
+
+      - name: Patch Playwright null-check
+        run: |
+          BUNDLE=$(python3 -c "import os,playwright; print(os.path.join(os.path.dirname(playwright.__file__),'driver/package/lib/coreBundle.js'))")
+          TMP=$(mktemp)
+          cp "$BUNDLE" "$TMP"
+          sed -i "s/pageError\.location\.url/pageError.location?.url||''/g" "$TMP"
+          sed -i "s/pageError\.location\.lineNumber/pageError.location?.lineNumber||0/g" "$TMP"
+          sed -i "s/pageError\.location\.columnNumber/pageError.location?.columnNumber||0/g" "$TMP"
+          sudo cp "$TMP" "$BUNDLE" && echo "Patched OK" || echo "Patch skipped"
+          rm -f "$TMP"
+
+      - name: Run FSE scraper
+        env:
+          USER_ID:              ${{ inputs.user_id }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DATE_FROM:            ${{ inputs.date_from }}
+          DATE_TO:              ${{ inputs.date_to }}
+          RENDER_API_URL:       https://pharmacie-remises.onrender.com
+        run: python3 api_scraper/run_job_fse.py
+
+      - name: Upload debug screenshots (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fse-debug-screenshots
+          path: fse_*.png
+          if-no-files-found: ignore
