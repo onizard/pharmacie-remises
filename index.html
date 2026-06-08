@@ -7657,6 +7657,13 @@ async function saveProfile() {
     });
   }
 
+  // Connecteurs disponibles dès maintenant — state.connectors est chargé depuis localStorage
+  initConnecteurModal();
+  if (isAdmin) {
+    document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
+    window.syncAllCgvLeds?.();
+  }
+
   await fetchAndSortLabs();
 
   loader.style.display = 'none';
@@ -7924,14 +7931,6 @@ async function saveProfile() {
     goTo('recap');
     setTimeout(() => renderRecap(), 0);
   }
-
-  // Admin : afficher le bouton IMPORTER (non-admins n'ont pas de CSV manuel)
-  if (isAdmin) {
-    document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
-    window.syncAllCgvLeds?.();
-  }
-
-  initConnecteurModal();
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
   _initDone = true;
