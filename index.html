@@ -4709,55 +4709,12 @@ function _verifRSFavg(cond) {
   return vals.reduce((s, r) => s + Math.abs(parseFloat(r.rsf_pct)), 0) / vals.length;
 }
 
-// Cache CIP13 → {labo normalisé, rsf_pct} — chargé une fois depuis la DB
-let _verifRefMap = null;
-let _verifRefMapRowCount = -1;
-
-async function _verifEnsureRefMap() {
-  const rowCount = state.ospharm_job?.rows?.length || 0;
-  if (_verifRefMap !== null && _verifRefMapRowCount === rowCount) return;
-  _verifRefMap = new Map();
-  _verifRefMapRowCount = rowCount;
-  const allRows = state.ospharm_job?.rows || [];
-  const cips = [...new Set(allRows.map(r => r.cip13).filter(Boolean))];
-  // Diagnostic : répartition par année dans les rows OSPHARM
-  const byYear = {};
-  allRows.forEach(r => { const y = r.year ?? r._year; byYear[y] = (byYear[y]||0)+1; });
-  console.log('[verif] rows OSPHARM par année:', byYear, '— CIPs uniques:', cips.length);
-  if (!cips.length) return;
-  const token = state.session?.access_token || SUPA_KEY;
-  const HDR = { apikey: SUPA_KEY, Authorization: 'Bearer ' + token };
-  for (let i = 0; i < cips.length; i += 500) {
-    try {
-      const chunk = cips.slice(i, i + 500);
-      const resp = await fetch(
-        `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,rsf_pct&cip13=in.(${chunk.join(',')})&limit=500`,
-        { headers: HDR }
-      );
-      if (resp.ok) (await resp.json()).forEach(r =>
-        _verifRefMap.set(r.cip13, { labo: _verifNormLab(r.labo || ''), rsf_pct: r.rsf_pct })
-      );
-      else console.warn('[verif] fetch refs HTTP', resp.status, await resp.text().catch(()=>''));
-    } catch(e) { console.warn('[verif] fetch refs erreur:', e); }
-  }
-  console.log('[verif] refMap chargé:', _verifRefMap.size, 'entrées');
-  // Exemple : 3 premières entrées
-  let n=0; _verifRefMap.forEach((v,k) => { if(n++<3) console.log(' ex:', k, v); });
-}
-
-// RSF% pondéré réel + RSF€ calculés depuis les lignes OSPHARM brutes pour un labo donné
-function _verifRsfFromRows(labNormKey, ospRows) {
-  let sumCa = 0, sumRsf = 0;
-  ospRows.forEach(r => {
-    const ref = _verifRefMap?.get(r.cip13);
-    if (!ref || ref.labo !== labNormKey) return;
-    const rsf = Math.abs(parseFloat(ref.rsf_pct) || 0);
-    const ca  = (r.qty || 0) * (r.puht || 0);
-    if (ca <= 0 || !rsf) return;
-    sumCa  += ca;
-    sumRsf += ca * rsf / 100;
-  });
-  return { pct: sumCa > 0 ? sumRsf / sumCa * 100 : null, eur: sumRsf > 0 ? sumRsf : null };
+// RSF% pondéré depuis month_stats (calculé côté scraper, stocké dans rsf_pond_pct)
+// Retourne {pct, eur} depuis les données agrégées du labo pour un mois donné
+function _verifRsfFromStats(osp) {
+  const pct = osp?.rsf_pond_pct > 0 ? osp.rsf_pond_pct : null;
+  const eur = pct != null ? (osp.rsf_ca || osp.ca_brut || 0) * pct / 100 : null;
+  return { pct, eur: eur > 0 ? eur : null };
 }
 
 // Mois de contrat dans l'année pour la proratisation (N°1 uniquement)
@@ -5063,13 +5020,11 @@ function _verifFillAnnualSummary(year) {
 
 // ── Détail mensuel ────────────────────────────────────────────────────────────
 
-async function _verifFillMonthDetail(mk) {
+function _verifFillMonthDetail(mk) {
   const wrap = document.getElementById('verifMonthDetail'); if (!wrap) return;
   // Cas TOUT : cumul annuel
-  if (mk.endsWith('-ALL')) { await _verifFillTout(parseInt(mk)); return; }
-  await _verifEnsureRefMap();
+  if (mk.endsWith('-ALL')) { _verifFillTout(parseInt(mk)); return; }
   const [mkY, mkM] = mk.split('-').map(Number);
-  const ospRowsMonth = (state.ospharm_job?.rows || []).filter(r => +r.year === mkY && +r.month === mkM);
   const fmtE  = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP  = v => v != null ? v.toFixed(1) + ' %' : '—';
   const TVA_R3 = 1.20;
@@ -5105,7 +5060,7 @@ async function _verifFillMonthDetail(mk) {
 
     const labDisplay = osp.labo || digi.labo || gros.labo || key;
     const cond    = _verifGetCond(labDisplay, mkY, mkM);
-    const rsfData = _verifRsfFromRows(key, ospRowsMonth);
+    const rsfData = _verifRsfFromStats(osp);
     const rsfPct  = rsfData.pct ?? _verifRSFavg(cond);
     const r2pct   = _verifR2avg(cond);
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
@@ -5169,11 +5124,9 @@ async function _verifFillMonthDetail(mk) {
     </div>`;
 }
 
-async function _verifFillTout(year) {
+function _verifFillTout(year) {
   const wrap = document.getElementById('verifMonthDetail'); if (!wrap) return;
-  await _verifEnsureRefMap();
   const yr   = parseInt(year);
-  const ospRowsYear = (state.ospharm_job?.rows || []).filter(r => +r.year === yr);
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP = v => v != null ? v.toFixed(1) + ' %' : '—';
   const TVA_R3 = 1.20;
@@ -5181,13 +5134,18 @@ async function _verifFillTout(year) {
   const gapCls = v => v == null ? '' : v > 0.5 ? ' style="color:var(--red)"' : v < -0.5 ? ' style="color:var(--green)"' : '';
   const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
 
-  // Accumulation achats
+  // Accumulation achats + RSF pondéré annuel (Σ rsf_rem / Σ rsf_ca)
   const labAcc = {};
-  const acc = (k, display) => { if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, pa_di:0, pa_gr:0, r2rec:0 }; };
+  const acc = (k, display) => { if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, pa_di:0, pa_gr:0, r2rec:0, rsf_rem:0, rsf_ca:0 }; };
   Object.entries(state._monthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
-      labAcc[k].pa_osp += r.pa_net ?? ((r.ca_brut||0) - (r.remise_totale||0));
+      labAcc[k].pa_osp  += r.pa_net ?? ((r.ca_brut||0) - (r.remise_totale||0));
+      // Accumulation pour RSF pondéré annuel
+      if (r.rsf_pond_pct > 0 && r.rsf_ca > 0) {
+        labAcc[k].rsf_ca  += r.rsf_ca;
+        labAcc[k].rsf_rem += r.rsf_ca * r.rsf_pond_pct / 100;
+      }
     })
   );
   Object.entries(state._digiMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
@@ -5233,12 +5191,11 @@ async function _verifFillTout(year) {
     if (pa_tot <= 0) return '';
 
     const cond    = _verifGetCond(d.display, yr, mRef);
-    const rsfData = _verifRsfFromRows(k, ospRowsYear);
-    const rsfPct  = rsfData.pct ?? _verifRSFavg(cond);
+    const rsfPct  = d.rsf_ca > 0 ? d.rsf_rem / d.rsf_ca * 100 : _verifRSFavg(cond);
     const r2pct   = _verifR2avg(cond);
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
 
-    const rsfEst   = rsfData.eur ?? (rsfPct != null ? pa_tot * rsfPct / 100 : null);
+    const rsfEst   = d.rsf_rem > 0 ? d.rsf_rem : (rsfPct != null ? pa_tot * rsfPct / 100 : null);
     const r2est    = r2pct  != null ? pa_tot * r2pct  / 100 : null;
     const r3estTTC = r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
     const r2rec_tot = (d.r2rec || 0) + (fseAcc[k]?.r2 || 0);

@@ -221,26 +221,32 @@ def _build_month_stats(all_rows: list, refs_by_cip: dict, rsf_defs: dict) -> dic
 
         k = (row.get("year", 0), row.get("month", 0), labo)
         if k not in by_key:
-            by_key[k] = {"qty": 0.0, "ca": 0.0, "remise": 0.0}
-        by_key[k]["qty"]    += qty
-        by_key[k]["ca"]     += ca
-        by_key[k]["remise"] += remise_ca
+            by_key[k] = {"qty": 0.0, "ca": 0.0, "remise": 0.0, "rsf_ca": 0.0, "rsf_rem": 0.0}
+        by_key[k]["qty"]     += qty
+        by_key[k]["ca"]      += ca
+        by_key[k]["remise"]  += remise_ca
+        if rsf_abs > 0:
+            by_key[k]["rsf_ca"]  += ca
+            by_key[k]["rsf_rem"] += ca * rsf_abs / 100.0
 
     result: dict = {}
     for (year, month, labo), v in by_key.items():
         mk = f"{year}-{month:02d}"
         if mk not in result:
             result[mk] = []
-        ca_b = round(v["ca"], 2)
-        rem  = round(v["remise"], 2)
-        pond = round(v["remise"] / v["ca"] * 100, 1) if v["ca"] > 0 else 0.0
+        ca_b     = round(v["ca"], 2)
+        rem      = round(v["remise"], 2)
+        pond     = round(v["remise"]  / v["ca"]     * 100, 1) if v["ca"]     > 0 else 0.0
+        rsf_pond = round(v["rsf_rem"] / v["rsf_ca"] * 100, 2) if v["rsf_ca"] > 0 else 0.0
         result[mk].append({
-            "labo":         labo,
-            "qty":          int(v["qty"]),
-            "ca_brut":      ca_b,
-            "pond_pct":     pond,
+            "labo":          labo,
+            "qty":           int(v["qty"]),
+            "ca_brut":       ca_b,
+            "pond_pct":      pond,
+            "rsf_pond_pct":  rsf_pond,
+            "rsf_ca":        round(v["rsf_ca"], 2),
             "remise_totale": rem,
-            "pa_net":       round(ca_b - rem, 2),
+            "pa_net":        round(ca_b - rem, 2),
         })
     for mk in result:
         result[mk].sort(key=lambda x: x["ca_brut"], reverse=True)
