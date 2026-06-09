@@ -2222,10 +2222,12 @@ async function autoRunOspharm(mode) {
               state._monthSavedAt = Date.now();
             }
             saveState();
+            const _wasOnResults = state.currentPageId === 'results';
+            const _wasOnCsv     = state.currentPageId === 'csv';
             goTo('recap');
             renderRecap();
-            if (state.currentPageId === 'results') { _simResultsReady = false; launchComparateur(); }
-            else if (state.currentPageId === 'csv') launchSimulation();
+            if (_wasOnResults) { _simResultsReady = false; launchComparateur(); }
+            else if (_wasOnCsv) launchSimulation();
           } catch(_) {}
           break;
         }
@@ -2289,7 +2291,10 @@ async function launchComparateur() {
       return;
     }
     if (!job.rows?.length) {
-      showCompError('Données OSPHARM à régénérer — relancez le connecteur OSPHARM (les données brutes ont été nettoyées).');
+      hideCompError();
+      const simEl = document.getElementById('simResults');
+      if (simEl) _renderOspProgress(simEl);
+      if (!state._ospJobRunning) autoRunOspharm();
       return;
     }
 
@@ -9040,7 +9045,11 @@ function initConnecteurModal() {
 
 
   document.getElementById('compRefreshBtn').addEventListener('click', () => {
-    document.getElementById('connecteurModal').classList.add('open');
+    if (state._ospJobRunning) return;
+    hideCompError();
+    const simEl = document.getElementById('simResults');
+    if (simEl) _renderOspProgress(simEl);
+    autoRunOspharm();
   });
 
 }
