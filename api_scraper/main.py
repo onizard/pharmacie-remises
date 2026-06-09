@@ -1003,20 +1003,21 @@ def _scrape(connector: str, user_id: str, creds: dict, progress):
 # ── Exploration Digipharmacie Espaces clients (endpoint temporaire) ────────────
 
 @app.get("/explore/digi-espace-client")
-async def explore_digi_espace_client(authorization: str = Header(default="")):
-    """Navigue vers Digipharmacie > Achats > Espaces clients, capture API + HTML."""
+async def explore_digi_espace_client(
+    background_tasks: BackgroundTasks,
+    authorization: str = Header(default=""),
+):
+    """Lance l'exploration en arrière-plan. Résultat dans state_json.digi_espace_client_explore."""
     token = _extract_token(authorization)
     try:
         user_id = await verify_token(token)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(
-        _executor,
-        lambda: _explore_digi_espace_client_sync(user_id),
+    background_tasks.add_task(
+        lambda: _executor.submit(_explore_digi_espace_client_sync, user_id)
     )
-    return result
+    return {"status": "started", "check": "state_json.digi_espace_client_explore"}
 
 
 def _explore_digi_espace_client_sync(user_id: str) -> dict:
