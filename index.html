@@ -2300,10 +2300,12 @@ async function launchComparateur() {
       return;
     }
     if (!job.rows?.length) {
-      hideCompError();
-      const simEl = document.getElementById('simResults');
-      if (simEl) _renderOspProgress(simEl);
-      if (!state._ospJobRunning) autoRunOspharm();
+      // Rows absentes du job (ex: données pré-migration) — utiliser csvData existant si dispo
+      if (state.csvData?.length) {
+        launchSimulation();
+        return;
+      }
+      showCompError('Données OSPHARM non chargées — relancez le connecteur OSPHARM DATASTAT.');
       return;
     }
 

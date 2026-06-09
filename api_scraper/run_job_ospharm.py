@@ -1431,7 +1431,7 @@ def main():
         _update_job(
             "done",
             f"{total_refs} références — {len(month_meta)} mois",
-            rows=None,
+            rows=all_rows,
             blocking=True,
             month_meta=month_meta,
             month_stats=month_stats,
