@@ -4730,6 +4730,74 @@ function _verifAutoCondIdx(lab, condYear, conds) {
   return 0;
 }
 
+
+// ── Variables état modal labo ──────────────────────────────────────────────
+let _verifModalLab  = null;
+let _verifModalType = 'N1';
+
+function _verifOpenLabModal(lab) {
+  _verifModalLab  = lab;
+  const c = state.verifContracts?.[lab] || {};
+  _verifModalType = c.type || 'N1';
+  const yr = new Date().getFullYear();
+  document.getElementById('verifModalTitle').textContent = '◈ ' + lab;
+  document.getElementById('verifModalDate').value  = c.startDate || (yr - 1) + '-01-01';
+  document.getElementById('verifModalRemoveBtn').style.display = c.active ? '' : 'none';
+  _verifUpdateModalTypeBtns();
+  document.getElementById('verifLabModal').style.display = 'flex';
+}
+
+function _verifUpdateModalTypeBtns() {
+  const types = [['N1', 'Gén. N°1'], ['N2', 'Gén. N°2'], ['GR', 'Grossiste']];
+  document.getElementById('verifModalTypeBtns').innerHTML = types.map(([t, lbl]) =>
+    `<button class="verif-type-btn${_verifModalType === t ? ' active' : ''}"
+      onclick="_verifModalPickType('${t}')"
+      style="flex:1;font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:1px;padding:8px 4px;cursor:pointer;background:${_verifModalType === t ? 'var(--cyan)' : 'transparent'};border:1px solid ${_verifModalType === t ? 'var(--cyan)' : 'var(--border)'};color:${_verifModalType === t ? 'var(--bg)' : 'var(--text-dim)'};transition:all .15s"
+    >${lbl}</button>`
+  ).join('');
+}
+
+function _verifModalPickType(t) {
+  _verifModalType = t;
+  _verifUpdateModalTypeBtns();
+}
+
+function _verifCloseLabModal() {
+  document.getElementById('verifLabModal').style.display = 'none';
+  _verifModalLab = null;
+}
+
+function _verifSaveLabModal() {
+  if (!_verifModalLab) return;
+  const dateVal = document.getElementById('verifModalDate').value;
+  if (!state.verifContracts) state.verifContracts = {};
+  state.verifContracts[_verifModalLab] = {
+    ...(state.verifContracts[_verifModalLab] || {}),
+    active: true, type: _verifModalType, startDate: dateVal,
+  };
+  _verifCloseLabModal();
+  saveState();
+  renderVerificateur();
+}
+
+function _verifRemoveLabModal() {
+  if (!_verifModalLab) return;
+  if (state.verifContracts?.[_verifModalLab]) {
+    state.verifContracts[_verifModalLab].active = false;
+  }
+  _verifCloseLabModal();
+  saveState();
+  renderVerificateur();
+}
+
+function _verifOpenInfoModal() {
+  document.getElementById('verifInfoModal').style.display = 'flex';
+}
+
+function _verifCloseInfoModal() {
+  document.getElementById('verifInfoModal').style.display = 'none';
+}
+
 function renderVerificateur() {
   const tb  = document.getElementById('verifTabBar');
   const cnt = document.getElementById('verifContent');
