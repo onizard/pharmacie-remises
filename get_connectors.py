@@ -10,8 +10,8 @@ import json
 import urllib.request
 from pathlib import Path
 
-SUPA_URL     = "https://fmterazwesiwpwjpkyqi.supabase.co"
-SUPA_KEY     = "sb_publishable_F5yfQriBSH3KY7elhyXhLQ_rQ_9P92w"
+SUPA_URL     = "https://api.break-pharma.fr"
+SUPA_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLXNlbGYiLCJpYXQiOjE3ODA4NTM5MTV9.CWLe1kClQhffk3EL_WgVOQQUERn6IwF7xNqbBL9lUKI"
 
 
 def load_env(filepath=None):
