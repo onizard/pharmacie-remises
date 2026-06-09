@@ -7421,7 +7421,16 @@ async function saveProfile() {
       state._digiMonthStats = saved.digiMonthStats;
     }
     if (saved.fseMonthStats && Object.keys(saved.fseMonthStats).length) {
-      state._fseMonthStats = saved.fseMonthStats;
+      // Migration ancien format liste [{labo, montant_ttc}] → dict {LABO: {montant_ttc}}
+      const migrated = {};
+      Object.entries(saved.fseMonthStats).forEach(([mk, labMap]) => {
+        if (Array.isArray(labMap)) {
+          migrated[mk] = Object.fromEntries(labMap.map(r => [r.labo || '', r]));
+        } else {
+          migrated[mk] = labMap;
+        }
+      });
+      state._fseMonthStats = migrated;
     }
     if (saved.verifContracts && Object.keys(saved.verifContracts).length) {
       // Migration : ancien format plat { labKey: {active,type,startDate} } → { [year]: {...} }
