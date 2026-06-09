@@ -54,12 +54,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://break-pharma.fr",
+        "https://www.break-pharma.fr",
         "https://onizard.github.io",
         "http://localhost:5500",
         "http://127.0.0.1:5500",
     ],
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    allow_credentials=True,
 )
 
 SUPPORTED_CONNECTORS = {"ospharm", "digipharmacie", "concentrateur"}
