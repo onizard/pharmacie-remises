@@ -3,7 +3,6 @@ test_connector.py — Teste uniquement le login sur OSPHARM ou DIGIPHARMACIE.
 Écrit le résultat dans Supabase : state_json.conn_test.{connector}
 """
 
-import asyncio
 import json
 import os
 import sys
@@ -258,10 +257,10 @@ def test_digi_curl(creds: dict):
         raise Exception(f"curl_cffi form POST: {e}")
 
 
-# ── Test DIGIPHARMACIE — fallback camoufox ────────────────────────────────────
+# ── Test DIGIPHARMACIE — fallback Playwright Chromium ────────────────────────
 
-async def _test_digipharmacie_async(creds: dict):
-    # Chemin rapide : curl_cffi sans navigateur (~5-10s)
+def test_digipharmacie(creds: dict):
+    # Fast path : curl_cffi sans navigateur (~5-10s)
     try:
         test_digi_curl(creds)
         print("✅  curl_cffi login réussi")
@@ -269,150 +268,56 @@ async def _test_digipharmacie_async(creds: dict):
     except RuntimeError:
         raise  # mauvais credentials — ne pas aller plus loin
     except Exception as curl_err:
-        print(f"⚠️  curl_cffi échoué ({curl_err}) — fallback camoufox…")
+        print(f"⚠️  curl_cffi échoué ({curl_err}) — fallback Playwright Chromium…")
 
-    # Fallback : navigateur camoufox (gère les challenges JS Cloudflare)
-    try:
-        from camoufox.async_api import AsyncCamoufox
-    except ImportError:
-        raise RuntimeError(
-            "Cloudflare bloque les IPs de ce serveur. "
-            "Configurez un runner self-hosted sur votre machine pour contourner ce blocage."
-        )
+    # Fallback : Playwright Chromium (Firefox/camoufox non disponible sur ce runner)
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-    if PROXY_URL:
-        import urllib.parse as _up
-        _p = _up.urlparse(PROXY_URL)
-        proxy_cfg = {
-            "server":   f"{_p.scheme}://{_p.hostname}:{_p.port}",
-            "username": _p.username or "",
-            "password": _p.password or "",
-        }
-    else:
-        proxy_cfg = None
+    _email_sel = (
+        "input[type='email'], input[name='email'], "
+        "input[name='username'], input[type='text']"
+    )
 
-    async with AsyncCamoufox(headless=True, geoip=False) as browser:
-        ctx  = await browser.new_context(**({"proxy": proxy_cfg} if proxy_cfg else {}))
-        page = await ctx.new_page()
-
-        # Supprimer les pageerror Cloudflare qui crashent le handler Playwright interne
-        page.on("pageerror", lambda exc: None)
-
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=_CHROMIUM_ARGS)
+        ctx  = browser.new_context(viewport={"width": 1440, "height": 900})
+        page = ctx.new_page()
+        final_url = ""
+        ok = False
         try:
-            await page.goto(f"{DIGI_URL}/login/", timeout=60_000)
-        except Exception:
-            raise RuntimeError(
-                "DIGIPHARMACIE inaccessible depuis ce serveur "
-                "(Cloudflare bloque les IPs Render). "
-                "Contactez le support si l'erreur persiste."
-            )
-
-        title = await page.title()
-        print(f"  Page title after goto: {title!r}  URL: {page.url}")
-
-        # Attendre que le challenge Cloudflare se résolve (titre != "Just a moment...")
-        _cf_titles = ("just a moment", "checking", "verifying", "cloudflare")
-        if any(k in title.lower() for k in _cf_titles):
-            print("  Cloudflare challenge détecté — attente résolution (90s max)…")
+            page.goto(f"{DIGI_URL}/login/", wait_until="domcontentloaded", timeout=30_000)
             try:
-                await page.wait_for_function(
-                    "() => !['just a moment','checking','verifying','cloudflare']"
-                    ".some(k => document.title.toLowerCase().includes(k))",
-                    timeout=90_000, polling=2000,
-                )
-                title = await page.title()
-                print(f"  Challenge résolu. Title: {title!r}")
-            except Exception:
-                raise RuntimeError(
-                    f"Cloudflare challenge non résolu après 90s (URL: {page.url})"
-                )
-
-        # Tenter le login via l'API depuis le browser context (cookie CF clearance déjà présent)
-        _js_login = """async ({email, password}) => {
-            const endpoints = [
-                '/api/v1/auth/login/',
-                '/api/auth/login/',
-                '/api/v1/token/',
-                '/api/token/',
-            ];
-            const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
-            for (const ep of endpoints) {
-                try {
-                    const r = await fetch(ep, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrf,
-                        },
-                        body: JSON.stringify({email, password}),
-                        credentials: 'include',
-                    });
-                    if (r.status === 200) return {ok: true, status: r.status, ep};
-                    if (r.status === 400 || r.status === 401)
-                        return {ok: false, bad_creds: true, status: r.status, ep};
-                } catch(e) {}
-            }
-            return {ok: false, bad_creds: false, status: 0};
-        }"""
-        try:
-            res = await page.evaluate(_js_login, {"email": creds["user"], "password": creds["pass"]})
-            print(f"  API login result: {res}")
-            if res.get("ok"):
-                return  # succès
-            if res.get("bad_creds"):
-                raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
-        except RuntimeError:
-            raise
-        except Exception as js_err:
-            print(f"  API evaluate échoué ({js_err}) — fallback formulaire…")
-
-        # Fallback : remplir le formulaire HTML
-        _email_sel = (
-            "input[type='email'], input[name='email'], "
-            "input[name='username'], input[type='text']"
-        )
-        try:
-            await page.wait_for_selector(_email_sel, timeout=20_000)
-        except Exception:
-            try:
-                inputs_info = await page.evaluate(
+                page.wait_for_selector(_email_sel, timeout=20_000)
+            except PWTimeout:
+                inputs_info = page.evaluate(
                     "() => Array.from(document.querySelectorAll('input'))"
                     ".map(i=>({type:i.type,name:i.name,id:i.id}))"
                 )
                 print(f"  [debug] inputs: {inputs_info}")
-                snippet = (await page.content())[:1500]
-                print(f"  [debug] content: {snippet}")
-            except Exception:
-                pass
-            raise RuntimeError(
-                f"Formulaire de login introuvable (URL: {page.url} — Cloudflare ?)"
-            )
-
-        print(f"  Formulaire trouvé. URL: {page.url}")
-        await page.locator(_email_sel).first.fill(creds["user"])
-        await page.locator("input[type='password']").first.fill(creds["pass"])
-        await page.locator("input[type='password']").first.press("Enter")
-
-        try:
-            await page.wait_for_url("**/dashboard**", timeout=20_000)
-        except Exception:
-            try:
-                await page.wait_for_function(
-                    "() => !window.location.pathname.includes('/login')",
-                    timeout=15_000,
+                raise RuntimeError(
+                    f"Formulaire de login introuvable (URL: {page.url} — Cloudflare ?)"
                 )
-            except Exception:
-                pass
-
-        url = page.url
-        ok  = "/login" not in url
+            print(f"  Formulaire trouvé. URL: {page.url}")
+            page.locator(_email_sel).first.fill(creds["user"])
+            page.locator("input[type='password']").first.fill(creds["pass"])
+            page.locator("input[type='password']").first.press("Enter")
+            try:
+                page.wait_for_url("**/dashboard**", timeout=20_000)
+            except PWTimeout:
+                try:
+                    page.wait_for_function(
+                        "() => !window.location.pathname.includes('/login')",
+                        timeout=15_000,
+                    )
+                except PWTimeout:
+                    pass
+            final_url = page.url
+            ok = "/login" not in final_url
+        finally:
+            browser.close()
 
     if not ok:
-        raise RuntimeError(f"Identifiants DIGIPHARMACIE incorrects (URL finale : {url})")
-
-
-def test_digipharmacie(creds: dict):
-    asyncio.run(_test_digipharmacie_async(creds))
+        raise RuntimeError(f"Identifiants DIGIPHARMACIE incorrects (URL finale : {final_url[:80]})")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
