@@ -7575,10 +7575,12 @@ async function saveProfile() {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
     if (saved.connectors) {
-      const osp  = saved.connectors.ospharm      || {};
-      const digi = saved.connectors.digipharmacie || {};
-      state.connectors.ospharm      = { user: osp.user  || '', pass: osp.pass  || '', connected: !!osp.connected };
-      state.connectors.digipharmacie = { user: digi.user || '', pass: digi.pass || '', connected: !!digi.connected };
+      const osp  = saved.connectors.ospharm        || {};
+      const digi = saved.connectors.digipharmacie   || {};
+      const conc = saved.connectors.concentrateur   || {};
+      state.connectors.ospharm        = { user: osp.user  || '', pass: osp.pass  || '', connected: !!osp.connected };
+      state.connectors.digipharmacie  = { user: digi.user || '', pass: digi.pass || '', connected: !!digi.connected };
+      state.connectors.concentrateur  = { user: conc.user || '', pass: conc.pass || '', connected: !!conc.connected, type: conc.type || 'fse' };
 
       // Duplication vers la colonne connectors (source de vérité des GitHub Actions)
       // En arrière-plan au démarrage : garantit la cohérence même si saveCloudState avait timeout
@@ -7586,7 +7588,7 @@ async function saveProfile() {
         try {
           const { data: { session: _s } } = await window._sbClient.auth.getSession();
           if (!_s) return;
-          for (const [ck, cr] of [['ospharm', state.connectors.ospharm], ['digipharmacie', state.connectors.digipharmacie]]) {
+          for (const [ck, cr] of [['ospharm', state.connectors.ospharm], ['digipharmacie', state.connectors.digipharmacie], ['concentrateur', state.connectors.concentrateur]]) {
             if (!cr?.user || !cr?.pass) continue;
             await window._sbClient.rpc('upsert_connector', {
               p_user_id:   _s.user.id,
