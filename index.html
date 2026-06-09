@@ -8652,7 +8652,7 @@ function initConnecteurModal() {
         if (job.status === 'done') {
           _setJobStatusEl(elId, 'done', '');
         } else if (job.status === 'running') {
-          _setJobStatusEl(elId, 'running', job.message ? `⏳ ${job.message}` : '⏳ En cours…');
+          _setJobStatusEl(elId, 'running', '');
         } else if (job.status === 'error') {
           _setJobStatusEl(elId, 'error', `❌ ${job.error || 'erreur'}`);
         }
