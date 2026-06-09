@@ -1527,6 +1527,48 @@
     </div>
   </div>
 
+<!-- ── Modal config contrat labo ── -->
+<div id="verifLabModal" style="display:none;position:fixed;inset:0;z-index:9800;background:rgba(4,6,15,.88);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);padding:28px;width:min(400px,92vw);position:relative">
+    <button onclick="_verifCloseLabModal()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;line-height:1">&times;</button>
+    <div id="verifModalTitle" style="font-family:'Orbitron',monospace;font-size:13px;font-weight:900;color:var(--cyan);letter-spacing:3px;margin-bottom:22px;text-align:center"></div>
+    <div style="margin-bottom:16px">
+      <div class="verif-contract-label" style="margin-bottom:7px">TYPE DE CONTRAT</div>
+      <div id="verifModalTypeBtns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+    <div style="margin-bottom:24px">
+      <div class="verif-contract-label" style="margin-bottom:7px">DATE DU CONTRAT</div>
+      <input type="date" id="verifModalDate" class="verif-date-input" style="width:160px">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button onclick="_verifSaveLabModal()" class="conn-save" style="margin-top:0">ENREGISTRER</button>
+      <button id="verifModalRemoveBtn" onclick="_verifRemoveLabModal()" style="display:none;font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:1.5px;padding:7px;cursor:pointer;background:transparent;border:1px solid var(--red);color:var(--red);width:100%;transition:all .2s">RETIRER CE LABO</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal info CGV / calcul remises ── -->
+<div id="verifInfoModal" style="display:none;position:fixed;inset:0;z-index:9800;background:rgba(4,6,15,.88);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);padding:28px;width:min(580px,92vw);position:relative;max-height:88vh;overflow-y:auto">
+    <button onclick="_verifCloseInfoModal()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;line-height:1">&times;</button>
+    <div style="font-family:'Orbitron',monospace;font-size:13px;font-weight:900;color:var(--cyan);letter-spacing:3px;margin-bottom:20px;text-align:center">◈ AIDE &amp; DÉFINITIONS</div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.8;color:var(--text)">
+      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">R2 — REMISE DE FIN DE PÉRIODE (RDP)</div>
+      <p style="color:var(--text-dim);margin:0 0 16px">Exonérée de TVA (art. 267-II-1° CGI) : le montant RDP est hors champ TVA → HT = TTC. L'avoir grossiste R2 est directement déductible du PA.</p>
+      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">R3 — PRESTATION DE COOPÉRATION COMMERCIALE</div>
+      <p style="color:var(--text-dim);margin:0 0 16px">Soumise à TVA 20% : la facture est émise en HT par le labo, le virement bancaire reçu est en TTC (HT × 1,20). Les colonnes affichent les deux montants pour pointer avec le relevé bancaire.</p>
+      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">PALIER ACTIF — SÉLECTION AUTOMATIQUE (VENTES N-1)</div>
+      <p style="color:var(--text-dim);margin:0 0 16px">Le palier de remise retenu est déterminé automatiquement à partir du CA réalisé l'année précédant le contrat (toutes sources : OSPHARM + achat direct + grossiste). Le seuil CA le plus élevé atteint est appliqué.</p>
+      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">PRORATA GÉNÉ. N°1</div>
+      <p style="color:var(--text-dim);margin:0 0 16px">Pour un contrat N°1 démarrant en cours d'année, le seuil CA annuel est proraté au nombre de mois restants (ex. contrat en mars → 10/12 du seuil).</p>
+      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">RÈGLE 80% — DÉCLENCHEMENT R3</div>
+      <p style="color:var(--text-dim);margin:0 0 16px">La prestation coopérative mensuelle est versée si CA du mois ≥ 80% de la cible mensuelle, OU si la moyenne cumulée Jan→M ≥ 80%. Versement en M+2. Les mois bloqués s'accumulent et sont soldés en mars/avril N+1.</p>
+      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">LECTURE DES ÉCARTS</div>
+      <p style="color:var(--text-dim);margin:0 0 0">Rouge = remise sous-payée par le labo · Vert = sur-payée. L'écart compare la remise estimée (R2 moyen × CA) à la remise effectivement reçue (avoirs Digipharmacie).</p>
+    </div>
+  </div>
+</div>
+
   <div class="bp-toast" id="bpToast"></div>
 
 
@@ -1647,7 +1689,7 @@ let state = {
   _grossisteUploads: [],
   _grossisteMonthStats: null,
   _fseMonthStats: null,
-  verifContracts: {},  // { labKey: { active, type, startDate, condYear, condIdx } }
+  verifContracts: {},  // { labKey: { active, type, startDate } }
 };
 
 
@@ -4648,9 +4690,9 @@ function _verifGetCond(labDisplay, year, month) {
   const contract = state.verifContracts?.[labDisplay];
   const lp = (state.labPages || []).find(p => p.selectedLab === labDisplay);
   if (!lp) return null;
-  const condYear = contract?.condYear || year;
+  const condYear = (contract?.startDate ? new Date(contract.startDate).getFullYear() : null) || year;
   const conds    = getEffectiveCondsForMonth(lp, condYear, month);
-  const idx      = contract?.condIdx ?? (condYear === 2025 ? (lp.activeCondIdx2025 ?? 0) : (lp.activeCondIdx ?? 0));
+  const idx      = _verifAutoCondIdx(labDisplay, condYear, conds);
   return conds?.[idx] ?? conds?.[0] ?? null;
 }
 
@@ -4661,21 +4703,7 @@ function _verifR2avg(cond) {
   return vals.reduce((s, r) => s + parseFloat(r.remise2), 0) / vals.length;
 }
 
-// Liste des conditions d'un labo pour le dropdown
-function _verifLabCondsForDropdown(lab, condYear) {
-  const lp = (state.labPages || []).find(p => p.selectedLab === lab);
-  if (!lp) return [];
-  const conds = condYear === 2025
-    ? (lp._baseConds2025 || lp.conditions2025 || [])
-    : (lp._baseConds2026 || lp.conditions     || []);
-  return conds.map((c, i) => ({
-    idx: i,
-    label: [
-      c.remiseGlobale != null ? c.remiseGlobale + '%' : null,
-      c.caCondition   != null ? 'Seuil ' + (+c.caCondition).toLocaleString('fr') + ' €' : null,
-    ].filter(Boolean).join(' — ') || `Condition ${i+1}`,
-  }));
-}
+// Liste des conditions d'un labo pour le dropdow
 
 // Mois de contrat dans l'année pour la proratisation (N°1 uniquement)
 function _verifProrataMonths(startDateStr, year) {
@@ -4685,6 +4713,23 @@ function _verifProrataMonths(startDateStr, year) {
   if (d.getFullYear() > year) return 0;
   if (d.getFullYear() < year) return 12;
   return 12 - d.getMonth(); // getMonth() 0-based : janv=0 → 12 mois
+}
+function _verifAutoCondIdx(lab, condYear, conds) {
+  if (!conds || conds.length <= 1) return 0;
+  const prevYear = condYear - 1;
+  const normKey  = _verifNormLab(lab);
+  let caPrev = 0;
+  const mksY = mk => mk.startsWith(prevYear + '-');
+  Object.entries(state._monthStats          || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) => {
+    const r = (arr||[]).find(r => _verifNormLab(r.labo) === normKey); if (r) caPrev += r.ca_brut   || 0; });
+  Object.entries(state._digiMonthStats      || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) => {
+    const r = (arr||[]).find(r => _verifNormLab(r.labo) === normKey); if (r) caPrev += r.total_ht  || 0; });
+  Object.entries(state._grossisteMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) => {
+    const r = (arr||[]).find(r => _verifNormLab(r.labo) === normKey); if (r) caPrev += r.total_ht  || 0; });
+  const sorted = conds.map((c, i) => ({ i, ca: parseFloat(c.caCondition) || 0 }))
+    .filter(x => x.ca > 0).sort((a, b) => b.ca - a.ca);
+  for (const { i, ca } of sorted) { if (caPrev >= ca) return i; }
+  return 0;
 }
 
 function renderVerificateur() {
@@ -4697,78 +4742,27 @@ function renderVerificateur() {
   // ── Grille des labos ──────────────────────────────────────────────────────
   const labBtns = LABS_ALL.map(lab => {
     const isOn = !!activeContracts[lab]?.active;
-    return `<button class="verif-lab-btn${isOn?' active':''}" onclick="_verifToggleLab('${escH(lab)}')">${escH(lab)}</button>`;
-  }).join('');
-
-  // ── Panneaux de configuration ──────────────────────────────────────────────
-  const configCards = LABS_ALL.filter(lab => activeContracts[lab]?.active).map(lab => {
     const c    = activeContracts[lab];
-    const type = c.type || 'N1';
-    const cy   = c.condYear || new Date().getFullYear();
-    const opts = _verifLabCondsForDropdown(lab, cy);
-    const prorMo = (type === 'N1') ? _verifProrataMonths(c.startDate, cy) : 12;
-    const prorBadge = (type === 'N1' && c.startDate && prorMo < 12)
-      ? `<span class="verif-prorate-badge">Prorata ${prorMo}/12 mois</span>` : '';
-
-    const typeButtons = [
-      { key:'N1', lbl:'GÉNÉ. N°1' },
-      { key:'N2', lbl:'GÉNÉ. N°2' },
-      { key:'GROSSISTE', lbl:'GROSSISTE' },
-    ].map(t => `<button class="verif-type-btn${type===t.key?' active':''}" onclick="_verifSetContractType('${lab}','${t.key}')">${t.lbl}</button>`).join('');
-
-    const yearBtns = [2025,2026].map(y =>
-      `<button class="verif-type-btn${cy===y?' active':''}" onclick="_verifSetContractYear('${lab}',${y})">${y}</button>`
-    ).join('');
-
-    const condSel = !opts.length
-      ? `<span style="color:var(--amber);font-family:'Share Tech Mono',monospace;font-size:11px">Configurez ce labo dans « Mes Conditions Labo »</span>`
-      : `<select class="verif-cond-select" onchange="_verifSetContractCond('${lab}',+this.value)">
-           ${opts.map(o => `<option value="${o.idx}"${(c.condIdx??0)===o.idx?' selected':''}>${escH(o.label)}</option>`).join('')}
-         </select>`;
-
-    return `<div class="verif-contract-card">
-      <div class="verif-contract-title">
-        <span>◈ ${escH(lab)}</span>
-        <div style="display:flex;align-items:center;gap:8px">
-          ${prorBadge}
-          <button class="verif-type-btn" onclick="_verifToggleLab('${lab}')" style="font-size:9px;padding:2px 8px;border-color:var(--red);color:var(--red)">✕ RETIRER</button>
-        </div>
-      </div>
-      <div class="verif-contract-fields">
-        <div class="verif-contract-field">
-          <span class="verif-contract-label">TYPE DE CONTRAT</span>
-          <div>${typeButtons}</div>
-        </div>
-        ${type === 'N1' ? `<div class="verif-contract-field">
-          <span class="verif-contract-label">DÉBUT DE CONTRAT</span>
-          <input type="date" class="verif-date-input" value="${c.startDate||''}" onchange="_verifSetContractDate('${lab}',this.value)">
-        </div>` : ''}
-        <div class="verif-contract-field">
-          <span class="verif-contract-label">ANNÉE CONDITIONS</span>
-          <div>${yearBtns}</div>
-        </div>
-        <div class="verif-contract-field">
-          <span class="verif-contract-label">CONDITION (depuis Mes Conditions Labo)</span>
-          ${condSel}
-        </div>
-      </div>
-    </div>`;
+    const badge = isOn && c?.type
+      ? `<span style="font-size:8px;opacity:.65;margin-left:4px">${c.type === 'N1' ? '№1' : c.type === 'N2' ? '№2' : 'GR'}</span>`
+      : '';
+    return `<button class="verif-lab-btn${isOn?' active':''}" onclick="_verifOpenLabModal('${escH(lab)}')">${escH(lab)}${badge}</button>`;
   }).join('');
 
-  // ── Tabs ──────────────────────────────────────────────────────────────────
+  // ── Tabs ────────────────────────────────────────────────────────────────────────
   tb.innerHTML = `
     <button class="verif-tab-btn${_verifTab==='mensuel'   ?' active':''}" onclick="verifSetTab('mensuel')">MENSUEL</button>
     <button class="verif-tab-btn${_verifTab==='annuel'    ?' active':''}" onclick="verifSetTab('annuel')">ANNUEL YTD</button>
     <button class="verif-tab-btn${_verifTab==='suivi_r3'  ?' active':''}" onclick="verifSetTab('suivi_r3')">SUIVI R3</button>
     <button class="verif-tab-btn${_verifTab==='fse_banque'?' active':''}" onclick="verifSetTab('fse_banque')" style="position:relative">FSE BANQUE${state._fseMonthStats && Object.keys(state._fseMonthStats).length ? '<span style="position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--green)"></span>' : ''}</button>
+    <button class="verif-tab-btn" onclick="_verifOpenInfoModal()" style="margin-left:auto;color:var(--cyan-dim);font-size:14px;padding-bottom:9px" title="Aide &amp; définitions">ℹ</button>
   `;
 
   cnt.innerHTML = `
-    <div style="margin-bottom:12px">
-      <div class="verif-contract-label" style="margin-bottom:6px">LABOS GÉNÉRIQUEURS — cliquer pour activer/désactiver</div>
+    <div style="margin-bottom:16px">
+      <div class="verif-contract-label" style="margin-bottom:7px">LABOS — cliquer pour configurer un contrat</div>
       <div class="verif-lab-grid">${labBtns}</div>
     </div>
-    ${configCards ? `<div style="margin-bottom:16px">${configCards}</div>` : ''}
     <div id="verifAnalysis"></div>
   `;
   _verifRenderAnalysis();
@@ -4776,35 +4770,66 @@ function renderVerificateur() {
 
 function verifSetTab(t) { _verifTab = t; renderVerificateur(); }
 
-function _verifToggleLab(lab) {
-  const c = state.verifContracts?.[lab];
-  if (c?.active) {
-    state.verifContracts[lab] = { ...c, active: false };
-  } else {
-    const yr = new Date().getFullYear();
-    state.verifContracts[lab] = { active: true, type: 'N1', startDate: `${yr}-01-01`, condYear: yr, condIdx: 0 };
-  }
+let _verifModalLab  = null;
+let _verifModalType = 'N1';
+
+function _verifOpenLabModal(lab) {
+  _verifModalLab  = lab;
+  const c         = state.verifContracts?.[lab] || {};
+  _verifModalType = c.type || 'N1';
+  const yr = new Date().getFullYear();
+  document.getElementById('verifModalTitle').textContent = '\u25c8 ' + lab;
+  document.getElementById('verifModalDate').value  = c.startDate || `${yr - 1}-01-01`;
+  document.getElementById('verifModalRemoveBtn').style.display = c.active ? '' : 'none';
+  _verifUpdateModalTypeBtns();
+  document.getElementById('verifLabModal').style.display = 'flex';
+}
+
+function _verifUpdateModalTypeBtns() {
+  const div = document.getElementById('verifModalTypeBtns'); if (!div) return;
+  div.innerHTML = [['N1','GÉNÉ. N°1'],['N2','GÉNÉ. N°2'],['GROSSISTE','GROSSISTE']].map(([k, l]) =>
+    `<button class="verif-type-btn${_verifModalType===k?' active':''}" onclick="_verifModalPickType('${k}')">${l}</button>`
+  ).join('');
+}
+
+function _verifModalPickType(t) { _verifModalType = t; _verifUpdateModalTypeBtns(); }
+
+function _verifCloseLabModal() {
+  document.getElementById('verifLabModal').style.display = 'none';
+  _verifModalLab = null;
+}
+
+function _verifSaveLabModal() {
+  if (!_verifModalLab) return;
+  const dateVal = document.getElementById('verifModalDate').value;
+  state.verifContracts = state.verifContracts || {};
+  state.verifContracts[_verifModalLab] = {
+    ...(state.verifContracts[_verifModalLab] || {}),
+    active: true, type: _verifModalType, startDate: dateVal,
+  };
+  _verifCloseLabModal();
   saveState(); renderVerificateur();
 }
-function _verifSetContractType(lab, type) {
-  state.verifContracts[lab] = { ...(state.verifContracts[lab]||{}), type };
+
+function _verifRemoveLabModal() {
+  if (!_verifModalLab) return;
+  state.verifContracts[_verifModalLab] = { ...(state.verifContracts[_verifModalLab] || {}), active: false };
+  _verifCloseLabModal();
   saveState(); renderVerificateur();
 }
-function _verifSetContractDate(lab, val) {
-  state.verifContracts[lab] = { ...(state.verifContracts[lab]||{}), startDate: val };
-  saveState(); renderVerificateur();
+
+function _verifOpenInfoModal() {
+  document.getElementById('verifInfoModal').style.display = 'flex';
 }
-function _verifSetContractYear(lab, yr) {
-  state.verifContracts[lab] = { ...(state.verifContracts[lab]||{}), condYear: yr, condIdx: 0 };
-  saveState(); renderVerificateur();
-}
-function _verifSetContractCond(lab, idx) {
-  state.verifContracts[lab] = { ...(state.verifContracts[lab]||{}), condIdx: idx };
-  saveState(); _verifRenderAnalysis();
+
+function _verifCloseInfoModal() {
+  document.getElementById('verifInfoModal').style.display = 'none';
 }
 
 function _verifRenderAnalysis() {
   const wrap = document.getElementById('verifAnalysis'); if (!wrap) return;
+  const hasActive = Object.values(state.verifContracts || {}).some(c => c.active);
+  if (!hasActive) { wrap.innerHTML = ''; return; }
   if      (_verifTab === 'mensuel')    _verifRenderMensuel(wrap);
   else if (_verifTab === 'annuel')     _verifRenderAnnuel(wrap);
   else if (_verifTab === 'fse_banque') _verifRenderFseBanque(wrap);
@@ -4931,7 +4956,7 @@ function _verifFillMensuel(mk) {
 
   const mkLabel = (mkM >= 1 && mkM <= 12) ? `${_MONTH_LABELS[mkM-1]} ${String(mkY).slice(2)}` : mk;
   wrap.innerHTML = `
-    <div class="verif-note">// R2 hors TVA (RDP, art. 267-II CGI) — HT = TTC · R3 coop TVA 20% — virement en TTC · Écart rouge = sous-payé, vert = sur-payé — ${escH(mkLabel)}</div>
+    <div class="verif-note">◈ ${escH(mkLabel)}</div>
     <div style="overflow-x:auto">
       <table class="verif-tbl">
         <thead><tr>
@@ -5088,7 +5113,7 @@ function _verifFillAnnuel(year) {
   }).filter(Boolean).join('');
 
   wrap.innerHTML = `
-    <div class="verif-note">// CA = CA brut OSPHARM + PA net direct/grossiste · Condition = seuil caCondition négocié · Projection sur ${12} mois</div>
+
     <div style="overflow-x:auto">
       <table class="verif-tbl">
         <thead><tr>
@@ -5137,7 +5162,7 @@ function _verifRenderSuiviR3(cnt) {
 
   cnt.innerHTML = `
     <div style="display:flex;gap:8px;margin-bottom:14px">${yBtns}</div>
-    <div class="verif-note">// Règle 80% : versement R3 déclenché si CA mensuel ≥ 80% de la cible mensuelle, OU si la moyenne cumulée Jan→M ≥ 80% · Versement en M+2 · Solde annuel en mars/avril N+1</div>
+
     <div id="verifR3Wrap"></div>
   `;
   _verifFillSuiviR3(_verifYear);
