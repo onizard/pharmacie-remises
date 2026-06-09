@@ -4944,7 +4944,7 @@ function _verifFillAnnualSummary(year) {
   // ── Accumulation des achats ────────────────────────────────────────────
   const labAcc = {};
   const acc = (k, display) => {
-    if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0 };
+    if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0, rdp:0 };
   };
 
   Object.entries(state._monthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
@@ -4957,7 +4957,8 @@ function _verifFillAnnualSummary(year) {
   Object.entries(state._digiMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
-      labAcc[k].pa_di += r.total_ht || 0;
+      labAcc[k].pa_di += r.total_ht  || 0;
+      labAcc[k].rdp   += r.rdp_total || 0;
     })
   );
   Object.entries(state._grossisteMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
@@ -5007,7 +5008,7 @@ function _verifFillAnnualSummary(year) {
     const r2est   = r2avg  != null ? pa_tot * r2avg  / 100       : 0;
     const r3estTTC= r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : 0;
     const remAtt  = r2est + r3estTTC;
-    const remRec  = fseAcc[k] || 0;
+    const remRec  = (d.rdp || 0) + (fseAcc[k] || 0);
     const gap     = remAtt > 0 ? remAtt - remRec : null;
 
     totPa  += pa_tot;
