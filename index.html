@@ -1399,16 +1399,10 @@
             <div class="conn-ring-pct" id="concProgPct"></div>
           </div>
           <div class="conn-connected-view" id="concConnView" style="display:none">
-            <div class="conn-check-big" id="concCheckBig"><span class="conn-check-tick">✓</span></div>
-            <div class="conn-connected-name" id="concConnName">CONCENTRATEUR</div>
-            <div class="conn-job-status" id="concJobStatus" style="font-size:10px;color:var(--text-dim);max-width:260px;text-align:center"></div>
-            <div style="display:flex;flex-direction:column;gap:8px;align-items:center;width:100%">
-              <button class="conn-test-btn" id="concLaunchBtn" style="border-color:var(--cyan);color:var(--cyan)">LANCER L'EXPORT FSE</button>
-              <div style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:.5px;text-align:center">
-                ou déposez le XLSX manuellement<br>dans la dropzone ci-dessus
-              </div>
-              <button class="conn-change-link" id="concReconnectBtn">RECONNECTER</button>
-            </div>
+            <div class="conn-check-big" id="concCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
+            <div class="conn-connected-name" id="concConnName">OSPHARM FSE</div>
+            <div class="conn-job-status" id="concJobStatus"></div>
+            <button class="conn-test-btn" id="concReconnectBtn">RECONNECTER</button>
           </div>
         </div>
         <!-- OSPHARM -->
@@ -8846,34 +8840,6 @@ function initConnecteurModal() {
 
   // Enregistrement simple des credentials (pas de test API - vérification au premier export)
   document.getElementById('concTest').addEventListener('click', () => connectConn('concentrateur', 'conc'));
-
-  // Bouton LANCER L'EXPORT FSE → via API Render (qui dispatch GitHub Actions avec GH_TOKEN)
-  document.getElementById('concLaunchBtn')?.addEventListener('click', async () => {
-    const btn    = document.getElementById('concLaunchBtn');
-    const statEl = document.getElementById('concJobStatus');
-    btn.disabled = true;
-    if (statEl) { statEl.textContent = '⏳ Lancement…'; statEl.style.color = 'var(--amber)'; }
-
-    try {
-      const { data: { session } } = await window._sbClient.auth.getSession();
-      const token = session?.access_token || '';
-      if (!token) throw new Error('Session expirée');
-
-      const resp = await fetch(`${API_URL}/run/fse-export`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.detail || `HTTP ${resp.status}`); }
-
-      const _now = new Date();
-      const dateFrom = `${_now.getFullYear() - 1}-01-01`;
-      const dateTo   = _now.toISOString().slice(0, 10);
-      if (statEl) { statEl.textContent = ''; }
-    } catch(e) {
-      if (statEl) { statEl.textContent = `❌ ${e.message || String(e)}`; statEl.style.color = 'var(--red)'; }
-    }
-    btn.disabled = false;
-  });
 
   document.getElementById('concReconnectBtn').addEventListener('click', () => {
     const c = state.connectors.concentrateur || {};
