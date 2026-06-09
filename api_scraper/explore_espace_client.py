@@ -98,33 +98,41 @@ def _curl_login(creds: dict) -> dict:
 
 
 async def _explore(creds: dict):
-    from playwright.async_api import async_playwright
-
     api_calls = []
     pages_visited = []
+    session_cookies = {}
 
-    # ── Phase 1 : Login via curl_cffi (bypass Cloudflare) ─────────────────────
+    # ── Phase 1 : Login via curl_cffi (bypass Cloudflare, fast path) ──────────
     print("→ Login curl_cffi...")
-    session_cookies = _curl_login(creds)
-    print(f"  Cookies obtenus : {list(session_cookies.keys())}")
+    try:
+        session_cookies = _curl_login(creds)
+        print(f"  Cookies obtenus : {list(session_cookies.keys())}")
+    except Exception as e:
+        print(f"  curl_cffi échoué ({e}) — camoufox gérera le login")
 
-    _ARGS = [
-        "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
-        "--disable-extensions", "--disable-background-networking",
-        "--mute-audio", "--no-first-run",
-    ]
+    from camoufox.async_api import AsyncCamoufox
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=_ARGS)
+    proxy_cfg = None
+    if PROXY_URL:
+        import urllib.parse as _up
+        _p = _up.urlparse(PROXY_URL)
+        proxy_cfg = {
+            "server":   f"{_p.scheme}://{_p.hostname}:{_p.port}",
+            "username": _p.username or "",
+            "password": _p.password or "",
+        }
+
+    async with AsyncCamoufox(headless=True, proxy=proxy_cfg) as browser:
         context = await browser.new_context()
 
-        # Injecter les cookies curl_cffi dans Playwright
-        pw_cookies = [
-            {"name": k, "value": v, "domain": "app.digipharmacie.fr", "path": "/"}
-            for k, v in session_cookies.items()
-        ]
-        await context.add_cookies(pw_cookies)
-        print(f"  {len(pw_cookies)} cookies injectés dans Playwright")
+        # Injecter les cookies curl_cffi dans camoufox si login a réussi
+        if session_cookies:
+            pw_cookies = [
+                {"name": k, "value": v, "domain": "app.digipharmacie.fr", "path": "/"}
+                for k, v in session_cookies.items()
+            ]
+            await context.add_cookies(pw_cookies)
+            print(f"  {len(pw_cookies)} cookies injectés")
 
         # Intercepte toutes les réponses JSON des appels API
         async def on_response(response):
@@ -145,11 +153,20 @@ async def _explore(creds: dict):
         page = await context.new_page()
         page.on("response", on_response)
 
-        # ── Vérifier la connexion ──────────────────────────────────────────────
-        print("→ Vérification session Playwright...")
-        await page.goto(f"{BASE_URL}/", timeout=20000)
+        # ── Login direct camoufox si curl_cffi a échoué ───────────────────────
+        print("→ Navigation vers /...")
+        await page.goto(f"{BASE_URL}/", timeout=30000)
         await page.wait_for_load_state("networkidle", timeout=10000)
-        print(f"  URL après goto / : {page.url}")
+        print(f"  URL : {page.url}")
+
+        if "/login" in page.url:
+            print("→ Login camoufox (curl_cffi n'a pas fonctionné)...")
+            await page.fill("input[type=email], input[name=email]", creds["user"])
+            await page.fill("input[type=password]", creds["pass"])
+            await page.keyboard.press("Enter")
+            await page.wait_for_url(f"**{BASE_URL}/**", timeout=20000)
+            print(f"  Connecté : {page.url}")
+
         pages_visited.append({"label": "home", "url": page.url})
 
         # ── Navigate to Achats ─────────────────────────────────────────────────
@@ -204,7 +221,6 @@ async def _explore(creds: dict):
         }""")
 
         await context.close()
-        await browser.close()
 
     return {
         "pages_visited": pages_visited,
