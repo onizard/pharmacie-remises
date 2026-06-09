@@ -176,6 +176,11 @@ def _ospharm_playwright_login(username: str, password: str, success_domain: str,
         finally:
             browser.close()
     if not ok:
+        import urllib.parse as _up2
+        _qs = _up2.parse_qs(_up2.urlparse(final_url).query)
+        _kc_err = _qs.get("error", [""])[0] or _qs.get("error_description", [""])[0]
+        if _kc_err:
+            raise RuntimeError(f"Identifiants OSPHARM incorrects (Keycloak : {_kc_err[:60]})")
         raise RuntimeError(f"Identifiants incorrects (URL finale : {final_url[:80]})")
 
 
