@@ -52,21 +52,61 @@ def _save_result(result: dict):
     print("  ✅ Résultats sauvegardés dans state_json.digi_espace_client_explore")
 
 
+def _curl_login(creds: dict) -> dict:
+    """Login via curl_cffi (bypass Cloudflare). Retourne les cookies de session."""
+    from curl_cffi import requests as cffi_requests
+    proxy_kw = {"proxy": PROXY_URL} if PROXY_URL else {}
+    session = cffi_requests.Session(impersonate="chrome124")
+
+    r = session.get(f"{BASE_URL}/login/", headers={
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9",
+    }, timeout=25, allow_redirects=True, **proxy_kw)
+    print(f"  curl GET /login/ → {r.status_code}  body={len(r.text)}b")
+
+    csrf = session.cookies.get("csrftoken", "")
+    if not csrf:
+        raise RuntimeError(f"Pas de CSRF cookie (Cloudflare ? HTTP {r.status_code})")
+
+    for ep in ["/api/v1/auth/login/", "/api/auth/login/", "/api/v1/token/"]:
+        rp = session.post(f"{BASE_URL}{ep}",
+                          json={"email": creds["user"], "password": creds["pass"]},
+                          headers={
+                              "Accept": "application/json",
+                              "Content-Type": "application/json",
+                              "X-CSRFToken": csrf,
+                              "Referer": f"{BASE_URL}/login/",
+                              "Origin": BASE_URL,
+                          }, timeout=15, allow_redirects=False, **proxy_kw)
+        print(f"  curl POST {ep} → {rp.status_code}")
+        if rp.status_code == 200:
+            return dict(session.cookies)
+        if rp.status_code in (400, 401):
+            raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
+
+    # Fallback form POST
+    rp = session.post(f"{BASE_URL}/login/",
+                      data={"email": creds["user"], "password": creds["pass"],
+                            "csrfmiddlewaretoken": csrf},
+                      headers={"Content-Type": "application/x-www-form-urlencoded",
+                                "Referer": f"{BASE_URL}/login/"},
+                      timeout=15, allow_redirects=True, **proxy_kw)
+    print(f"  curl form POST /login/ → {rp.status_code}  url={rp.url}")
+    if "/login" not in rp.url:
+        return dict(session.cookies)
+    raise RuntimeError("Login Digipharmacie échoué")
+
+
 async def _explore(creds: dict):
     from playwright.async_api import async_playwright
 
-    api_calls = []   # toutes les requêtes /api/*
+    api_calls = []
     pages_visited = []
 
-    proxy_cfg = None
-    if PROXY_URL:
-        import urllib.parse as _up
-        _p = _up.urlparse(PROXY_URL)
-        proxy_cfg = {
-            "server":   f"{_p.scheme}://{_p.hostname}:{_p.port}",
-            "username": _p.username or "",
-            "password": _p.password or "",
-        }
+    # ── Phase 1 : Login via curl_cffi (bypass Cloudflare) ─────────────────────
+    print("→ Login curl_cffi...")
+    session_cookies = _curl_login(creds)
+    print(f"  Cookies obtenus : {list(session_cookies.keys())}")
 
     _ARGS = [
         "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
@@ -75,8 +115,16 @@ async def _explore(creds: dict):
     ]
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=_ARGS, proxy=proxy_cfg)
+        browser = await p.chromium.launch(headless=True, args=_ARGS)
         context = await browser.new_context()
+
+        # Injecter les cookies curl_cffi dans Playwright
+        pw_cookies = [
+            {"name": k, "value": v, "domain": "app.digipharmacie.fr", "path": "/"}
+            for k, v in session_cookies.items()
+        ]
+        await context.add_cookies(pw_cookies)
+        print(f"  {len(pw_cookies)} cookies injectés dans Playwright")
 
         # Intercepte toutes les réponses JSON des appels API
         async def on_response(response):
@@ -97,16 +145,12 @@ async def _explore(creds: dict):
         page = await context.new_page()
         page.on("response", on_response)
 
-        # ── Login ──────────────────────────────────────────────────────────────
-        print("→ Login...")
-        await page.goto(f"{BASE_URL}/login/", timeout=30000)
-        await page.wait_for_selector("input[type=email], input[name=email]", timeout=10000)
-        await page.fill("input[type=email], input[name=email]", creds["user"])
-        await page.fill("input[type=password]", creds["pass"])
-        await page.keyboard.press("Enter")
-        await page.wait_for_url(f"**{BASE_URL}/**", timeout=20000)
-        print(f"  Connecté : {page.url}")
-        pages_visited.append({"label": "login", "url": page.url})
+        # ── Vérifier la connexion ──────────────────────────────────────────────
+        print("→ Vérification session Playwright...")
+        await page.goto(f"{BASE_URL}/", timeout=20000)
+        await page.wait_for_load_state("networkidle", timeout=10000)
+        print(f"  URL après goto / : {page.url}")
+        pages_visited.append({"label": "home", "url": page.url})
 
         # ── Navigate to Achats ─────────────────────────────────────────────────
         print("→ Navigation vers /achat/...")
