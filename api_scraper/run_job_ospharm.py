@@ -89,6 +89,8 @@ def _update_job(status: str, message: str = "", rows=None, error: str = "",
                 job["started_at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
             elif _existing_job.get("started_at"):
                 job["started_at"] = _existing_job["started_at"]
+            if status == "done":
+                job["completed_at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
             if period_start:
                 job["period_start"] = period_start
                 job["period_end"]   = period_end

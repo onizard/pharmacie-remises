@@ -7637,16 +7637,7 @@ async function saveProfile() {
       }
     }
     if (saved.connectors?.ospharm?.connected) {
-      // Re-scrape si données absentes, âgées de plus de 24h, ou si le mois courant manque
       const ageMs = state._monthSavedAt ? Date.now() - state._monthSavedAt : Infinity;
-      const _now = new Date();
-      const _curKey = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}`;
-      const _hasCurrentMonth = (state._monthMeta || []).some(
-        m => `${m.year}-${String(m.month).padStart(2, '0')}` === _curKey
-      );
-      const needsRefresh = !Object.keys(state._monthStats || {}).length
-        || ageMs > 24 * 3600 * 1000
-        || !_hasCurrentMonth;
       setTimeout(async () => {
         try {
           const { data: { session } } = await window._sbClient.auth.getSession();
@@ -7654,21 +7645,43 @@ async function saveProfile() {
           const { data: row } = await window._sbClient.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           const ospJob = row?.state_json?.ospharm_job;
+
           if (ospJob?.status === 'running') {
             const _jobAge = ospJob.started_at
               ? Date.now() - new Date(ospJob.started_at).getTime()
               : 0;
             if (_jobAge > 95 * 60 * 1000) {
-              // Job bloqué (>95 min, GH Actions timeout) — relancer proprement
               autoRunOspharm().catch(() => {});
             } else {
-              // Job encore en cours — rattacher le polling sans relancer
               state._ospJobRunning   = true;
               state._ospJobStartedAt = _jobAge > 0 ? Date.now() - _jobAge : (state._ospJobStartedAt || Date.now());
               state._ospJobMessage   = ospJob.message || '';
               autoRunOspharm('attach').catch(() => {});
             }
-          } else if (needsRefresh) {
+            return;
+          }
+
+          // Job terminé en base → restaurer les données sans relancer
+          if (ospJob?.status === 'done' && ospJob?.month_stats && Object.keys(ospJob.month_stats).length) {
+            const _completedAt = ospJob.completed_at ? new Date(ospJob.completed_at).getTime() : null;
+            const _jobAge2 = _completedAt ? Date.now() - _completedAt : (ageMs || Infinity);
+            if (Object.keys(state._monthStats || {}).length === 0) {
+              // Données absentes localement — les restaurer depuis le job
+              state._monthStats   = ospJob.month_stats;
+              state._monthMeta    = ospJob.month_meta || [];
+              state._monthSavedAt = _completedAt || Date.now();
+              saveState();
+              if (state.currentPageId === 'recap') renderRecap();
+            }
+            // Ne relancer que si les données ont plus de 24h
+            if (_jobAge2 > 24 * 3600 * 1000) {
+              autoRunOspharm().catch(() => {});
+            }
+            return;
+          }
+
+          // Aucune donnée en base ni en local → relancer
+          if (!Object.keys(state._monthStats || {}).length) {
             autoRunOspharm().catch(() => {});
           }
         } catch(_) {}
