@@ -1,0 +1,23 @@
+name: Explorer Espace Client Digipharmacie
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: 'Supabase user ID'
+        required: true
+
+jobs:
+  explore:
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Explorer Achats > Espaces clients
+        env:
+          USER_ID:              ${{ inputs.user_id }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          PROXY_URL:            ${{ secrets.PROXY_URL }}
+        run: python3 api_scraper/explore_espace_client.py
