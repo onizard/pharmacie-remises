@@ -4702,12 +4702,11 @@ function _verifR2avg(cond) {
   return vals.reduce((s, r) => s + parseFloat(r.remise2), 0) / vals.length;
 }
 
-// RSF (remise1) moyenne pondérée des paliers actifs
+// RSF% moyen pondéré des paliers actifs (abs(rsf_pct) des lignes non-exclues non-nulles)
 function _verifRSFavg(cond) {
-  if (cond?.remiseGlobale != null && parseFloat(cond.remiseGlobale) > 0) return parseFloat(cond.remiseGlobale);
-  const vals = (cond?.rsfValues || []).filter(r => !r.excluded && parseFloat(r.remise1) > 0);
+  const vals = (cond?.rsfValues || []).filter(r => !r.excluded && parseFloat(r.rsf_pct) !== 0);
   if (!vals.length) return null;
-  return vals.reduce((s, r) => s + parseFloat(r.remise1), 0) / vals.length;
+  return vals.reduce((s, r) => s + Math.abs(parseFloat(r.rsf_pct)), 0) / vals.length;
 }
 
 // Mois de contrat dans l'année pour la proratisation (N°1 uniquement)
