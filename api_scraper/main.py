@@ -1068,7 +1068,9 @@ async def _explore_async(creds: dict, user_id: str) -> dict:
         session = cffi_requests.Session(impersonate="chrome124")
         r = session.get(f"{BASE}/login/", headers={"Accept": "text/html,*/*", "Accept-Language": "fr-FR,fr;q=0.9"},
                         timeout=25, allow_redirects=True, **proxy_kw)
+        print(f"[explore] curl GET /login/ → {r.status_code} body={len(r.text)}b")
         csrf = session.cookies.get("csrftoken", "")
+        print(f"[explore] csrf={'ok' if csrf else 'MANQUANT'}")
         if csrf:
             for ep in ["/api/v1/auth/login/", "/api/auth/login/"]:
                 rp = session.post(f"{BASE}{ep}",
@@ -1090,6 +1092,9 @@ async def _explore_async(creds: dict, user_id: str) -> dict:
                     session_cookies = dict(session.cookies)
     except Exception:
         pass
+
+    from scraper import _ensure_camoufox
+    await _ensure_camoufox()
 
     async with AsyncCamoufox(headless=True, geoip=False) as browser:
         ctx  = await browser.new_context(**({"proxy": proxy_cfg} if proxy_cfg else {}))
@@ -1115,6 +1120,7 @@ async def _explore_async(creds: dict, user_id: str) -> dict:
         # Vérifier la session
         await page.goto(f"{BASE}/", timeout=30_000)
         await page.wait_for_load_state("networkidle", timeout=10_000)
+        print(f"[explore] camoufox / → {page.url}  title={await page.title()}")
         pages_visited.append({"label": "home", "url": page.url})
 
         # Login camoufox si pas de cookies
