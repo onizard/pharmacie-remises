@@ -4917,7 +4917,7 @@ function _verifFillAnnualSummary(year) {
   Object.entries(state._monthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
-      labAcc[k].pa_osp  += r.pa_net ?? ((r.ca_brut||0) - (r.remise_totale||0));
+      labAcc[k].pa_osp  += r.ca_brut || ((r.pa_net || 0) + (r.remise_totale || 0));
       labAcc[k].ca_brut += r.ca_brut || 0;
     })
   );
@@ -5054,7 +5054,7 @@ function _verifFillMonthDetail(mk) {
 
   const rows = keys.map(key => {
     const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
-    const pa_osp = osp.pa_net ?? ((osp.ca_brut||0) - (osp.remise_totale||0));
+    const pa_osp = osp.ca_brut || ((osp.pa_net || 0) + (osp.remise_totale || 0));
     const pa_tot = pa_osp + (digi.total_ht||0) + (gros.total_ht||0);
     if (pa_tot <= 0) return '';
 
@@ -5062,11 +5062,11 @@ function _verifFillMonthDetail(mk) {
     const cond    = _verifGetCond(labDisplay, mkY, mkM);
     const rsfData = _verifRsfFromStats(osp);
     const rsfPct  = rsfData.pct ?? _verifRSFavg(cond);
-    const r2pct   = _verifR2avg(cond);
+    const r2pct   = osp.r2_pond_pct > 0 ? osp.r2_pond_pct : _verifR2avg(cond);
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
 
     const rsfEst   = rsfData.eur ?? (rsfPct != null ? pa_tot * rsfPct / 100 : null);
-    const r2est    = r2pct  != null ? pa_tot * r2pct  / 100 : null;
+    const r2est    = r2pct  != null ? (osp.r2_ca || pa_tot) * r2pct  / 100 : null;
     const r3estTTC = r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
     const _fse     = fseMap[key];
     const r2rec_tot = (digi.rdp_total || 0) + (_fse?.r2_ttc || 0);
@@ -5136,15 +5136,18 @@ function _verifFillTout(year) {
 
   // Accumulation achats + RSF pondéré annuel (Σ rsf_rem / Σ rsf_ca)
   const labAcc = {};
-  const acc = (k, display) => { if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, pa_di:0, pa_gr:0, r2rec:0, rsf_rem:0, rsf_ca:0 }; };
+  const acc = (k, display) => { if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, pa_di:0, pa_gr:0, r2rec:0, rsf_rem:0, rsf_ca:0, r2_rem:0, r2_ca:0 }; };
   Object.entries(state._monthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
-      labAcc[k].pa_osp  += r.pa_net ?? ((r.ca_brut||0) - (r.remise_totale||0));
-      // Accumulation pour RSF pondéré annuel
+      labAcc[k].pa_osp += r.ca_brut || ((r.pa_net || 0) + (r.remise_totale || 0));
       if (r.rsf_pond_pct > 0 && r.rsf_ca > 0) {
         labAcc[k].rsf_ca  += r.rsf_ca;
         labAcc[k].rsf_rem += r.rsf_ca * r.rsf_pond_pct / 100;
+      }
+      if (r.r2_pond_pct > 0 && r.r2_ca > 0) {
+        labAcc[k].r2_ca  += r.r2_ca;
+        labAcc[k].r2_rem += r.r2_ca * r.r2_pond_pct / 100;
       }
     })
   );
@@ -5192,11 +5195,11 @@ function _verifFillTout(year) {
 
     const cond    = _verifGetCond(d.display, yr, mRef);
     const rsfPct  = d.rsf_ca > 0 ? d.rsf_rem / d.rsf_ca * 100 : _verifRSFavg(cond);
-    const r2pct   = _verifR2avg(cond);
+    const r2pct   = d.r2_ca  > 0 ? d.r2_rem  / d.r2_ca  * 100 : _verifR2avg(cond);
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
 
     const rsfEst   = d.rsf_rem > 0 ? d.rsf_rem : (rsfPct != null ? pa_tot * rsfPct / 100 : null);
-    const r2est    = r2pct  != null ? pa_tot * r2pct  / 100 : null;
+    const r2est    = d.r2_rem  > 0 ? d.r2_rem  : (r2pct  != null ? (d.r2_ca || pa_tot) * r2pct / 100 : null);
     const r3estTTC = r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
     const r2rec_tot = (d.r2rec || 0) + (fseAcc[k]?.r2 || 0);
     const r2rec    = r2rec_tot  > 0 ? r2rec_tot : null;
