@@ -9,14 +9,17 @@ on:
 
 jobs:
   explore:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Installer dépendances GTK (camoufox)
-        run: sudo apt-get install -y --no-install-recommends libgtk-3-0 libdbus-glib-1-2 2>/dev/null || true
+      - name: Installer dépendances Python
+        run: pip3 install --quiet camoufox curl_cffi
+
+      - name: Télécharger camoufox browser
+        run: python3 -m camoufox fetch
 
       - name: Explorer Achats > Espaces clients
         env:
