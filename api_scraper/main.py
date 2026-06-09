@@ -590,6 +590,17 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         m = _re.match(r'VIR\s+.+?\s+-\s+(\S+)', libelle, _re.IGNORECASE)
         return m.group(1) if m else ""
 
+    def _classify_transfer(libelle: str, ref: str) -> str:
+        """Classifie le virement en 'r2' (RDP) ou 'r3' (prestation coopérative)."""
+        text = (libelle + ' ' + ref).upper()
+        r2_kw = ['RDP', ' R2 ', '-R2-', 'R2-', '-R2', 'REMISE FIN', 'AVOIR', 'REDUCTI', 'RED FIN']
+        r3_kw = ['PRESTA', 'COOP', ' R3 ', '-R3-', 'R3-', '-R3', 'PREST', 'COOPERAT', 'PRESTAT']
+        if any(kw in text for kw in r2_kw):
+            return 'r2'
+        if any(kw in text for kw in r3_kw):
+            return 'r3'
+        return 'r3'  # défaut : R3 (type le plus courant de virement direct labo)
+
     def _parse_date(val) -> str | None:
         """Convertit DD/MM/YYYY ou datetime en YYYY-MM-DD."""
         if isinstance(val, (_dt.date, _dt.datetime)):
@@ -692,10 +703,13 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
                 skipped_lib.append(libelle[:60])
             continue
 
-        ref = _extract_ref(libelle)
-        mk  = date_str[:7]
-        acc.setdefault(mk, {}).setdefault(labo, {"montant_ttc": 0.0, "count": 0, "refs": []})
+        ref   = _extract_ref(libelle)
+        vtype = _classify_transfer(libelle, ref)
+        mk    = date_str[:7]
+        acc.setdefault(mk, {}).setdefault(labo, {"montant_ttc": 0.0, "r2_ttc": 0.0, "r3_ttc": 0.0, "count": 0, "refs": []})
         acc[mk][labo]["montant_ttc"] += amount
+        acc[mk][labo]["r2_ttc"]      += amount if vtype == 'r2' else 0.0
+        acc[mk][labo]["r3_ttc"]      += amount if vtype == 'r3' else 0.0
         acc[mk][labo]["count"]       += 1
         if ref:
             acc[mk][labo]["refs"].append(ref)
@@ -703,6 +717,7 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
             "date":        date_str,
             "mois":        mk,
             "labo":        labo,
+            "type":        vtype,
             "montant_ttc": amount,
             "ref":         ref,
             "libelle":     libelle[:100],
@@ -721,14 +736,16 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         raise HTTPException(status_code=422, detail=debug)
 
     fse_stats = {
-        mk: sorted(
-            [{"labo":       labo,
-              "montant_ttc": round(d["montant_ttc"], 2),
-              "count":       d["count"],
-              "refs":        d["refs"][:10]}   # garder les 10 premières refs
-             for labo, d in labos.items()],
-            key=lambda r: r["labo"],
-        )
+        mk: {
+            labo: {
+                "montant_ttc": round(d["montant_ttc"], 2),
+                "r2_ttc":      round(d["r2_ttc"],      2),
+                "r3_ttc":      round(d["r3_ttc"],      2),
+                "count":       d["count"],
+                "refs":        d["refs"][:10],
+            }
+            for labo, d in labos.items()
+        }
         for mk, labos in sorted(acc.items())
     }
 
@@ -741,20 +758,29 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         rows2 = json.loads(r.read())
     state = (rows2[0]["state_json"] if rows2 else {}) or {}
     existing = state.get("fse_month_stats") or {}
-    merged = dict(existing)
-    for mk, new_rows in fse_stats.items():
-        if mk not in merged:
-            merged[mk] = new_rows
+
+    # Migration ancien format (dict-of-lists) → dict-of-dicts
+    merged: dict = {}
+    for mk, lab_data in existing.items():
+        if isinstance(lab_data, list):
+            merged[mk] = {r["labo"]: dict(r) for r in lab_data}
         else:
-            lm = {r["labo"]: dict(r) for r in merged[mk]}
-            for nr in new_rows:
-                if nr["labo"] in lm:
-                    lm[nr["labo"]]["montant_ttc"]  = round(lm[nr["labo"]]["montant_ttc"] + nr["montant_ttc"], 2)
-                    lm[nr["labo"]]["count"]        += nr["count"]
-                    lm[nr["labo"]]["refs"]          = (lm[nr["labo"]]["refs"] + nr["refs"])[:20]
+            merged[mk] = dict(lab_data)
+
+    for mk, new_labos in fse_stats.items():
+        if mk not in merged:
+            merged[mk] = new_labos
+        else:
+            for labo, nd in new_labos.items():
+                if labo in merged[mk]:
+                    ex = merged[mk][labo]
+                    ex["montant_ttc"] = round(ex.get("montant_ttc", 0) + nd["montant_ttc"], 2)
+                    ex["r2_ttc"]      = round(ex.get("r2_ttc",      0) + nd["r2_ttc"],      2)
+                    ex["r3_ttc"]      = round(ex.get("r3_ttc",      0) + nd["r3_ttc"],      2)
+                    ex["count"]      += nd["count"]
+                    ex["refs"]        = (ex.get("refs", []) + nd["refs"])[:20]
                 else:
-                    lm[nr["labo"]] = dict(nr)
-            merged[mk] = sorted(lm.values(), key=lambda r: r["labo"])
+                    merged[mk][labo] = dict(nd)
     state["fse_month_stats"] = merged
 
     patch = json.dumps({"state_json": state}).encode()
@@ -767,7 +793,7 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         pass
 
     months = sorted(fse_stats)
-    total_ttc = sum(r["montant_ttc"] for rows in fse_stats.values() for r in rows)
+    total_ttc = sum(d["montant_ttc"] for labos in fse_stats.values() for d in labos.values())
     return {
         "status":          "done",
         "months":          months,

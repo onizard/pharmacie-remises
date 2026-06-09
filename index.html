@@ -5028,7 +5028,7 @@ function _verifFillMonthDetail(mk) {
 
   const fseMap = {};
   Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, stats]) => {
-    fseMap[_verifNormLab(labo)] = stats.montant_ttc || 0;
+    fseMap[_verifNormLab(labo)] = stats;
   });
 
   const activeNorm = Object.entries(state.verifContracts?.[mkY] || {}).filter(([,c]) => c.active).map(([l]) => _verifNormLab(l));
@@ -5059,8 +5059,10 @@ function _verifFillMonthDetail(mk) {
     const rsfEst   = rsfPct != null ? pa_tot * rsfPct / 100 : null;
     const r2est    = r2pct  != null ? pa_tot * r2pct  / 100 : null;
     const r3estTTC = r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
-    const r2rec    = digi.rdp_total   > 0 ? digi.rdp_total   : null;
-    const r3rec    = fseMap[key]      > 0 ? fseMap[key]      : null;
+    const _fse     = fseMap[key];
+    const r2rec_tot = (digi.rdp_total || 0) + (_fse?.r2_ttc || 0);
+    const r2rec    = r2rec_tot  > 0 ? r2rec_tot : null;
+    const r3rec    = (_fse?.r3_ttc ?? _fse?.montant_ttc ?? 0) > 0 ? (_fse?.r3_ttc ?? _fse?.montant_ttc ?? 0) : null;
 
     const gap = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
@@ -5149,7 +5151,9 @@ function _verifFillTout(year) {
   Object.entries(state._fseMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, labMap]) =>
     Object.entries(labMap || {}).forEach(([labo, stats]) => {
       const k = _verifNormLab(labo);
-      fseAcc[k] = (fseAcc[k] || 0) + (stats.montant_ttc || 0);
+      if (!fseAcc[k]) fseAcc[k] = { r2: 0, r3: 0 };
+      fseAcc[k].r2 += stats.r2_ttc || 0;
+      fseAcc[k].r3 += stats.r3_ttc ?? stats.montant_ttc ?? 0;
     })
   );
 
@@ -5179,8 +5183,9 @@ function _verifFillTout(year) {
     const rsfEst   = rsfPct != null ? pa_tot * rsfPct / 100 : null;
     const r2est    = r2pct  != null ? pa_tot * r2pct  / 100 : null;
     const r3estTTC = r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
-    const r2rec    = d.r2rec  > 0 ? d.r2rec  : null;
-    const r3rec    = fseAcc[k] > 0 ? fseAcc[k] : null;
+    const r2rec_tot = (d.r2rec || 0) + (fseAcc[k]?.r2 || 0);
+    const r2rec    = r2rec_tot  > 0 ? r2rec_tot : null;
+    const r3rec    = (fseAcc[k]?.r3 || 0) > 0 ? (fseAcc[k]?.r3 || 0) : null;
 
     const gap = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
