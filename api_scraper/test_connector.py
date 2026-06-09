@@ -289,32 +289,43 @@ def test_digipharmacie(creds: dict):
             "password": _p.password or "",
         }
 
+    # Args Chromium : masquer les flags d'automatisation pour passer le challenge IUAM Cloudflare
+    _digi_args = _CHROMIUM_ARGS + [
+        "--disable-blink-features=AutomationControlled",
+        "--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    ]
+
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=_CHROMIUM_ARGS)
+        browser = p.chromium.launch(headless=True, args=_digi_args)
         ctx_kw = {"viewport": {"width": 1440, "height": 900}}
         if proxy_cfg:
             ctx_kw["proxy"] = proxy_cfg
         ctx  = browser.new_context(**ctx_kw)
         page = ctx.new_page()
+        # Masquer navigator.webdriver avant tout chargement de page
+        page.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+            "Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3]});"
+        )
         final_url = ""
         ok = False
         try:
             page.goto(f"{DIGI_URL}/login/", wait_until="domcontentloaded", timeout=30_000)
-            # Attendre la résolution du challenge Cloudflare si présent
+            # Attendre la résolution du challenge Cloudflare IUAM si présent
             title = page.title()
             print(f"  Titre initial: {title!r}  URL: {page.url}")
             if any(k in title.lower() for k in _cf_kw):
-                print("  Cloudflare challenge détecté — attente résolution (60s)…")
+                print("  Cloudflare IUAM détecté — attente résolution (90s)…")
                 try:
                     page.wait_for_function(
                         "() => !['just a moment','checking','verifying','cloudflare','please wait']"
                         ".some(k => document.title.toLowerCase().includes(k))",
-                        timeout=60_000, polling=2000,
+                        timeout=90_000, polling=2000,
                     )
                     title = page.title()
                     print(f"  Challenge résolu. Titre: {title!r}")
                 except PWTimeout:
-                    raise RuntimeError("Cloudflare challenge non résolu après 60s")
+                    raise RuntimeError("Cloudflare IUAM non résolu après 90s — IP bloquée")
             try:
                 page.wait_for_selector(_email_sel, timeout=15_000)
             except PWTimeout:
