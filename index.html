@@ -8350,6 +8350,16 @@ function initConnecteurModal() {
       showView(prefix, true);
       if (connKey === 'concentrateur') {
         closeModal();
+        (async () => {
+          try {
+            const { data: { session: _s } } = await window._sbClient.auth.getSession();
+            if (!_s) return;
+            const _r = await fetch(`${API_URL}/run/fse-export`, {
+              method: 'POST', headers: { 'Authorization': `Bearer ${_s.access_token}` },
+            });
+            if (_r.ok) showToast('Export FSE lancé — le XLSX sera déposé automatiquement');
+          } catch (_) {}
+        })();
         return;
       } else if (connKey === 'ospharm') {
         closeModal();
