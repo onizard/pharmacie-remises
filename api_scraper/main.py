@@ -780,38 +780,45 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
 
 async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
     loop = asyncio.get_event_loop()
+    try:
+        if connector == "digipharmacie":
+            # 1. Tenter curl_cffi directement sur Render (rapide, pas de runner)
+            try:
+                await loop.run_in_executor(_executor, lambda: _test_digi_curl_only(creds))
+                await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
+                await patch_conn_test(user_id, connector, True, "Connexion réussie")
+                return
+            except RuntimeError as e:
+                # Mauvais credentials → fail immédiat, pas besoin du runner
+                await patch_conn_test(user_id, connector, False, str(e))
+                return
+            except Exception:
+                pass  # Cloudflare bloque Render → fallback runner self-hosted
 
-    if connector == "digipharmacie":
-        # 1. Tenter curl_cffi directement sur Render (rapide, pas de runner)
+            # 2. Cloudflare bloque → dispatch vers runner self-hosted (IP résidentielle)
+            await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
+            await _dispatch_gh_conn_test(user_id, connector)
+            return
+
+        if connector in ("ospharm", "concentrateur"):
+            # Playwright Chromium ne peut pas tourner sur Render (512 MB) → dispatch GH Actions
+            await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
+            await _dispatch_gh_conn_test(user_id, connector)
+            return
+
         try:
-            await loop.run_in_executor(_executor, lambda: _test_digi_curl_only(creds))
+            await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds, user_id))
             await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
             await patch_conn_test(user_id, connector, True, "Connexion réussie")
-            return
-        except RuntimeError as e:
-            # Mauvais credentials → fail immédiat, pas besoin du runner
+        except Exception as e:
             await patch_conn_test(user_id, connector, False, str(e))
-            return
+
+    except Exception as _top_err:
+        print(f"  [conn-test] erreur inattendue {connector}: {_top_err}", flush=True)
+        try:
+            await patch_conn_test(user_id, connector, False, f"Erreur serveur : {_top_err}")
         except Exception:
-            pass  # Cloudflare bloque Render → fallback runner self-hosted
-
-        # 2. Cloudflare bloque → dispatch vers runner self-hosted (IP résidentielle)
-        await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
-        await _dispatch_gh_conn_test(user_id, connector)
-        return
-
-    if connector in ("ospharm", "concentrateur"):
-        # Playwright Chromium ne peut pas tourner sur Render (512 MB) → dispatch GH Actions
-        await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
-        await _dispatch_gh_conn_test(user_id, connector)
-        return
-
-    try:
-        await loop.run_in_executor(_executor, lambda: _test_connector(connector, creds, user_id))
-        await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
-        await patch_conn_test(user_id, connector, True, "Connexion réussie")
-    except Exception as e:
-        await patch_conn_test(user_id, connector, False, str(e))
+            pass
 
 
 async def _dispatch_gh_conn_test(user_id: str, connector: str):
