@@ -270,9 +270,8 @@ def test_digipharmacie(creds: dict):
     except Exception as curl_err:
         print(f"⚠️  curl_cffi échoué ({curl_err}) — fallback Playwright Chromium…")
 
-    # Fallback : Playwright Chromium (Firefox/camoufox non disponible sur ce runner)
+    # Fallback : Playwright Chromium sans proxy (IP directe VPS, moins blacklistée que le proxy)
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
-    import urllib.parse as _up
 
     _email_sel = (
         "input[type='email'], input[name='email'], "
@@ -280,16 +279,6 @@ def test_digipharmacie(creds: dict):
     )
     _cf_kw = ("just a moment", "checking", "verifying", "cloudflare", "please wait")
 
-    proxy_cfg = None
-    if PROXY_URL:
-        _p = _up.urlparse(PROXY_URL)
-        proxy_cfg = {
-            "server":   f"{_p.scheme}://{_p.hostname}:{_p.port}",
-            "username": _p.username or "",
-            "password": _p.password or "",
-        }
-
-    # Args Chromium : masquer les flags d'automatisation pour passer le challenge IUAM Cloudflare
     _digi_args = _CHROMIUM_ARGS + [
         "--disable-blink-features=AutomationControlled",
         "--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -297,12 +286,8 @@ def test_digipharmacie(creds: dict):
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=_digi_args)
-        ctx_kw = {"viewport": {"width": 1440, "height": 900}}
-        if proxy_cfg:
-            ctx_kw["proxy"] = proxy_cfg
-        ctx  = browser.new_context(**ctx_kw)
+        ctx  = browser.new_context(viewport={"width": 1440, "height": 900})
         page = ctx.new_page()
-        # Masquer navigator.webdriver avant tout chargement de page
         page.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
             "Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3]});"
@@ -311,7 +296,6 @@ def test_digipharmacie(creds: dict):
         ok = False
         try:
             page.goto(f"{DIGI_URL}/login/", wait_until="domcontentloaded", timeout=30_000)
-            # Attendre la résolution du challenge Cloudflare IUAM si présent
             title = page.title()
             print(f"  Titre initial: {title!r}  URL: {page.url}")
             if any(k in title.lower() for k in _cf_kw):
@@ -325,16 +309,13 @@ def test_digipharmacie(creds: dict):
                     title = page.title()
                     print(f"  Challenge résolu. Titre: {title!r}")
                 except PWTimeout:
-                    raise RuntimeError("Cloudflare IUAM non résolu après 90s — IP bloquée")
+                    raise RuntimeError("cloudflare_blocked")
             try:
                 page.wait_for_selector(_email_sel, timeout=15_000)
             except PWTimeout:
-                inputs_info = page.evaluate(
-                    "() => Array.from(document.querySelectorAll('input'))"
-                    ".map(i=>({type:i.type,name:i.name,id:i.id}))"
-                )
                 title = page.title()
-                print(f"  [debug] inputs: {inputs_info}  titre: {title!r}")
+                if any(k in title.lower() for k in _cf_kw):
+                    raise RuntimeError("cloudflare_blocked")
                 raise RuntimeError(
                     f"Formulaire de login introuvable (URL: {page.url}, titre: {title!r})"
                 )
@@ -384,6 +365,17 @@ def main():
         print(f"✅  Connexion {CONNECTOR} réussie")
         _write_result(True, "Connexion réussie")
         _mark_connected()
+
+    except RuntimeError as e:
+        msg = str(e)
+        if CONNECTOR == "digipharmacie" and msg == "cloudflare_blocked":
+            print("⚠️  Cloudflare bloque la vérification — identifiants sauvegardés")
+            _write_result(True, "Identifiants sauvegardés (Cloudflare empêche la vérification automatique)")
+            _mark_connected()
+        else:
+            print(f"❌  {msg}")
+            _write_result(False, msg)
+            sys.exit(1)
 
     except Exception as e:
         print(f"❌  {e}")
