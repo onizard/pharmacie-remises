@@ -8450,7 +8450,7 @@ function initConnecteurModal() {
         }
         if (job.status === 'done') {
           _setConnProgress(prefix, 'reset');
-          _setJobStatusEl('ospJobStatus', 'done', '✓');
+          _setJobStatusEl('ospJobStatus', 'done', '');
           _simResultsReady = false;
           await launchComparateur();
           state._ospJobRunning = false;
@@ -8494,7 +8494,7 @@ function initConnecteurModal() {
         state._digiJobRunning = false;
         if (job.status === 'done') {
           _setConnProgress(prefix, 'ready');
-          _setJobStatusEl('digiJobStatus', 'done', job.message || '');
+          _setJobStatusEl('digiJobStatus', 'done', '');
           const digiStats = row?.state_json?.digi_month_stats;
           if (digiStats && Object.keys(digiStats).length) {
             state._digiMonthStats = digiStats;
@@ -8656,7 +8656,7 @@ function initConnecteurModal() {
         const job = sj[jobKey];
         if (!job) return;
         if (job.status === 'done') {
-          _setJobStatusEl(elId, 'done', job.message || '');
+          _setJobStatusEl(elId, 'done', '');
         } else if (job.status === 'running') {
           _setJobStatusEl(elId, 'running', job.message ? `⏳ ${job.message}` : '⏳ En cours…');
         } else if (job.status === 'error') {
@@ -8868,7 +8868,7 @@ function initConnecteurModal() {
       const _now = new Date();
       const dateFrom = `${_now.getFullYear() - 1}-01-01`;
       const dateTo   = _now.toISOString().slice(0, 10);
-      if (statEl) { statEl.textContent = `✓ Export FSE lancé (${dateFrom} → ${dateTo}) — le XLSX sera déposé automatiquement`; statEl.style.color = 'var(--green)'; }
+      if (statEl) { statEl.textContent = ''; }
     } catch(e) {
       if (statEl) { statEl.textContent = `❌ ${e.message || String(e)}`; statEl.style.color = 'var(--red)'; }
     }
