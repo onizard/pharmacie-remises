@@ -2822,7 +2822,8 @@ function _renderOspProgress(el) {
       ? Math.ceil(Math.max(0, elapsed / (barPct / 100) - elapsed) / 60000)
       : Math.max(0, 45 - Math.floor(elapsed / 60000));
     const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
-    const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
+    const _tl  = remainMin <= 0 ? '< 1 min' : `~${remainMin} min`;
+    const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${_tl}</span>— le temps ${act.text}`;
 
     const _isStuck = elapsed > 95 * 60 * 1000;
     el.innerHTML = `<div class="osp-ring-wrap">
@@ -2873,11 +2874,12 @@ function _renderOspProgress(el) {
       const remainMin = pct > 0
         ? Math.ceil(Math.max(0, elapsed / (pct / 100) - elapsed) / 60000)
         : Math.max(0, 45 - Math.floor(elapsed / 60000));
-      const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
-      return { actHtml: `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}` };
+      const act  = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
+      const _tl2 = remainMin <= 0 ? '< 1 min' : `~${remainMin} min`;
+      return { actHtml: `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${_tl2}</span>— le temps ${act.text}` };
     })();
     actLine.innerHTML = actHtml;
-  }, 5_000);
+  }, 60_000);
 }
 
 function renderRecap() {
