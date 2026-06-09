@@ -74,6 +74,8 @@ def _update_job(status: str, message: str = "", rows=None, error: str = "",
             rows_12m = [r for r in (rows or [])
                         if (r.get("year", 0), r.get("month", 0)) >=
                            (_cutoff_year, _cutoff_month)] if rows else []
+            import time as _time
+            _existing_job = state.get("ospharm_job", {})
             job = {
                 "status":      status,
                 "message":     message,
@@ -83,6 +85,10 @@ def _update_job(status: str, message: str = "", rows=None, error: str = "",
                 "month_meta":  month_meta or [],
                 "month_stats": month_stats or {},
             }
+            if status == "running" and not _existing_job.get("started_at"):
+                job["started_at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+            elif _existing_job.get("started_at"):
+                job["started_at"] = _existing_job["started_at"]
             if period_start:
                 job["period_start"] = period_start
                 job["period_end"]   = period_end

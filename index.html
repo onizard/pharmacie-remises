@@ -2231,6 +2231,21 @@ async function autoRunOspharm(mode) {
       } catch(_) {}
     }
     state._ospJobRunning = false;
+    // Polling expiré sans fin — marquer error en base pour éviter re-attach infini
+    try {
+      const { data: { session: _ts } } = await window._sbClient.auth.getSession();
+      if (_ts) {
+        const { data: _tr } = await window._sbClient.from('user_state')
+          .select('state_json').eq('user_id', _ts.user.id).maybeSingle();
+        const _tsj = _tr?.state_json || {};
+        if (_tsj.ospharm_job?.status === 'running') {
+          _tsj.ospharm_job = { ..._tsj.ospharm_job, status: 'error', error: 'Timeout (job bloqué)' };
+          await window._sbClient.from('user_state')
+            .update({ state_json: _tsj }).eq('user_id', _ts.user.id);
+        }
+      }
+    } catch(_) {}
+    renderRecap();
   } catch(_) { state._ospJobRunning = false; }
 }
 
@@ -2809,14 +2824,24 @@ function _renderOspProgress(el) {
     const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
     const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
 
+    const _isStuck = elapsed > 95 * 60 * 1000;
     el.innerHTML = `<div class="osp-ring-wrap">
       <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${state._ospConnecting ? '// Connexion OSPHARM en cours…' : '// Analyse en cours — initialisation…'}</div>
       <div class="osp-ring${barPct > 0 ? '' : ' spin'}">
         <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="ospRecapArc"${barPct > 0 ? ` style="stroke-dashoffset:${175.9 * (1 - barPct / 100)}"` : ''}/></svg>
         <div class="osp-ring-label" id="ospRecapPct">${barPct > 0 ? barPct + '%' : ''}</div>
       </div>
-      <div id="ospActivityLine" class="osp-activity-line" style="text-align:center">${actHtml}</div>
+      ${_isStuck
+        ? `<button class="btn btn-secondary" style="margin-top:16px;font-size:11px" id="ospStuckRelancer">⟳ JOB BLOQUÉ — RELANCER</button>`
+        : `<div id="ospActivityLine" class="osp-activity-line" style="text-align:center">${actHtml}</div>`
+      }
     </div>`;
+    if (_isStuck) {
+      document.getElementById('ospStuckRelancer')?.addEventListener('click', () => {
+        state._ospJobRunning = false;
+        autoRunOspharm();
+      });
+    }
   } else {
     const arc   = document.getElementById('ospRecapArc');
     const pctEl = document.getElementById('ospRecapPct');
@@ -7624,11 +7649,19 @@ async function saveProfile() {
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           const ospJob = row?.state_json?.ospharm_job;
           if (ospJob?.status === 'running') {
-            // Job déjà en cours sur GitHub Actions — rattacher le polling sans relancer
-            state._ospJobRunning   = true;
-            state._ospJobStartedAt = state._ospJobStartedAt || Date.now();
-            state._ospJobMessage   = ospJob.message || '';
-            autoRunOspharm('attach').catch(() => {});
+            const _jobAge = ospJob.started_at
+              ? Date.now() - new Date(ospJob.started_at).getTime()
+              : 0;
+            if (_jobAge > 95 * 60 * 1000) {
+              // Job bloqué (>95 min, GH Actions timeout) — relancer proprement
+              autoRunOspharm().catch(() => {});
+            } else {
+              // Job encore en cours — rattacher le polling sans relancer
+              state._ospJobRunning   = true;
+              state._ospJobStartedAt = _jobAge > 0 ? Date.now() - _jobAge : (state._ospJobStartedAt || Date.now());
+              state._ospJobMessage   = ospJob.message || '';
+              autoRunOspharm('attach').catch(() => {});
+            }
           } else if (needsRefresh) {
             autoRunOspharm().catch(() => {});
           }
