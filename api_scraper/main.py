@@ -998,3 +998,170 @@ def _scrape(connector: str, user_id: str, creds: dict, progress):
         from run_job_ospharm import run_ospharm
         return run_ospharm(creds, progress, user_id=user_id)
     raise RuntimeError(f"Connecteur inconnu : {connector}")
+
+
+# ── Exploration Digipharmacie Espaces clients (endpoint temporaire) ────────────
+
+@app.get("/explore/digi-espace-client")
+async def explore_digi_espace_client(authorization: str = Header(default="")):
+    """Navigue vers Digipharmacie > Achats > Espaces clients, capture API + HTML."""
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        _executor,
+        lambda: _explore_digi_espace_client_sync(user_id),
+    )
+    return result
+
+
+def _explore_digi_espace_client_sync(user_id: str) -> dict:
+    import asyncio as _asyncio
+    from supabase_client import SERVICE_KEY, SUPA_URL
+
+    creds = {}
+    try:
+        url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=connectors&limit=1"
+        req = urllib.request.Request(url, headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            rows = json.loads(r.read())
+        conns = (rows[0].get("connectors") or {}) if rows else {}
+        cred  = conns.get("digipharmacie", {})
+        creds = {"user": cred.get("user", ""), "pass": cred.get("pass", "")}
+    except Exception as e:
+        return {"error": f"Impossible de lire les credentials: {e}"}
+
+    if not creds.get("user"):
+        return {"error": "Pas de credentials Digipharmacie en base"}
+
+    _asyncio.set_event_loop(_asyncio.new_event_loop())
+    return _asyncio.get_event_loop().run_until_complete(_explore_async(creds, user_id))
+
+
+async def _explore_async(creds: dict, user_id: str) -> dict:
+    import os as _os
+    from camoufox.async_api import AsyncCamoufox
+    from supabase_client import SERVICE_KEY, SUPA_URL
+
+    BASE = "https://app.digipharmacie.fr"
+    PROXY_URL = _os.environ.get("PROXY_URL", "")
+    api_calls = []
+    pages_visited = []
+
+    proxy_cfg = None
+    if PROXY_URL:
+        import urllib.parse as _up
+        _p = _up.urlparse(PROXY_URL)
+        proxy_cfg = {"server": f"{_p.scheme}://{_p.hostname}:{_p.port}",
+                     "username": _p.username or "", "password": _p.password or ""}
+
+    # curl_cffi login
+    session_cookies: dict = {}
+    try:
+        from curl_cffi import requests as cffi_requests
+        proxy_kw = {"proxy": PROXY_URL} if PROXY_URL else {}
+        session = cffi_requests.Session(impersonate="chrome124")
+        r = session.get(f"{BASE}/login/", headers={"Accept": "text/html,*/*", "Accept-Language": "fr-FR,fr;q=0.9"},
+                        timeout=25, allow_redirects=True, **proxy_kw)
+        csrf = session.cookies.get("csrftoken", "")
+        if csrf:
+            for ep in ["/api/v1/auth/login/", "/api/auth/login/"]:
+                rp = session.post(f"{BASE}{ep}",
+                                  json={"email": creds["user"], "password": creds["pass"]},
+                                  headers={"Accept": "application/json", "Content-Type": "application/json",
+                                           "X-CSRFToken": csrf, "Referer": f"{BASE}/login/", "Origin": BASE},
+                                  timeout=15, allow_redirects=False, **proxy_kw)
+                if rp.status_code == 200:
+                    session_cookies = dict(session.cookies)
+                    break
+                if rp.status_code in (400, 401):
+                    return {"error": "Identifiants DIGIPHARMACIE incorrects"}
+            if not session_cookies:
+                rp = session.post(f"{BASE}/login/",
+                                  data={"email": creds["user"], "password": creds["pass"], "csrfmiddlewaretoken": csrf},
+                                  headers={"Content-Type": "application/x-www-form-urlencoded", "Referer": f"{BASE}/login/"},
+                                  timeout=15, allow_redirects=True, **proxy_kw)
+                if "/login" not in rp.url:
+                    session_cookies = dict(session.cookies)
+    except Exception:
+        pass
+
+    async with AsyncCamoufox(headless=True, geoip=False) as browser:
+        ctx  = await browser.new_context(**({"proxy": proxy_cfg} if proxy_cfg else {}))
+        if session_cookies:
+            await ctx.add_cookies([{"name": k, "value": v, "domain": "app.digipharmacie.fr",
+                                    "path": "/", "sameSite": "Lax"} for k, v in session_cookies.items()])
+
+        page = await ctx.new_page()
+        page.on("pageerror", lambda e: None)
+        page.set_default_timeout(30_000)
+
+        async def on_response(resp):
+            if "/api/" in resp.url and resp.status < 400:
+                try:
+                    body = await resp.json()
+                    api_calls.append({"url": resp.url.replace(BASE, ""), "status": resp.status,
+                                      "body": body if not isinstance(body, list) else body[:3],
+                                      "count": len(body) if isinstance(body, list) else None})
+                except Exception:
+                    pass
+        page.on("response", on_response)
+
+        # Vérifier la session
+        await page.goto(f"{BASE}/", timeout=30_000)
+        await page.wait_for_load_state("networkidle", timeout=10_000)
+        pages_visited.append({"label": "home", "url": page.url})
+
+        # Login camoufox si pas de cookies
+        if "/login" in page.url and not session_cookies:
+            cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
+            for _ in range(20):
+                title = (await page.title()).lower()
+                if not any(k in title for k in cf_kw):
+                    break
+                await page.wait_for_timeout(3_000)
+            await page.fill("input[type=email], input[name=email]", creds["user"])
+            await page.fill("input[type=password]", creds["pass"])
+            await page.keyboard.press("Enter")
+            await page.wait_for_load_state("networkidle", timeout=20_000)
+
+        pages_visited.append({"label": "after_login", "url": page.url})
+
+        # Naviguer vers Espaces clients
+        await page.goto(f"{BASE}/achat/espaces-clients/", timeout=20_000)
+        await page.wait_for_load_state("networkidle", timeout=10_000)
+        pages_visited.append({"label": "espaces_clients", "url": page.url})
+
+        html     = await page.content()
+        all_links = await page.evaluate("""() =>
+            Array.from(document.querySelectorAll('a')).map(a => ({
+                text: a.textContent.trim().slice(0, 80), href: a.href
+            })).filter(a => a.text && a.href.includes('digipharmacie'))
+        """)
+        await ctx.close()
+
+    result = {"pages_visited": pages_visited, "api_calls": api_calls,
+              "links": all_links[:30], "html": html[:8000]}
+
+    # Sauvegarder en base
+    try:
+        url  = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1"
+        req  = urllib.request.Request(url, headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            rows = json.loads(r.read())
+        state = rows[0]["state_json"] if rows else {}
+        state["digi_espace_client_explore"] = result
+        body = json.dumps({"state_json": state}).encode()
+        req2 = urllib.request.Request(f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
+                                      data=body, method="PATCH",
+                                      headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+                                               "Content-Type": "application/json", "Prefer": "return=minimal"})
+        with urllib.request.urlopen(req2, timeout=15): pass
+    except Exception as e:
+        result["save_error"] = str(e)
+
+    return result
