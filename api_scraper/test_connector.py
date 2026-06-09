@@ -127,26 +127,50 @@ _CHROMIUM_ARGS = [
 def _ospharm_playwright_login(username: str, password: str, success_domain: str, form_redirect: str):
     """Login via Playwright Chromium — navigation directe vers l'app (pas de client_id hardcodé)."""
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    ok = False
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=_CHROMIUM_ARGS)
         ctx  = browser.new_context(java_script_enabled=True, viewport={"width": 1440, "height": 900})
         page = ctx.new_page()
         final_url = ""
         try:
-            # Naviguer vers l'app — Keycloak redirige automatiquement vers sa page de login
+            print(f"  → goto {form_redirect}", flush=True)
             page.goto(form_redirect, wait_until="domcontentloaded", timeout=30_000)
-            # Attendre la page de login Keycloak (accounts.*.ospharm.org)
+            print(f"  → URL après goto : {page.url[:100]}", flush=True)
             try:
                 page.wait_for_url("**ospharm.org**", timeout=10_000)
+                print(f"  → URL Keycloak : {page.url[:100]}", flush=True)
             except PWTimeout:
-                pass
-            page.locator("input[name='username'],input[type='email'],input[type='text']").first.fill(username, timeout=10_000)
-            page.locator("input[type='password']").first.fill(password, timeout=5_000)
-            page.locator("button[type='submit'],input[type='submit'],input[type='password']").last.press("Enter")
+                print(f"  → wait_for_url ospharm.org timeout, URL : {page.url[:100]}", flush=True)
+
+            # Gérer le cas multi-step Keycloak (username d'abord, puis password)
+            user_loc = page.locator("input[name='username'],input[type='email'],input[type='text']").first
+            user_loc.fill(username, timeout=10_000)
+            print("  → username rempli", flush=True)
+
+            # Vérifier si password est déjà visible, sinon soumettre le step username
+            pwd_loc = page.locator("input[type='password']").first
+            try:
+                pwd_loc.wait_for(state="visible", timeout=3_000)
+            except PWTimeout:
+                print("  → password pas visible, soumission step username…", flush=True)
+                page.keyboard.press("Enter")
+                try:
+                    pwd_loc.wait_for(state="visible", timeout=10_000)
+                except PWTimeout:
+                    print(f"  → password toujours absent, URL : {page.url[:100]}", flush=True)
+
+            pwd_loc.fill(password, timeout=5_000)
+            print("  → password rempli", flush=True)
+
+            page.locator("button[type='submit'],input[type='submit']").last.click(timeout=5_000)
+            print(f"  → bouton submit cliqué, URL : {page.url[:100]}", flush=True)
+
             try:
                 page.wait_for_url(f"**{success_domain}**", timeout=25_000)
+                print(f"  → redirect réussie : {page.url[:100]}", flush=True)
             except PWTimeout:
-                pass
+                print(f"  → wait_for_url {success_domain} timeout, URL : {page.url[:100]}", flush=True)
             final_url = page.url
             ok = success_domain in final_url and OSPHARM_AUTH_URL not in final_url
         finally:
