@@ -272,30 +272,60 @@ def test_digipharmacie(creds: dict):
 
     # Fallback : Playwright Chromium (Firefox/camoufox non disponible sur ce runner)
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    import urllib.parse as _up
 
     _email_sel = (
         "input[type='email'], input[name='email'], "
         "input[name='username'], input[type='text']"
     )
+    _cf_kw = ("just a moment", "checking", "verifying", "cloudflare", "please wait")
+
+    proxy_cfg = None
+    if PROXY_URL:
+        _p = _up.urlparse(PROXY_URL)
+        proxy_cfg = {
+            "server":   f"{_p.scheme}://{_p.hostname}:{_p.port}",
+            "username": _p.username or "",
+            "password": _p.password or "",
+        }
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=_CHROMIUM_ARGS)
-        ctx  = browser.new_context(viewport={"width": 1440, "height": 900})
+        ctx_kw = {"viewport": {"width": 1440, "height": 900}}
+        if proxy_cfg:
+            ctx_kw["proxy"] = proxy_cfg
+        ctx  = browser.new_context(**ctx_kw)
         page = ctx.new_page()
         final_url = ""
         ok = False
         try:
             page.goto(f"{DIGI_URL}/login/", wait_until="domcontentloaded", timeout=30_000)
+            # Attendre la résolution du challenge Cloudflare si présent
+            title = page.title()
+            print(f"  Titre initial: {title!r}  URL: {page.url}")
+            if any(k in title.lower() for k in _cf_kw):
+                print("  Cloudflare challenge détecté — attente résolution (60s)…")
+                try:
+                    page.wait_for_function(
+                        "() => !['just a moment','checking','verifying','cloudflare','please wait']"
+                        ".some(k => document.title.toLowerCase().includes(k))",
+                        timeout=60_000, polling=2000,
+                    )
+                    title = page.title()
+                    print(f"  Challenge résolu. Titre: {title!r}")
+                except PWTimeout:
+                    raise RuntimeError("Cloudflare challenge non résolu après 60s")
             try:
-                page.wait_for_selector(_email_sel, timeout=20_000)
+                page.wait_for_selector(_email_sel, timeout=15_000)
             except PWTimeout:
                 inputs_info = page.evaluate(
                     "() => Array.from(document.querySelectorAll('input'))"
                     ".map(i=>({type:i.type,name:i.name,id:i.id}))"
                 )
-                print(f"  [debug] inputs: {inputs_info}")
+                title = page.title()
+                print(f"  [debug] inputs: {inputs_info}  titre: {title!r}")
                 raise RuntimeError(
-                    f"Formulaire de login introuvable (URL: {page.url} — Cloudflare ?)"
+                    f"Formulaire de login introuvable (URL: {page.url}, titre: {title!r})"
                 )
             print(f"  Formulaire trouvé. URL: {page.url}")
             page.locator(_email_sel).first.fill(creds["user"])
