@@ -4720,7 +4720,8 @@ async function _verifEnsureRefMap() {
   _verifRefMapRowCount = rowCount;
   const cips = [...new Set((state.ospharm_job?.rows || []).map(r => r.cip13).filter(Boolean))];
   if (!cips.length) return;
-  const HDR = { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY };
+  const token = state.session?.access_token || SUPA_KEY;
+  const HDR = { apikey: SUPA_KEY, Authorization: 'Bearer ' + token };
   for (let i = 0; i < cips.length; i += 500) {
     try {
       const chunk = cips.slice(i, i + 500);
@@ -4733,6 +4734,7 @@ async function _verifEnsureRefMap() {
       );
     } catch(_) {}
   }
+  console.log('[verif] refMap chargé:', _verifRefMap.size, 'refs pour', rowCount, 'lignes OSPHARM');
 }
 
 // RSF% pondéré réel + RSF€ calculés depuis les lignes OSPHARM brutes pour un labo donné
@@ -5059,7 +5061,7 @@ async function _verifFillMonthDetail(mk) {
   if (mk.endsWith('-ALL')) { await _verifFillTout(parseInt(mk)); return; }
   await _verifEnsureRefMap();
   const [mkY, mkM] = mk.split('-').map(Number);
-  const ospRowsMonth = (state.ospharm_job?.rows || []).filter(r => r.year === mkY && r.month === mkM);
+  const ospRowsMonth = (state.ospharm_job?.rows || []).filter(r => +r.year === mkY && +r.month === mkM);
   const fmtE  = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP  = v => v != null ? v.toFixed(1) + ' %' : '—';
   const TVA_R3 = 1.20;
@@ -5163,7 +5165,7 @@ async function _verifFillTout(year) {
   const wrap = document.getElementById('verifMonthDetail'); if (!wrap) return;
   await _verifEnsureRefMap();
   const yr   = parseInt(year);
-  const ospRowsYear = (state.ospharm_job?.rows || []).filter(r => r.year === yr);
+  const ospRowsYear = (state.ospharm_job?.rows || []).filter(r => +r.year === yr);
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP = v => v != null ? v.toFixed(1) + ' %' : '—';
   const TVA_R3 = 1.20;
