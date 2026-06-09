@@ -4141,8 +4141,24 @@ async function fetchRSF2025(lab) {
   }
   const data = await res.json();
   if (!data.length) return fetchRSF(lab);
-  const paliers = data.map(r => parseFloat(r.rsf_pct)).sort((a, b) => a - b);
-  return { paliers, firstMap: new Map(), countMap: new Map() };
+  const paliers = [...new Set(data.map(r => parseFloat(r.rsf_pct)))].sort((a, b) => a - b);
+  const firstCounts = new Map();
+  data.forEach(r => {
+    if (r.rsf_first_pct != null && r.rsf_first_pct <= r.rsf_pct) {
+      if (!firstCounts.has(r.rsf_pct)) firstCounts.set(r.rsf_pct, new Map());
+      const c = firstCounts.get(r.rsf_pct);
+      c.set(r.rsf_first_pct, (c.get(r.rsf_first_pct) || 0) + 1);
+    }
+  });
+  const firstMap = new Map();
+  firstCounts.forEach((counts, rsf_pct) => {
+    let best = null, bestN = 0;
+    counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
+    if (best !== null) firstMap.set(rsf_pct, best);
+  });
+  const countMap = new Map();
+  data.forEach(r => { countMap.set(r.rsf_pct, (countMap.get(r.rsf_pct) || 0) + 1); });
+  return { paliers, firstMap, countMap };
 }
 
 function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onLibellesChange = null) {
