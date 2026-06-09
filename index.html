@@ -5105,7 +5105,8 @@ async function _verifFillMonthDetail(mk) {
     const _fse     = fseMap[key];
     const r2rec_tot = (digi.rdp_total || 0) + (_fse?.r2_ttc || 0);
     const r2rec    = r2rec_tot  > 0 ? r2rec_tot : null;
-    const r3rec    = (_fse?.r3_ttc ?? _fse?.montant_ttc ?? 0) > 0 ? (_fse?.r3_ttc ?? _fse?.montant_ttc ?? 0) : null;
+    const r3rec    = (_fse?.r3_ttc ?? (_fse && !_fse.r2_ttc ? _fse.montant_ttc : 0) ?? 0) > 0
+      ? (_fse?.r3_ttc ?? _fse?.montant_ttc ?? 0) : null;
 
     const gap = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
