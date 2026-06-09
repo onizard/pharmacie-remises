@@ -2820,7 +2820,7 @@ function _renderOspProgress(el) {
     const elapsed   = Date.now() - (state._ospJobStartedAt || Date.now());
     const remainMin = barPct > 0
       ? Math.ceil(Math.max(0, elapsed / (barPct / 100) - elapsed) / 60000)
-      : 10;
+      : Math.max(0, 45 - Math.floor(elapsed / 60000));
     const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
     const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
 
@@ -2870,7 +2870,9 @@ function _renderOspProgress(el) {
       const tot = m ? parseInt(m[2]) : 0;
       const elapsed   = Date.now() - (state._ospJobStartedAt || Date.now());
       const pct       = (tot > 0 && cur > 0) ? Math.min(95, cur / tot * 100) : 0;
-      const remainMin = pct > 0 ? Math.ceil(Math.max(0, elapsed / (pct / 100) - elapsed) / 60000) : 10;
+      const remainMin = pct > 0
+        ? Math.ceil(Math.max(0, elapsed / (pct / 100) - elapsed) / 60000)
+        : Math.max(0, 45 - Math.floor(elapsed / 60000));
       const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
       return { actHtml: `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}` };
     })();
