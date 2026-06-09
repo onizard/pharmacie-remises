@@ -1689,7 +1689,7 @@ let state = {
   _grossisteUploads: [],
   _grossisteMonthStats: null,
   _fseMonthStats: null,
-  verifContracts: {},  // { labKey: { active, type, startDate } }
+  verifContracts: {},  // { [year]: { labKey: { active, type, startDate } } }
 };
 
 
@@ -4686,7 +4686,7 @@ const _verifNormLab = n => {
 
 // Condition active pour un labo, en tenant compte du contrat configuré
 function _verifGetCond(labDisplay, year, month) {
-  const contract = state.verifContracts?.[labDisplay];
+  const contract = state.verifContracts?.[year]?.[labDisplay];
   const lp = (state.labPages || []).find(p => p.selectedLab === labDisplay);
   if (!lp) return null;
   const condYear = (contract?.startDate ? new Date(contract.startDate).getFullYear() : null) || year;
@@ -4737,7 +4737,7 @@ let _verifModalType = 'N1';
 
 function _verifOpenLabModal(lab) {
   _verifModalLab  = lab;
-  const c = state.verifContracts?.[lab] || {};
+  const c = state.verifContracts?.[_verifSelYear]?.[lab] || {};
   _verifModalType = c.type || 'N1';
   const yr = new Date().getFullYear();
   document.getElementById('verifModalTitle').textContent = '◈ ' + lab;
@@ -4771,8 +4771,9 @@ function _verifSaveLabModal() {
   if (!_verifModalLab) return;
   const dateVal = document.getElementById('verifModalDate').value;
   if (!state.verifContracts) state.verifContracts = {};
-  state.verifContracts[_verifModalLab] = {
-    ...(state.verifContracts[_verifModalLab] || {}),
+  if (!state.verifContracts[_verifSelYear]) state.verifContracts[_verifSelYear] = {};
+  state.verifContracts[_verifSelYear][_verifModalLab] = {
+    ...(state.verifContracts[_verifSelYear][_verifModalLab] || {}),
     active: true, type: _verifModalType, startDate: dateVal,
   };
   _verifCloseLabModal();
@@ -4782,8 +4783,8 @@ function _verifSaveLabModal() {
 
 function _verifRemoveLabModal() {
   if (!_verifModalLab) return;
-  if (state.verifContracts?.[_verifModalLab]) {
-    state.verifContracts[_verifModalLab].active = false;
+  if (state.verifContracts?.[_verifSelYear]?.[_verifModalLab]) {
+    state.verifContracts[_verifSelYear][_verifModalLab].active = false;
   }
   _verifCloseLabModal();
   saveState();
@@ -4806,29 +4807,29 @@ function renderVerificateur() {
   // ── Barre supérieure : bouton ℹ uniquement ──────────────────────────────
   tb.innerHTML = `<button class="verif-tab-btn" onclick="_verifOpenInfoModal()" style="margin-left:auto;color:var(--cyan-dim);font-size:14px;padding-bottom:9px" title="Aide &amp; définitions">ℹ</button>`;
 
-  // ── Grille des labos ──────────────────────────────────────────────────────
-  const activeContracts = state.verifContracts || {};
-  const labBtns = LABS_ALL.map(lab => {
-    const isOn = !!activeContracts[lab]?.active;
-    const c    = activeContracts[lab];
-    const badge = isOn && c?.type
-      ? `<span style="font-size:8px;opacity:.65;margin-left:4px">${c.type === 'N1' ? '№1' : c.type === 'N2' ? '№2' : 'GR'}</span>`
-      : '';
-    return `<button class="verif-lab-btn${isOn?' active':''}" onclick="_verifOpenLabModal('${escH(lab)}')">${escH(lab)}${badge}</button>`;
-  }).join('');
-
   // ── Boutons années ────────────────────────────────────────────────────────
   const yr = new Date().getFullYear();
   const yearBtns = [yr - 1, yr].map(y =>
     `<button class="verif-year-btn${_verifSelYear===y?' active':''}" onclick="_verifSelectYear(${y})">${y}</button>`
   ).join('');
 
+  // ── Grille des labos (pour l'année sélectionnée) ──────────────────────────
+  const activeContracts = state.verifContracts?.[_verifSelYear] || {};
+  const labBtns = LABS_ALL.map(lab => {
+    const isOn = !!activeContracts[lab]?.active;
+    const c    = activeContracts[lab];
+    const badge = isOn && c?.type
+      ? `<span style="font-size:8px;opacity:.65;margin-left:4px">${c.type === 'N1' ? '\u2116 1' : c.type === 'N2' ? '\u2116 2' : 'GR'}</span>`
+      : '';
+    return `<button class="verif-lab-btn${isOn?' active':''}" onclick="_verifOpenLabModal('${escH(lab)}')">${escH(lab)}${badge}</button>`;
+  }).join('');
+
   cnt.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:16px">${yearBtns}</div>
     <div style="margin-bottom:16px">
       <div class="verif-contract-label" style="margin-bottom:7px">LABOS — cliquer pour configurer un contrat</div>
       <div class="verif-lab-grid">${labBtns}</div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:20px">${yearBtns}</div>
     <div id="verifYearArea"></div>
   `;
   _verifRenderYear(_verifSelYear);
@@ -4853,7 +4854,7 @@ function _verifSelectMonth(mk) {
 
 function _verifRenderYear(year) {
   const wrap = document.getElementById('verifYearArea'); if (!wrap) return;
-  const hasActive = Object.values(state.verifContracts || {}).some(c => c.active);
+  const hasActive = Object.values(state.verifContracts?.[year] || {}).some(c => c.active);
 
   // Boutons mois
   const monthBtns = Array.from({length: 12}, (_, i) => {
@@ -4916,7 +4917,7 @@ function _verifFillAnnualSummary(year) {
     })
   );
 
-  const activeNorm = LABS_ALL.filter(lab => state.verifContracts?.[lab]?.active).map(_verifNormLab);
+  const activeNorm = LABS_ALL.filter(lab => state.verifContracts?.[yr]?.[lab]?.active).map(_verifNormLab);
   const keys = Object.keys(labAcc).filter(k => activeNorm.includes(k)).sort();
 
   if (!keys.length) {
@@ -4940,8 +4941,9 @@ function _verifFillAnnualSummary(year) {
     const r3pct  = cond ? (parseFloat(cond.coopR3) || 0) : 0;
     if (r3pct > 0) hasR3 = true;
 
-    const contract = state.verifContracts?.[d.display]
-      || Object.entries(state.verifContracts||{}).find(([l]) => _verifNormLab(l) === k)?.[1];
+    const _yctr    = state.verifContracts?.[yr] || {};
+    const contract = _yctr[d.display]
+      || Object.entries(_yctr).find(([l]) => _verifNormLab(l) === k)?.[1];
     const isN1   = contract?.type === 'N1';
     const prorMo = isN1 ? _verifProrataMonths(contract?.startDate, yr) : 12;
 
@@ -5033,7 +5035,7 @@ function _verifFillMonthDetail(mk) {
   ((state._digiMonthStats||{})[mk]||[]).forEach(r => digiMap[_verifNormLab(r.labo)] = r);
   ((state._grossisteMonthStats||{})[mk]||[]).forEach(r => grosMap[_verifNormLab(r.labo)] = r);
 
-  const activeNorm = Object.entries(state.verifContracts||{}).filter(([,c]) => c.active).map(([l]) => _verifNormLab(l));
+  const activeNorm = Object.entries(state.verifContracts?.[mkY] || {}).filter(([,c]) => c.active).map(([l]) => _verifNormLab(l));
   const allKeys    = [...new Set([...Object.keys(ospMap),...Object.keys(digiMap),...Object.keys(grosMap)])].sort();
   const keys       = activeNorm.length ? allKeys.filter(k => activeNorm.includes(k)) : allKeys;
 
@@ -7268,7 +7270,15 @@ async function saveProfile() {
       state._fseMonthStats = saved.fseMonthStats;
     }
     if (saved.verifContracts && Object.keys(saved.verifContracts).length) {
-      state.verifContracts = saved.verifContracts;
+      // Migration : ancien format plat { labKey: {active,type,startDate} } → { [year]: {...} }
+      const first = Object.values(saved.verifContracts)[0];
+      if (first && typeof first === 'object' && ('active' in first || 'type' in first)) {
+        // Ancien format : on range tout sous N-1
+        const migrYear = new Date().getFullYear() - 1;
+        state.verifContracts = { [migrYear]: saved.verifContracts };
+      } else {
+        state.verifContracts = saved.verifContracts;
+      }
     }
     if (saved.monthStats && Object.keys(saved.monthStats).length) {
       state._monthStats   = saved.monthStats;
