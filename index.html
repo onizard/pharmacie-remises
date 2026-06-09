@@ -4718,7 +4718,12 @@ async function _verifEnsureRefMap() {
   if (_verifRefMap !== null && _verifRefMapRowCount === rowCount) return;
   _verifRefMap = new Map();
   _verifRefMapRowCount = rowCount;
-  const cips = [...new Set((state.ospharm_job?.rows || []).map(r => r.cip13).filter(Boolean))];
+  const allRows = state.ospharm_job?.rows || [];
+  const cips = [...new Set(allRows.map(r => r.cip13).filter(Boolean))];
+  // Diagnostic : répartition par année dans les rows OSPHARM
+  const byYear = {};
+  allRows.forEach(r => { const y = r.year ?? r._year; byYear[y] = (byYear[y]||0)+1; });
+  console.log('[verif] rows OSPHARM par année:', byYear, '— CIPs uniques:', cips.length);
   if (!cips.length) return;
   const token = state.session?.access_token || SUPA_KEY;
   const HDR = { apikey: SUPA_KEY, Authorization: 'Bearer ' + token };
@@ -4732,9 +4737,12 @@ async function _verifEnsureRefMap() {
       if (resp.ok) (await resp.json()).forEach(r =>
         _verifRefMap.set(r.cip13, { labo: _verifNormLab(r.labo || ''), rsf_pct: r.rsf_pct })
       );
-    } catch(_) {}
+      else console.warn('[verif] fetch refs HTTP', resp.status, await resp.text().catch(()=>''));
+    } catch(e) { console.warn('[verif] fetch refs erreur:', e); }
   }
-  console.log('[verif] refMap chargé:', _verifRefMap.size, 'refs pour', rowCount, 'lignes OSPHARM');
+  console.log('[verif] refMap chargé:', _verifRefMap.size, 'entrées');
+  // Exemple : 3 premières entrées
+  let n=0; _verifRefMap.forEach((v,k) => { if(n++<3) console.log(' ex:', k, v); });
 }
 
 // RSF% pondéré réel + RSF€ calculés depuis les lignes OSPHARM brutes pour un labo donné
