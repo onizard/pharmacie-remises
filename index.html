@@ -4884,36 +4884,42 @@ function _verifRenderYear(year) {
 function _verifFillAnnualSummary(year) {
   const wrap = document.getElementById('verifAnnualTable'); if (!wrap) return;
   const yr   = parseInt(year);
-  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + '  €';
-  const fmtP = v => v != null ? v.toFixed(1) + ' %' : '—';
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const TVA_R3 = 1.20;
+  const mksY  = mk => mk.startsWith(yr + '-');
 
-  // Accumule par labo pour toute l'année
+  // ── Accumulation des achats ────────────────────────────────────────────
   const labAcc = {};
-  const mksY   = mk => mk.startsWith(yr + '-');
+  const acc = (k, display) => {
+    if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0 };
+  };
 
   Object.entries(state._monthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
-      const k = _verifNormLab(r.labo);
-      if (!labAcc[k]) labAcc[k] = { display: r.labo, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0, r2rec:0, r3recHT:0 };
+      const k = _verifNormLab(r.labo); acc(k, r.labo);
       labAcc[k].pa_osp  += r.pa_net ?? ((r.ca_brut||0) - (r.remise_totale||0));
       labAcc[k].ca_brut += r.ca_brut || 0;
     })
   );
   Object.entries(state._digiMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
-      const k = _verifNormLab(r.labo);
-      if (!labAcc[k]) labAcc[k] = { display: r.labo, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0, r2rec:0, r3recHT:0 };
-      labAcc[k].pa_di   += r.total_ht   || 0;
-      labAcc[k].r2rec   += r.rdp_total  || 0;
-      labAcc[k].r3recHT += r.presta_total || 0;
+      const k = _verifNormLab(r.labo); acc(k, r.labo);
+      labAcc[k].pa_di += r.total_ht || 0;
     })
   );
   Object.entries(state._grossisteMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
-      const k = _verifNormLab(r.labo);
-      if (!labAcc[k]) labAcc[k] = { display: r.labo, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0, r2rec:0, r3recHT:0 };
+      const k = _verifNormLab(r.labo); acc(k, r.labo);
       labAcc[k].pa_gr += r.total_ht || 0;
+    })
+  );
+
+  // ── Accumulation virements FSE ─────────────────────────────────────────
+  const fseAcc = {};
+  Object.entries(state._fseMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, labMap]) =>
+    Object.entries(labMap || {}).forEach(([labo, stats]) => {
+      const k = _verifNormLab(labo);
+      fseAcc[k] = (fseAcc[k] || 0) + (stats.montant_ttc || 0);
     })
   );
 
@@ -4927,76 +4933,47 @@ function _verifFillAnnualSummary(year) {
 
   const today = new Date();
   const mRef  = yr < today.getFullYear() ? 12 : today.getMonth() + 1;
+  const gapCls = v => v == null ? '' : v > 0.5 ? ' style="color:var(--red)"' : v < -0.5 ? ' style="color:var(--green)"' : '';
+  const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
 
-  let totPa=0, totR2est=0, totR2rec=0, totR3estHT=0, totR3recHT=0, rowCount=0;
-  let hasR3 = false;
+  let totPa=0, totAtt=0, totRec=0, rowCount=0;
 
   const rows = keys.map(k => {
-    const d       = labAcc[k];
-    const pa_tot  = d.pa_osp + d.pa_di + d.pa_gr;
+    const d      = labAcc[k];
+    const pa_tot = d.pa_osp + d.pa_di + d.pa_gr;
     if (pa_tot <= 0) return '';
 
-    const cond   = _verifGetCond(d.display, yr, mRef);
-    const r2avg  = _verifR2avg(cond);
-    const r3pct  = cond ? (parseFloat(cond.coopR3) || 0) : 0;
-    if (r3pct > 0) hasR3 = true;
+    const cond    = _verifGetCond(d.display, yr, mRef);
+    const r2avg   = _verifR2avg(cond);
+    const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
 
-    const _yctr    = state.verifContracts?.[yr] || {};
-    const contract = _yctr[d.display]
-      || Object.entries(_yctr).find(([l]) => _verifNormLab(l) === k)?.[1];
-    const isN1   = contract?.type === 'N1';
-    const prorMo = isN1 ? _verifProrataMonths(contract?.startDate, yr) : 12;
+    const _yctr   = state.verifContracts?.[yr] || {};
+    const contract = _yctr[d.display] || Object.entries(_yctr).find(([l]) => _verifNormLab(l) === k)?.[1];
+    const isN1    = contract?.type === 'N1';
+    const prorMo  = isN1 ? _verifProrataMonths(contract?.startDate, yr) : 12;
 
-    const r2est   = r2avg != null ? pa_tot * r2avg / 100 : null;
-    const r3estHT = r3pct > 0 ? pa_tot * r3pct / 100 : null;
-    const r3estTTC= r3estHT != null ? r3estHT * TVA_R3 : null;
-    const r2rec   = d.r2rec   > 0 ? d.r2rec   : null;
-    const r3recHT = d.r3recHT > 0 ? d.r3recHT : null;
-    const r3recTTC= r3recHT  != null ? r3recHT * TVA_R3 : null;
-    const r2gap   = r2est  != null && r2rec  != null ? r2est  - r2rec  : null;
-    const r3gap   = r3estHT!= null && r3recHT!= null ? r3estHT - r3recHT : null;
+    const r2est   = r2avg  != null ? pa_tot * r2avg  / 100       : 0;
+    const r3estTTC= r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : 0;
+    const remAtt  = r2est + r3estTTC;
+    const remRec  = fseAcc[k] || 0;
+    const gap     = remAtt > 0 ? remAtt - remRec : null;
 
-    totPa += pa_tot;
-    if (r2est   != null) totR2est   += r2est;
-    if (r2rec   != null) totR2rec   += r2rec;
-    if (r3estHT != null) totR3estHT += r3estHT;
-    if (r3recHT != null) totR3recHT += r3recHT;
+    totPa  += pa_tot;
+    totAtt += remAtt;
+    if (remRec > 0) totRec += remRec;
     rowCount++;
 
-    const gapCls = v => v == null ? '' : v > 0.5 ? 'style="color:var(--red)"' : v < -0.5 ? 'style="color:var(--green)"' : '';
-    const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
     const prorBadge = isN1 && prorMo < 12
       ? ` <span class="verif-prorate-badge" style="font-size:9px">${prorMo}/12</span>` : '';
 
     return `<tr>
       <td>${escH(d.display)}${prorBadge}</td>
       <td>${fmtE(pa_tot)}</td>
-      <td class="verif-r2">${r2avg != null ? fmtP(r2avg) : '—'}</td>
-      <td class="verif-r2">${r2est != null ? fmtE(r2est) : '—'}</td>
-      <td class="verif-r2">${r2rec != null ? fmtE(r2rec) : '—'}</td>
-      <td ${gapCls(r2gap)}>${fmtGap(r2gap)}</td>
-      ${r3pct > 0
-        ? `<td class="verif-r3">${fmtP(r3pct)}</td>
-           <td class="verif-r3">${r3estHT  ? fmtE(r3estHT)  + '<span style="font-size:9px;color:var(--text-dim)"> HT</span>'  : '—'}</td>
-           <td class="verif-r3">${r3estTTC ? fmtE(r3estTTC) + '<span style="font-size:9px;color:var(--text-dim)"> TTC</span>' : '—'}</td>
-           <td class="verif-r3">${r3recHT  ? fmtE(r3recHT)  + '<span style="font-size:9px;color:var(--text-dim)"> HT</span>'  : '—'}</td>
-           <td class="verif-r3">${r3recTTC ? fmtE(r3recTTC) + '<span style="font-size:9px;color:var(--text-dim)"> TTC</span>' : '—'}</td>
-           <td ${gapCls(r3gap)}>${fmtGap(r3gap)}</td>`
-        : hasR3 ? '<td colspan="6" style="color:var(--text-dim);text-align:center">—</td>' : ''}
+      <td>${remAtt > 0 ? fmtE(remAtt) : '—'}</td>
+      <td>${remRec > 0 ? fmtE(remRec) : '—'}</td>
+      <td${gapCls(gap)}>${fmtGap(gap)}</td>
     </tr>`;
   }).filter(Boolean).join('');
-
-  const r3Hdrs = hasR3
-    ? '<th>R3 %</th><th>R3 ATT. HT</th><th>R3 ATT. TTC</th><th>R3 REÇUE HT</th><th>R3 REÇUE TTC</th><th>ÉCART R3</th>'
-    : '';
-  const r3Foot = hasR3
-    ? `<td></td>
-       <td class="verif-r3">${fmtE(totR3estHT)}<span style="font-size:9px;color:var(--text-dim)"> HT</span></td>
-       <td class="verif-r3">${fmtE(totR3estHT * TVA_R3)}<span style="font-size:9px;color:var(--text-dim)"> TTC</span></td>
-       <td class="verif-r3">${totR3recHT > 0 ? fmtE(totR3recHT) + '<span style="font-size:9px;color:var(--text-dim)"> HT</span>' : '—'}</td>
-       <td class="verif-r3">${totR3recHT > 0 ? fmtE(totR3recHT * TVA_R3) + '<span style="font-size:9px;color:var(--text-dim)"> TTC</span>' : '—'}</td>
-       <td>${totR3recHT > 0 ? (totR3estHT - totR3recHT > 0.5 ? '<span style="color:var(--red)">+' + fmtE(totR3estHT - totR3recHT) + '</span>' : fmtE(totR3estHT - totR3recHT)) : '—'}</td>`
-    : '';
 
   wrap.innerHTML = `
     <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:2px;margin-bottom:10px">◈ RÉCAPITULATIF ${year}</div>
@@ -5004,19 +4981,18 @@ function _verifFillAnnualSummary(year) {
       <table class="verif-tbl">
         <thead><tr>
           <th style="text-align:left">LABO</th>
-          <th>PA NET TOTAL</th>
-          <th>R2 %</th><th>R2 ATTENDUE</th><th>R2 REÇUE</th><th>ÉCART R2</th>
-          ${r3Hdrs}
+          <th>PA BRUT</th>
+          <th>REMISE ATTENDUE</th>
+          <th>REMISE REÇUE (FSE)</th>
+          <th>ÉCART</th>
         </tr></thead>
         <tbody>${rows}</tbody>
-        ${rowCount > 0 ? `<tfoot><tr>
+        ${rowCount > 1 ? `<tfoot><tr>
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
           <td>${fmtE(totPa)}</td>
-          <td></td>
-          <td class="verif-r2">${fmtE(totR2est)}</td>
-          <td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
-          <td>${totR2rec > 0 ? (totR2est - totR2rec > 0.5 ? '<span style="color:var(--red)">+' + fmtE(totR2est - totR2rec) + '</span>' : fmtE(totR2est - totR2rec)) : '—'}</td>
-          ${r3Foot}
+          <td>${fmtE(totAtt)}</td>
+          <td>${totRec > 0 ? fmtE(totRec) : '—'}</td>
+          <td${gapCls(totRec > 0 ? totAtt - totRec : null)}>${fmtGap(totRec > 0 ? totAtt - totRec : null)}</td>
         </tr></tfoot>` : ''}
       </table>
     </div>`;
@@ -5027,13 +5003,20 @@ function _verifFillAnnualSummary(year) {
 function _verifFillMonthDetail(mk) {
   const wrap = document.getElementById('verifMonthDetail'); if (!wrap) return;
   const [mkY, mkM] = mk.split('-').map(Number);
-  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + '  €';
+  const fmtE  = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const TVA_R3 = 1.20;
 
-  const ospMap = {}, digiMap = {}, grosMap = {};
-  ((state._monthStats||{})[mk]||[]).forEach(r => ospMap[_verifNormLab(r.labo)] = r);
-  ((state._digiMonthStats||{})[mk]||[]).forEach(r => digiMap[_verifNormLab(r.labo)] = r);
-  ((state._grossisteMonthStats||{})[mk]||[]).forEach(r => grosMap[_verifNormLab(r.labo)] = r);
+  // ── Sources achats ─────────────────────────────────────────────────────
+  const ospMap  = {}, digiMap = {}, grosMap = {};
+  ((state._monthStats||{})[mk]||[]).forEach(r  => ospMap [_verifNormLab(r.labo)]  = r);
+  ((state._digiMonthStats||{})[mk]||[]).forEach(r  => digiMap[_verifNormLab(r.labo)]  = r);
+  ((state._grossisteMonthStats||{})[mk]||[]).forEach(r  => grosMap [_verifNormLab(r.labo)]  = r);
+
+  // ── Virements FSE du mois ──────────────────────────────────────────────
+  const fseMap = {};
+  Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, stats]) => {
+    fseMap[_verifNormLab(labo)] = stats.montant_ttc || 0;
+  });
 
   const activeNorm = Object.entries(state.verifContracts?.[mkY] || {}).filter(([,c]) => c.active).map(([l]) => _verifNormLab(l));
   const allKeys    = [...new Set([...Object.keys(ospMap),...Object.keys(digiMap),...Object.keys(grosMap)])].sort();
@@ -5044,86 +5027,62 @@ function _verifFillMonthDetail(mk) {
     return;
   }
 
-  let totR2est=0, totR2rec=0, totR3estHT=0, totR3recTTC=0, rowCount=0, hasR3=false;
+  const gapCls = v => v == null ? '' : v > 0.5 ? ' style="color:var(--red)"' : v < -0.5 ? ' style="color:var(--green)"' : '';
+  const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
+  let totPa=0, totAtt=0, totRec=0, rowCount=0;
+
   const rows = keys.map(key => {
     const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
-    const pa_osp  = osp.pa_net ?? ((osp.ca_brut||0) - (osp.remise_totale||0));
-    const pa_di   = digi.total_ht || 0;
-    const pa_gr   = gros.total_ht || 0;
-    const pa_tot  = pa_osp + pa_di + pa_gr;
-    if (pa_tot <= 0 && !(digi.rdp_total > 0) && !(digi.presta_total > 0)) return '';
+    const pa_osp = osp.pa_net ?? ((osp.ca_brut||0) - (osp.remise_totale||0));
+    const pa_di  = digi.total_ht || 0;
+    const pa_gr  = gros.total_ht || 0;
+    const pa_tot = pa_osp + pa_di + pa_gr;
+    if (pa_tot <= 0) return '';
 
     const labDisplay = osp.labo || digi.labo || gros.labo || key;
-    const cond  = _verifGetCond(labDisplay, mkY, mkM);
-    const r2avg = _verifR2avg(cond);
-    const r3pct = cond ? (parseFloat(cond.coopR3) || 0) : 0;
-    if (r3pct > 0) hasR3 = true;
+    const cond   = _verifGetCond(labDisplay, mkY, mkM);
+    const r2avg  = _verifR2avg(cond);
+    const r3pct  = cond ? (parseFloat(cond.coopR3) || 0) : 0;
 
-    const r2est    = r2avg != null ? pa_tot * r2avg / 100 : null;
-    const r3estHT  = r3pct > 0 ? pa_tot * r3pct / 100 : null;
-    const r3estTTC = r3estHT != null ? r3estHT * TVA_R3 : null;
-    const r2rec    = digi.rdp_total        > 0 ? digi.rdp_total        : null;
-    const r3recHT  = digi.presta_total     > 0 ? digi.presta_total     : null;
-    const r3recTTC = digi.presta_total_ttc > 0 ? digi.presta_total_ttc : r3recHT != null ? r3recHT * TVA_R3 : null;
-    const r2gap    = r2est != null && r2rec != null ? r2est - r2rec : null;
-    const r3gapTTC = r3estTTC != null && r3recTTC != null ? r3estTTC - r3recTTC : null;
+    const r2est    = r2avg != null ? pa_tot * r2avg  / 100         : 0;
+    const r3estTTC = r3pct >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : 0;
+    const remAtt   = r2est + r3estTTC;
+    const remRec   = fseMap[key] || 0;
+    const gap      = remAtt > 0 ? remAtt - remRec : null;
 
-    if (r2est   != null) totR2est    += r2est;
-    if (r2rec   != null) totR2rec    += r2rec;
-    if (r3estHT != null) totR3estHT  += r3estHT;
-    if (r3recTTC!= null) totR3recTTC += r3recTTC;
+    totPa  += pa_tot;
+    totAtt += remAtt;
+    if (remRec > 0) totRec += remRec;
     rowCount++;
-
-    const gapCls = v => v == null ? '' : v > 0.5 ? 'style="color:var(--red)"' : v < -0.5 ? 'style="color:var(--green)"' : '';
-    const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
-    const fmtV   = (v, suf) => v != null ? fmtE(v) + `<span style="font-size:9px;color:var(--text-dim)"> ${suf}</span>` : '—';
 
     return `<tr>
       <td>${escH(labDisplay)}</td>
-      <td>${pa_osp > 0 ? fmtE(pa_osp) : '—'}</td>
-      <td>${pa_di  > 0 ? fmtE(pa_di)  : '—'}</td>
-      <td>${pa_gr  > 0 ? fmtE(pa_gr)  : '—'}</td>
-      <td style="color:var(--text)">${pa_tot > 0 ? fmtE(pa_tot) : '—'}</td>
-      <td class="verif-r2">${r2est != null ? fmtE(r2est) : '—'}</td>
-      <td class="verif-r2">${r2rec != null ? fmtE(r2rec) : '—'}</td>
-      <td ${gapCls(r2gap)}>${fmtGap(r2gap)}</td>
-      ${r3pct > 0
-        ? `<td class="verif-r3">${fmtV(r3estHT,'HT')}</td>
-           <td class="verif-r3">${fmtV(r3estTTC,'TTC')}</td>
-           <td class="verif-r3">${fmtV(r3recHT,'HT')}</td>
-           <td class="verif-r3">${fmtV(r3recTTC,'TTC')}</td>
-           <td ${gapCls(r3gapTTC)}>${fmtGap(r3gapTTC)}</td>`
-        : hasR3 ? '<td colspan="5" style="color:var(--text-dim);text-align:center">—</td>' : ''}
+      <td>${fmtE(pa_tot)}</td>
+      <td>${remAtt > 0 ? fmtE(remAtt) : '—'}</td>
+      <td>${remRec > 0 ? fmtE(remRec) : '—'}</td>
+      <td${gapCls(gap)}>${fmtGap(gap)}</td>
     </tr>`;
   }).filter(Boolean).join('');
 
   const mkLabel = `${_MONTH_LABELS[mkM-1]} ${mkY}`;
-  const r3Hdrs  = hasR3
-    ? '<th>R3 EST. HT</th><th>R3 EST. TTC</th><th>R3 REÇUE HT</th><th>R3 REÇUE TTC</th><th>ÉCART R3</th>'
-    : '';
-
   wrap.innerHTML = `
     <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:2px;margin-bottom:10px">◈ ${mkLabel.toUpperCase()}</div>
     <div style="overflow-x:auto">
       <table class="verif-tbl">
         <thead><tr>
           <th style="text-align:left">LABO</th>
-          <th>PA OSP</th><th>PA DIR.</th><th>PA GROS</th><th>PA TOTAL</th>
-          <th>R2 EST.</th><th>R2 REÇUE</th><th>ÉCART R2</th>
-          ${r3Hdrs}
+          <th>PA BRUT</th>
+          <th>REMISE ATTENDUE</th>
+          <th>REMISE REÇUE (FSE)</th>
+          <th>ÉCART</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
-          <td colspan="4"></td>
-          <td class="verif-r2">${fmtE(totR2est)}</td>
-          <td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
-          <td>${totR2rec > 0 ? (totR2est - totR2rec > 0.5 ? '<span style="color:var(--red)">+' + fmtE(totR2est-totR2rec) + '</span>' : fmtE(totR2est-totR2rec)) : '—'}</td>
-          ${hasR3 ? `<td class="verif-r3">${fmtE(totR3estHT)}<span style="font-size:9px;color:var(--text-dim)"> HT</span></td>
-            <td class="verif-r3">${fmtE(totR3estHT * TVA_R3)}<span style="font-size:9px;color:var(--text-dim)"> TTC</span></td>
-            <td colspan="1"></td>
-            <td class="verif-r3">${totR3recTTC > 0 ? fmtE(totR3recTTC) + '<span style="font-size:9px;color:var(--text-dim)"> TTC</span>' : '—'}</td>
-            <td>${totR3recTTC > 0 ? (totR3estHT * TVA_R3 - totR3recTTC > 0.5 ? '<span style="color:var(--red)">+' + fmtE(totR3estHT*TVA_R3 - totR3recTTC) + '</span>' : fmtE(totR3estHT*TVA_R3 - totR3recTTC)) : '—'}</td>` : ''}
+          <td>${fmtE(totPa)}</td>
+          <td>${fmtE(totAtt)}</td>
+          <td>${totRec > 0 ? fmtE(totRec) : '—'}</td>
+          <td${gapCls(totRec > 0 ? totAtt - totRec : null)}>${fmtGap(totRec > 0 ? totAtt - totRec : null)}</td>
         </tr></tfoot>` : ''}
       </table>
     </div>`;
