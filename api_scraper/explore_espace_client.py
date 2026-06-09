@@ -53,7 +53,7 @@ def _save_result(result: dict):
 
 
 async def _explore(creds: dict):
-    from camoufox.async_api import AsyncCamoufox
+    from playwright.async_api import async_playwright
 
     api_calls = []   # toutes les requêtes /api/*
     pages_visited = []
@@ -68,7 +68,14 @@ async def _explore(creds: dict):
             "password": _p.password or "",
         }
 
-    async with AsyncCamoufox(headless=True, proxy=proxy_cfg) as browser:
+    _ARGS = [
+        "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+        "--disable-extensions", "--disable-background-networking",
+        "--mute-audio", "--no-first-run",
+    ]
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, args=_ARGS, proxy=proxy_cfg)
         context = await browser.new_context()
 
         # Intercepte toutes les réponses JSON des appels API
@@ -153,6 +160,7 @@ async def _explore(creds: dict):
         }""")
 
         await context.close()
+        await browser.close()
 
     return {
         "pages_visited": pages_visited,
