@@ -125,8 +125,15 @@ _CHROMIUM_ARGS = [
 ]
 
 def _ospharm_playwright_login(username: str, password: str, success_domain: str, form_redirect: str):
-    """Login via Playwright Chromium — navigation directe vers l'app (pas de client_id hardcodé)."""
+    """Login via Playwright Chromium — navigation directe vers l'app, flux Keycloak OIDC natif."""
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    _KC_URL = "accounts.dev.ospharm.org"
+    _LOGIN_SELS = [
+        "a[href*='login']", "a[href*='connect']", "a[href*='signin']",
+        "button:has-text('Connexion')", "button:has-text('Se connecter')",
+        "a:has-text('Connexion')", "a:has-text('Se connecter')",
+        "input[type='submit']", "button[type='submit']",
+    ]
     ok = False
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=_CHROMIUM_ARGS)
@@ -135,20 +142,37 @@ def _ospharm_playwright_login(username: str, password: str, success_domain: str,
         final_url = ""
         try:
             print(f"  → goto {form_redirect}", flush=True)
-            page.goto(form_redirect, wait_until="domcontentloaded", timeout=30_000)
-            print(f"  → URL après goto : {page.url[:100]}", flush=True)
+            page.goto(form_redirect, wait_until="load", timeout=30_000)
             try:
-                page.wait_for_url("**ospharm.org**", timeout=10_000)
-                print(f"  → URL Keycloak : {page.url[:100]}", flush=True)
+                page.wait_for_load_state("networkidle", timeout=8_000)
             except PWTimeout:
-                print(f"  → wait_for_url ospharm.org timeout, URL : {page.url[:100]}", flush=True)
+                pass
+            print(f"  → URL après load : {page.url[:100]}", flush=True)
 
-            # Gérer le cas multi-step Keycloak (username d'abord, puis password)
+            # Si pas encore sur la page Keycloak, chercher un bouton login pour déclencher le flux OIDC
+            if _KC_URL not in page.url:
+                print("  → pas de redirect Keycloak auto — cherche bouton login…", flush=True)
+                for sel in _LOGIN_SELS:
+                    try:
+                        page.locator(sel).first.click(timeout=2_000)
+                        print(f"  → clic '{sel}'", flush=True)
+                        break
+                    except Exception:
+                        continue
+                try:
+                    page.wait_for_url(f"**{_KC_URL}**", timeout=15_000)
+                    print(f"  → URL Keycloak après clic : {page.url[:100]}", flush=True)
+                except PWTimeout:
+                    print(f"  → toujours pas sur Keycloak, URL : {page.url[:100]}", flush=True)
+            else:
+                print(f"  → URL Keycloak (redirect auto) : {page.url[:100]}", flush=True)
+
+            # Remplir le formulaire Keycloak
             user_loc = page.locator("input[name='username'],input[type='email'],input[type='text']").first
             user_loc.fill(username, timeout=10_000)
             print("  → username rempli", flush=True)
 
-            # Vérifier si password est déjà visible, sinon soumettre le step username
+            # Gérer le cas multi-step Keycloak (password pas encore visible)
             pwd_loc = page.locator("input[type='password']").first
             try:
                 pwd_loc.wait_for(state="visible", timeout=3_000)
@@ -164,15 +188,15 @@ def _ospharm_playwright_login(username: str, password: str, success_domain: str,
             print("  → password rempli", flush=True)
 
             page.locator("button[type='submit'],input[type='submit']").last.click(timeout=5_000)
-            print(f"  → bouton submit cliqué, URL : {page.url[:100]}", flush=True)
+            print(f"  → submit cliqué, URL : {page.url[:100]}", flush=True)
 
             try:
                 page.wait_for_url(f"**{success_domain}**", timeout=25_000)
                 print(f"  → redirect réussie : {page.url[:100]}", flush=True)
             except PWTimeout:
-                print(f"  → wait_for_url {success_domain} timeout, URL : {page.url[:100]}", flush=True)
+                print(f"  → timeout redirect {success_domain}, URL : {page.url[:100]}", flush=True)
             final_url = page.url
-            ok = success_domain in final_url and OSPHARM_AUTH_URL not in final_url
+            ok = success_domain in final_url and _KC_URL not in final_url
         finally:
             browser.close()
     if not ok:
