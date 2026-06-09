@@ -7588,6 +7588,7 @@ async function saveProfile() {
     goTo(targetPage);
     if (targetPage === 'results') launchComparateur();
     setTimeout(() => renderRecap(), 0);
+    if (targetPage === 'verificateur') setTimeout(() => renderVerificateur(), 0);
   } else {
     goTo('recap');
     setTimeout(() => renderRecap(), 0);
