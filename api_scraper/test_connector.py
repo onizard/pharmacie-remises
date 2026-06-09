@@ -126,27 +126,34 @@ _CHROMIUM_ARGS = [
 ]
 
 def _ospharm_playwright_login(username: str, password: str, success_domain: str, form_redirect: str):
-    """Login via Playwright Chromium (faible empreinte mémoire)."""
+    """Login via Playwright Chromium — navigation directe vers l'app (pas de client_id hardcodé)."""
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=_CHROMIUM_ARGS)
-        ctx  = browser.new_context(java_script_enabled=True)
+        ctx  = browser.new_context(java_script_enabled=True, viewport={"width": 1440, "height": 900})
         page = ctx.new_page()
+        final_url = ""
         try:
-            login_url = f"{OSPHARM_AUTH_URL}/?client_id=c44d25be-29b4-4379-a38a-83eb1473f5bd&redirect_uri={form_redirect}"
-            page.goto(login_url, wait_until="domcontentloaded", timeout=30_000)
-            page.locator("input[name='username'],input[type='email'],input[type='text']").first.fill(username, timeout=10_000)
-            page.locator("input[type='password']").first.fill(password, timeout=5_000)
-            page.locator("input[type='password']").first.press("Enter")
+            # Naviguer vers l'app — Keycloak redirige automatiquement vers sa page de login
+            page.goto(form_redirect, wait_until="domcontentloaded", timeout=30_000)
+            # Attendre la page de login Keycloak (accounts.*.ospharm.org)
             try:
-                page.wait_for_url(f"**{success_domain}**", timeout=20_000)
+                page.wait_for_url("**ospharm.org**", timeout=10_000)
             except PWTimeout:
                 pass
-            ok = success_domain in page.url and OSPHARM_AUTH_URL not in page.url
+            page.locator("input[name='username'],input[type='email'],input[type='text']").first.fill(username, timeout=10_000)
+            page.locator("input[type='password']").first.fill(password, timeout=5_000)
+            page.locator("button[type='submit'],input[type='submit'],input[type='password']").last.press("Enter")
+            try:
+                page.wait_for_url(f"**{success_domain}**", timeout=25_000)
+            except PWTimeout:
+                pass
+            final_url = page.url
+            ok = success_domain in final_url and OSPHARM_AUTH_URL not in final_url
         finally:
             browser.close()
     if not ok:
-        raise RuntimeError(f"Identifiants incorrects (URL finale : {page.url[:60]})")
+        raise RuntimeError(f"Identifiants incorrects (URL finale : {final_url[:80]})")
 
 
 def test_ospharm(creds: dict):
