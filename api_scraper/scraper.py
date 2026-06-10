@@ -310,6 +310,7 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
     import os as _os
     if _os.environ.get("PDF_DEBUG") == "1":
         print(f"[PDF] Téléchargement : {file_url[:140]}", flush=True)
+    content = b""
     try:
         content = await asyncio.wait_for(
             loop.run_in_executor(None, _download_pdf_sync, file_url),
@@ -320,7 +321,30 @@ async def _process_pdf(page, inv: dict) -> list[dict]:
     except (asyncio.TimeoutError, Exception) as _e:
         if _os.environ.get("PDF_DEBUG") == "1":
             print(f"[PDF] Échec download : {_e}", flush=True)
-        return []
+
+    # Fallback : téléchargement via le contexte navigateur (pour les URLs auth-protégées)
+    if len(content) < 500 or not content.startswith(b"%PDF"):
+        try:
+            csrf = await _get_csrf(page)
+            result = await page.evaluate("""async ([url, csrf]) => {
+                const r = await fetch(url, {
+                    credentials: 'include',
+                    headers: {'X-CSRFToken': csrf}
+                });
+                if (!r.ok) return null;
+                const ab = await r.arrayBuffer();
+                const bytes = new Uint8Array(ab);
+                let bin = '';
+                for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+                return btoa(bin);
+            }""", [file_url, csrf])
+            if result:
+                content = base64.b64decode(result)
+                if _os.environ.get("PDF_DEBUG") == "1":
+                    print(f"[PDF] Fallback browser OK : {len(content)} bytes", flush=True)
+        except Exception as _fb_e:
+            if _os.environ.get("PDF_DEBUG") == "1":
+                print(f"[PDF] Fallback browser échoué : {_fb_e}", flush=True)
 
     if len(content) < 500:
         return []
@@ -544,11 +568,10 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
 
         invoices = await _fetch_invoices(page, progress)
         if not invoices:
-            progress("Aucune facture générique 2025 trouvée")
-            return []
+            progress("Aucune facture générique trouvée")
 
         # Appliquer le filtre labo si défini (ex: LABS_FILTER=biogaran)
-        if LABS_FILTER:
+        if LABS_FILTER and invoices:
             filtered = [inv for inv in invoices
                         if LABS_FILTER in (inv.get("provider_ref") or inv.get("provider_name") or "").lower()]
             progress(f"{len(invoices)} factures → {len(filtered)} après filtre '{LABS_FILTER}'")
@@ -603,6 +626,29 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                 progress(f"⚠ Budget 50 min atteint à PDF {i}/{len(invoices)} — sauvegarde partielle")
                 break
 
+        # ── GED : documents MDL (CERP Marge de Distribution en Licence) ────────
+        ged_docs = await _fetch_ged_documents(page, progress)
+        for i, doc in enumerate(ged_docs, 1):
+            ck   = f"ged:{_inv_key(doc)}"
+            date = doc.get("billing_date", "?")
+            lines = []
+            if ck in _cache_in:
+                _cache_out[ck] = True
+            else:
+                try:
+                    lines = await asyncio.wait_for(_process_pdf(page, doc), timeout=70)
+                except asyncio.TimeoutError:
+                    progress(f"GED {i}/{len(ged_docs)} — MDL {date} TIMEOUT 70s, ignoré")
+                _cache_out[ck] = lines
+                if lines:
+                    progress(f"GED {i}/{len(ged_docs)} — MDL {date} → {len(lines)} lignes")
+                else:
+                    progress(f"GED {i}/{len(ged_docs)} — MDL {date} → 0 lignes")
+                await page.wait_for_timeout(150)
+            all_lines.extend(lines)
+            if _on_progress:
+                _on_progress(all_lines, _cache_out)
+
         # Synthèse par labo
         labos_count: dict[str, int] = {}
         for l in all_lines:
@@ -611,6 +657,188 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
         progress(f"Extraction terminée — {len(all_lines)} lignes : {labos_count}")
 
     return all_lines, _cache_out
+
+
+async def _fetch_ged_documents(page, progress: Callable) -> list[dict]:
+    """
+    Cherche les documents MDL dans la section GED de Digipharmacie.
+    Retourne une liste de dicts compatibles avec _process_pdf :
+      {file, provider_ref, provider_name, billing_date}
+    """
+    MDL_KEYWORDS = ("mdl", "marge dépositaire", "marge depositaire",
+                    "marché de distribution", "marche de distribution",
+                    "smr générique", "smr generique")
+    GED_NAV_KW   = ("ged", "document", "biblioth", "ressource", "fichier", "media")
+    MONTH_MAP    = {
+        "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4,
+        "mai": 5, "juin": 6, "juillet": 7, "août": 8, "aout": 8,
+        "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12, "decembre": 12,
+    }
+
+    progress("Recherche documents GED (MDL CERP)…")
+
+    # ── Phase 1 : chercher un lien GED dans la navigation de la page courante ──
+    ged_url = None
+    try:
+        nav_links = await page.evaluate("""() =>
+            Array.from(document.querySelectorAll('a[href]'))
+                .map(a => ({href: a.href || '', text: (a.textContent||'').trim().toLowerCase()}))
+                .filter(l => l.href && l.href.startsWith('http'))
+        """)
+        for link in nav_links:
+            h = link.get("href", "").lower()
+            t = link.get("text", "")
+            if any(kw in h or kw in t for kw in GED_NAV_KW):
+                ged_url = link["href"]
+                progress(f"Lien GED trouvé : {link['href']!r} ({link['text']!r})")
+                break
+    except Exception:
+        pass
+
+    # ── Phase 2 : essayer les URLs candidates si aucun lien trouvé ────────────
+    if not ged_url:
+        for path in ("/ged/", "/documents/", "/bibliotheque/", "/ressources/", "/fichiers/"):
+            try:
+                r = await page.goto(f"{BASE_URL}{path}", wait_until="load", timeout=20_000)
+                if r and r.status < 400 and "/login" not in page.url:
+                    ged_url = page.url
+                    progress(f"GED accessible via {path}")
+                    await page.wait_for_timeout(3000)
+                    break
+            except Exception:
+                continue
+
+    if not ged_url:
+        progress("Section GED introuvable — documents MDL à déposer manuellement")
+        return []
+
+    # ── Phase 3 : naviguer et capturer les réponses API ───────────────────────
+    _caps: list[tuple[str, object]] = []
+
+    def _on_resp(response):
+        ct = response.headers.get("content-type", "")
+        if "json" in ct and response.status == 200 and BASE_URL in response.url:
+            _caps.append((response.url, response))
+
+    page.on("response", _on_resp)
+    if ged_url != page.url:
+        try:
+            await page.goto(ged_url, wait_until="load", timeout=30_000)
+        except Exception:
+            pass
+    await page.wait_for_timeout(4000)
+
+    # Scroll pour charger plus si pagination lazy
+    try:
+        await page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+        await page.wait_for_timeout(2000)
+    except Exception:
+        pass
+    page.remove_listener("response", _on_resp)
+
+    # ── Phase 4 : identifier l'endpoint document dans les réponses capturées ──
+    DOC_PATH_KW = ("document", "ged", "file", "biblio", "ressource", "media", "upload",
+                   "attachment", "piece", "pièce")
+    csrf = await _get_csrf(page)
+
+    doc_results = []
+    seen_endpoints: set = set()
+    for url, _resp in _caps:
+        parsed_path = urlparse(url).path.lower()
+        if not any(kw in parsed_path for kw in DOC_PATH_KW):
+            continue
+        if url in seen_endpoints:
+            continue
+        seen_endpoints.add(url)
+        try:
+            data  = await _js_fetch_json(page, url, csrf)
+            items = data.get("results", data if isinstance(data, list) else [])
+            if items and isinstance(items[0], dict):
+                doc_results.extend(items)
+                progress(f"GED endpoint : {urlparse(url).path} → {len(items)} docs")
+        except Exception as _e:
+            progress(f"GED endpoint {urlparse(url).path} ignoré : {_e}")
+            continue
+
+    # ── Phase 5 : fallback — appel direct aux endpoints API connus ────────────
+    if not doc_results:
+        progress("Pas de réponse capturée — tentative endpoints API directs…")
+        for ep in ("/api/v1/documents/", "/api/v1/ged/", "/api/v1/files/",
+                   "/api/v1/bibliotheque/", "/api/v1/media/"):
+            try:
+                data  = await _js_fetch_json(
+                    page,
+                    f"{BASE_URL}{ep}?page_size=100&ordering=-date",
+                    csrf,
+                )
+                items = data.get("results", data if isinstance(data, list) else [])
+                if items and isinstance(items[0], dict):
+                    doc_results.extend(items)
+                    progress(f"GED fallback {ep} → {len(items)} docs")
+                    break
+            except Exception:
+                continue
+
+    if not doc_results:
+        progress("GED accessible mais aucun document récupéré")
+        return []
+
+    # ── Phase 6 : filtrer les documents MDL ───────────────────────────────────
+    def _doc_text(d: dict) -> str:
+        return " ".join(str(v) for v in d.values() if isinstance(v, str)).lower()
+
+    mdl_docs = [d for d in doc_results if any(kw in _doc_text(d) for kw in MDL_KEYWORDS)]
+
+    if not mdl_docs:
+        progress(f"GED : {len(doc_results)} docs total, aucun MDL (mots-clés : {MDL_KEYWORDS})")
+        return []
+
+    progress(f"GED : {len(mdl_docs)} document(s) MDL trouvé(s)")
+
+    # ── Phase 7 : normaliser en format compatible avec _process_pdf ───────────
+    normalized = []
+    for doc in mdl_docs:
+        file_url = (doc.get("file") or doc.get("file_url") or
+                    doc.get("url") or doc.get("download_url") or
+                    doc.get("attachment") or doc.get("path") or "")
+        if not file_url:
+            continue
+        # Rendre l'URL absolue si relative
+        if file_url.startswith("/"):
+            file_url = f"{BASE_URL}{file_url}"
+
+        # Extraire la date depuis le titre ("MDL Février 2026" → "2026-02-01")
+        title = str(doc.get("title") or doc.get("name") or doc.get("filename") or
+                    doc.get("label") or "")
+        billing_date = (doc.get("billing_date") or doc.get("date") or
+                        doc.get("created_at") or "")
+        if not billing_date or len(billing_date) < 7:
+            m_year = re.search(r"(20\d{2})", title)
+            year   = m_year.group(1) if m_year else ""
+            month_num = 0
+            for word, num in MONTH_MAP.items():
+                if word in title.lower():
+                    month_num = num
+                    break
+            if year and month_num:
+                billing_date = f"{year}-{month_num:02d}-01"
+            elif billing_date and len(billing_date) >= 7:
+                billing_date = billing_date[:7] + "-01"
+            else:
+                billing_date = ""
+
+        if not billing_date:
+            progress(f"GED MDL : date non trouvée pour {title!r} — ignoré")
+            continue
+
+        normalized.append({
+            "file":          file_url,
+            "provider_ref":  "CERP",
+            "provider_name": "CERP",
+            "billing_date":  billing_date,
+        })
+
+    return normalized
 
 
 def _inv_key(inv: dict) -> str:

@@ -270,7 +270,7 @@ async def _discover_async(creds: dict) -> dict:
 
         print(f"  Connecté — URL: {page.url}  navigation /factures/…")
 
-        # Intercepter la première réponse API
+        # ── Découverte /factures/ ─────────────────────────────────────────────
         raw_pages: list[dict] = []
         captured  = asyncio.Event()
 
@@ -293,6 +293,7 @@ async def _discover_async(creds: dict) -> dict:
         page.off("response", on_response)
 
         # Si pas capturé via event, appel direct
+        csrf2 = ""
         if not raw_pages:
             print("  Tentative fetch direct…")
             _ctx_cks = await ctx.cookies()
@@ -314,10 +315,83 @@ async def _discover_async(creds: dict) -> dict:
             if result["status"] == 200:
                 raw_pages.append(json.loads(result["text"]))
 
+        # ── Découverte GED (documents MDL) ────────────────────────────────────
+        if not csrf2:
+            _ctx_cks = await ctx.cookies()
+            csrf2 = next((c["value"] for c in _ctx_cks if c["name"] == "csrftoken"), "")
+            if not csrf2:
+                csrf2 = await page.evaluate(
+                    "() => (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''"
+                )
+
+        GED_CANDIDATES = ["/ged/", "/documents/", "/bibliotheque/", "/ressources/", "/fichiers/"]
+        ged_discover: dict = {}
+
+        # Liens nav visibles depuis /factures/
+        nav_links = await page.evaluate("""() =>
+            Array.from(document.querySelectorAll('a[href]'))
+                .map(a => ({href: a.href || '', text: (a.textContent||'').trim()}))
+                .filter(l => l.href && l.href.startsWith('http'))
+        """)
+        print(f"  Liens nav depuis /factures/ : {len(nav_links)} liens")
+        ged_nav_kw = ("ged", "document", "biblioth", "ressource", "fichier", "media")
+        ged_found_links = [l for l in nav_links
+                           if any(kw in l["href"].lower() or kw in l["text"].lower()
+                                  for kw in ged_nav_kw)]
+        print(f"  Liens GED potentiels : {ged_found_links[:5]}")
+        ged_discover["nav_ged_links"] = ged_found_links[:10]
+
+        # Essayer chaque chemin candidat
+        ged_api_responses: list[dict] = []
+        for path in GED_CANDIDATES:
+            try:
+                r = await page.goto(f"{BASE_URL}{path}", wait_until="load", timeout=20_000)
+                status = r.status if r else "?"
+                final_url = page.url
+                print(f"  {path} → HTTP {status}  url={final_url}")
+                if r and r.status < 400 and "/login" not in final_url:
+                    await page.wait_for_timeout(3000)
+                    # Capturer les réponses API depuis cette page
+                    ged_caps: list[dict] = []
+                    _ged_evt = asyncio.Event()
+                    async def _on_ged(response, _evt=_ged_evt):
+                        ct = response.headers.get("content-type", "")
+                        if "json" in ct and response.status == 200 and BASE_URL in response.url:
+                            try:
+                                body = await response.json()
+                                ged_caps.append({"url": response.url, "body_sample": str(body)[:300]})
+                            except Exception:
+                                pass
+                    page.on("response", _on_ged)
+                    await page.wait_for_timeout(3000)
+                    page.remove_listener("response", _on_ged)
+                    ged_api_responses.extend(ged_caps)
+                    print(f"    → {len(ged_caps)} réponses JSON capturées")
+                    # Essayer aussi les endpoints API directs pour ce chemin
+                    for ep in ("/api/v1/documents/", "/api/v1/ged/", "/api/v1/files/",
+                               "/api/v1/bibliotheque/", "/api/v1/media/"):
+                        try:
+                            ep_result = await page.evaluate("""async ([url, csrf]) => {
+                                const r = await fetch(url, {
+                                    credentials:'include',
+                                    headers:{'Accept':'application/json','X-CSRFToken':csrf,
+                                             'X-Requested-With':'XMLHttpRequest'}
+                                });
+                                return {status: r.status, text: (await r.text()).slice(0, 500)};
+                            }""", [f"{BASE_URL}{ep}?page_size=10", csrf2])
+                            print(f"    {ep} → HTTP {ep_result['status']} : {ep_result['text'][:120]}")
+                        except Exception as _e2:
+                            print(f"    {ep} → erreur : {_e2}")
+            except Exception as _e:
+                print(f"  {path} → exception : {_e}")
+
+        ged_discover["api_responses"] = ged_api_responses[:20]
+        ged_discover["paths_tried"]   = GED_CANDIDATES
+
         await page.close()
 
     if not raw_pages:
-        return {"error": "Aucune réponse API capturée"}
+        return {"error": "Aucune réponse API capturée", "ged_discover": ged_discover}
 
     data    = raw_pages[0]
     docs    = data.get("results", data if isinstance(data, list) else [])
@@ -346,11 +420,12 @@ async def _discover_async(creds: dict) -> dict:
         type_counts[t] = type_counts.get(t, 0) + 1
 
     return {
-        "total_documents": total,
-        "sample_count":    len(docs),
-        "fields":          {k: list(v) for k, v in all_fields.items()},
+        "total_documents":   total,
+        "sample_count":      len(docs),
+        "fields":            {k: list(v) for k, v in all_fields.items()},
         "type_distribution": type_counts,
-        "sample": classified[:20],  # 20 premiers documents résumés
+        "sample":            classified[:20],
+        "ged_discover":      ged_discover,
     }
 
 
