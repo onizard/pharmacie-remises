@@ -4999,7 +4999,7 @@ function _verifFillAnnualSummary(year) {
   // ── Accumulation des achats ────────────────────────────────────────────
   const labAcc = {};
   const acc = (k, display) => {
-    if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0, rdp:0 };
+    if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0, rdp:0, presta_ttc:0 };
   };
 
   Object.entries(state._monthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
@@ -5012,8 +5012,9 @@ function _verifFillAnnualSummary(year) {
   Object.entries(state._digiMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
-      labAcc[k].pa_di += r.total_ht  || 0;
-      labAcc[k].rdp   += r.rdp_total || 0;
+      labAcc[k].pa_di      += r.total_ht         || 0;
+      labAcc[k].rdp        += r.rdp_total        || 0;
+      labAcc[k].presta_ttc += r.presta_total_ttc || 0;
     })
   );
   Object.entries(state._grossisteMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
@@ -5103,7 +5104,8 @@ function _verifFillAnnualSummary(year) {
           <td${gapCls(totRec > 0 ? totAtt - totRec : null)}>${fmtGap(totRec > 0 ? totAtt - totRec : null)}</td>
         </tr></tfoot>` : ''}
       </table>
-    </div>`;
+    </div>
+    ${_verifPrestaAnnualBlock(yr)}`;
 }
 
 // ── Détail mensuel ────────────────────────────────────────────────────────────
