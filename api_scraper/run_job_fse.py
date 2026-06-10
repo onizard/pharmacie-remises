@@ -29,10 +29,10 @@ SUPA_URL    = "https://api.break-pharma.fr"
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 USER_ID     = os.environ["USER_ID"]
 
-# Dates auto si non fournies : jan N-1 → aujourd'hui
+# Plage par défaut : janvier 2025 → avril 2026
 _today    = _dt_module.date.today()
-DATE_FROM = os.environ.get("DATE_FROM", "") or f"{_today.year - 1}-01-01"
-DATE_TO   = os.environ.get("DATE_TO",   "") or _today.strftime("%Y-%m-%d")
+DATE_FROM = os.environ.get("DATE_FROM", "") or "2025-01-01"
+DATE_TO   = os.environ.get("DATE_TO",   "") or "2026-04-30"
 
 FSE_URL     = "https://fse.ospharm.org"
 LOGIN_URL   = "https://accounts.dev.ospharm.org"

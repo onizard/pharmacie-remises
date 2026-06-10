@@ -444,6 +444,27 @@ def _extract_text_fallback(text: str, provider: str, billing_date: str) -> list[
 #   C.A brut de référence grossistes partenaires :8 703,88 €
 #   TOTAL -1 866,24 €
 
+def _extract_doc_ref(text: str) -> str:
+    """
+    Extrait le numéro de facture/avoir depuis un PDF (8-14 chiffres).
+    Cherche d'abord les prefixes explicites (N°, Réf, Facture…), puis
+    une séquence de 8-14 chiffres isolée en début de ligne.
+    Retourne le premier match ou ''.
+    """
+    _KW = r'(?:[Nn][°o]\s*|[Rr][ée]f(?:[eé]rence)?\s*:?\s*|[Ff]acture\s*[Nn][°o]?\s*:?\s*|[Aa]voir\s*[Nn][°o]?\s*:?\s*|[Dd]ocument\s*[Nn][°o]?\s*:?\s*)'
+    m = re.search(_KW + r'([A-Z0-9][-A-Z0-9]{5,13})', text[:3000], re.IGNORECASE)
+    if m:
+        val = m.group(1).replace('-', '')
+        if val.isdigit() and 6 <= len(val) <= 14:
+            return val
+        if not val.isdigit() and 6 <= len(val) <= 20:
+            return val
+    # Fallback : 8-14 chiffres seuls sur une ligne dans les 600 premiers chars
+    for m2 in re.finditer(r'^\s*(\d{8,14})\s*$', text[:600], re.MULTILINE):
+        return m2.group(1)
+    return ""
+
+
 def _extract_rdp(text: str, provider: str, billing_date: str) -> list[dict]:
     # Labo : ligne après "RECAPITULATIF DES REMISES"
     labo = ""
@@ -495,9 +516,10 @@ def _extract_rdp(text: str, provider: str, billing_date: str) -> list[dict]:
         "fournisseur":  provider,
         "billing_date": billing_date,
         "period_month": period_month,
-        "montant":      total,      # négatif = avoir (argent reçu par la pharmacie)
+        "montant":      total,
         "total_ht":     total,
         "rdp_lines":    rdp_lines,
+        "facture_num":  _extract_doc_ref(text),
         "quantite":     0,
     }]
 
@@ -565,10 +587,11 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
         "fournisseur":  provider,
         "billing_date": billing_date,
         "period_month": period_month,
-        "montant":      total_ht,   # HT — positif = facture de coop (argent reçu)
+        "montant":      total_ht,
         "total_ht":     total_ht,
-        "total_ttc":    total_ttc,  # TTC = montant du virement bancaire (TVA 20%)
+        "total_ttc":    total_ttc,
         "tva_pct":      tva_pct or 20.0,
+        "facture_num":  _extract_doc_ref(text),
         "quantite":     0,
     }]
 

@@ -84,7 +84,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
     - Lignes presta    : clé = period_month,      cumule presta_total
     """
     def _zero():
-        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0}
+        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0, "facture_refs": []}
 
     acc: dict[str, dict] = {}
     for line in lines:
@@ -94,9 +94,11 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
             mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
             labo = _norm_labo(line.get("labo") or "")
             if len(mk) < 7 or not labo: continue
-            amt  = abs(float(line.get("montant") or 0))   # montant négatif → valeur absolue
+            amt  = abs(float(line.get("montant") or 0))
             acc.setdefault(mk, {}).setdefault(labo, _zero())
             acc[mk][labo]["rdp_total"] = round(acc[mk][labo]["rdp_total"] + amt, 2)
+            if line.get("facture_num"):
+                acc[mk][labo]["facture_refs"].append(str(line["facture_num"]))
 
         elif line_type == "presta":
             mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
@@ -107,6 +109,8 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
             acc.setdefault(mk, {}).setdefault(labo, _zero())
             acc[mk][labo]["presta_total"]     = round(acc[mk][labo]["presta_total"]     + amt_ht,  2)
             acc[mk][labo]["presta_total_ttc"] = round(acc[mk][labo]["presta_total_ttc"] + amt_ttc, 2)
+            if line.get("facture_num"):
+                acc[mk][labo]["facture_refs"].append(str(line["facture_num"]))
 
         else:
             date = str(line.get("billing_date", ""))
@@ -121,12 +125,13 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
 
     return {
         mk: sorted(
-            [{"labo":         labo,
+            [{"labo":             labo,
               "qty":              d["qty"],
               "total_ht":         round(d["total_ht"], 2),
               "rdp_total":        round(d["rdp_total"], 2),
               "presta_total":     round(d["presta_total"], 2),
-              "presta_total_ttc": round(d.get("presta_total_ttc", d["presta_total"] * 1.20), 2)}
+              "presta_total_ttc": round(d.get("presta_total_ttc", d["presta_total"] * 1.20), 2),
+              "facture_refs":     list(dict.fromkeys(d["facture_refs"]))[:20]}
              for labo, d in labos.items()],
             key=lambda r: r["labo"],
         )
@@ -145,11 +150,15 @@ def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
             for nr in new_rows:
                 labo = nr["labo"]
                 if labo in labo_map:
-                    labo_map[labo]["qty"]          += nr["qty"]
-                    labo_map[labo]["total_ht"]       = round(labo_map[labo]["total_ht"]       + nr["total_ht"],     2)
-                    labo_map[labo]["rdp_total"]          = round(labo_map[labo].get("rdp_total",0)          + nr.get("rdp_total",0),          2)
-                    labo_map[labo]["presta_total"]       = round(labo_map[labo].get("presta_total",0)       + nr.get("presta_total",0),       2)
-                    labo_map[labo]["presta_total_ttc"]   = round(labo_map[labo].get("presta_total_ttc",0)   + nr.get("presta_total_ttc",0),   2)
+                    labo_map[labo]["qty"]              += nr["qty"]
+                    labo_map[labo]["total_ht"]          = round(labo_map[labo]["total_ht"]           + nr["total_ht"],       2)
+                    labo_map[labo]["rdp_total"]         = round(labo_map[labo].get("rdp_total",0)    + nr.get("rdp_total",0),   2)
+                    labo_map[labo]["presta_total"]      = round(labo_map[labo].get("presta_total",0) + nr.get("presta_total",0), 2)
+                    labo_map[labo]["presta_total_ttc"]  = round(labo_map[labo].get("presta_total_ttc",0) + nr.get("presta_total_ttc",0), 2)
+                    existing_refs = labo_map[labo].get("facture_refs") or []
+                    new_refs      = nr.get("facture_refs") or []
+                    merged_refs   = list(dict.fromkeys(existing_refs + new_refs))[:20]
+                    labo_map[labo]["facture_refs"] = merged_refs
                 else:
                     labo_map[labo] = dict(nr)
             result[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])

@@ -600,20 +600,22 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
     def _identify_labo(libelle: str) -> str | None:
         """Extrait le labo depuis le libellé VIR {NOM} - {REF} - ..."""
         lib = libelle.upper().strip()
-        # Extraire tout ce qui est entre "VIR " et le premier " - "
         m = _re.match(r'VIR\s+(.+?)\s+-\s', lib)
         if not m:
+            # Chercher directement un nom de labo dans l'intégralité du libellé
+            for key, canon in _LABO_KEYS:
+                if key in lib:
+                    return canon
             return None
-        name_part = m.group(1)  # ex: "BIOGARAN", "SAS BIOGARAN", "EG LABO"
+        name_part = m.group(1)
         for key, canon in _LABO_KEYS:
             if name_part.startswith(key) or key in name_part:
                 return canon
         return None
 
-    def _extract_ref(libelle: str) -> str:
-        """Extrait la première référence après le nom du labo."""
-        m = _re.match(r'VIR\s+.+?\s+-\s+(\S+)', libelle, _re.IGNORECASE)
-        return m.group(1) if m else ""
+    def _extract_all_refs(libelle: str) -> list[str]:
+        """Extrait TOUS les groupes de 8-14 chiffres du libellé (= numéros de facture potentiels)."""
+        return [s for s in _re.findall(r'\b(\d{8,14})\b', libelle) if len(s) <= 14]
 
     def _classify_transfer(libelle: str, ref: str) -> str:
         """Classifie le virement en 'r2' (RDP) ou 'r3' (prestation coopérative)."""
@@ -624,7 +626,7 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
             return 'r2'
         if any(kw in text for kw in r3_kw):
             return 'r3'
-        return 'r3'  # défaut : R3 (type le plus courant de virement direct labo)
+        return 'r3'
 
     def _parse_date(val) -> str | None:
         """Convertit DD/MM/YYYY ou datetime en YYYY-MM-DD."""
@@ -697,11 +699,41 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
 
     data_start = hdr_idx + 2  # 0-indexed; openpyxl min_row est 1-indexed donc +1
 
+    # ── Table ref→labo depuis digi_month_stats ──────────────────────────────────
+    # Les numéros de factures RDP/presta extraits des PDFs Digi sont les mêmes
+    # que ceux présents dans les libellés de virements FSE. On construit un
+    # dictionnaire de lookup pour identifier le labo quand le nom est absent.
+    req_state = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1",
+        headers=HEADERS,
+    )
+    try:
+        with urllib.request.urlopen(req_state, timeout=15) as _r:
+            _rows = json.loads(_r.read())
+        _state_pre = (_rows[0]["state_json"] if _rows else {}) or {}
+    except Exception:
+        _state_pre = {}
+
+    _digi_stats = _state_pre.get("digi_month_stats") or {}
+    ref_to_labo: dict[str, str] = {}   # ref_number → canonical_labo
+    ref_to_type: dict[str, str] = {}   # ref_number → 'r2' | 'r3'
+    for _mk_d, _arr in _digi_stats.items():
+        for _row in (_arr or []):
+            _labo_d = _row.get("labo", "")
+            for _ref in (_row.get("facture_refs") or []):
+                _ref_s = str(_ref).strip()
+                if _ref_s and len(_ref_s) >= 6:
+                    ref_to_labo[_ref_s] = _labo_d
+                    # Classer en r2 si rdp_total > 0 pour ce labo ce mois
+                    ref_to_type[_ref_s] = 'r2' if (_row.get("rdp_total") or 0) > 0 else 'r3'
+    print(f"  → Lookup facture refs : {len(ref_to_labo)} entrées depuis digi_month_stats")
+
     # ── Parcours des lignes de données ─────────────────────────────────────────
     acc: dict[str, dict] = {}
     virements_list: list[dict] = []
-    row_num   = 0
-    skipped_lib: list[str] = []   # libellés non reconnus (debug)
+    row_num         = 0
+    n_ref_matched   = 0
+    skipped_lib: list[str] = []
 
     for row in all_rows[data_start:]:
         if not any(c for c in row):
@@ -711,7 +743,6 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         libelle  = str(row[col_lib] if col_lib < n else '') or ''
         amount   = _parse_amount(row[col_amt] if col_amt < n else None)
 
-        # Si montant ≤ 0, essayer les colonnes adjacentes (débit/crédit séparés)
         if (amount is None or amount <= 0) and col_amt + 1 < n:
             amount = _parse_amount(row[col_amt + 1])
 
@@ -720,34 +751,50 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         if amount is None or amount <= 0:
             continue
         if not libelle.upper().strip().startswith('VIR '):
-            continue  # ignorer les lignes qui ne sont pas des virements
-
-        labo = _identify_labo(libelle)
-        if not labo:
-            if len(skipped_lib) < 10:
-                skipped_lib.append(libelle[:60])
             continue
 
-        ref   = _extract_ref(libelle)
-        vtype = _classify_transfer(libelle, ref)
-        mk    = date_str[:7]
+        labo  = _identify_labo(libelle)
+        refs  = _extract_all_refs(libelle)
+        vtype = _classify_transfer(libelle, refs[0] if refs else "")
+
+        # Fallback : cross-référence par numéro de facture dans les libellés
+        if not labo and refs:
+            for _r in refs:
+                if _r in ref_to_labo:
+                    labo  = ref_to_labo[_r]
+                    vtype = ref_to_type.get(_r, vtype)
+                    n_ref_matched += 1
+                    break
+
+        if not labo:
+            if len(skipped_lib) < 20:
+                skipped_lib.append(libelle[:80])
+            continue
+
+        # Normaliser le nom de labo avec la table canonique
+        for key, canon in _LABO_KEYS:
+            if key in labo.upper():
+                labo = canon
+                break
+
+        mk = date_str[:7]
         acc.setdefault(mk, {}).setdefault(labo, {"montant_ttc": 0.0, "r2_ttc": 0.0, "r3_ttc": 0.0, "count": 0, "refs": []})
         acc[mk][labo]["montant_ttc"] += amount
         acc[mk][labo]["r2_ttc"]      += amount if vtype == 'r2' else 0.0
         acc[mk][labo]["r3_ttc"]      += amount if vtype == 'r3' else 0.0
         acc[mk][labo]["count"]       += 1
-        if ref:
-            acc[mk][labo]["refs"].append(ref)
+        for _r in refs[:3]:
+            if _r not in acc[mk][labo]["refs"]:
+                acc[mk][labo]["refs"].append(_r)
         virements_list.append({
-            "date":        date_str,
-            "mois":        mk,
-            "labo":        labo,
-            "type":        vtype,
-            "montant_ttc": amount,
-            "ref":         ref,
-            "libelle":     libelle[:100],
+            "date": date_str, "mois": mk, "labo": labo, "type": vtype,
+            "montant_ttc": amount, "refs": refs[:3], "libelle": libelle[:100],
         })
         row_num += 1
+
+    print(f"  → {row_num} virements parsés · {n_ref_matched} identifiés via ref Digi · {len(skipped_lib)} ignorés")
+    if skipped_lib:
+        print(f"  → Libellés non reconnus : {skipped_lib[:5]}")
 
     if not acc:
         # Collecter infos de debug : premières lignes + colonnes détectées
