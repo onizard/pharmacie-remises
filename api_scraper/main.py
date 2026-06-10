@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from supabase_client import (
+    _get_state_sync,
     get_user_creds_for,
     patch_conn_test,
     patch_connector_connected,
@@ -147,6 +148,12 @@ async def run_connector(
 
 async def _dispatch_gh_digi(user_id: str):
     """Déclenche scraper.yml sur GitHub Actions (self-hosted, proxy résidentiel)."""
+    # Guard : un seul run à la fois — évite les doubles dispatches
+    loop  = asyncio.get_event_loop()
+    cur   = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+    if (cur.get("verif_job") or {}).get("status") == "running":
+        print(f"  [gh-dispatch] verif_job déjà en cours pour {user_id[:8]} — dispatch ignoré")
+        return
     await patch_job_status(user_id, "verif_job", "running",
                            "Job en attente de démarrage…", [])
     if not GH_TOKEN:

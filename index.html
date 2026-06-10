@@ -4563,6 +4563,43 @@ function renderChips(chipsWrap, exc, onAfterChange = null) {
 // ── Vérificateur de remise ─────────────────────────────────────────────────────
 function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+let _verifDigiTimer = null;
+
+function _renderVerifDigiBanner(el) {
+  if (!el) return;
+  if (state._digiJobRunning) {
+    const elapsed  = Math.floor((Date.now() - (state._digiJobStartedAt || Date.now())) / 60_000);
+    const eta      = Math.max(1, 35 - elapsed);
+    const msg      = state._digiJobMessage || '';
+    const pdfMatch = msg.match(/PDF\s+(\d+)\/(\d+)/i);
+    const pdfTxt   = pdfMatch ? `PDF ${pdfMatch[1]} / ${pdfMatch[2]}` : `~${elapsed} min écoulées`;
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:14px;border:1px solid var(--cyan);border-radius:3px;background:rgba(0,229,255,.04)">
+      <svg width="16" height="16" viewBox="0 0 16 16" style="flex-shrink:0;animation:spin 1.2s linear infinite"><circle cx="8" cy="8" r="6" fill="none" stroke="rgba(0,229,255,.3)" stroke-width="2"/><path d="M8 2 A6 6 0 0 1 14 8" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round"/></svg>
+      <span style="font-family:'Orbitron',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:var(--cyan)">DIGI</span>
+      <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim)">Analyse en cours… ${pdfTxt} — encore ~${eta} min</span>
+    </div>`;
+  } else if (state._digiSavedAt) {
+    const ageMin = Math.floor((Date.now() - state._digiSavedAt) / 60_000);
+    const ageTxt = ageMin < 60 ? `il y a ${ageMin} min` : ageMin < 1440 ? `il y a ${Math.floor(ageMin/60)} h` : `il y a ${Math.floor(ageMin/1440)} j`;
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;margin-bottom:14px;border:1px solid var(--border);border-radius:3px;opacity:.7">
+      <span style="color:var(--green);font-size:11px">✓</span>
+      <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim)">DIGI — données à jour (${ageTxt})</span>
+    </div>`;
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+function _startVerifDigiTimer() {
+  clearInterval(_verifDigiTimer);
+  _verifDigiTimer = setInterval(() => {
+    const el = document.getElementById('verifDigiBanner');
+    if (!el) { clearInterval(_verifDigiTimer); _verifDigiTimer = null; return; }
+    _renderVerifDigiBanner(el);
+    if (!state._digiJobRunning) { clearInterval(_verifDigiTimer); _verifDigiTimer = null; }
+  }, 10_000);
+}
+
 let _verifPollTimer = null;
 
 function resetVerificateur() {
@@ -4933,30 +4970,8 @@ function renderVerificateur() {
     return `<button class="verif-lab-btn${isOn?' active':''}" onclick="_verifOpenLabModal('${escH(lab)}')">${escH(lab)}${badge}</button>`;
   }).join('');
 
-  // ── Bannière statut DIGI ────────────────────────────────────────────────
-  let digiBanner = '';
-  if (state._digiJobRunning) {
-    const elapsed  = Math.floor((Date.now() - (state._digiJobStartedAt || Date.now())) / 60_000);
-    const eta      = Math.max(1, 35 - elapsed);
-    const msg      = state._digiJobMessage || '';
-    const pdfMatch = msg.match(/PDF\s+(\d+)\/(\d+)/i);
-    const pdfTxt   = pdfMatch ? `PDF ${pdfMatch[1]} / ${pdfMatch[2]}` : `~${elapsed} min écoulées`;
-    digiBanner = `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:14px;border:1px solid var(--cyan);border-radius:3px;background:rgba(0,229,255,.04)">
-      <svg width="16" height="16" viewBox="0 0 16 16" style="flex-shrink:0;animation:spin 1.2s linear infinite"><circle cx="8" cy="8" r="6" fill="none" stroke="rgba(0,229,255,.3)" stroke-width="2"/><path d="M8 2 A6 6 0 0 1 14 8" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round"/></svg>
-      <span style="font-family:'Orbitron',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:var(--cyan)">DIGI</span>
-      <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim)">Analyse en cours… ${pdfTxt} — encore ~${eta} min</span>
-    </div>`;
-  } else if (state._digiSavedAt) {
-    const ageMin = Math.floor((Date.now() - state._digiSavedAt) / 60_000);
-    const ageTxt = ageMin < 60 ? `il y a ${ageMin} min` : ageMin < 1440 ? `il y a ${Math.floor(ageMin/60)} h` : `il y a ${Math.floor(ageMin/1440)} j`;
-    digiBanner = `<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;margin-bottom:14px;border:1px solid var(--border);border-radius:3px;opacity:.7">
-      <span style="color:var(--green);font-size:11px">✓</span>
-      <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim)">DIGI — données à jour (${ageTxt})</span>
-    </div>`;
-  }
-
   cnt.innerHTML = `
-    ${digiBanner}
+    <div id="verifDigiBanner"></div>
     <div style="display:flex;gap:8px;margin-bottom:16px">${yearBtns}</div>
     <div style="margin-bottom:16px">
       <div class="verif-contract-label" style="margin-bottom:7px">LABOS — cliquer pour configurer un contrat</div>
@@ -4964,6 +4979,8 @@ function renderVerificateur() {
     </div>
     <div id="verifYearArea"></div>
   `;
+  _renderVerifDigiBanner(document.getElementById('verifDigiBanner'));
+  if (state._digiJobRunning && !_verifDigiTimer) _startVerifDigiTimer();
   _verifRenderYear(_verifSelYear);
 }
 
@@ -8640,17 +8657,20 @@ function initConnecteurModal() {
         state.connectors[connKey] = { user, pass, connected: false };
         updateConnecteurBtn();
         saveState();
-        // Cloudflare bloque le test depuis Render — on lance quand même le scraping
-        // (la vérification des identifiants se fera sur le runner résidentiel)
-        state._digiJobRunning       = true;
-        state._digiJobStartedAt     = Date.now();
-        state._digiJobMessage       = '';
-        state._digiProgressFirstAt  = null;
-        state._digiProgressFirstNum = null;
         closeModal();
         goTo('recap');
-        renderRecap();
-        _triggerWorkflow(connKey, prefix);
+        // Ne lancer un nouveau job que si aucun n'est déjà en cours
+        if (!state._digiJobRunning) {
+          state._digiJobRunning       = true;
+          state._digiJobStartedAt     = Date.now();
+          state._digiJobMessage       = '';
+          state._digiProgressFirstAt  = null;
+          state._digiProgressFirstNum = null;
+          renderRecap();
+          _triggerWorkflow(connKey, prefix);
+        } else {
+          renderRecap();
+        }
         return;
       }
 
