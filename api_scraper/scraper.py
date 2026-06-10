@@ -686,60 +686,160 @@ async def _search_presta_by_lab(
     progress: Callable,
 ) -> list[dict]:
     """
-    Pour chaque lab cible, requête l'API invoice avec un filtre par nom.
-    Retourne les factures presta coop absentes de la liste standard.
-    Le filtre "par labo" fait remonter les docs où le labo est mentionné
-    même quand le fournisseur direct est un dépositaire (Movianto, Alloga…).
+    Navigation UI Digi — pour chaque labo cible :
+      1. Navigue vers /factures/ avec filtre fournisseur (URL param ou interaction DOM)
+      2. Boucle "Charger plus" jusqu'à épuisement de la liste
+      3. Intercepte les réponses API JSON pour récupérer les factures (RSF/RDP/presta)
+    Le PDF est ensuite téléchargé + classifié par _process_pdf comme pour les factures normales.
+    Fallback : requête directe API avec param URL si la navigation ne capture rien.
     """
     from urllib.parse import quote_plus as _qp
 
-    SEARCH_PARAMS = ["search", "q", "provider_ref", "provider", "fournisseur", "labo"]
+    _CHARGER_PLUS = ["Charger plus", "Load more", "Voir plus", "Voir tout"]
+    _FOURN_SELS   = [
+        "select[name*='fourn' i]", "select[id*='fourn' i]",
+        "select[aria-label*='ournisseur' i]",
+        "input[placeholder*='ournisseur' i]",
+        "[data-filter*='fourn' i]",
+        ".filter-fournisseur select", "#id_fournisseur",
+    ]
+    _INV_KWS = ("invoice", "facture", "bill", "document")
 
-    progress("Recherche factures presta coop par labo…")
-
-    # ── Détecter quel paramètre de filtre l'API supporte ──────────────────
-    filter_param = None
-    for param in SEARCH_PARAMS:
-        test_url = f"{endpoint_base}?{param}=biogaran&page_size=5"
-        try:
-            data    = await _js_fetch_json(page, test_url, csrf)
-            results = data.get("results", data if isinstance(data, list) else [])
-            if isinstance(results, list):
-                filter_param = param
-                progress(f"Filtre labo : ?{param}=<labo>  ({len(results)} résultats test)")
-                break
-        except Exception:
-            continue
-
-    if not filter_param:
-        progress("API invoice sans filtre labo — presta coop non récupérables par ce moyen")
-        return []
-
-    # ── Requête par chaque labo cible ─────────────────────────────────────
+    progress("Recherche factures par fournisseur…")
     extra: list[dict] = []
-    for lab in PRESTA_SEARCH_LABS:
-        url = (f"{endpoint_base}?{filter_param}={_qp(lab)}"
-               f"&page_size={PAGE_SIZE}&ordering=-billing_date")
-        try:
-            data    = await _js_fetch_json(page, url, csrf)
-            results = data.get("results", data if isinstance(data, list) else [])
-            new_n   = 0
-            for inv in results:
-                date = str(inv.get("billing_date", ""))
-                if date[:4] not in YEARS:
-                    continue
-                ck = _inv_key(inv)
-                if ck not in known_keys:
-                    extra.append(inv)
-                    known_keys.add(ck)
-                    new_n += 1
-            if new_n:
-                progress(f"  presta par labo : {lab} → {new_n} nouvelle(s)")
-        except Exception as _e:
-            progress(f"  presta par labo : {lab} → erreur {_e}")
-        await page.wait_for_timeout(200)
 
-    progress(f"Recherche par labo : {len(extra)} facture(s) supplémentaire(s)")
+    for lab in PRESTA_SEARCH_LABS:
+        progress(f"  Fournisseur : {lab}…")
+        _lab_resps: list = []
+
+        # Closure avec default-arg pour capturer la liste courante (pas la variable rebindée)
+        def _capture(r, _store=_lab_resps):
+            ct = r.headers.get("content-type", "")
+            if ("json" in ct and r.status == 200 and BASE_URL in r.url and
+                    any(kw in r.url.lower() for kw in _INV_KWS)):
+                _store.append(r)
+
+        page.on("response", _capture)
+        try:
+            # ── Étape 1 : navigation avec paramètre fournisseur dans l'URL ──────
+            nav_ok = False
+            for url_tpl in [
+                f"{BASE_URL}/factures/?fournisseur={_qp(lab)}",
+                f"{BASE_URL}/factures/?search={_qp(lab)}",
+                f"{BASE_URL}/factures/?provider={_qp(lab)}",
+            ]:
+                try:
+                    await page.goto(url_tpl, wait_until="domcontentloaded", timeout=25_000)
+                    await page.wait_for_timeout(4000)
+                    nav_ok = True
+                    if _lab_resps:
+                        break  # URL param fonctionne → pas besoin d'interaction DOM
+                except Exception:
+                    pass
+
+            # ── Étape 2 : si aucune réponse, chercher le filtre Fournisseur dans le DOM ─
+            if not _lab_resps:
+                if not nav_ok:
+                    try:
+                        await page.goto(f"{BASE_URL}/factures/", wait_until="load", timeout=30_000)
+                        await page.wait_for_timeout(4000)
+                    except Exception:
+                        pass
+
+                for fourn_sel in _FOURN_SELS:
+                    el = page.locator(fourn_sel).first
+                    if not await el.count():
+                        continue
+                    try:
+                        tag = await el.evaluate("e => e.tagName.toLowerCase()")
+                        if tag == "select":
+                            opts = await el.evaluate(
+                                "e => Array.from(e.options).map(o => ({v:o.value,t:o.text.toLowerCase()}))"
+                            )
+                            match = next((o["v"] for o in opts if lab in o["t"]), None)
+                            if match:
+                                await el.select_option(value=match)
+                                await page.wait_for_timeout(3500)
+                                break
+                        else:
+                            await el.fill(lab)
+                            await el.press("Enter")
+                            await page.wait_for_timeout(3500)
+                            break
+                    except Exception:
+                        continue
+
+            # ── Étape 3 : boucle "Charger plus" ─────────────────────────────────
+            for _ in range(15):
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await page.wait_for_timeout(1000)
+                clicked = False
+                for txt in _CHARGER_PLUS:
+                    btn = page.locator(
+                        f"button:has-text('{txt}'), a:has-text('{txt}'), span:has-text('{txt}')"
+                    ).first
+                    if await btn.count():
+                        try:
+                            await btn.click(timeout=5000)
+                        except Exception:
+                            await btn.evaluate("el => el.click()")
+                        await page.wait_for_timeout(3000)
+                        clicked = True
+                        break
+                if not clicked:
+                    break
+
+            # ── Étape 4 : traiter les réponses capturées ─────────────────────────
+            n_new = 0
+            for r in _lab_resps:
+                try:
+                    data    = await r.json()
+                    results = data.get("results", data if isinstance(data, list) else [])
+                    for inv in results:
+                        date = str(inv.get("billing_date", ""))
+                        if date[:4] not in YEARS:
+                            continue
+                        ck = _inv_key(inv)
+                        if ck not in known_keys:
+                            extra.append(inv)
+                            known_keys.add(ck)
+                            n_new += 1
+                except Exception:
+                    pass
+
+            # ── Fallback : requête API directe si navigation sans résultat ────────
+            if not n_new and not _lab_resps:
+                for param in ["search", "q", "fournisseur", "provider_ref"]:
+                    furl = f"{endpoint_base}?{param}={_qp(lab)}&page_size={PAGE_SIZE}&ordering=-billing_date"
+                    try:
+                        data    = await _js_fetch_json(page, furl, csrf)
+                        results = data.get("results", data if isinstance(data, list) else [])
+                        for inv in results:
+                            date = str(inv.get("billing_date", ""))
+                            if date[:4] not in YEARS:
+                                continue
+                            ck = _inv_key(inv)
+                            if ck not in known_keys:
+                                extra.append(inv)
+                                known_keys.add(ck)
+                                n_new += 1
+                        if n_new:
+                            progress(f"    [API ?{param}] {lab} → {n_new} nouvelle(s)")
+                            break
+                    except Exception:
+                        continue
+
+            if n_new:
+                progress(f"  {lab} → {n_new} nouvelle(s) facture(s)")
+
+        except Exception as e:
+            progress(f"  {lab} → erreur : {e}")
+        finally:
+            page.remove_listener("response", _capture)
+
+        await page.wait_for_timeout(500)
+
+    progress(f"Navigation fournisseur : {len(extra)} facture(s) supplémentaire(s)")
     return extra
 
 
