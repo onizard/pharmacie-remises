@@ -285,6 +285,7 @@ def _save_results(lines: list, cache: dict, existing_stats: dict,
         "invoices":      [],
         "invoice_cache": compact_cache,
         "error":         "",
+        "completed_at":  __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     # Stats factures produits/RDP/presta
     digi_lines    = [l for l in lines if l.get("type") not in ("escompte", "mdl")]

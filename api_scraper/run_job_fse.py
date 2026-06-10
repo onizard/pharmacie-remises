@@ -66,8 +66,12 @@ def _supa_patch_state(state: dict):
 
 def _update_job(status: str, message: str = "", error: str = ""):
     try:
+        import datetime as _dt
         state = _supa_get_state()
-        state["fse_job"] = {"status": status, "message": message, "error": error}
+        job = {"status": status, "message": message, "error": error}
+        if status == "done":
+            job["completed_at"] = _dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        state["fse_job"] = job
         _supa_patch_state(state)
     except Exception as e:
         print(f"  [warn] Supabase update failed: {e}")

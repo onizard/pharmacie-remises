@@ -1691,6 +1691,8 @@ let state = {
   _fseMonthStats: null,
   _escompteStats: null,  // { "YYYY-MM": { "CERP": { ca_spec_gen_ht, remise_spec_gen_ht, ... } } }
   _mdlStats: null,       // { "YYYY-MM": { "Biogaran": { ca_fab_mois, ca_fab_cumul }, "_cerp": {...} } }
+  _digiSavedAt: null,    // timestamp ms du dernier sync Digi réussi
+  _fseSavedAt:  null,    // timestamp ms du dernier sync FSE (concentrateur) réussi
   verifContracts: {},  // { [year]: { labKey: { active, type, startDate } } }
 };
 
@@ -1722,6 +1724,8 @@ function serializeState() {
     fseMonthStats:         state._fseMonthStats         || null,
     escompteStats:         state._escompteStats         || null,
     mdlStats:              state._mdlStats               || null,
+    digiSavedAt:           state._digiSavedAt            || null,
+    fseSavedAt:            state._fseSavedAt             || null,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -1784,6 +1788,7 @@ function _buildLsJson(data) {
     v: data.v, gers: data.gers, userProfile: data.userProfile, connectors: data.connectors,
     currentPageId: data.currentPageId, csvRows: data.csvRows, prorataRatios: data.prorataRatios,
     labPages: data.labPages, verifContracts: data.verifContracts,
+    digiSavedAt: data.digiSavedAt || null, fseSavedAt: data.fseSavedAt || null,
   });
   return metaJson.slice(0, -1) + ',' + _lsStatsCache.json.slice(1);
 }
@@ -2232,6 +2237,34 @@ function computeProrataRatios(periodStart, periodEnd) {
   return { ratio2025: ms2025 / totalMs, ratio2026: ms2026 / totalMs, periodStart, periodEnd };
 }
 
+async function _pollFseJob() {
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) return;
+    const deadline = Date.now() + 40 * 60_000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 10_000));
+      try {
+        const { data: row } = await window._sbClient.from('user_state')
+          .select('state_json').eq('user_id', session.user.id).maybeSingle();
+        const job = row?.state_json?.fse_job;
+        if (!job || job.status === 'running') continue;
+        if (job.status === 'done') {
+          const fseStats = row?.state_json?.fse_month_stats;
+          if (fseStats && Object.keys(fseStats).length) {
+            state._fseMonthStats = fseStats;
+            state._fseSavedAt    = job.completed_at
+              ? new Date(job.completed_at).getTime() : Date.now();
+            saveState();
+            if (state.currentPageId === 'verificateur') renderVerificateur();
+          }
+        }
+        break;
+      } catch(_) {}
+    }
+  } catch(_) {}
+}
+
 async function autoRunOspharm(mode) {
   // mode='attach' : se greffe sur un job GitHub Actions déjà en cours sans en lancer un nouveau
   // Déclenche un scrape OSPHARM à chaque connexion pour avoir les données à jour.
@@ -2662,6 +2695,9 @@ async function autoRunDigi() {
           const digiStats = row?.state_json?.digi_month_stats;
           if (digiStats && Object.keys(digiStats).length) {
             state._digiMonthStats = digiStats;
+            if (row.state_json.escompte_stats) state._escompteStats = row.state_json.escompte_stats;
+            if (row.state_json.mdl_stats)      state._mdlStats      = row.state_json.mdl_stats;
+            state._digiSavedAt = Date.now();
             saveState();
           }
         }
@@ -7657,6 +7693,8 @@ async function saveProfile() {
     }
     if (saved.escompteStats) state._escompteStats = saved.escompteStats;
     if (saved.mdlStats)      state._mdlStats      = saved.mdlStats;
+    if (saved.digiSavedAt)   state._digiSavedAt   = saved.digiSavedAt;
+    if (saved.fseSavedAt)    state._fseSavedAt    = saved.fseSavedAt;
     if (saved.verifContracts && Object.keys(saved.verifContracts).length) {
       // Migration : ancien format plat { labKey: {active,type,startDate} } → { [year]: {...} }
       const first = Object.values(saved.verifContracts)[0];
@@ -7734,7 +7772,8 @@ async function saveProfile() {
       }, 1500);
     }
     if (saved.connectors?.digipharmacie?.connected) {
-      const hasDigi = Object.keys(state._digiMonthStats || {}).length > 0;
+      const hasDigi  = Object.keys(state._digiMonthStats || {}).length > 0;
+      const digiAge  = state._digiSavedAt ? Date.now() - state._digiSavedAt : Infinity;
       setTimeout(async () => {
         try {
           const { data: { session } } = await window._sbClient.auth.getSession();
@@ -7742,29 +7781,75 @@ async function saveProfile() {
           const { data: row } = await window._sbClient.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           const sj = row?.state_json || {};
-          // Toujours charger digi_month_stats depuis Supabase si absent localement
+          // Toujours charger grossiste_month_stats depuis Supabase si absent localement
           if (sj.grossiste_month_stats && Object.keys(sj.grossiste_month_stats).length) {
             state._grossisteMonthStats = sj.grossiste_month_stats;
           }
-          if (!hasDigi && sj.digi_month_stats && Object.keys(sj.digi_month_stats).length) {
-            state._digiMonthStats = sj.digi_month_stats;
-            saveState();
-            if (state.currentPageId === 'recap') renderRecap();
-            // Si un job est aussi en cours, s'y accrocher pour les mises à jour
-            if (sj.verif_job?.status === 'running') autoRunDigi().catch(() => {});
-            return;
-          }
-          // Re-attacher à un job en cours
+          // Job en cours → se greffer dessus
           if (sj.verif_job?.status === 'running') {
             autoRunDigi().catch(() => {});
-          } else if (!hasDigi) {
-            // Aucune donnée nulle part — lancer un nouveau job
+            return;
+          }
+          // Charger les données cloud si absentes localement
+          if (!hasDigi && sj.digi_month_stats && Object.keys(sj.digi_month_stats).length) {
+            state._digiMonthStats = sj.digi_month_stats;
+            if (sj.escompte_stats) state._escompteStats = sj.escompte_stats;
+            if (sj.mdl_stats)      state._mdlStats      = sj.mdl_stats;
+            saveState();
+            if (state.currentPageId === 'recap') renderRecap();
+          }
+          // Calculer l'âge réel depuis Supabase (completed_at du verif_job > digiSavedAt local)
+          const cloudCompletedAt = sj.verif_job?.completed_at
+            ? new Date(sj.verif_job.completed_at).getTime() : null;
+          const effectiveAge = cloudCompletedAt
+            ? Date.now() - cloudCompletedAt
+            : digiAge;
+          // Re-lancer si données absentes ou périmées (> 24h)
+          if (!hasDigi || effectiveAge > 24 * 3600 * 1000) {
             autoRunDigi().catch(() => {});
           }
         } catch(_) {
           if (!hasDigi) autoRunDigi().catch(() => {});
         }
       }, 3000);
+    }
+    if (saved.connectors?.concentrateur?.connected) {
+      setTimeout(async () => {
+        try {
+          const { data: { session } } = await window._sbClient.auth.getSession();
+          if (!session) return;
+          const { data: row } = await window._sbClient.from('user_state')
+            .select('state_json').eq('user_id', session.user.id).maybeSingle();
+          const sj = row?.state_json || {};
+          // Charger les données FSE cloud si absentes localement
+          if (sj.fse_month_stats && Object.keys(sj.fse_month_stats).length) {
+            state._fseMonthStats = sj.fse_month_stats;
+            const cloudTs = sj.fse_job?.completed_at
+              ? new Date(sj.fse_job.completed_at).getTime() : null;
+            if (cloudTs && (!state._fseSavedAt || cloudTs > state._fseSavedAt)) {
+              state._fseSavedAt = cloudTs;
+            }
+            saveState();
+            if (state.currentPageId === 'verificateur') renderVerificateur();
+          }
+          // Job en cours → se greffer dessus
+          if (sj.fse_job?.status === 'running') { _pollFseJob().catch(() => {}); return; }
+          // Calculer l'âge effectif
+          const cloudAge = sj.fse_job?.completed_at
+            ? Date.now() - new Date(sj.fse_job.completed_at).getTime() : Infinity;
+          const localAge = state._fseSavedAt ? Date.now() - state._fseSavedAt : Infinity;
+          const effectiveAge = Math.min(cloudAge, localAge);
+          const hasFse = Object.keys(state._fseMonthStats || {}).length > 0;
+          if (!hasFse || effectiveAge > 24 * 3600 * 1000) {
+            const r = await fetch(`${API_URL}/run/fse-export`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+            });
+            if (r.ok) { console.log('[BP] FSE auto-refresh lancé'); _pollFseJob().catch(() => {}); }
+          }
+        } catch(_) {}
+      }, 5000);
     }
     const savedPages = saved.labPages || [];
     if (savedPages.length >= 1) {
@@ -8840,6 +8925,7 @@ function initConnecteurModal() {
       if (data.escompte_stats)   state._escompteStats  = data.escompte_stats;
       if (data.mdl_stats)        state._mdlStats        = data.mdl_stats;
       if (data.digi_month_stats || data.escompte_stats || data.mdl_stats) {
+        state._digiSavedAt = Date.now();
         saveState(); saveCloudState(serializeState());
         if (state.currentPageId === 'recap') renderRecap();
         else if (state.currentPageId === 'verificateur') renderVerificateur();
@@ -9107,6 +9193,7 @@ function initConnecteurModal() {
           const data = await resp.json();
           if (data.fse_month_stats) {
             state._fseMonthStats = data.fse_month_stats;
+            state._fseSavedAt    = Date.now();
             saveState();
             if (state.currentPageId === 'verificateur') renderVerificateur();
           }
