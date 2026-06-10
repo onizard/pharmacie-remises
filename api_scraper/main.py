@@ -464,7 +464,8 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
 
     sys.path.insert(0, _os.path.dirname(__file__))
     from pdf_extractor import extract_invoice_lines
-    from run_job import _compute_digi_month_stats, _merge_digi_stats
+    from run_job import (_compute_digi_month_stats, _merge_digi_stats,
+                         _compute_escompte_stats, _merge_escompte_stats)
 
     from supabase_client import SERVICE_KEY, SUPA_URL
     HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
@@ -482,19 +483,29 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
     if not lines:
         raise HTTPException(status_code=422, detail="Aucune donnée extractible depuis ce PDF — format non reconnu ou labo hors cible.")
 
-    new_stats = _compute_digi_month_stats(lines)
-
-    # Charger l'état courant et fusionner
+    # Charger l'état courant
     req = urllib.request.Request(
         f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1",
         headers=HEADERS,
     )
     with urllib.request.urlopen(req, timeout=15) as r:
         rows = json.loads(r.read())
-    state   = (rows[0]["state_json"] if rows else {}) or {}
-    existing = state.get("digi_month_stats") or {}
-    merged   = _merge_digi_stats(existing, new_stats)
-    state["digi_month_stats"] = merged
+    state = (rows[0]["state_json"] if rows else {}) or {}
+
+    escompte_lines = [l for l in lines if l.get("type") == "escompte"]
+    digi_lines     = [l for l in lines if l.get("type") != "escompte"]
+
+    merged = state.get("digi_month_stats") or {}
+    if digi_lines:
+        new_stats = _compute_digi_month_stats(digi_lines)
+        merged    = _merge_digi_stats(merged, new_stats)
+        state["digi_month_stats"] = merged
+
+    merged_esc = state.get("escompte_stats") or {}
+    if escompte_lines:
+        new_esc    = _compute_escompte_stats(escompte_lines)
+        merged_esc = _merge_escompte_stats(merged_esc, new_esc)
+        state["escompte_stats"] = merged_esc
 
     patch_body = json.dumps({"state_json": state}).encode()
     patch_req  = urllib.request.Request(
@@ -505,18 +516,21 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
     with urllib.request.urlopen(patch_req, timeout=15):
         pass
 
-    months = sorted(new_stats)
+    months   = sorted(set(l.get("billing_date", "")[:7] for l in lines if l.get("billing_date")))
     n_rdp    = sum(1 for l in lines if l.get("type") == "rdp")
     n_presta = sum(1 for l in lines if l.get("type") == "presta")
-    n_prod   = len(lines) - n_rdp - n_presta
+    n_esc    = len(escompte_lines)
+    n_prod   = len(lines) - n_rdp - n_presta - n_esc
     return {
-        "status":          "done",
-        "months":          months,
-        "lines":           len(lines),
-        "product_lines":   n_prod,
-        "rdp_avoirs":      n_rdp,
-        "presta_avoirs":   n_presta,
+        "status":           "done",
+        "months":           months,
+        "lines":            len(lines),
+        "product_lines":    n_prod,
+        "rdp_avoirs":       n_rdp,
+        "presta_avoirs":    n_presta,
+        "escompte_cerp":    n_esc,
         "digi_month_stats": merged,
+        "escompte_stats":   merged_esc,
     }
 
 

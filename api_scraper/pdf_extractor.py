@@ -87,8 +87,22 @@ RE_CIP13 = re.compile(r'\b(3[0-9]\d{11})\b')
 
 # ── Détection du format ────────────────────────────────────────────────────────
 
+def _fr_num(s: str) -> float:
+    """Parse un nombre au format français : '24.430,28' ou '2.850,33' → float."""
+    s = str(s).strip().replace('\xa0', '').replace(' ', '').replace(' ', '')
+    if ',' in s:
+        s = s.replace('.', '').replace(',', '.')
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
 def _detect_format(text: str) -> str:
     t400 = text[:400].lower()
+    # Relevé des Escomptes CERP — document mensuel agrégat (pas per-CIP)
+    if "releve des escomptes" in text[:600].lower() or "relevé des escomptes" in text[:600].lower():
+        return "escompte_cerp"
     if "alloga france" in t400 or ("alloga" in t400 and "au nom et pour le compte" in text[:600].lower()):
         return "alloga"
     # CSP / Movianto : "FACTURE DE SPÉCIALITÉS" avec lignes CIP13 décimales en points
@@ -556,6 +570,96 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
     }]
 
 
+# ── 8. ESCOMPTE CERP — Relevé mensuel agrégé (pas per-CIP) ────────────────────
+#
+# Format CERP Rouen : "RELEVE DES ESCOMPTES DU MOIS DE SEPTEMBRE 2025"
+# Tableau 1 : VENTILATION DES ACHATS PAR CATEGORIE (CA HT + %)
+# Tableau 2 : REMISES COMMERCIALES H.T. (remise par catégorie)
+# Tableau 3 : VENTILATION PAR TAUX DE TVA (totaux remises + escomptes financiers)
+
+_MONTHS_FR = {
+    "JANVIER": "01", "FEVRIER": "02", "FÉVRIER": "02", "MARS": "03",
+    "AVRIL": "04", "MAI": "05", "JUIN": "06", "JUILLET": "07",
+    "AOUT": "08", "AOÛT": "08", "SEPTEMBRE": "09", "OCTOBRE": "10",
+    "NOVEMBRE": "11", "DECEMBRE": "12", "DÉCEMBRE": "12",
+}
+
+_RE_FR_NUM = r'([\d]+(?:\.[\d]{3})*,\d{2})'   # 24.430,28 ou 2.850,33 ou 158,29
+
+
+def _extract_escompte_cerp(text: str, provider: str, billing_date: str) -> list[dict]:
+    """Retourne une seule ligne de synthèse de type 'escompte' depuis un Relevé CERP."""
+
+    # ── Période : "DU MOIS DE SEPTEMBRE 2025" ──────────────────────────────────
+    m_period = re.search(r'DU\s+MOIS\s+DE\s+([A-ZÉÈÊÀÙÛÔÎÂÄËÏÜ]+)\s+(\d{4})', text, re.IGNORECASE)
+    if m_period:
+        mon = _MONTHS_FR.get(m_period.group(1).upper().replace('É', 'E').replace('Û', 'U'), "")
+        period_month = f"{m_period.group(2)}-{mon}" if mon else billing_date[:7]
+    else:
+        period_month = billing_date[:7]
+
+    # ── Section 1 : achats génériques (prix fabriquant HT) ─────────────────────
+    # Ligne : "SPEC GENERIQUES (pf.ht)   24.430,28   18,50"
+    ca_spec_gen_ht = 0.0
+    m_ca = re.search(
+        r'SPEC\s+G[EÉ]N[EÉ]RIQUES\s*\(pf\.?\s*ht\.?\)\s*' + _RE_FR_NUM,
+        text, re.IGNORECASE,
+    )
+    if m_ca:
+        ca_spec_gen_ht = _fr_num(m_ca.group(1))
+
+    # ── Section 2 : remises commerciales HT ────────────────────────────────────
+    # On isole la section entre "REMISES COMMERCIALES H.T." et "VENTILATION PAR TAUX"
+    remise_spec_gen_ht = 0.0
+    m_sec = re.search(
+        r'REMISES\s+COMMERCIALES\s+H\.?T\.(.+?)(?:VENTILATION\s+PAR\s+TAUX|Aux\s+montants)',
+        text, re.IGNORECASE | re.DOTALL,
+    )
+    if m_sec:
+        sec = m_sec.group(1)
+        # "SPEC GENERIQUES   2.850,33" (sans "(pf.ht)" dans cette section)
+        m_r2 = re.search(r'SPEC\s+G[EÉ]N[EÉ]RIQUES\s+' + _RE_FR_NUM, sec, re.IGNORECASE)
+        if m_r2:
+            remise_spec_gen_ht = _fr_num(m_r2.group(1))
+
+    # ── Section 3 : ventilation TVA → totaux remises et escomptes ──────────────
+    remise_total_ht  = 0.0
+    remise_total_ttc = 0.0
+    escompte_ttc     = 0.0
+    total_ttc        = 0.0
+
+    m_tva = re.search(r'VENTILATION\s+PAR\s+TAUX\s+DE\s+TVA(.+?)$', text, re.IGNORECASE | re.DOTALL)
+    if m_tva:
+        tva_sec = m_tva.group(1)
+
+        # Les deux blocs TOTAL (un pour REMISES, un pour ESCOMPTES) dans la section TVA
+        totals = re.findall(r'\bTOTAL\b\s+' + _RE_FR_NUM + r'\s+' + _RE_FR_NUM + r'\s+' + _RE_FR_NUM, tva_sec, re.IGNORECASE)
+        if len(totals) >= 1:
+            remise_total_ht  = _fr_num(totals[0][0])
+            # totals[0][1] = TVA montant, totals[0][2] = TTC
+            remise_total_ttc = _fr_num(totals[0][2])
+        if len(totals) >= 2:
+            escompte_ttc = _fr_num(totals[1][2])
+
+        # TOTAL TTC final
+        m_ttc = re.search(r'TOTAL\s+TTC\s+' + _RE_FR_NUM, tva_sec, re.IGNORECASE)
+        if m_ttc:
+            total_ttc = _fr_num(m_ttc.group(1))
+
+    return [{
+        "type":               "escompte",
+        "fournisseur":        provider or "CERP",
+        "billing_date":       billing_date,
+        "period_month":       period_month,
+        "ca_spec_gen_ht":     ca_spec_gen_ht,
+        "remise_spec_gen_ht": remise_spec_gen_ht,
+        "remise_total_ht":    remise_total_ht,
+        "remise_total_ttc":   remise_total_ttc,
+        "escompte_ttc":       escompte_ttc,
+        "total_ttc":          total_ttc,
+    }]
+
+
 # ── Point d'entrée public ──────────────────────────────────────────────────────
 
 def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> list[dict]:
@@ -569,7 +673,10 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
             full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
             fmt = _detect_format(full_text)
 
-            if fmt == "alloga":
+            if fmt == "escompte_cerp":
+                # Document agrégat — pas de filtre labo, retourner directement
+                return _extract_escompte_cerp(full_text, provider, billing_date)
+            elif fmt == "alloga":
                 lines = _extract_alloga(full_text, provider, billing_date)
             elif fmt == "csp":
                 lines = _extract_csp(full_text, provider, billing_date)

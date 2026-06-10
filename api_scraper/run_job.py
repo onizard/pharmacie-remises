@@ -156,6 +156,37 @@ def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
     return result
 
 
+def _compute_escompte_stats(lines: list[dict]) -> dict:
+    """Agrège les lignes escompte → {year-MM: {fournisseur: {...}}}."""
+    result: dict = {}
+    for line in lines:
+        if line.get("type") != "escompte":
+            continue
+        mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
+        four = line.get("fournisseur") or "CERP"
+        if len(mk) < 7:
+            continue
+        result.setdefault(mk, {})
+        existing = result[mk].get(four, {})
+        result[mk][four] = {
+            "ca_spec_gen_ht":     round((existing.get("ca_spec_gen_ht", 0)     + line.get("ca_spec_gen_ht", 0)),     2),
+            "remise_spec_gen_ht": round((existing.get("remise_spec_gen_ht", 0) + line.get("remise_spec_gen_ht", 0)), 2),
+            "remise_total_ht":    round((existing.get("remise_total_ht", 0)    + line.get("remise_total_ht", 0)),    2),
+            "remise_total_ttc":   round((existing.get("remise_total_ttc", 0)   + line.get("remise_total_ttc", 0)),   2),
+            "escompte_ttc":       round((existing.get("escompte_ttc", 0)       + line.get("escompte_ttc", 0)),       2),
+            "total_ttc":          round((existing.get("total_ttc", 0)          + line.get("total_ttc", 0)),          2),
+        }
+    return result
+
+
+def _merge_escompte_stats(existing: dict, new_partial: dict) -> dict:
+    """Fusionne (last-write-wins par mois+fournisseur — un seul relevé par mois)."""
+    result = {mk: dict(v) for mk, v in existing.items()}
+    for mk, four_map in new_partial.items():
+        result.setdefault(mk, {}).update(four_map)
+    return result
+
+
 def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
     try:
         state = _supa_get_state()
@@ -210,7 +241,7 @@ def _get_creds() -> dict:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def _save_results(lines: list, cache: dict, existing_stats: dict,
-                  partial: bool = False):
+                  partial: bool = False, existing_escompte: dict | None = None):
     """Fusionne nouvelles lignes avec stats existantes, stocke le cache compact {key: True}."""
     n_cache = sum(1 for v in cache.values() if v is True)
     n_new   = len(lines)
@@ -226,12 +257,21 @@ def _save_results(lines: list, cache: dict, existing_stats: dict,
         "invoice_cache": compact_cache,
         "error":         "",
     }
-    new_partial = _compute_digi_month_stats(lines)
-    merged      = _merge_digi_stats(existing_stats, new_partial)
+    # Stats factures produits/RDP/presta
+    digi_lines    = [l for l in lines if l.get("type") != "escompte"]
+    new_partial   = _compute_digi_month_stats(digi_lines)
+    merged        = _merge_digi_stats(existing_stats, new_partial)
     if merged:
         state["digi_month_stats"] = merged
         months = sorted(merged)
         print(f"  📊  digi_month_stats : {len(merged)} mois ({months[0]} → {months[-1]})")
+    # Stats escomptes CERP
+    escompte_lines = [l for l in lines if l.get("type") == "escompte"]
+    if escompte_lines:
+        new_esc   = _compute_escompte_stats(escompte_lines)
+        merged_esc = _merge_escompte_stats(existing_escompte or {}, new_esc)
+        state["escompte_stats"] = merged_esc
+        print(f"  📊  escompte_stats : {len(merged_esc)} mois")
     _supa_patch_state(state)
 
 
@@ -239,7 +279,7 @@ def main():
     import signal as _sig
 
     # État partagé — mis à jour après chaque PDF pour que SIGTERM puisse sauver
-    _partial: dict = {"lines": [], "cache": {}, "existing_stats": {}}
+    _partial: dict = {"lines": [], "cache": {}, "existing_stats": {}, "existing_escompte": {}}
 
     # Handler SIGTERM : GitHub Actions tue le job à timeout-minutes
     # Sauve les résultats partiels pour que la prochaine run reprenne en cache
@@ -247,7 +287,8 @@ def main():
         print("\n⚠️  SIGTERM — sauvegarde des résultats partiels…", flush=True)
         try:
             _save_results(_partial["lines"], _partial["cache"],
-                          _partial["existing_stats"], partial=True)
+                          _partial["existing_stats"], partial=True,
+                          existing_escompte=_partial["existing_escompte"])
             print(f"  ✓ {len(_partial['lines'])} nouvelles lignes / {len(_partial['cache'])} en cache", flush=True)
         except Exception as _e:
             print(f"  ✗ Sauvegarde partielle échouée : {_e}", flush=True)
@@ -268,14 +309,16 @@ def main():
     # Charger le cache compact et les stats existantes
     try:
         _ex_state      = _supa_get_state()
-        existing_cache = (_ex_state.get("verif_job") or {}).get("invoice_cache") or {}
-        existing_stats = _ex_state.get("digi_month_stats") or {}
+        existing_cache   = (_ex_state.get("verif_job") or {}).get("invoice_cache") or {}
+        existing_stats   = _ex_state.get("digi_month_stats") or {}
+        existing_escompte = _ex_state.get("escompte_stats") or {}
         print(f"  → Cache : {len(existing_cache)} factures déjà traitées")
         print(f"  → Stats existantes : {len(existing_stats)} mois")
     except Exception:
-        existing_cache, existing_stats = {}, {}
+        existing_cache, existing_stats, existing_escompte = {}, {}, {}
 
-    _partial["existing_stats"] = existing_stats
+    _partial["existing_stats"]    = existing_stats
+    _partial["existing_escompte"] = existing_escompte
 
     def _on_partial(lines: list, cache: dict):
         _partial["lines"] = lines
@@ -289,7 +332,7 @@ def main():
         invoices, updated_cache = run_scraper(creds, progress,
                                               invoice_cache=existing_cache,
                                               on_partial=_on_partial)
-        _save_results(invoices, updated_cache, existing_stats)
+        _save_results(invoices, updated_cache, existing_stats, existing_escompte=existing_escompte)
         n_cache = sum(1 for v in updated_cache.values() if v is True)
         print(f"\n✅  {len(invoices)} nouvelles lignes ({n_cache} en cache).")
     except Exception as e:

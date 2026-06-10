@@ -1689,6 +1689,7 @@ let state = {
   _grossisteUploads: [],
   _grossisteMonthStats: null,
   _fseMonthStats: null,
+  _escompteStats: null,  // { "YYYY-MM": { "CERP": { ca_spec_gen_ht, remise_spec_gen_ht, ... } } }
   verifContracts: {},  // { [year]: { labKey: { active, type, startDate } } }
 };
 
@@ -1718,6 +1719,7 @@ function serializeState() {
     grossisteUploads:      state._grossisteUploads      || [],
     grossisteMonthStats:   state._grossisteMonthStats   || null,
     fseMonthStats:         state._fseMonthStats         || null,
+    escompteStats:         state._escompteStats         || null,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -1765,13 +1767,14 @@ let _lsStatsCache = null; // { refs, json } — JSON des grosses stats, recalcul
 function _buildLsJson(data) {
   const refs = [data.monthStats, data.monthMeta, data.monthSavedAt,
                 data.digiMonthStats, data.grossisteUploads,
-                data.grossisteMonthStats, data.fseMonthStats];
+                data.grossisteMonthStats, data.fseMonthStats, data.escompteStats];
   if (!_lsStatsCache || refs.some((r, i) => r !== _lsStatsCache.refs[i])) {
     _lsStatsCache = { refs, json: JSON.stringify({
       monthStats: data.monthStats || null, monthMeta: data.monthMeta || null,
       monthSavedAt: data.monthSavedAt || null, digiMonthStats: data.digiMonthStats || null,
       grossisteUploads: data.grossisteUploads || [], grossisteMonthStats: data.grossisteMonthStats || null,
       fseMonthStats: data.fseMonthStats || null,
+      escompteStats: data.escompteStats || null,
     })};
   }
   const metaJson = JSON.stringify({
@@ -4520,6 +4523,7 @@ async function launchVerificateur() {
     if (st.verif_job?.status === 'done' && (st.verif_job.invoices?.length || 0) > 0) {
       if (st.digi_month_stats && Object.keys(st.digi_month_stats).length) {
         state._digiMonthStats = st.digi_month_stats;
+        if (st.escompte_stats) state._escompteStats = st.escompte_stats;
         saveState();
       }
       renderVerificateurResults(st.verif_job.invoices);
@@ -4629,6 +4633,7 @@ async function _pollVerificateur() {
     if (job.status === 'done') {
       if (st.digi_month_stats && Object.keys(st.digi_month_stats).length) {
         state._digiMonthStats = st.digi_month_stats;
+        if (st.escompte_stats) state._escompteStats = st.escompte_stats;
         saveState();
         if (state.currentPageId === 'recap') renderRecap();
       }
@@ -5149,7 +5154,41 @@ function _verifFillMonthDetail(mk) {
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
         </tr></tfoot>` : ''}
       </table>
-    </div>`;
+    </div>
+    ${_verifEscompteBlock(mk)}`;
+}
+
+function _verifEscompteBlock(mk) {
+  const escMap = state._escompteStats?.[mk];
+  if (!escMap || !Object.keys(escMap).length) return '';
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const rows = Object.entries(escMap).map(([four, d]) => {
+    const pct = d.ca_spec_gen_ht > 0 ? (d.remise_spec_gen_ht / d.ca_spec_gen_ht * 100).toFixed(1) + ' %' : '—';
+    return `<tr>
+      <td style="color:var(--cyan)">${escH(four)}</td>
+      <td>${d.ca_spec_gen_ht > 0 ? fmtE(d.ca_spec_gen_ht) : '—'}</td>
+      <td style="color:var(--green)">${d.remise_spec_gen_ht > 0 ? fmtE(d.remise_spec_gen_ht) : '—'}</td>
+      <td>${pct}</td>
+      <td>${d.remise_total_ht > 0 ? fmtE(d.remise_total_ht) : '—'}</td>
+      <td>${d.remise_total_ttc > 0 ? fmtE(d.remise_total_ttc) : '—'}</td>
+      <td>${d.escompte_ttc > 0 ? fmtE(d.escompte_ttc) : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="margin-top:12px;overflow-x:auto">
+    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">RELEVÉ ESCOMPTES GROSSISTE</div>
+    <table class="verif-tbl">
+      <thead><tr>
+        <th style="text-align:left">FOURNISSEUR</th>
+        <th>CA GÉN. (pf.ht)</th>
+        <th>REMISE GÉN.</th>
+        <th>TAUX</th>
+        <th>REMISE TOTALE HT</th>
+        <th>REMISE TOTALE TTC</th>
+        <th>ESCOMPTES TTC</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 }
 
 function _verifFillTout(year) {
@@ -5282,7 +5321,52 @@ function _verifFillTout(year) {
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
         </tr></tfoot>` : ''}
       </table>
-    </div>`;
+    </div>
+    ${_verifEscompteCumulBlock(yr)}`;
+}
+
+function _verifEscompteCumulBlock(yr) {
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  // Agrège les mois de l'année
+  const acc = {};
+  Object.entries(state._escompteStats || {}).filter(([mk]) => mk.startsWith(yr + '-')).forEach(([, escMap]) => {
+    Object.entries(escMap).forEach(([four, d]) => {
+      if (!acc[four]) acc[four] = {ca_spec_gen_ht:0, remise_spec_gen_ht:0, remise_total_ht:0, remise_total_ttc:0, escompte_ttc:0};
+      acc[four].ca_spec_gen_ht     += d.ca_spec_gen_ht     || 0;
+      acc[four].remise_spec_gen_ht += d.remise_spec_gen_ht || 0;
+      acc[four].remise_total_ht    += d.remise_total_ht    || 0;
+      acc[four].remise_total_ttc   += d.remise_total_ttc   || 0;
+      acc[four].escompte_ttc       += d.escompte_ttc       || 0;
+    });
+  });
+  if (!Object.keys(acc).length) return '';
+  const rows = Object.entries(acc).map(([four, d]) => {
+    const pct = d.ca_spec_gen_ht > 0 ? (d.remise_spec_gen_ht / d.ca_spec_gen_ht * 100).toFixed(1) + ' %' : '—';
+    return `<tr>
+      <td style="color:var(--cyan)">${escH(four)}</td>
+      <td>${fmtE(d.ca_spec_gen_ht)}</td>
+      <td style="color:var(--green)">${fmtE(d.remise_spec_gen_ht)}</td>
+      <td>${pct}</td>
+      <td>${fmtE(d.remise_total_ht)}</td>
+      <td>${fmtE(d.remise_total_ttc)}</td>
+      <td>${fmtE(d.escompte_ttc)}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="margin-top:12px;overflow-x:auto">
+    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">RELEVÉ ESCOMPTES GROSSISTE — CUMUL ${yr}</div>
+    <table class="verif-tbl">
+      <thead><tr>
+        <th style="text-align:left">FOURNISSEUR</th>
+        <th>CA GÉN. (pf.ht)</th>
+        <th>REMISE GÉN.</th>
+        <th>TAUX</th>
+        <th>REMISE TOTALE HT</th>
+        <th>REMISE TOTALE TTC</th>
+        <th>ESCOMPTES TTC</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 }
 
 // ── Breakout loader animation ──────────────────────────────────────────────────
@@ -7433,6 +7517,7 @@ async function saveProfile() {
       });
       state._fseMonthStats = migrated;
     }
+    if (saved.escompteStats) state._escompteStats = saved.escompteStats;
     if (saved.verifContracts && Object.keys(saved.verifContracts).length) {
       // Migration : ancien format plat { labKey: {active,type,startDate} } → { [year]: {...} }
       const first = Object.values(saved.verifContracts)[0];
@@ -8810,8 +8895,11 @@ function initConnecteurModal() {
           });
           if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
           const data = await resp.json();
-          if (data.digi_month_stats) { state._digiMonthStats = data.digi_month_stats; saveState(); if (state.currentPageId === 'recap') renderRecap(); }
-          entry.status = 'done'; entry.statusMsg = `${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}`;
+          if (data.digi_month_stats) { state._digiMonthStats = data.digi_month_stats; }
+          if (data.escompte_stats)   { state._escompteStats  = data.escompte_stats;   }
+          if (data.digi_month_stats || data.escompte_stats) { saveState(); if (state.currentPageId === 'recap') renderRecap(); }
+          const escLabel = data.escompte_cerp ? ` · ${data.escompte_cerp} relevé(s) escompte` : '';
+          entry.status = 'done'; entry.statusMsg = `${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}${escLabel}`;
 
         } else if (entry.type === 'grossiste') {
           // XLSX grossiste → upload Storage → /parse/grossiste (existing flow)
