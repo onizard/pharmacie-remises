@@ -5076,7 +5076,7 @@ function _verifFillMonthDetail(mk) {
 
   const gapCls = v => v == null ? '' : v > 0.5 ? ' style="color:var(--red)"' : v < -0.5 ? ' style="color:var(--green)"' : '';
   const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
-  let totPa=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
+  let totPa=0, totRsfEst=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
 
   const rows = keys.map(key => {
     const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
@@ -5105,10 +5105,11 @@ function _verifFillMonthDetail(mk) {
       : null;
 
     totPa   += pa_tot;
-    if (r2est    != null) totR2att += r2est;
-    if (r2rec    != null) totR2rec += r2rec;
-    if (r3estTTC != null) totR3att += r3estTTC;
-    if (r3rec    != null) totR3rec += r3rec;
+    if (rsfEst   != null) totRsfEst += rsfEst;
+    if (r2est    != null) totR2att  += r2est;
+    if (r2rec    != null) totR2rec  += r2rec;
+    if (r3estTTC != null) totR3att  += r3estTTC;
+    if (r3rec    != null) totR3rec  += r3rec;
     rowCount++;
 
     return `<tr>
@@ -5140,8 +5141,9 @@ function _verifFillMonthDetail(mk) {
         </tr></thead>
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
-          <td colspan="2" style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL — ${_MONTH_LABELS[mkM-1]} ${mkY}</td>
-          <td colspan="2"></td>
+          <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL — ${_MONTH_LABELS[mkM-1]} ${mkY}</td>
+          <td>${fmtE(totPa)}</td>
+          <td>—</td><td>${totRsfEst > 0 ? fmtE(totRsfEst) : '—'}</td>
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
           <td></td><td class="verif-r3">${totR3att > 0 ? fmtE(totR3att) : '—'}</td><td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
@@ -5212,7 +5214,7 @@ function _verifFillTout(year) {
 
   const today = new Date();
   const mRef  = yr < today.getFullYear() ? 12 : today.getMonth() + 1;
-  let totPa=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
+  let totPa=0, totRsfEst=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
 
   const rows = keys.map(k => {
     const d      = labAcc[k];
@@ -5236,10 +5238,11 @@ function _verifFillTout(year) {
       : null;
 
     totPa   += pa_tot;
-    if (r2est    != null) totR2att += r2est;
-    if (r2rec    != null) totR2rec += r2rec;
-    if (r3estTTC != null) totR3att += r3estTTC;
-    if (r3rec    != null) totR3rec += r3rec;
+    if (rsfEst   != null) totRsfEst += rsfEst;
+    if (r2est    != null) totR2att  += r2est;
+    if (r2rec    != null) totR2rec  += r2rec;
+    if (r3estTTC != null) totR3att  += r3estTTC;
+    if (r3rec    != null) totR3rec  += r3rec;
     rowCount++;
 
     return `<tr>
@@ -5271,8 +5274,9 @@ function _verifFillTout(year) {
         </tr></thead>
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
-          <td colspan="2" style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL CUMUL ${yr}</td>
-          <td colspan="2"></td>
+          <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL CUMUL ${yr}</td>
+          <td>${fmtE(totPa)}</td>
+          <td>—</td><td>${totRsfEst > 0 ? fmtE(totRsfEst) : '—'}</td>
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
           <td></td><td class="verif-r3">${totR3att > 0 ? fmtE(totR3att) : '—'}</td><td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
