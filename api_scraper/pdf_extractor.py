@@ -555,38 +555,69 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
         if kw.upper() in text[:1200].upper():
             labo = kw.upper(); break
     if not labo:
+        # Debug : montrer le début du texte pour identifier le format
+        print(f"[PRESTA-DBG] labo introuvable — provider={provider!r} | début: {text[:300]!r}", flush=True)
         return []
 
     # Date (format DD/MM/YY ou DD/MM/YYYY)
-    m_date = re.search(r'Date\s+Facture\s*:\s*(\d{2})/(\d{2})/(\d{2,4})', text, re.IGNORECASE)
+    m_date = re.search(r'Date\s+(?:de\s+)?(?:Facture|facturation|facture)\s*:?\s*(\d{2})[/\-.](\d{2})[/\-.](\d{2,4})',
+                       text, re.IGNORECASE)
+    if not m_date:
+        m_date = re.search(r'(\d{2})[/\-.](\d{2})[/\-.](\d{4})', text[:600])
     if m_date:
         yr = m_date.group(3)
         if len(yr) == 2:
             yr = "20" + yr
         billing_date = f"{yr}-{m_date.group(2)}-{m_date.group(1)}"
 
-    # Ligne PAIEMENT : "Mode : VIREMENT  <HT>  <TVA%>  <TVA_MONTANT>  <TTC>"
-    # Ex pdfplumber : "Mode : VIREMENT 5450.00 20 1090.00 6540.00"
+    # ── Extraction du montant TTC ────────────────────────────────────────────
     total_ht  = None
     total_ttc = None
     tva_pct   = None
 
+    # Format Movianto/Biogaran : "Mode : VIREMENT  <HT>  <TVA%>  <TVA_MNT>  <TTC>"
     m_pay = re.search(
         r'Mode\s*:\s*VIREMENT\s+([\d\s,\.]+)\s+(\d+(?:[.,]\d+)?)\s+[\d\s,\.]+\s+([\d\s,\.]+)',
         text, re.IGNORECASE
     )
     if m_pay:
         total_ht  = _to_float(m_pay.group(1))
-        tva_pct   = _to_float(m_pay.group(2))   # ex: 20
-        total_ttc = _to_float(m_pay.group(3))   # ex: 6540.00
+        tva_pct   = _to_float(m_pay.group(2))
+        total_ttc = _to_float(m_pay.group(3))
 
-    # Fallback : ligne TOTAL (ex: "TOTAL 5 5450,00" → le dernier nombre)
+    # Format Teva / Arrow : "NET À PAYER TTC  2 994,00" ou "MONTANT TTC  4 140,00"
+    if total_ttc is None:
+        for pat in [
+            r'NET\s+[ÀA]\s+PAYER\s+(?:TTC\s*)?([\d\s ,\.]+)',
+            r'MONTANT\s+TTC\s*:?\s*([\d\s ,\.]+)',
+            r'TOTAL\s+TTC\s*:?\s*([\d\s ,\.]+)',
+            r'TOTAL\s+NET\s+TTC\s*:?\s*([\d\s ,\.]+)',
+        ]:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                total_ttc = _to_float(m.group(1))
+                if total_ttc and total_ttc > 0:
+                    break
+
+    # Format : "HT  <montant>  TVA  <pct>%  TTC  <montant>"
+    if total_ht is None or total_ttc is None:
+        m_ht_ttc = re.search(
+            r'(?:HT|H\.T\.)\s*([\d\s ,\.]+)\s+(?:TVA|T\.V\.A\.)\s+(\d+)\s*%\s*([\d\s ,\.]+)',
+            text, re.IGNORECASE
+        )
+        if m_ht_ttc:
+            total_ht  = total_ht  or _to_float(m_ht_ttc.group(1))
+            tva_pct   = tva_pct   or _to_float(m_ht_ttc.group(2))
+            total_ttc = total_ttc or _to_float(m_ht_ttc.group(3))
+
+    # Fallback : dernière occurrence d'un grand nombre sur une ligne "TOTAL"
     if total_ht is None:
-        m_tot = re.search(r'\bTOTAL\b[^\n]*?([\d\s,\.]+)\s*$', text, re.MULTILINE)
+        m_tot = re.search(r'\bTOTAL\b[^\n]*?([\d\s ,\.]+)\s*$', text, re.MULTILINE)
         if m_tot:
             total_ht = _to_float(m_tot.group(1))
 
-    if not total_ht:
+    if not total_ht and not total_ttc:
+        print(f"[PRESTA-DBG] montant introuvable — labo={labo} provider={provider!r} | texte: {text[:400]!r}", flush=True)
         return []
 
     # Si TTC non extrait, calcul depuis TVA
