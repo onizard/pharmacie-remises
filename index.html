@@ -5143,11 +5143,9 @@ function _verifFillMonthDetail(mk) {
     const _fse     = fseMap[key];
     const r2rec_tot = (digi.rdp_total || 0) + (_fse?.r2_ttc || 0);
     const r2rec    = r2rec_tot  > 0 ? r2rec_tot : null;
-    // R3 : FSE en priorité (virement reçu), sinon presta Digi (facture coop labo)
-    const r3_fse     = (_fse?.r3_ttc ?? (_fse && !_fse.r2_ttc ? _fse.montant_ttc : 0)) || 0;
-    const r3_presta  = digi.presta_total_ttc || 0;
-    const r3rec_raw  = r3_fse > 0 ? r3_fse : r3_presta;
-    const r3rec      = r3rec_raw > 0 ? r3rec_raw : null;
+    // R3 : virement FSE banque uniquement — la facture presta n'est pas un reçu
+    const r3_fse  = (_fse?.r3_ttc ?? (_fse && !_fse.r2_ttc ? _fse.montant_ttc : 0)) || 0;
+    const r3rec   = r3_fse > 0 ? r3_fse : null;
 
     const gap = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
@@ -5200,7 +5198,48 @@ function _verifFillMonthDetail(mk) {
       </table>
     </div>
     ${_verifEscompteBlock(mk)}
-    ${_verifMdlBlock(mk)}`;
+    ${_verifMdlBlock(mk)}
+    ${_verifPrestaBlock(mk)}`;
+}
+
+function _verifPrestaBlock(mk) {
+  const [mkY, mkM] = mk.split('-').map(Number);
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fseMap = {};
+  Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, s]) => {
+    fseMap[_verifNormLab(labo)] = s;
+  });
+  const rows = [];
+  ((state._digiMonthStats||{})[mk]||[]).forEach(r => {
+    const pttc = r.presta_total_ttc || 0;
+    const pht  = r.presta_total     || 0;
+    if (!pttc && !pht) return;
+    const k = _verifNormLab(r.labo);
+    const fse_r3 = (fseMap[k]?.r3_ttc || 0);
+    const ecart  = fse_r3 > 0 ? fse_r3 - pttc : null;
+    const ecartCls = ecart == null ? '' : Math.abs(ecart) < 1 ? ' style="color:var(--green)"' : ' style="color:var(--amber)"';
+    rows.push(`<tr>
+      <td>${escH(r.labo)}</td>
+      <td>${fmtE(pht)}</td>
+      <td style="color:var(--cyan)">${fmtE(pttc)}</td>
+      <td>${fse_r3 > 0 ? fmtE(fse_r3) : '<span style="color:var(--amber)">non reçu</span>'}</td>
+      <td${ecartCls}>${ecart != null ? fmtE(ecart) : '—'}</td>
+    </tr>`);
+  });
+  if (!rows.length) return '';
+  return `<div style="margin-top:12px;overflow-x:auto">
+    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">PRESTATIONS COOP — ${_MONTH_LABELS[mkM-1]} ${mkY} <span style="color:var(--amber);margin-left:8px">facturé ≠ reçu</span></div>
+    <table class="verif-tbl">
+      <thead><tr>
+        <th style="text-align:left">LABO</th>
+        <th>PRESTA HT</th>
+        <th>PRESTA TTC (facturé)</th>
+        <th>FSE BANQUE (reçu)</th>
+        <th>ÉCART</th>
+      </tr></thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>
+  </div>`;
 }
 
 function _verifMdlBlock(mk) {
@@ -5370,10 +5409,9 @@ function _verifFillTout(year) {
     const r3estTTC = r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
     const r2rec_tot = (d.r2rec || 0) + (fseAcc[k]?.r2 || 0);
     const r2rec     = r2rec_tot  > 0 ? r2rec_tot : null;
-    // R3 : FSE en priorité, sinon presta Digi (factures coop labo)
-    const r3_fse    = fseAcc[k]?.r3 || 0;
-    const r3rec_raw = r3_fse > 0 ? r3_fse : (d.presta_ttc || 0);
-    const r3rec     = r3rec_raw > 0 ? r3rec_raw : null;
+    // R3 : virement FSE banque uniquement
+    const r3_fse = fseAcc[k]?.r3 || 0;
+    const r3rec  = r3_fse > 0 ? r3_fse : null;
 
     const gap = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
@@ -5426,7 +5464,60 @@ function _verifFillTout(year) {
       </table>
     </div>
     ${_verifEscompteCumulBlock(yr)}
-    ${_verifMdlCumulBlock(yr)}`;
+    ${_verifMdlCumulBlock(yr)}
+    ${_verifPrestaAnnualBlock(yr)}`;
+}
+
+function _verifPrestaAnnualBlock(yr) {
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  // Cumul presta par labo sur l'année
+  const prestaAcc = {};
+  Object.entries(state._digiMonthStats || {}).filter(([mk]) => mk.startsWith(yr + '-')).forEach(([, arr]) =>
+    (arr||[]).forEach(r => {
+      const pttc = r.presta_total_ttc || 0;
+      const pht  = r.presta_total     || 0;
+      if (!pttc && !pht) return;
+      if (!prestaAcc[r.labo]) prestaAcc[r.labo] = { ht: 0, ttc: 0 };
+      prestaAcc[r.labo].ht  += pht;
+      prestaAcc[r.labo].ttc += pttc;
+    })
+  );
+  if (!Object.keys(prestaAcc).length) return '';
+  // Cumul FSE r3 par labo sur l'année
+  const fseAcc = {};
+  Object.entries(state._fseMonthStats || {}).filter(([mk]) => mk.startsWith(yr + '-')).forEach(([, labMap]) =>
+    Object.entries(labMap || {}).forEach(([labo, s]) => {
+      const k = _verifNormLab(labo);
+      if (!fseAcc[k]) fseAcc[k] = 0;
+      fseAcc[k] += s.r3_ttc || 0;
+    })
+  );
+  const rows = Object.entries(prestaAcc).sort(([a],[b]) => a.localeCompare(b)).map(([labo, d]) => {
+    const k = _verifNormLab(labo);
+    const fse_r3 = fseAcc[k] || 0;
+    const ecart  = fse_r3 > 0 ? fse_r3 - d.ttc : null;
+    const ecartCls = ecart == null ? '' : Math.abs(ecart) < 1 ? ' style="color:var(--green)"' : ' style="color:var(--amber)"';
+    return `<tr>
+      <td>${escH(labo)}</td>
+      <td>${fmtE(d.ht)}</td>
+      <td style="color:var(--cyan)">${fmtE(d.ttc)}</td>
+      <td>${fse_r3 > 0 ? fmtE(fse_r3) : '<span style="color:var(--amber)">non reçu</span>'}</td>
+      <td${ecartCls}>${ecart != null ? fmtE(ecart) : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="margin-top:12px;overflow-x:auto">
+    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">PRESTATIONS COOP — CUMUL ${yr} <span style="color:var(--amber);margin-left:8px">facturé ≠ reçu</span></div>
+    <table class="verif-tbl">
+      <thead><tr>
+        <th style="text-align:left">LABO</th>
+        <th>PRESTA HT</th>
+        <th>PRESTA TTC (facturé)</th>
+        <th>FSE BANQUE (reçu)</th>
+        <th>ÉCART</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 }
 
 function _verifMdlCumulBlock(yr) {
