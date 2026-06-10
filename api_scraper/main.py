@@ -717,6 +717,9 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
     _digi_stats = _state_pre.get("digi_month_stats") or {}
     ref_to_labo: dict[str, str] = {}   # ref_number → canonical_labo
     ref_to_type: dict[str, str] = {}   # ref_number → 'r2' | 'r3'
+    # amount_to_candidates : montant_cents → [(labo, month_key, type)]
+    # Permet d'identifier le labo quand le libellé ne contient ni nom ni ref
+    amount_to_candidates: dict[int, list[tuple[str, str, str]]] = {}
     for _mk_d, _arr in _digi_stats.items():
         for _row in (_arr or []):
             _labo_d = _row.get("labo", "")
@@ -724,15 +727,22 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
                 _ref_s = str(_ref).strip()
                 if _ref_s and len(_ref_s) >= 6:
                     ref_to_labo[_ref_s] = _labo_d
-                    # Classer en r2 si rdp_total > 0 pour ce labo ce mois
                     ref_to_type[_ref_s] = 'r2' if (_row.get("rdp_total") or 0) > 0 else 'r3'
-    print(f"  → Lookup facture refs : {len(ref_to_labo)} entrées depuis digi_month_stats")
+            # Presta TTC → r3 ; RDP → r2
+            for _field, _typ in [("presta_total_ttc", "r3"), ("rdp_total", "r2")]:
+                _amt = _row.get(_field) or 0
+                if _amt > 0:
+                    _cents = round(_amt * 100)
+                    amount_to_candidates.setdefault(_cents, []).append((_labo_d, _mk_d, _typ))
+    print(f"  → Lookup facture refs : {len(ref_to_labo)} entrées · {len(amount_to_candidates)} montants distincts depuis digi_month_stats")
 
     # ── Parcours des lignes de données ─────────────────────────────────────────
     acc: dict[str, dict] = {}
     virements_list: list[dict] = []
+    unmatched_virements: list[dict] = []
     row_num         = 0
     n_ref_matched   = 0
+    n_amt_matched   = 0
     skipped_lib: list[str] = []
 
     for row in all_rows[data_start:]:
@@ -757,7 +767,7 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         refs  = _extract_all_refs(libelle)
         vtype = _classify_transfer(libelle, refs[0] if refs else "")
 
-        # Fallback : cross-référence par numéro de facture dans les libellés
+        # Fallback 1 : cross-référence par numéro de facture dans les libellés
         if not labo and refs:
             for _r in refs:
                 if _r in ref_to_labo:
@@ -766,9 +776,24 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
                     n_ref_matched += 1
                     break
 
+        # Fallback 2 : cross-référence par montant TTC (presta/rdp Digi)
+        # Cherche d'abord le mois correspondant, sinon prend le premier candidat
+        if not labo:
+            _cents = round(amount * 100)
+            _cands = amount_to_candidates.get(_cents)
+            if _cands:
+                _match = next((c for c in _cands if c[1] == mk), _cands[0])
+                labo   = _match[0]
+                vtype  = _match[2]
+                n_amt_matched += 1
+
         if not labo:
             if len(skipped_lib) < 20:
                 skipped_lib.append(libelle[:80])
+            unmatched_virements.append({
+                "date": date_str, "mois": mk, "montant_ttc": amount,
+                "libelle": libelle[:120], "refs": refs[:3],
+            })
             continue
 
         # Normaliser le nom de labo avec la table canonique
@@ -792,7 +817,7 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         })
         row_num += 1
 
-    print(f"  → {row_num} virements parsés · {n_ref_matched} identifiés via ref Digi · {len(skipped_lib)} ignorés")
+    print(f"  → {row_num} parsés · {n_ref_matched} via ref · {n_amt_matched} via montant · {len(unmatched_virements)} non identifiés")
     if skipped_lib:
         print(f"  → Libellés non reconnus : {skipped_lib[:5]}")
 
@@ -871,8 +896,9 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         "months":          months,
         "rows_parsed":     row_num,
         "total_ttc":       round(total_ttc, 2),
-        "fse_month_stats": merged,
-        "virements":       virements_list[:500],  # max 500 pour le payload
+        "fse_month_stats":     merged,
+        "virements":           virements_list[:500],
+        "unmatched_virements": unmatched_virements[:100],
     }
 
 
