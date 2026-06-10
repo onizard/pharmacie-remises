@@ -50,6 +50,14 @@ LABOS_GENERIQUES = [
 ]
 
 
+# Labs cibles pour la recherche "par labo" — presta coop (Movianto/Alloga facture au nom du labo)
+PRESTA_SEARCH_LABS = [
+    "biogaran", "teva", "viatris", "mylan", "sandoz", "zentiva",
+    "arrow", "cristers", "evolupharm", "zydus", "eg labo",
+    "movianto", "alloga", "cegedim",
+]
+
+
 def _is_generic(name: str) -> bool:
     n = (name or "").lower()
     return any(k in n for k in LABOS_GENERIQUES)
@@ -174,7 +182,11 @@ async def _fetch_invoices(page, progress: Callable) -> list[dict]:
         clean_url = f"{BASE_URL}/api/v1/invoices/?ordering=-billing_date&page_size={PAGE_SIZE}&page=1"
         progress("Endpoint non détecté — URL de fallback utilisée")
 
-    return await _paginate_fetch(page, clean_url, csrf, progress)
+    parsed_ep   = urlparse(clean_url)
+    endpoint_base = f"{parsed_ep.scheme}://{parsed_ep.netloc}{parsed_ep.path}"
+
+    invoices = await _paginate_fetch(page, clean_url, csrf, progress)
+    return invoices, endpoint_base, csrf
 
 
 async def _paginate_from_browser(page, first_data: dict, first_url: str, progress: Callable) -> list[dict]:
@@ -566,7 +578,7 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                         progress(f"Erreur page : {err_txt[:200]}")
                     raise RuntimeError("Identifiants DIGIPHARMACIE incorrects")
 
-        invoices = await _fetch_invoices(page, progress)
+        invoices, _inv_endpoint, _csrf = await _fetch_invoices(page, progress)
         if not invoices:
             progress("Aucune facture générique trouvée")
 
@@ -583,10 +595,17 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
         _cache_out = {}                                  # cache mis à jour cette run
         _on_progress = _run_scraper_async._on_progress  # callback enrichi (pour SIGTERM)
 
+        # Recherche presta coop "par labo" — complète la liste standard
+        _known_keys = {_inv_key(inv) for inv in invoices}
+        _presta_extra = await _search_presta_by_lab(
+            page, _inv_endpoint, _csrf, _known_keys, progress
+        )
+        invoices = invoices + _presta_extra
+
         n_cached   = sum(1 for inv in invoices
                          if _inv_key(inv) in _cache_in)
         n_new      = len(invoices) - n_cached
-        progress(f"{len(invoices)} factures ({n_cached} en cache, {n_new} à télécharger)…")
+        progress(f"{len(invoices)} factures total ({n_cached} en cache, {n_new} à télécharger)…")
 
         all_lines = []
         _t0_loop  = time.time()
@@ -657,6 +676,71 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
         progress(f"Extraction terminée — {len(all_lines)} lignes : {labos_count}")
 
     return all_lines, _cache_out
+
+
+async def _search_presta_by_lab(
+    page,
+    endpoint_base: str,
+    csrf: str,
+    known_keys: set,
+    progress: Callable,
+) -> list[dict]:
+    """
+    Pour chaque lab cible, requête l'API invoice avec un filtre par nom.
+    Retourne les factures presta coop absentes de la liste standard.
+    Le filtre "par labo" fait remonter les docs où le labo est mentionné
+    même quand le fournisseur direct est un dépositaire (Movianto, Alloga…).
+    """
+    from urllib.parse import quote_plus as _qp
+
+    SEARCH_PARAMS = ["search", "q", "provider_ref", "provider", "fournisseur", "labo"]
+
+    progress("Recherche factures presta coop par labo…")
+
+    # ── Détecter quel paramètre de filtre l'API supporte ──────────────────
+    filter_param = None
+    for param in SEARCH_PARAMS:
+        test_url = f"{endpoint_base}?{param}=biogaran&page_size=5"
+        try:
+            data    = await _js_fetch_json(page, test_url, csrf)
+            results = data.get("results", data if isinstance(data, list) else [])
+            if isinstance(results, list):
+                filter_param = param
+                progress(f"Filtre labo : ?{param}=<labo>  ({len(results)} résultats test)")
+                break
+        except Exception:
+            continue
+
+    if not filter_param:
+        progress("API invoice sans filtre labo — presta coop non récupérables par ce moyen")
+        return []
+
+    # ── Requête par chaque labo cible ─────────────────────────────────────
+    extra: list[dict] = []
+    for lab in PRESTA_SEARCH_LABS:
+        url = (f"{endpoint_base}?{filter_param}={_qp(lab)}"
+               f"&page_size={PAGE_SIZE}&ordering=-billing_date")
+        try:
+            data    = await _js_fetch_json(page, url, csrf)
+            results = data.get("results", data if isinstance(data, list) else [])
+            new_n   = 0
+            for inv in results:
+                date = str(inv.get("billing_date", ""))
+                if date[:4] not in YEARS:
+                    continue
+                ck = _inv_key(inv)
+                if ck not in known_keys:
+                    extra.append(inv)
+                    known_keys.add(ck)
+                    new_n += 1
+            if new_n:
+                progress(f"  presta par labo : {lab} → {new_n} nouvelle(s)")
+        except Exception as _e:
+            progress(f"  presta par labo : {lab} → erreur {_e}")
+        await page.wait_for_timeout(200)
+
+    progress(f"Recherche par labo : {len(extra)} facture(s) supplémentaire(s)")
+    return extra
 
 
 async def _fetch_ged_documents(page, progress: Callable) -> list[dict]:
