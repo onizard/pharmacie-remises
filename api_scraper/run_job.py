@@ -187,6 +187,34 @@ def _merge_escompte_stats(existing: dict, new_partial: dict) -> dict:
     return result
 
 
+def _compute_mdl_stats(lines: list[dict]) -> dict:
+    """Agrège les lignes MDL → {year-MM: {labo: {ca_fab_mois, ca_fab_cumul}}}."""
+    result: dict = {}
+    for line in lines:
+        if line.get("type") != "mdl":
+            continue
+        mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
+        labo = line.get("labo") or ""
+        if len(mk) < 7 or not labo:
+            continue
+        result.setdefault(mk, {})[labo] = {
+            "ca_fab_mois":   line.get("ca_fab_mois", 0.0),
+            "ca_fab_cumul":  line.get("ca_fab_cumul", 0.0),
+            "smr_gen_mois":  line.get("smr_gen_mois", 0.0),
+            "smr_gen_cumul": line.get("smr_gen_cumul", 0.0),
+            "smr_total_mois":line.get("smr_total_mois", 0.0),
+        }
+    return result
+
+
+def _merge_mdl_stats(existing: dict, new_partial: dict) -> dict:
+    """Last-write-wins par mois — un seul MDL par mois."""
+    result = {mk: dict(v) for mk, v in existing.items()}
+    for mk, labo_map in new_partial.items():
+        result.setdefault(mk, {}).update(labo_map)
+    return result
+
+
 def _update_job(status: str, message: str = "", invoices=None, error: str = ""):
     try:
         state = _supa_get_state()
@@ -241,7 +269,8 @@ def _get_creds() -> dict:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def _save_results(lines: list, cache: dict, existing_stats: dict,
-                  partial: bool = False, existing_escompte: dict | None = None):
+                  partial: bool = False, existing_escompte: dict | None = None,
+                  existing_mdl: dict | None = None):
     """Fusionne nouvelles lignes avec stats existantes, stocke le cache compact {key: True}."""
     n_cache = sum(1 for v in cache.values() if v is True)
     n_new   = len(lines)
@@ -258,7 +287,7 @@ def _save_results(lines: list, cache: dict, existing_stats: dict,
         "error":         "",
     }
     # Stats factures produits/RDP/presta
-    digi_lines    = [l for l in lines if l.get("type") != "escompte"]
+    digi_lines    = [l for l in lines if l.get("type") not in ("escompte", "mdl")]
     new_partial   = _compute_digi_month_stats(digi_lines)
     merged        = _merge_digi_stats(existing_stats, new_partial)
     if merged:
@@ -268,10 +297,17 @@ def _save_results(lines: list, cache: dict, existing_stats: dict,
     # Stats escomptes CERP
     escompte_lines = [l for l in lines if l.get("type") == "escompte"]
     if escompte_lines:
-        new_esc   = _compute_escompte_stats(escompte_lines)
+        new_esc    = _compute_escompte_stats(escompte_lines)
         merged_esc = _merge_escompte_stats(existing_escompte or {}, new_esc)
         state["escompte_stats"] = merged_esc
         print(f"  📊  escompte_stats : {len(merged_esc)} mois")
+    # Stats MDL CERP
+    mdl_lines = [l for l in lines if l.get("type") == "mdl"]
+    if mdl_lines:
+        new_mdl    = _compute_mdl_stats(mdl_lines)
+        merged_mdl = _merge_mdl_stats(existing_mdl or {}, new_mdl)
+        state["mdl_stats"] = merged_mdl
+        print(f"  📊  mdl_stats : {len(merged_mdl)} mois")
     _supa_patch_state(state)
 
 
@@ -279,7 +315,7 @@ def main():
     import signal as _sig
 
     # État partagé — mis à jour après chaque PDF pour que SIGTERM puisse sauver
-    _partial: dict = {"lines": [], "cache": {}, "existing_stats": {}, "existing_escompte": {}}
+    _partial: dict = {"lines": [], "cache": {}, "existing_stats": {}, "existing_escompte": {}, "existing_mdl": {}}
 
     # Handler SIGTERM : GitHub Actions tue le job à timeout-minutes
     # Sauve les résultats partiels pour que la prochaine run reprenne en cache
@@ -288,7 +324,8 @@ def main():
         try:
             _save_results(_partial["lines"], _partial["cache"],
                           _partial["existing_stats"], partial=True,
-                          existing_escompte=_partial["existing_escompte"])
+                          existing_escompte=_partial["existing_escompte"],
+                          existing_mdl=_partial["existing_mdl"])
             print(f"  ✓ {len(_partial['lines'])} nouvelles lignes / {len(_partial['cache'])} en cache", flush=True)
         except Exception as _e:
             print(f"  ✗ Sauvegarde partielle échouée : {_e}", flush=True)
@@ -312,13 +349,15 @@ def main():
         existing_cache   = (_ex_state.get("verif_job") or {}).get("invoice_cache") or {}
         existing_stats   = _ex_state.get("digi_month_stats") or {}
         existing_escompte = _ex_state.get("escompte_stats") or {}
+        existing_mdl      = _ex_state.get("mdl_stats")      or {}
         print(f"  → Cache : {len(existing_cache)} factures déjà traitées")
         print(f"  → Stats existantes : {len(existing_stats)} mois")
     except Exception:
-        existing_cache, existing_stats, existing_escompte = {}, {}, {}
+        existing_cache, existing_stats, existing_escompte, existing_mdl = {}, {}, {}, {}
 
     _partial["existing_stats"]    = existing_stats
     _partial["existing_escompte"] = existing_escompte
+    _partial["existing_mdl"]      = existing_mdl
 
     def _on_partial(lines: list, cache: dict):
         _partial["lines"] = lines
@@ -332,7 +371,8 @@ def main():
         invoices, updated_cache = run_scraper(creds, progress,
                                               invoice_cache=existing_cache,
                                               on_partial=_on_partial)
-        _save_results(invoices, updated_cache, existing_stats, existing_escompte=existing_escompte)
+        _save_results(invoices, updated_cache, existing_stats,
+                      existing_escompte=existing_escompte, existing_mdl=existing_mdl)
         n_cache = sum(1 for v in updated_cache.values() if v is True)
         print(f"\n✅  {len(invoices)} nouvelles lignes ({n_cache} en cache).")
     except Exception as e:

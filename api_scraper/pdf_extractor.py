@@ -100,6 +100,9 @@ def _fr_num(s: str) -> float:
 
 def _detect_format(text: str) -> str:
     t400 = text[:400].lower()
+    # MDL CERP — "STATISTIQUE DE LA MARGE DEGRESSIVE LISSEE"
+    if "marge degressive lissee" in text[:600].lower() or "marge dégressive lissée" in text[:600].lower():
+        return "mdl_cerp"
     # Relevé des Escomptes CERP — document mensuel agrégat (pas per-CIP)
     if "releve des escomptes" in text[:600].lower() or "relevé des escomptes" in text[:600].lower():
         return "escompte_cerp"
@@ -570,7 +573,122 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
     }]
 
 
-# ── 8. ESCOMPTE CERP — Relevé mensuel agrégé (pas per-CIP) ────────────────────
+# ── 8. MDL CERP — Statistique Marge Dégressive Lissée ────────────────────────
+#
+# Format : "STATISTIQUE DE LA MARGE DEGRESSIVE LISSEE DES SPECIALITES MEDICALES
+#            REMBOURSEES DU MOIS DE FEVRIER 2026"
+# Section utile : "Génériques.Fde." → montants HT par labo au prix fabricant
+#                 "CERP Rouen" → S.M.R. Génériques (total génériques grossiste)
+
+_MDL_KNOWN_LABOS = {
+    "arrow", "biogaran", "eg labo", "eg labs", "evolupharm",
+    "mylan", "sandoz", "teva", "viatris", "zentiva", "zydus",
+    "cristers", "arrow generiques",
+}
+
+
+def _extract_mdl_cerp(text: str, provider: str, billing_date: str) -> list[dict]:
+    """Extrait les montants HT par labo (Génériques.Fde.) + totaux CERP depuis le MDL."""
+
+    # ── Période ────────────────────────────────────────────────────────────────
+    m_period = re.search(r'DU\s+MOIS\s+DE\s+([A-ZÉÈÊÀÙÛÔÎÂÄËÏÜ]+)\s+(\d{4})', text, re.IGNORECASE)
+    if m_period:
+        mon = _MONTHS_FR.get(m_period.group(1).upper()
+                               .replace('É','E').replace('È','E').replace('Û','U'), "")
+        period_month = f"{m_period.group(2)}-{mon}" if mon else billing_date[:7]
+    else:
+        period_month = billing_date[:7]
+
+    # ── S.M.R. Génériques (CERP Rouen) ─────────────────────────────────────────
+    smr_gen_mois   = 0.0
+    smr_gen_cumul  = 0.0
+    smr_total_mois = 0.0
+    m_smr = re.search(
+        r'S\.M\.R\.?\s+G[eé]n[eé]riques\s+(' + _RE_FR_NUM[1:-1] + r')',
+        text, re.IGNORECASE,
+    )
+    if m_smr:
+        smr_gen_mois = _fr_num(m_smr.group(1))
+    m_smr_c = re.search(
+        r'S\.M\.R\.?\s+G[eé]n[eé]riques.*?(' + _RE_FR_NUM[1:-1] + r')\s+\d+,\d+\s+(' + _RE_FR_NUM[1:-1] + r')',
+        text, re.IGNORECASE,
+    )
+    if m_smr_c:
+        smr_gen_cumul = _fr_num(m_smr_c.group(2))
+    m_tot = re.search(r'Total\s+Spec\.?\s*Med\.?\s*Remb\.?\s+(' + _RE_FR_NUM[1:-1] + r')', text, re.IGNORECASE)
+    if m_tot:
+        smr_total_mois = _fr_num(m_tot.group(1))
+
+    # ── Génériques.Fde. — extraction per-labo ──────────────────────────────────
+    labo_rows = []
+
+    # Isole la section "Génériques.Fde." jusqu'à la fin du texte ou saut de section
+    m_sec = re.search(
+        r'G[eé]n[eé]riques\.?\s*Fde\.?\s*\n(.*?)(?:\n{2,}|\Z)',
+        text, re.DOTALL | re.IGNORECASE,
+    )
+    section_text = m_sec.group(1) if m_sec else ""
+
+    # Fallback : si la section n'est pas clairement délimitée, chercher les labos connus
+    # directement dans tout le texte après "Génériques.Fde."
+    if not section_text:
+        m_pos = re.search(r'G[eé]n[eé]riques\.?\s*Fde\.?', text, re.IGNORECASE)
+        if m_pos:
+            section_text = text[m_pos.end():]
+
+    if section_text:
+        for line in section_text.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            # Extraire tous les nombres de la ligne
+            nums_raw = re.findall(r'[\d][\d\s]*,\d{2}', line)
+            if not nums_raw:
+                continue
+            # Nom du labo = tout ce qui précède le premier nombre
+            name_part = re.sub(r'[\d\s,]+$', '', line.split(nums_raw[0])[0]).strip()
+            if not name_part:
+                continue
+            # Vérifier que le nom contient un labo connu (matching souple)
+            name_low = name_part.lower()
+            matched = next((k for k in _MDL_KNOWN_LABOS if k in name_low), None)
+            if not matched:
+                # Accepter aussi les noms courts inconnus (>= 3 chars) dans la section
+                if len(name_part) >= 3 and not any(c.isdigit() for c in name_part):
+                    matched = name_part
+            if not matched:
+                continue
+            ca_mois   = _fr_num(nums_raw[0])
+            ca_cumul  = _fr_num(nums_raw[-1]) if len(nums_raw) >= 2 else ca_mois
+            if ca_mois > 0:
+                labo_rows.append({
+                    "type":          "mdl",
+                    "labo":          name_part,
+                    "fournisseur":   provider or "CERP",
+                    "billing_date":  billing_date,
+                    "period_month":  period_month,
+                    "ca_fab_mois":   ca_mois,
+                    "ca_fab_cumul":  ca_cumul,
+                })
+
+    # Ligne de synthèse CERP
+    labo_rows.append({
+        "type":            "mdl",
+        "labo":            "_cerp",
+        "fournisseur":     provider or "CERP",
+        "billing_date":    billing_date,
+        "period_month":    period_month,
+        "smr_gen_mois":    smr_gen_mois,
+        "smr_gen_cumul":   smr_gen_cumul,
+        "smr_total_mois":  smr_total_mois,
+        "ca_fab_mois":     0.0,
+        "ca_fab_cumul":    0.0,
+    })
+
+    return labo_rows
+
+
+# ── 9. ESCOMPTE CERP — Relevé mensuel agrégé (pas per-CIP) ────────────────────
 #
 # Format CERP Rouen : "RELEVE DES ESCOMPTES DU MOIS DE SEPTEMBRE 2025"
 # Tableau 1 : VENTILATION DES ACHATS PAR CATEGORIE (CA HT + %)
@@ -673,8 +791,9 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
             full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
             fmt = _detect_format(full_text)
 
-            if fmt == "escompte_cerp":
-                # Document agrégat — pas de filtre labo, retourner directement
+            if fmt == "mdl_cerp":
+                return _extract_mdl_cerp(full_text, provider, billing_date)
+            elif fmt == "escompte_cerp":
                 return _extract_escompte_cerp(full_text, provider, billing_date)
             elif fmt == "alloga":
                 lines = _extract_alloga(full_text, provider, billing_date)

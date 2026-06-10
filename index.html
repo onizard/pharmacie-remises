@@ -1690,6 +1690,7 @@ let state = {
   _grossisteMonthStats: null,
   _fseMonthStats: null,
   _escompteStats: null,  // { "YYYY-MM": { "CERP": { ca_spec_gen_ht, remise_spec_gen_ht, ... } } }
+  _mdlStats: null,       // { "YYYY-MM": { "Biogaran": { ca_fab_mois, ca_fab_cumul }, "_cerp": {...} } }
   verifContracts: {},  // { [year]: { labKey: { active, type, startDate } } }
 };
 
@@ -1720,6 +1721,7 @@ function serializeState() {
     grossisteMonthStats:   state._grossisteMonthStats   || null,
     fseMonthStats:         state._fseMonthStats         || null,
     escompteStats:         state._escompteStats         || null,
+    mdlStats:              state._mdlStats               || null,
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -1767,7 +1769,7 @@ let _lsStatsCache = null; // { refs, json } — JSON des grosses stats, recalcul
 function _buildLsJson(data) {
   const refs = [data.monthStats, data.monthMeta, data.monthSavedAt,
                 data.digiMonthStats, data.grossisteUploads,
-                data.grossisteMonthStats, data.fseMonthStats, data.escompteStats];
+                data.grossisteMonthStats, data.fseMonthStats, data.escompteStats, data.mdlStats];
   if (!_lsStatsCache || refs.some((r, i) => r !== _lsStatsCache.refs[i])) {
     _lsStatsCache = { refs, json: JSON.stringify({
       monthStats: data.monthStats || null, monthMeta: data.monthMeta || null,
@@ -1775,6 +1777,7 @@ function _buildLsJson(data) {
       grossisteUploads: data.grossisteUploads || [], grossisteMonthStats: data.grossisteMonthStats || null,
       fseMonthStats: data.fseMonthStats || null,
       escompteStats: data.escompteStats || null,
+      mdlStats:      data.mdlStats      || null,
     })};
   }
   const metaJson = JSON.stringify({
@@ -4524,6 +4527,7 @@ async function launchVerificateur() {
       if (st.digi_month_stats && Object.keys(st.digi_month_stats).length) {
         state._digiMonthStats = st.digi_month_stats;
         if (st.escompte_stats) state._escompteStats = st.escompte_stats;
+        if (st.mdl_stats)      state._mdlStats      = st.mdl_stats;
         saveState();
       }
       renderVerificateurResults(st.verif_job.invoices);
@@ -4634,6 +4638,7 @@ async function _pollVerificateur() {
       if (st.digi_month_stats && Object.keys(st.digi_month_stats).length) {
         state._digiMonthStats = st.digi_month_stats;
         if (st.escompte_stats) state._escompteStats = st.escompte_stats;
+        if (st.mdl_stats)      state._mdlStats      = st.mdl_stats;
         saveState();
         if (state.currentPageId === 'recap') renderRecap();
       }
@@ -5155,7 +5160,62 @@ function _verifFillMonthDetail(mk) {
         </tr></tfoot>` : ''}
       </table>
     </div>
-    ${_verifEscompteBlock(mk)}`;
+    ${_verifEscompteBlock(mk)}
+    ${_verifMdlBlock(mk)}`;
+}
+
+function _verifMdlBlock(mk) {
+  const mdlMap = state._mdlStats?.[mk];
+  if (!mdlMap || !Object.keys(mdlMap).length) return '';
+  const [mkY, mkM] = mk.split('-').map(Number);
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fmtP = v => v != null ? v.toFixed(1) + ' %' : '—';
+
+  // Digi data for cross-reference
+  const digiMap = {};
+  ((state._digiMonthStats||{})[mk]||[]).forEach(r => digiMap[_verifNormLab(r.labo)] = r);
+
+  const cerp  = mdlMap['_cerp'] || {};
+  const labos = Object.entries(mdlMap).filter(([k]) => k !== '_cerp');
+
+  const rows = labos.map(([labo, d]) => {
+    const digiR = digiMap[_verifNormLab(labo)] || {};
+    const ca_digi = digiR.total_ht || 0;
+    const marge = d.ca_fab_mois > 0 && ca_digi > 0
+      ? ((ca_digi / d.ca_fab_mois - 1) * 100)
+      : null;
+    const margeCls = marge != null
+      ? (Math.abs(marge - 6) > 1 ? ' style="color:var(--amber)"' : ' style="color:var(--green)"')
+      : '';
+    return `<tr>
+      <td>${escH(labo)}</td>
+      <td>${d.ca_fab_mois > 0 ? fmtE(d.ca_fab_mois) : '—'}</td>
+      <td style="color:var(--text-dim)">${d.ca_fab_cumul > 0 ? fmtE(d.ca_fab_cumul) : '—'}</td>
+      <td>${ca_digi > 0 ? fmtE(ca_digi) : '—'}</td>
+      <td${margeCls}>${fmtP(marge)}</td>
+    </tr>`;
+  }).join('');
+
+  const cerp_row = (cerp.smr_gen_mois > 0 || cerp.smr_gen_cumul > 0) ? `<tr style="border-top:1px solid var(--border-dim)">
+    <td style="color:var(--cyan);font-size:10px;letter-spacing:1px">CERP S.M.R. GÉN.</td>
+    <td style="color:var(--cyan)">${cerp.smr_gen_mois > 0 ? fmtE(cerp.smr_gen_mois) : '—'}</td>
+    <td style="color:var(--text-dim)">${cerp.smr_gen_cumul > 0 ? fmtE(cerp.smr_gen_cumul) : '—'}</td>
+    <td>—</td><td>—</td>
+  </tr>` : '';
+
+  return `<div style="margin-top:12px;overflow-x:auto">
+    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">MARGE DÉGRESSIVE LISSÉE — ${_MONTH_LABELS[mkM-1]} ${mkY}</div>
+    <table class="verif-tbl">
+      <thead><tr>
+        <th style="text-align:left">LABO</th>
+        <th>CA FAB. MOIS</th>
+        <th>CA FAB. CUMUL</th>
+        <th>CA GROS. (DIGI)</th>
+        <th>MARGE GROS.</th>
+      </tr></thead>
+      <tbody>${rows}${cerp_row}</tbody>
+    </table>
+  </div>`;
 }
 
 function _verifEscompteBlock(mk) {
@@ -5322,7 +5382,85 @@ function _verifFillTout(year) {
         </tr></tfoot>` : ''}
       </table>
     </div>
-    ${_verifEscompteCumulBlock(yr)}`;
+    ${_verifEscompteCumulBlock(yr)}
+    ${_verifMdlCumulBlock(yr)}`;
+}
+
+function _verifMdlCumulBlock(yr) {
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fmtP = v => v != null ? v.toFixed(1) + ' %' : '—';
+
+  // Somme ca_fab_mois par labo sur l'année, garde la dernière valeur de ca_fab_cumul
+  const labAcc = {};
+  const cerp   = { smr_gen_mois: 0, smr_total_mois: 0 };
+  let   latestMk = null;
+
+  Object.entries(state._mdlStats || {})
+    .filter(([mk]) => mk.startsWith(yr + '-'))
+    .sort(([a],[b]) => a.localeCompare(b))
+    .forEach(([mk, mdlMap]) => {
+      latestMk = mk;
+      Object.entries(mdlMap).forEach(([labo, d]) => {
+        if (labo === '_cerp') {
+          cerp.smr_gen_mois   += d.smr_gen_mois   || 0;
+          cerp.smr_total_mois += d.smr_total_mois  || 0;
+        } else {
+          if (!labAcc[labo]) labAcc[labo] = { ca_fab: 0, ca_fab_cumul: 0 };
+          labAcc[labo].ca_fab       += d.ca_fab_mois  || 0;
+          labAcc[labo].ca_fab_cumul  = d.ca_fab_cumul || labAcc[labo].ca_fab_cumul;
+        }
+      });
+    });
+
+  if (!Object.keys(labAcc).length) return '';
+
+  // Digi cumul annuel
+  const digiAcc = {};
+  Object.entries(state._digiMonthStats || {}).filter(([mk]) => mk.startsWith(yr + '-')).forEach(([, arr]) =>
+    (arr||[]).forEach(r => {
+      const k = r.labo;
+      if (!digiAcc[k]) digiAcc[k] = 0;
+      digiAcc[k] += r.total_ht || 0;
+    })
+  );
+
+  const rows = Object.entries(labAcc).sort(([a],[b]) => a.localeCompare(b)).map(([labo, d]) => {
+    // Cherche correspondance digi (normalisation)
+    const norm = _verifNormLab(labo);
+    const ca_digi = Object.entries(digiAcc).filter(([k]) => _verifNormLab(k) === norm).reduce((s,[,v]) => s+v, 0);
+    const marge = d.ca_fab > 0 && ca_digi > 0 ? ((ca_digi / d.ca_fab - 1) * 100) : null;
+    const margeCls = marge != null
+      ? (Math.abs(marge - 6) > 1 ? ' style="color:var(--amber)"' : ' style="color:var(--green)"')
+      : '';
+    return `<tr>
+      <td>${escH(labo)}</td>
+      <td>${d.ca_fab > 0 ? fmtE(d.ca_fab) : '—'}</td>
+      <td style="color:var(--text-dim)">${d.ca_fab_cumul > 0 ? fmtE(d.ca_fab_cumul) : '—'}</td>
+      <td>${ca_digi > 0 ? fmtE(ca_digi) : '—'}</td>
+      <td${margeCls}>${fmtP(marge)}</td>
+    </tr>`;
+  }).join('');
+
+  const cerp_row = cerp.smr_gen_mois > 0 ? `<tr style="border-top:1px solid var(--border-dim)">
+    <td style="color:var(--cyan);font-size:10px;letter-spacing:1px">CERP S.M.R. GÉN.</td>
+    <td style="color:var(--cyan)">${fmtE(cerp.smr_gen_mois)}</td>
+    <td style="color:var(--text-dim)">—</td>
+    <td>—</td><td>—</td>
+  </tr>` : '';
+
+  return `<div style="margin-top:12px;overflow-x:auto">
+    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">MARGE DÉGRESSIVE LISSÉE — CUMUL ${yr}</div>
+    <table class="verif-tbl">
+      <thead><tr>
+        <th style="text-align:left">LABO</th>
+        <th>CA FAB. (Σ mois)</th>
+        <th>CA FAB. CUMUL (doc)</th>
+        <th>CA GROS. (DIGI)</th>
+        <th>MARGE GROS.</th>
+      </tr></thead>
+      <tbody>${rows}${cerp_row}</tbody>
+    </table>
+  </div>`;
 }
 
 function _verifEscompteCumulBlock(yr) {
@@ -7518,6 +7656,7 @@ async function saveProfile() {
       state._fseMonthStats = migrated;
     }
     if (saved.escompteStats) state._escompteStats = saved.escompteStats;
+    if (saved.mdlStats)      state._mdlStats      = saved.mdlStats;
     if (saved.verifContracts && Object.keys(saved.verifContracts).length) {
       // Migration : ancien format plat { labKey: {active,type,startDate} } → { [year]: {...} }
       const first = Object.values(saved.verifContracts)[0];
@@ -8897,9 +9036,11 @@ function initConnecteurModal() {
           const data = await resp.json();
           if (data.digi_month_stats) { state._digiMonthStats = data.digi_month_stats; }
           if (data.escompte_stats)   { state._escompteStats  = data.escompte_stats;   }
-          if (data.digi_month_stats || data.escompte_stats) { saveState(); if (state.currentPageId === 'recap') renderRecap(); }
-          const escLabel = data.escompte_cerp ? ` · ${data.escompte_cerp} relevé(s) escompte` : '';
-          entry.status = 'done'; entry.statusMsg = `${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}${escLabel}`;
+          if (data.mdl_stats)        { state._mdlStats        = data.mdl_stats;        }
+          if (data.digi_month_stats || data.escompte_stats || data.mdl_stats) { saveState(); if (state.currentPageId === 'recap') renderRecap(); }
+          const escLabel = data.escompte_cerp ? ` · ${data.escompte_cerp} escompte` : '';
+          const mdlLabel = data.mdl_cerp       ? ` · ${data.mdl_cerp} MDL`          : '';
+          entry.status = 'done'; entry.statusMsg = `${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}${escLabel}${mdlLabel}`;
 
         } else if (entry.type === 'grossiste') {
           // XLSX grossiste → upload Storage → /parse/grossiste (existing flow)

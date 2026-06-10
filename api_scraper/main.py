@@ -465,7 +465,8 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
     sys.path.insert(0, _os.path.dirname(__file__))
     from pdf_extractor import extract_invoice_lines
     from run_job import (_compute_digi_month_stats, _merge_digi_stats,
-                         _compute_escompte_stats, _merge_escompte_stats)
+                         _compute_escompte_stats, _merge_escompte_stats,
+                         _compute_mdl_stats, _merge_mdl_stats)
 
     from supabase_client import SERVICE_KEY, SUPA_URL
     HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
@@ -493,7 +494,8 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
     state = (rows[0]["state_json"] if rows else {}) or {}
 
     escompte_lines = [l for l in lines if l.get("type") == "escompte"]
-    digi_lines     = [l for l in lines if l.get("type") != "escompte"]
+    mdl_lines      = [l for l in lines if l.get("type") == "mdl"]
+    digi_lines     = [l for l in lines if l.get("type") not in ("escompte", "mdl")]
 
     merged = state.get("digi_month_stats") or {}
     if digi_lines:
@@ -506,6 +508,12 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
         new_esc    = _compute_escompte_stats(escompte_lines)
         merged_esc = _merge_escompte_stats(merged_esc, new_esc)
         state["escompte_stats"] = merged_esc
+
+    merged_mdl = state.get("mdl_stats") or {}
+    if mdl_lines:
+        new_mdl    = _compute_mdl_stats(mdl_lines)
+        merged_mdl = _merge_mdl_stats(merged_mdl, new_mdl)
+        state["mdl_stats"] = merged_mdl
 
     patch_body = json.dumps({"state_json": state}).encode()
     patch_req  = urllib.request.Request(
@@ -520,7 +528,8 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
     n_rdp    = sum(1 for l in lines if l.get("type") == "rdp")
     n_presta = sum(1 for l in lines if l.get("type") == "presta")
     n_esc    = len(escompte_lines)
-    n_prod   = len(lines) - n_rdp - n_presta - n_esc
+    n_mdl    = len(mdl_lines)
+    n_prod   = len(lines) - n_rdp - n_presta - n_esc - n_mdl
     return {
         "status":           "done",
         "months":           months,
@@ -529,8 +538,10 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
         "rdp_avoirs":       n_rdp,
         "presta_avoirs":    n_presta,
         "escompte_cerp":    n_esc,
+        "mdl_cerp":         n_mdl,
         "digi_month_stats": merged,
         "escompte_stats":   merged_esc,
+        "mdl_stats":        merged_mdl,
     }
 
 
