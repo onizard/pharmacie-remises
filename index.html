@@ -2004,9 +2004,13 @@ function saveState() {
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
     const data = serializeState();
-    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
-    clearTimeout(_cloudSaveTimer);
-    _cloudSaveTimer = setTimeout(() => saveCloudState(data), 3000);
+    const write = () => {
+      try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
+      clearTimeout(_cloudSaveTimer);
+      _cloudSaveTimer = setTimeout(() => saveCloudState(data), 3000);
+    };
+    if (window.requestIdleCallback) requestIdleCallback(write, { timeout: 2000 });
+    else write();
   }, 400);
 }
 
