@@ -99,27 +99,42 @@ def _fr_num(s: str) -> float:
 
 
 def _detect_format(text: str) -> str:
-    t400 = text[:400].lower()
+    t400  = text[:400].lower()
+    t800  = text[:800].lower()
+    t1500 = text[:1500].lower()
     # MDL CERP — "STATISTIQUE DE LA MARGE DEGRESSIVE LISSEE"
-    if "marge degressive lissee" in text[:600].lower() or "marge dégressive lissée" in text[:600].lower():
+    if "marge degressive lissee" in t800 or "marge dégressive lissée" in t800:
         return "mdl_cerp"
     # Relevé des Escomptes CERP — document mensuel agrégat (pas per-CIP)
-    if "releve des escomptes" in text[:600].lower() or "relevé des escomptes" in text[:600].lower():
+    if "releve des escomptes" in t800 or "relevé des escomptes" in t800:
         return "escompte_cerp"
-    if "alloga france" in t400 or ("alloga" in t400 and "au nom et pour le compte" in text[:600].lower()):
+    # RDP (Remise de performance) / Avoir récapitulatif — avant alloga pour éviter faux-positif
+    if "récapitulatif des remises" in t800 or "remise de performance" in t800:
+        return "rdp"
+    # Prestations de services / Coopération commerciale — AVANT alloga (Alloga envoie aussi des presta)
+    _presta_kw = (
+        "facture de prestations de services",
+        "facture de prestation de services",   # variante singulier
+        "convention commerciale",
+        "convention de coopération",
+        "convention de cooperation",
+        "coopération commerciale",
+        "cooperation commerciale",
+        "prestation de coopération",
+        "prestation de cooperation",
+        "objectif de coopération",
+        "objectif de cooperation",
+    )
+    if any(kw in t1500 for kw in _presta_kw):
+        return "presta"
+    if "alloga france" in t400 or ("alloga" in t400 and "au nom et pour le compte" in t800):
         return "alloga"
     # CSP / Movianto : "FACTURE DE SPÉCIALITÉS" avec lignes CIP13 décimales en points
-    if ("facture de sp" in text[:800].lower() and "cialité" in text[:800].lower()) \
-            or "spécialités remboursées" in text[:1500].lower() \
-            or "centre sp" in text[:800].lower():
+    if ("facture de sp" in t800 and "cialité" in t800) \
+            or "spécialités remboursées" in t1500 \
+            or "centre sp" in t800:
         return "csp"
-    # RDP (Remise de performance) / Avoir récapitulatif — pas de données par référence
-    if "récapitulatif des remises" in text[:600].lower() or "remise de performance" in text[:800].lower():
-        return "rdp"
-    # Prestations de services / Coopération commerciale — pas de CIP
-    if "facture de prestations de services" in text[:600].lower() or "convention commerciale" in text[:800].lower():
-        return "presta"
-    if "viatris sante" in t400 or "viatris santé" in t400 or ("mylan" in t400 and "c.i.p" in text[:1000].lower()):
+    if "viatris sante" in t400 or "viatris santé" in t400 or ("mylan" in t400 and "c.i.p" in t1500):
         return "viatris"
     if "cooperation pharmaceutique" in t400 or "coopération pharmaceutique" in t400:
         return "cooperation"
@@ -820,6 +835,8 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
                 return _extract_escompte_cerp(full_text, provider, billing_date)
             elif fmt == "alloga":
                 lines = _extract_alloga(full_text, provider, billing_date)
+                if not lines:
+                    lines = _extract_presta(full_text, provider, billing_date)
             elif fmt == "csp":
                 lines = _extract_csp(full_text, provider, billing_date)
             elif fmt == "viatris":
@@ -831,7 +848,10 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
             elif fmt == "presta":
                 lines = _extract_presta(full_text, provider, billing_date)
             else:
-                lines = _extract_text_fallback(full_text, provider, billing_date)
+                # Format inconnu : tenter presta (couvre Teva Sante et autres non reconnus)
+                lines = _extract_presta(full_text, provider, billing_date)
+                if not lines:
+                    lines = _extract_text_fallback(full_text, provider, billing_date)
     except Exception:
         return []
 
