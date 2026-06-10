@@ -8194,7 +8194,9 @@ function initConnecteurModal() {
             const { data: { session: _s } } = await window._sbClient.auth.getSession();
             if (!_s) return;
             const _r = await fetch(`${API_URL}/run/fse-export`, {
-              method: 'POST', headers: { 'Authorization': `Bearer ${_s.access_token}` },
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${_s.access_token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
             });
             if (_r.ok) showToast('Export FSE lancé — le XLSX sera déposé automatiquement');
           } catch (_) {}
