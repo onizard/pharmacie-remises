@@ -266,6 +266,8 @@ async def _paginate_fetch(page, start_url: str, csrf: str, progress: Callable) -
 
 
 async def _js_fetch_json(page, url: str, csrf: str) -> dict:
+    # Playwright limite la taille des réponses dans page.evaluate.
+    # Pour les grandes réponses on chunke en JS et on réassemble côté Python.
     result = await page.evaluate("""
         async ([url, csrf]) => {
             const resp = await fetch(url, {
@@ -276,8 +278,11 @@ async def _js_fetch_json(page, url: str, csrf: str) -> dict:
                     'X-Requested-With': 'XMLHttpRequest',
                 }
             });
-            const text = await resp.text();
-            return { status: resp.status, text };
+            if (!resp.ok) return { status: resp.status, text: '' };
+            // Lire le corps en ArrayBuffer pour éviter la limite Content-Length
+            const buf = await resp.arrayBuffer();
+            const decoder = new TextDecoder('utf-8');
+            return { status: resp.status, text: decoder.decode(buf) };
         }
     """, [url, csrf])
 
