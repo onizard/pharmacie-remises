@@ -708,6 +708,71 @@ async def _search_presta_by_lab(
     progress("Recherche factures par fournisseur…")
     extra: list[dict] = []
 
+    # ── Diagnostic page courante (une seule fois) ──────────────────────────────
+    try:
+        _diag = await page.evaluate("""() => {
+            const all_links = Array.from(document.querySelectorAll('a[href]'))
+                .map(a => ({href:(a.href||'').replace(location.origin,''), text:(a.textContent||'').trim().slice(0,60)}))
+                .filter(l => l.href && l.href.startsWith('/'));
+            const fourn_links = all_links.filter(l =>
+                /fourn|provider|supplier|labo|fourniss/i.test(l.href+l.text));
+            const selects = Array.from(document.querySelectorAll('select'))
+                .map(s => ({
+                    sel: (s.name||s.id||s.className||'?').slice(0,40),
+                    opts: Array.from(s.options).slice(0,8).map(o=>o.text.trim())
+                }));
+            const inputs = Array.from(document.querySelectorAll('input'))
+                .filter(i => /fourn|search|filtr|provider|labo/i.test(i.name+i.id+i.placeholder+i.className))
+                .map(i => ({name:(i.name||i.id||i.placeholder||'?').slice(0,40), type:i.type}));
+            return {url: location.pathname, fourn_links: fourn_links.slice(0,10),
+                    all_links_sample: all_links.slice(0,15), selects, inputs};
+        }""")
+        progress(f"[DIAG] URL courante : {_diag.get('url')}")
+        progress(f"[DIAG] Liens fourn  : {_diag.get('fourn_links')}")
+        progress(f"[DIAG] Liens (15)   : {_diag.get('all_links_sample')}")
+        progress(f"[DIAG] Selects      : {_diag.get('selects')}")
+        progress(f"[DIAG] Inputs fourn : {_diag.get('inputs')}")
+    except Exception as _de:
+        progress(f"[DIAG] Erreur : {_de}")
+
+    # ── Découverte de la page fournisseur ──────────────────────────────────────
+    # Chercher un lien "Fournisseur(s)" dans la navigation
+    _fourn_page_url: str | None = None
+    try:
+        _fourn_candidates = await page.evaluate("""() =>
+            Array.from(document.querySelectorAll('a[href]'))
+                .filter(a => /fourn|provider|supplier/i.test((a.textContent||'')+(a.href||'')))
+                .map(a => a.href)
+                .filter(h => h.startsWith(location.origin))
+                .slice(0, 5)
+        """)
+        if _fourn_candidates:
+            _fourn_page_url = _fourn_candidates[0]
+            progress(f"[DIAG] Page fournisseur candidate : {_fourn_page_url}")
+    except Exception:
+        pass
+
+    # Si une page fournisseurs existe, naviguer et lister les labos disponibles
+    if _fourn_page_url:
+        try:
+            await page.goto(_fourn_page_url, wait_until="domcontentloaded", timeout=20_000)
+            await page.wait_for_timeout(3000)
+            _fourn_list = await page.evaluate("""() =>
+                Array.from(document.querySelectorAll('a[href]'))
+                    .map(a => ({href: a.href.replace(location.origin,''), text:(a.textContent||'').trim().slice(0,60)}))
+                    .filter(l => l.href.length > 1)
+                    .slice(0, 30)
+            """)
+            progress(f"[DIAG] Page fournisseur — liens ({len(_fourn_list)}) : {_fourn_list[:10]}")
+        except Exception as _fe:
+            progress(f"[DIAG] Page fournisseur erreur : {_fe}")
+        # Revenir sur /factures/ pour la suite
+        try:
+            await page.goto(f"{BASE_URL}/factures/", wait_until="domcontentloaded", timeout=20_000)
+            await page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
     for lab in PRESTA_SEARCH_LABS:
         progress(f"  Fournisseur : {lab}…")
         _lab_resps: list = []
@@ -727,6 +792,9 @@ async def _search_presta_by_lab(
                 f"{BASE_URL}/factures/?fournisseur={_qp(lab)}",
                 f"{BASE_URL}/factures/?search={_qp(lab)}",
                 f"{BASE_URL}/factures/?provider={_qp(lab)}",
+                # variantes avec section dédiée
+                f"{BASE_URL}/fournisseurs/{_qp(lab)}/factures/",
+                f"{BASE_URL}/fournisseurs/?name={_qp(lab)}",
             ]:
                 try:
                     await page.goto(url_tpl, wait_until="domcontentloaded", timeout=25_000)
