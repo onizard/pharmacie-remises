@@ -1760,6 +1760,27 @@ function serializeState() {
 }
 
 let _saveTimer, _cloudSaveTimer, _saveBadgeTimer;
+let _lsStatsCache = null; // { refs, json } — JSON des grosses stats, recalculé seulement si leurs références changent
+
+function _buildLsJson(data) {
+  const refs = [data.monthStats, data.monthMeta, data.monthSavedAt,
+                data.digiMonthStats, data.grossisteUploads,
+                data.grossisteMonthStats, data.fseMonthStats];
+  if (!_lsStatsCache || refs.some((r, i) => r !== _lsStatsCache.refs[i])) {
+    _lsStatsCache = { refs, json: JSON.stringify({
+      monthStats: data.monthStats || null, monthMeta: data.monthMeta || null,
+      monthSavedAt: data.monthSavedAt || null, digiMonthStats: data.digiMonthStats || null,
+      grossisteUploads: data.grossisteUploads || [], grossisteMonthStats: data.grossisteMonthStats || null,
+      fseMonthStats: data.fseMonthStats || null,
+    })};
+  }
+  const metaJson = JSON.stringify({
+    v: data.v, gers: data.gers, userProfile: data.userProfile, connectors: data.connectors,
+    currentPageId: data.currentPageId, csvRows: data.csvRows, prorataRatios: data.prorataRatios,
+    labPages: data.labPages, verifContracts: data.verifContracts,
+  });
+  return metaJson.slice(0, -1) + ',' + _lsStatsCache.json.slice(1);
+}
 
 function _showSaveBadge(isError = false) {
   const badge = document.getElementById('saveBadge');
@@ -2003,9 +2024,10 @@ function saveState() {
   if (!_initDone) return;
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
-    const data = serializeState();
+    const data    = serializeState();
+    const lsJson  = _buildLsJson(data); // stats cachées, meta seule re-stringifiée
     const write = () => {
-      try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
+      try { localStorage.setItem(LS_KEY, lsJson); } catch(e) {}
       clearTimeout(_cloudSaveTimer);
       _cloudSaveTimer = setTimeout(() => saveCloudState(data), 3000);
     };
