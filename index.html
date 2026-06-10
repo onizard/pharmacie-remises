@@ -8634,8 +8634,17 @@ function initConnecteurModal() {
         state.connectors[connKey] = { user, pass, connected: false };
         updateConnecteurBtn();
         saveState();
-        _setConnProgress(prefix, 'reset');
-        _showConnResult(resultEl, `⏳ Identifiants enregistrés — vérification en attente.<br><span style="color:var(--text-dim)">Cloudflare bloque les IPs serveur. La vérification s'effectuera automatiquement au prochain scraping (runner résidentiel).</span>`, 'warn');
+        // Cloudflare bloque le test depuis Render — on lance quand même le scraping
+        // (la vérification des identifiants se fera sur le runner résidentiel)
+        state._digiJobRunning       = true;
+        state._digiJobStartedAt     = Date.now();
+        state._digiJobMessage       = '';
+        state._digiProgressFirstAt  = null;
+        state._digiProgressFirstNum = null;
+        closeModal();
+        goTo('recap');
+        renderRecap();
+        _triggerWorkflow(connKey, prefix);
         return;
       }
 
