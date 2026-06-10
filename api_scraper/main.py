@@ -595,6 +595,8 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         ("ALMUS", "ALMUS"), ("QUALIMED", "QUALIMED"),
         # Dépositaires qui virent au nom du labo
         ("MOVIANTO", "MOVIANTO"), ("ALLOGA", "ALLOGA"), ("CEGEDIM", "CEGEDIM"),
+        # Grossistes qui virent leurs ristournes directement
+        ("CERP", "CERP"), ("COOPERATION PHARMACEUTIQUE", "CERP"), ("CPF", "CERP"),
     ]
 
     def _identify_labo(libelle: str) -> str | None:

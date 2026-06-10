@@ -24,6 +24,16 @@ LABOS_CIBLES = {
     "eg labo", "eg labs", "evolupharm",
 }
 
+# Grossistes partenaires qui envoient leurs propres ristournes/presta
+_PRESTA_PROVIDER_MAP = {
+    "cooperation pharmaceutique": "CERP",
+    "cerp rouen": "CERP",
+    "cerp rennes": "CERP",
+    "alloga france": "ALLOGA",
+    "alloga": "ALLOGA",
+}
+_PRESTA_PARTNER_LABOS = frozenset({"cerp", "alloga"})
+
 
 def _is_labo_cible(labo: str) -> bool:
     n = (labo or "").lower()
@@ -108,6 +118,15 @@ def _detect_format(text: str) -> str:
     # Relevé des Escomptes CERP — document mensuel agrégat (pas per-CIP)
     if "releve des escomptes" in t800 or "relevé des escomptes" in t800:
         return "escompte_cerp"
+    # Relevé LCR Teva — bordereau de paiement (pas une facture)
+    if "releve de lcr" in t800 or "relevé de lcr" in t800:
+        return "lcr_releve"
+    # CPF / CERP — facture produit sur relevé mensuel (pas une presta)
+    if "facture payable sur releve" in t800 or "avoir deduit sur releve" in t800:
+        return "cpf_product"
+    # Teva — facture produit standard (distinct des avoirs RSF/presta)
+    if "teva sant" in t400 and "votre commande" in t1500:
+        return "teva_product"
     # RDP (Remise de performance) / Avoir récapitulatif — avant alloga pour éviter faux-positif
     if "récapitulatif des remises" in t800 or "remise de performance" in t800:
         return "rdp"
@@ -549,13 +568,19 @@ def _extract_rdp(text: str, provider: str, billing_date: str) -> list[dict]:
 #   ou TOTAL 5 5450,00
 
 def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
-    # Labo
+    # Labo : d'abord chercher un labo générique dans le texte
     labo = ""
     for kw in sorted(LABOS_CIBLES, key=len, reverse=True):
         if kw.upper() in text[:1200].upper():
             labo = kw.upper(); break
+    # Fallback : grossiste partenaire (ristourne CERP, Alloga presta)
     if not labo:
-        # Debug : montrer le début du texte pour identifier le format
+        prov_l = (provider or "").lower()
+        for prov_kw, prov_labo in _PRESTA_PROVIDER_MAP.items():
+            if prov_kw in prov_l:
+                labo = prov_labo
+                break
+    if not labo:
         print(f"[PRESTA-DBG] labo introuvable — provider={provider!r} | début: {text[:300]!r}", flush=True)
         return []
 
@@ -586,12 +611,15 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
         total_ttc = _to_float(m_pay.group(3))
 
     # Format Teva / Arrow : "NET À PAYER TTC  2 994,00" ou "MONTANT TTC  4 140,00"
+    # Inclut les variantes avec "T.T.C." (points) utilisées par Teva Santé
     if total_ttc is None:
         for pat in [
-            r'NET\s+[ÀA]\s+PAYER\s+(?:TTC\s*)?([\d\s ,\.]+)',
-            r'MONTANT\s+TTC\s*:?\s*([\d\s ,\.]+)',
-            r'TOTAL\s+TTC\s*:?\s*([\d\s ,\.]+)',
-            r'TOTAL\s+NET\s+TTC\s*:?\s*([\d\s ,\.]+)',
+            r'NET\s+[\u00c0A]\s+PAYER\s+(?:T\.?T\.?C\.?\s*)?([\d\s\xa0,\.]+)',
+            r'NET\s+[\u00c0A]\s+R[\u00c9E]GLER\s+T\.?T\.?C\.?\s*:?\s*([\d\s\xa0,\.]+)',
+            r'MONTANT\s+T\.?T\.?C\.?\s*:?\s*([\d\s\xa0,\.]+)',
+            r'TOTAL\s+T\.?T\.?C\.?\s*:?\s*([\d\s\xa0,\.]+)',
+            r'TOTAL\s+NET\s+T\.?T\.?C\.?\s*:?\s*([\d\s\xa0,\.]+)',
+            r'\bT\.T\.C\.?\b\s*:?\s*(\d[\d\s\xa0,\.]+)',
         ]:
             m = re.search(pat, text, re.IGNORECASE)
             if m:
@@ -617,7 +645,8 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
             total_ht = _to_float(m_tot.group(1))
 
     if not total_ht and not total_ttc:
-        print(f"[PRESTA-DBG] montant introuvable — labo={labo} provider={provider!r} | texte: {text[:400]!r}", flush=True)
+        ttc_lines = [l for l in text.split('\n') if any(kw in l.upper() for kw in ['TTC', 'T.T.C', 'PAYER', 'REGLER', 'TOTAL', 'MONTANT NET'])]
+        print(f"[PRESTA-DBG] montant introuvable — labo={labo} provider={provider!r} | ttc_lines: {ttc_lines[:6]!r}", flush=True)
         return []
 
     # Si TTC non extrait, calcul depuis TVA
@@ -860,14 +889,15 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
             full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
             fmt = _detect_format(full_text)
 
-            if fmt == "mdl_cerp":
+            if fmt in ("lcr_releve", "cpf_product", "teva_product"):
+                return []
+            elif fmt == "mdl_cerp":
                 return _extract_mdl_cerp(full_text, provider, billing_date)
             elif fmt == "escompte_cerp":
                 return _extract_escompte_cerp(full_text, provider, billing_date)
             elif fmt == "alloga":
                 lines = _extract_alloga(full_text, provider, billing_date)
-                if not lines:
-                    lines = _extract_presta(full_text, provider, billing_date)
+                # presta Alloga déjà détecté avant ce point par _detect_format
             elif fmt == "csp":
                 lines = _extract_csp(full_text, provider, billing_date)
             elif fmt == "viatris":
@@ -887,7 +917,12 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
         return []
 
     # Filtrer sur les labos génériqueurs cibles (s'applique à rdp/presta aussi)
-    lines = [l for l in lines if _is_labo_cible(l.get("labo", ""))]
+    def _is_keepable(line: dict) -> bool:
+        labo = (line.get("labo") or "").lower()
+        if _is_labo_cible(labo): return True
+        if line.get("type") in ("presta", "rdp") and any(p in labo for p in _PRESTA_PARTNER_LABOS): return True
+        return False
+    lines = [l for l in lines if _is_keepable(l)]
 
     # Déduplication : clé différente selon le type
     seen, dedup = set(), []
