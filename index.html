@@ -5143,8 +5143,11 @@ function _verifFillMonthDetail(mk) {
     const _fse     = fseMap[key];
     const r2rec_tot = (digi.rdp_total || 0) + (_fse?.r2_ttc || 0);
     const r2rec    = r2rec_tot  > 0 ? r2rec_tot : null;
-    const r3rec    = (_fse?.r3_ttc ?? (_fse && !_fse.r2_ttc ? _fse.montant_ttc : 0) ?? 0) > 0
-      ? (_fse?.r3_ttc ?? _fse?.montant_ttc ?? 0) : null;
+    // R3 : FSE en priorité (virement reçu), sinon presta Digi (facture coop labo)
+    const r3_fse     = (_fse?.r3_ttc ?? (_fse && !_fse.r2_ttc ? _fse.montant_ttc : 0)) || 0;
+    const r3_presta  = digi.presta_total_ttc || 0;
+    const r3rec_raw  = r3_fse > 0 ? r3_fse : r3_presta;
+    const r3rec      = r3rec_raw > 0 ? r3rec_raw : null;
 
     const gap = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
@@ -5299,7 +5302,7 @@ function _verifFillTout(year) {
 
   // Accumulation achats + RSF pondéré annuel (Σ rsf_rem / Σ rsf_ca)
   const labAcc = {};
-  const acc = (k, display) => { if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, pa_di:0, pa_gr:0, r2rec:0, rsf_rem:0, rsf_ca:0, r2_rem:0, r2_ca:0 }; };
+  const acc = (k, display) => { if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, pa_di:0, pa_gr:0, r2rec:0, presta_ttc:0, rsf_rem:0, rsf_ca:0, r2_rem:0, r2_ca:0 }; };
   Object.entries(state._monthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
@@ -5317,8 +5320,9 @@ function _verifFillTout(year) {
   Object.entries(state._digiMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
-      labAcc[k].pa_di  += r.total_ht  || 0;
-      labAcc[k].r2rec  += r.rdp_total || 0;
+      labAcc[k].pa_di     += r.total_ht         || 0;
+      labAcc[k].r2rec     += r.rdp_total        || 0;
+      labAcc[k].presta_ttc += r.presta_total_ttc || 0;
     })
   );
   Object.entries(state._grossisteMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
@@ -5365,8 +5369,11 @@ function _verifFillTout(year) {
     const r2est    = d.r2_rem  > 0 ? d.r2_rem  : (r2pct  != null ? (d.r2_ca || pa_tot) * r2pct / 100 : null);
     const r3estTTC = r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
     const r2rec_tot = (d.r2rec || 0) + (fseAcc[k]?.r2 || 0);
-    const r2rec    = r2rec_tot  > 0 ? r2rec_tot : null;
-    const r3rec    = (fseAcc[k]?.r3 || 0) > 0 ? (fseAcc[k]?.r3 || 0) : null;
+    const r2rec     = r2rec_tot  > 0 ? r2rec_tot : null;
+    // R3 : FSE en priorité, sinon presta Digi (factures coop labo)
+    const r3_fse    = fseAcc[k]?.r3 || 0;
+    const r3rec_raw = r3_fse > 0 ? r3_fse : (d.presta_ttc || 0);
+    const r3rec     = r3rec_raw > 0 ? r3rec_raw : null;
 
     const gap = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
