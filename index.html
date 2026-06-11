@@ -1695,6 +1695,7 @@ let state = {
   prorataRatios: null,
   condTolerance: 1.0,
   _grossisteUploads: [],
+  _grossisteGmailFiles: [],
   _grossisteMonthStats: null,
   _fseMonthStats: null,
   _escompteStats: null,  // { "YYYY-MM": { "CERP": { ca_spec_gen_ht, remise_spec_gen_ht, ... } } }
@@ -1728,6 +1729,7 @@ function serializeState() {
     monthSavedAt:   state._monthSavedAt   || null,
     digiMonthStats:    state._digiMonthStats    || null,
     grossisteUploads:      state._grossisteUploads      || [],
+    grossisteGmailFiles:   state._grossisteGmailFiles   || [],
     grossisteMonthStats:   state._grossisteMonthStats   || null,
     fseMonthStats:         state._fseMonthStats         || null,
     escompteStats:         state._escompteStats         || null,
@@ -1782,13 +1784,14 @@ let _lsStatsCache = null; // { refs, json } — JSON des grosses stats, recalcul
 
 function _buildLsJson(data) {
   const refs = [data.monthStats, data.monthMeta, data.monthSavedAt,
-                data.digiMonthStats, data.grossisteUploads,
+                data.digiMonthStats, data.grossisteUploads, data.grossisteGmailFiles,
                 data.grossisteMonthStats, data.fseMonthStats, data.escompteStats, data.mdlStats];
   if (!_lsStatsCache || refs.some((r, i) => r !== _lsStatsCache.refs[i])) {
     _lsStatsCache = { refs, json: JSON.stringify({
       monthStats: data.monthStats || null, monthMeta: data.monthMeta || null,
       monthSavedAt: data.monthSavedAt || null, digiMonthStats: data.digiMonthStats || null,
-      grossisteUploads: data.grossisteUploads || [], grossisteMonthStats: data.grossisteMonthStats || null,
+      grossisteUploads: data.grossisteUploads || [], grossisteGmailFiles: data.grossisteGmailFiles || [],
+      grossisteMonthStats: data.grossisteMonthStats || null,
       fseMonthStats: data.fseMonthStats || null,
       escompteStats: data.escompteStats || null,
       mdlStats:      data.mdlStats      || null,
@@ -8102,6 +8105,9 @@ async function saveProfile() {
     if (saved.grossisteUploads?.length) {
       state._grossisteUploads = saved.grossisteUploads;
     }
+    if (saved.grossisteGmailFiles?.length) {
+      state._grossisteGmailFiles = saved.grossisteGmailFiles;
+    }
     if (saved.grossisteMonthStats && Object.keys(saved.grossisteMonthStats).length) {
       state._grossisteMonthStats = saved.grossisteMonthStats;
     }
@@ -8213,6 +8219,10 @@ async function saveProfile() {
           // Toujours charger grossiste_month_stats depuis Supabase si absent localement
           if (sj.grossiste_month_stats && Object.keys(sj.grossiste_month_stats).length) {
             state._grossisteMonthStats = sj.grossiste_month_stats;
+          }
+          if (sj.grossisteGmailFiles?.length && !state._grossisteGmailFiles?.length) {
+            state._grossisteGmailFiles = sj.grossisteGmailFiles;
+            _renderGrossisteList(); _updateGrossisteBtn();
           }
           // Job en cours → se greffer dessus
           if (sj.verif_job?.status === 'running') {
@@ -9298,7 +9308,7 @@ function initConnecteurModal() {
   }
 
   function _updateGrossisteBtn() {
-    const n = (state._grossisteUploads || []).length;
+    const n = (state._grossisteUploads || []).length + (state._grossisteGmailFiles || []).length;
     const btn = document.getElementById('grossisteDetailsBtn');
     if (btn) btn.textContent = `Détails (${n} fichier${n !== 1 ? 's' : ''})`;
   }
@@ -9306,17 +9316,25 @@ function initConnecteurModal() {
   function _renderGrossisteList() {
     const el = document.getElementById('grossisteFileList');
     if (!el) return;
-    const uploads = state._grossisteUploads || [];
-    if (!uploads.length) {
+    const uploads    = state._grossisteUploads    || [];
+    const gmailFiles = state._grossisteGmailFiles || [];
+    if (!uploads.length && !gmailFiles.length) {
       el.innerHTML = `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0">// Aucun fichier déposé</div>`;
       return;
     }
-    el.innerHTML = uploads.map((f, i) => `
+    const uploadRows = uploads.map((f, i) => `
       <div class="conn-file-item">
         <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
         <span class="conn-file-meta">${_fmtSize(f.size)} &nbsp;·&nbsp; ${_fmtDate(f.uploaded_at)}</span>
         <button class="conn-file-del" title="Supprimer" data-idx="${i}">✕</button>
       </div>`).join('');
+    const gmailRows = gmailFiles.map(f => `
+      <div class="conn-file-item">
+        <span style="color:var(--cyan);font-size:10px;flex-shrink:0">✉</span>
+        <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
+        <span class="conn-file-meta">${(f.months||[]).join(', ')}</span>
+      </div>`).join('');
+    el.innerHTML = gmailRows + uploadRows;
     el.querySelectorAll('.conn-file-del').forEach(btn => {
       btn.addEventListener('click', () => _deleteGrossiste(parseInt(btn.dataset.idx)));
     });
@@ -9456,8 +9474,21 @@ function initConnecteurModal() {
           if (state.currentPageId === 'recap') renderRecap();
           else if (state.currentPageId === 'verificateur') renderVerificateur();
         }
-        const months = (data.months || []).join(', ');
-        if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${data.emails_processed} email(s) · ${data.labos} labos · ${(data.total_ht || 0).toLocaleString('fr', {minimumFractionDigits:2})} € HT (${months})`; }
+        // Ajouter les fichiers Gmail dans le détail (dédupliqué par nom de fichier)
+        const existingNames = new Set((state._grossisteGmailFiles || []).map(f => f.name));
+        const newGmailFiles = (data.emails || [])
+          .filter(e => !existingNames.has(e.file))
+          .map(e => ({ name: e.file, months: e.months }));
+        if (newGmailFiles.length) {
+          state._grossisteGmailFiles = [...newGmailFiles, ...(state._grossisteGmailFiles || [])];
+          saveState();
+          _renderGrossisteList();
+          _updateGrossisteBtn();
+          // Ouvrir le panneau détails si fermé
+          const listEl = document.getElementById('grossisteFileList');
+          if (listEl && listEl.style.display === 'none') listEl.style.display = 'block';
+        }
+        if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${data.emails_processed} fichier(s) importé(s)`; }
       }
     } catch(e) {
       if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ ${e.message}`; }
