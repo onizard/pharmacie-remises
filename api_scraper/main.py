@@ -70,6 +70,11 @@ app.add_middleware(
 
 SUPPORTED_CONNECTORS = {"ospharm", "digipharmacie", "concentrateur"}
 
+# ── Client-side log store (in-memory, last 200 entries) ───────────────────────
+
+_client_logs: list[dict] = []
+_CLIENT_LOG_MAX = 200
+
 # ── Job store (in-memory) ──────────────────────────────────────────────────────
 
 _jobs: dict[str, dict] = {}
@@ -96,6 +101,39 @@ def _extract_token(authorization: str) -> str:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/client-log")
+async def post_client_log(request: Request, authorization: str = Header(default="")):
+    """Reçoit les logs console du navigateur (erreurs, warnings, infos)."""
+    import datetime
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    entry = {
+        "ts":    datetime.datetime.utcnow().isoformat() + "Z",
+        "level": body.get("level", "log"),
+        "msg":   str(body.get("msg", ""))[:2000],
+        "url":   str(body.get("url", ""))[:200],
+        "line":  body.get("line"),
+        "user":  body.get("user", ""),
+    }
+    _client_logs.append(entry)
+    if len(_client_logs) > _CLIENT_LOG_MAX:
+        del _client_logs[:-_CLIENT_LOG_MAX]
+    print(f"[client-log] {entry['level'].upper()} {entry['msg'][:120]}")
+    return {"ok": True}
+
+
+@app.get("/client-log")
+async def get_client_logs(n: int = 50, level: str = ""):
+    """Retourne les n derniers logs client (filtrables par level=error|warn|log)."""
+    logs = _client_logs[-n:]
+    if level:
+        logs = [l for l in logs if l["level"] == level]
+    return {"count": len(logs), "logs": logs}
+
 
 
 @app.post("/connect/{connector}")

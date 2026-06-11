@@ -1572,6 +1572,22 @@ const ADMIN_UID   = '12d76016-ae1b-44bd-85fd-8551c3bd2cbf';
 const API_URL     = 'https://pharmacie-remises.onrender.com';
 let   isAdmin     = false;
 
+// ── Forwarding console.error / console.warn → /client-log ─────────────────────
+(function() {
+  const _origError = console.error.bind(console);
+  const _origWarn  = console.warn.bind(console);
+  function _fwd(level, args) {
+    const msg = args.map(a => { try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch(_){return String(a);} }).join(' ');
+    const user = window._sbClient ? (window._currentUser?.email || '') : '';
+    fetch(`${API_URL}/client-log`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ level, msg, url: location.href, line: null, user }),
+    }).catch(() => {});
+  }
+  console.error = (...a) => { _origError(...a); _fwd('error', a); };
+  console.warn  = (...a) => { _origWarn(...a);  _fwd('warn',  a); };
+})();
+
 const LABS_ALL = ['Arrow','Biogaran','Viatris','EG','Sandoz','Teva','Zentiva','Cristers','Zydus'];
 let   LABS_SORTED = [...LABS_ALL];
 const LABS_BRAND_EXCL = new Set(['WEGOVY','OZEMPIC','VICTOZA','TRULICITY','BYDUREON','BYETTA']);
