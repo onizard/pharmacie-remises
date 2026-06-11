@@ -5309,6 +5309,7 @@ function _verifFillMonthDetail(mk) {
     if (r3rec    != null) totR3rec  += r3rec;
     rowCount++;
 
+    const presta_ttc = digi.presta_total_ttc || 0;
     return `<tr>
       <td>${escH(labDisplay)}</td>
       <td style="color:var(--cyan)">${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
@@ -5322,9 +5323,14 @@ function _verifFillMonthDetail(mk) {
       <td class="verif-r3">${r3pct > 0 ? fmtP(r3pct) : '—'}</td>
       <td class="verif-r3">${r3estTTC != null ? fmtE(r3estTTC) : '—'}</td>
       <td class="verif-r3">${r3rec != null ? fmtE(r3rec) : '—'}</td>
+      <td class="verif-r3">${presta_ttc > 0 ? fmtE(presta_ttc) : '—'}</td>
       <td${gapCls(gap)}>${fmtGap(gap)}</td>
     </tr>`;
   }).filter(Boolean).join('');
+
+  let totPresta = 0;
+  // recalculate presta total from digiMap
+  keys.forEach(key => { totPresta += digiMap[key]?.presta_total_ttc || 0; });
 
   const totGap = (totR2att + totR3att) > 0 ? (totR2att + totR3att) - (totR2rec + totR3rec) : null;
   wrap.innerHTML = `
@@ -5337,7 +5343,8 @@ function _verifFillMonthDetail(mk) {
           <th>PA BRUT</th>
           <th>RSF %</th><th>RSF €</th>
           <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">REM. 2 REC.</th>
-          <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">REM. 3 REC.</th>
+          <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">REM. 3 REC. (FSE)</th>
+          <th class="verif-r3" title="Facture de prestation coop émise (Digipharmacie)">PRESTA FACT. TTC</th>
           <th>ÉCART</th>
         </tr></thead>
         <tbody>${rows}</tbody>
@@ -5349,13 +5356,13 @@ function _verifFillMonthDetail(mk) {
           <td>—</td><td>${totRsfEst > 0 ? fmtE(totRsfEst) : '—'}</td>
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
           <td></td><td class="verif-r3">${totR3att > 0 ? fmtE(totR3att) : '—'}</td><td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
+          <td class="verif-r3">${totPresta > 0 ? fmtE(totPresta) : '—'}</td>
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
         </tr></tfoot>` : ''}
       </table>
     </div>
     ${_verifEscompteBlock(mk)}
-    ${_verifMdlBlock(mk)}
-    ${_verifPrestaBlock(mk)}`;
+    ${_verifMdlBlock(mk)}`;
 }
 function _verifPrestaBlock(mk) {
   const [mkY, mkM] = mk.split('-').map(Number);
@@ -5599,10 +5606,12 @@ function _verifFillTout(year) {
       <td class="verif-r3">${r3pct > 0 ? fmtP(r3pct) : '—'}</td>
       <td class="verif-r3">${r3estTTC != null ? fmtE(r3estTTC) : '—'}</td>
       <td class="verif-r3">${r3rec != null ? fmtE(r3rec) : '—'}</td>
+      <td class="verif-r3">${d.presta_ttc > 0 ? fmtE(d.presta_ttc) : '—'}</td>
       <td${gapCls(gap)}>${fmtGap(gap)}</td>
     </tr>`;
   }).filter(Boolean).join('');
 
+  const totPresta = keys.reduce((s, k) => s + (labAcc[k]?.presta_ttc || 0), 0);
   const totGap = (totR2att + totR3att) > 0 ? (totR2att + totR3att) - (totR2rec + totR3rec) : null;
   wrap.innerHTML = `
     <div style="overflow-x:auto">
@@ -5614,7 +5623,8 @@ function _verifFillTout(year) {
           <th>PA BRUT</th>
           <th>RSF %</th><th>RSF €</th>
           <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">REM. 2 REC.</th>
-          <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">REM. 3 REC.</th>
+          <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">REM. 3 REC. (FSE)</th>
+          <th class="verif-r3" title="Facture de prestation coop émise (Digipharmacie)">PRESTA FACT. TTC</th>
           <th>ÉCART</th>
         </tr></thead>
         <tbody>${rows}</tbody>
@@ -5626,13 +5636,13 @@ function _verifFillTout(year) {
           <td>—</td><td>${totRsfEst > 0 ? fmtE(totRsfEst) : '—'}</td>
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
           <td></td><td class="verif-r3">${totR3att > 0 ? fmtE(totR3att) : '—'}</td><td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
+          <td class="verif-r3">${totPresta > 0 ? fmtE(totPresta) : '—'}</td>
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
         </tr></tfoot>` : ''}
       </table>
     </div>
     ${_verifEscompteCumulBlock(yr)}
-    ${_verifMdlCumulBlock(yr)}
-    ${_verifPrestaAnnualBlock(yr)}`;
+    ${_verifMdlCumulBlock(yr)}`;
 }
 function _verifPrestaAnnualBlock(yr) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
