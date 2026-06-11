@@ -1682,6 +1682,7 @@ function mkLabState(uid) {
     _refreshGrid: null,
     contractSigned: false,
     contractDate: null,
+    contratRepartiteur: true,
   };
 }
 
@@ -1774,6 +1775,7 @@ function serializeState() {
       condsByMonth: lp.condsByMonth || { 2025: {}, 2026: {} },
       contractSigned: lp.contractSigned || false,
       contractDate: lp.contractDate || null,
+      contratRepartiteur: lp.contratRepartiteur ?? true,
     })),
     verifContracts: state.verifContracts || {},
   };
@@ -3209,6 +3211,10 @@ function createLabContDom(lp) {
           <input type="checkbox" id="contractSigned-${uid}" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
           <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text);letter-spacing:.5px">CONTRAT SIGNÉ ?</span>
         </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer" title="Accord ASTERA/CERP — RSF applicable à partir de 350 € brut/mois">
+          <input type="checkbox" id="contratRep-${uid}" checked style="accent-color:var(--cyan);width:14px;height:14px;cursor:pointer">
+          <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan);letter-spacing:.5px">CONTRAT RÉPARTITEUR</span>
+        </label>
         <div id="contractDateWrap-${uid}" style="display:none;align-items:center;gap:8px">
           <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px">DEPUIS LE</span>
           <input type="date" id="contractDate-${uid}" class="verif-date-input" value="">
@@ -3373,6 +3379,18 @@ function createLabContDom(lp) {
       lp.contractDate = _dateInput.value || null;
       saveState();
     });
+  }
+
+  // ── Contrat répartiteur ───────────────────────────────────────────────────
+  {
+    const _crCb = document.getElementById(`contratRep-${uid}`);
+    if (_crCb) {
+      _crCb.checked = lp.contratRepartiteur ?? true;
+      _crCb.addEventListener('change', () => {
+        lp.contratRepartiteur = _crCb.checked;
+        saveState();
+      });
+    }
   }
 
   initLabPage({
@@ -4176,10 +4194,13 @@ function initLabPage(conf) {
     if (year === '2026') {
       s.contractSigned = !!savedLabData.contractSigned;
       s.contractDate   = savedLabData.contractDate || null;
+      s.contratRepartiteur = savedLabData.contratRepartiteur ?? true;
       const _cb = document.getElementById(`contractSigned-${uid}`);
       const _di = document.getElementById(`contractDate-${uid}`);
+      const _cr = document.getElementById(`contratRep-${uid}`);
       if (_cb) _cb.checked = s.contractSigned;
       if (_di) _di.value   = s.contractDate || '';
+      if (_cr) _cr.checked = s.contratRepartiteur;
       s._syncContractUi?.();
     }
     s.rsfPaliers = [];
@@ -6445,9 +6466,10 @@ async function launchSimulation() {
 
     // Helper: remise effective pour une ref, avec une condition déjà résolue.
     // Passer cond=null signifie "aucun palier atteint" → RSF uniquement.
-    function getRemise(ref, cond, firstMet = false) {
+    // useRsf=false (contrat répartiteur non coché) → RSF = 0
+    function getRemise(ref, cond, firstMet = false, useRsf = true) {
       const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
-      const baseRSF = Math.abs(parseFloat(baseRSFPct) || 0);
+      const baseRSF = useRsf ? Math.abs(parseFloat(baseRSFPct) || 0) : 0;
       if (!cond) return baseRSF;
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
@@ -6462,12 +6484,12 @@ async function launchSimulation() {
       return baseRSF + (parseFloat(rsfRow.remise2) || 0) + (parseFloat(rsfRow.remise3) || 0);
     }
 
-    function getRemiseSansR3(ref, cond, firstMet = false) {
+    function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true) {
       // Retourne la remise AVANT la dernière remise active :
       //   si remise3 existe → RSF + remise2 (sans remise3)
       //   si remise3 absente → RSF seul (remise2 est la dernière, on l'exclut aussi)
       const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
-      const baseRSF = Math.abs(parseFloat(baseRSFPct) || 0);
+      const baseRSF = useRsf ? Math.abs(parseFloat(baseRSFPct) || 0) : 0;
       if (!cond) return baseRSF;
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
@@ -6535,12 +6557,13 @@ async function launchSimulation() {
             (state.gers != null && _ca26 > 0 && _ca26 >= 0.9 * state.gers)
             || (cond26?.forceFirst ?? false)
           );
+          const _useRsf = e.lp?.contratRepartiteur ?? true;
           e.rows.forEach(({ row, ref, price }) => {
-            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25) : 0;
-            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26) : 0;
+            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf) : 0;
+            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf) : 0;
             e.remise += row.qty * price * (r25 + r26) / 100;
-            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25) : 0;
-            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26) : 0;
+            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf) : 0;
+            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf) : 0;
             e.remiseSansR3 += row.qty * price * (s25 + s26) / 100;
           });
           e.bestCond    = cond26 || cond25;
@@ -6601,14 +6624,15 @@ async function launchSimulation() {
             e.caThreshold = 0;
           }
           e.firstMet    = firstMet;
+          const _useRsf2 = e.lp?.contratRepartiteur ?? true;
           e.rows.forEach(({ row, ref, price }) => {
             const remisePct = (rsfOnly || !e.isSelected)
-              ? getRSFBase(ref, firstMet)
-              : getRemise(ref, effectiveCond, firstMet);
+              ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
+              : getRemise(ref, effectiveCond, firstMet, _useRsf2);
             e.remise += row.qty * price * remisePct / 100;
             const remiseSansR3Pct = (rsfOnly || !e.isSelected)
-              ? getRSFBase(ref, firstMet)
-              : getRemiseSansR3(ref, effectiveCond, firstMet);
+              ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
+              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2);
             e.remiseSansR3 += row.qty * price * remiseSansR3Pct / 100;
           });
         }
