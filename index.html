@@ -1439,6 +1439,7 @@
             <div class="conn-check-big" id="ospCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
             <div class="conn-connected-name">OSPHARM DATASTAT</div>
             <div class="conn-job-status" id="ospJobStatus"></div>
+            <button class="conn-test-btn" id="ospRelancerBtn" style="display:none">↺ RELANCER JOB</button>
             <button class="conn-test-btn" id="ospReconnectBtn">RECONNECTER</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
           </div>
@@ -2292,8 +2293,8 @@ async function autoRunOspharm(mode) {
     }
     if (state.currentPageId === 'recap') renderRecap();
 
-    // Polling toutes les 5 s, 10 min max
-    const deadline = Date.now() + 600_000;
+    // Polling toutes les 5 s, 75 min max (GitHub Actions OSPHARM peut prendre 60 min)
+    const deadline = Date.now() + 75 * 60_000;
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 5_000));
       try {
@@ -2342,7 +2343,7 @@ async function autoRunOspharm(mode) {
       } catch(_) {}
     }
     state._ospJobRunning = false;
-    // Polling expiré sans fin — marquer error en base pour éviter re-attach infini
+    // Polling expiré : marquer erreur uniquement si le job tourne depuis > 75 min
     try {
       const { data: { session: _ts } } = await window._sbClient.auth.getSession();
       if (_ts) {
@@ -2350,9 +2351,12 @@ async function autoRunOspharm(mode) {
           .select('state_json').eq('user_id', _ts.user.id).maybeSingle();
         const _tsj = _tr?.state_json || {};
         if (_tsj.ospharm_job?.status === 'running') {
-          _tsj.ospharm_job = { ..._tsj.ospharm_job, status: 'error', error: 'Timeout (job bloqué)' };
-          await window._sbClient.from('user_state')
-            .update({ state_json: _tsj }).eq('user_id', _ts.user.id);
+          const _age = Date.now() - (state._ospJobStartedAt || 0);
+          if (_age > 75 * 60_000) {
+            _tsj.ospharm_job = { ..._tsj.ospharm_job, status: 'error', error: 'Timeout (job bloqué)' };
+            await window._sbClient.from('user_state')
+              .update({ state_json: _tsj }).eq('user_id', _ts.user.id);
+          }
         }
       }
     } catch(_) {}
@@ -8819,7 +8823,7 @@ function initConnecteurModal() {
   }
 
   async function _pollOspJobAndLaunch(prefix) {
-    const deadline = Date.now() + 600_000; // 10 min max
+    const deadline = Date.now() + 75 * 60_000; // 75 min (GitHub Actions OSPHARM peut prendre 60 min)
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 2_500));
       try {
@@ -8858,7 +8862,7 @@ function initConnecteurModal() {
   }
 
   async function _pollDigiJobAndLaunch(prefix) {
-    const deadline = Date.now() + 600_000;
+    const deadline = Date.now() + 75 * 60_000;
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 5_000));
       try {
@@ -9000,6 +9004,10 @@ function initConnecteurModal() {
     const checkEl = document.getElementById(_jobCheckMap[elId]);
     if (checkEl) {
       checkEl.classList.toggle('error', cls === 'error');
+    }
+    if (elId === 'ospJobStatus') {
+      const relBtn = document.getElementById('ospRelancerBtn');
+      if (relBtn) relBtn.style.display = cls === 'error' ? '' : 'none';
     }
     el.className = `conn-job-status ${cls}`;
     if (cls === 'running') {
@@ -9489,6 +9497,17 @@ function initConnecteurModal() {
     setTimeout(() => passInp?.focus(), 80);
   }
   document.getElementById('ospReconnectBtn').addEventListener('click', () => _showReconnectForm('osp', 'ospharm'));
+  document.getElementById('ospRelancerBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('ospRelancerBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+    state._ospJobRunning   = true;
+    state._ospJobStartedAt = Date.now();
+    state._ospJobMessage   = '';
+    _setJobStatusEl('ospJobStatus', 'running', '');
+    renderRecap();
+    await _triggerWorkflow('ospharm', 'osp');
+    if (btn) { btn.disabled = false; btn.textContent = '↺ RELANCER JOB'; }
+  });
   document.getElementById('digiReconnectBtn').addEventListener('click', () => _showReconnectForm('digi', 'digipharmacie'));
 
 
