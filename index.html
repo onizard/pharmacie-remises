@@ -5017,7 +5017,7 @@ function _verifSelectMonth(mk) {
 
 function _verifRenderYear(year) {
   const wrap = document.getElementById('verifYearArea'); if (!wrap) return;
-  if (!_verifSelLab) { wrap.innerHTML = '<div class="verif-note" style="padding:24px 0;text-align:center;color:var(--text-dim)">// Sélectionner un labo pour voir les données</div>'; return; }
+  if (!_verifSelLab) { wrap.innerHTML = ''; return; }
 
   // Boutons mois
   const toutKey  = `${year}-ALL`;
