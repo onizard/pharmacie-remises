@@ -21,7 +21,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Path, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Path, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
