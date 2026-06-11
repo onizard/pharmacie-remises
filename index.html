@@ -9219,7 +9219,20 @@ function initConnecteurModal() {
         if (data.grossiste_month_stats) {
           state._grossisteMonthStats = data.grossiste_month_stats;
           saveState();
-          saveCloudState(serializeState());
+          // Mise à jour ciblée : ne touche QUE grossisteMonthStats dans le cloud
+          // (saveCloudState(serializeState()) écraserait monthStats/digiMonthStats si pas chargés)
+          try {
+            const { data: { session: _s } } = await window._sbClient.auth.getSession();
+            if (_s) {
+              const { data: _cur } = await window._sbClient.from('user_state')
+                .select('state_json').eq('user_id', _s.user.id).maybeSingle();
+              if (_cur?.state_json) {
+                await window._sbClient.from('user_state').update({
+                  state_json: { ..._cur.state_json, grossisteMonthStats: data.grossiste_month_stats }
+                }).eq('user_id', _s.user.id);
+              }
+            }
+          } catch(_) {}
           if (state.currentPageId === 'recap') renderRecap();
           else if (state.currentPageId === 'verificateur') renderVerificateur();
         }
@@ -9249,7 +9262,18 @@ function initConnecteurModal() {
       if (parsed.grossiste_month_stats) {
         state._grossisteMonthStats = parsed.grossiste_month_stats;
         saveState();
-        saveCloudState(serializeState());
+        try {
+          const { data: { session: _sg } } = await window._sbClient.auth.getSession();
+          if (_sg) {
+            const { data: _cg } = await window._sbClient.from('user_state')
+              .select('state_json').eq('user_id', _sg.user.id).maybeSingle();
+            if (_cg?.state_json) {
+              await window._sbClient.from('user_state').update({
+                state_json: { ..._cg.state_json, grossisteMonthStats: parsed.grossiste_month_stats }
+              }).eq('user_id', _sg.user.id);
+            }
+          }
+        } catch(_) {}
         if (state.currentPageId === 'recap') renderRecap();
         else if (state.currentPageId === 'verificateur') renderVerificateur();
       }
