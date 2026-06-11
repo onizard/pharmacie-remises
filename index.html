@@ -3206,20 +3206,27 @@ function createLabContDom(lp) {
   cont.innerHTML = `
     <div style="border-top:1px solid rgba(0,229,255,.12);margin-top:16px;padding-top:16px">
       <div class="switch-warn" id="switchWarn-${uid}"></div>
-      <div id="contractRow-${uid}" style="display:flex;align-items:center;gap:20px;padding:10px 0 14px;border-bottom:1px solid rgba(0,229,255,.08);margin-bottom:14px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="contractSigned-${uid}" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
-          <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text);letter-spacing:.5px">CONTRAT SIGNÉ ?</span>
-        </label>
+      <div id="contractRow-${uid}" style="padding:10px 0 14px;border-bottom:1px solid rgba(0,229,255,.08);margin-bottom:14px">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:8px">TYPE DE CONTRAT</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="radio" name="contractType-${uid}" id="contractSigned-${uid}" value="signed" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
+            <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green);letter-spacing:.5px">CONTRAT LABO SIGNÉ</span>
+          </label>
+          <div id="contractDateWrap-${uid}" style="display:none;align-items:center;gap:8px;padding-left:22px">
+            <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px">DEPUIS LE</span>
+            <input type="date" id="contractDate-${uid}" class="verif-date-input" value="">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="radio" name="contractType-${uid}" id="contractProposalRadio-${uid}" value="proposal" style="accent-color:var(--amber);width:14px;height:14px;cursor:pointer">
+            <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--amber);letter-spacing:.5px">SIMPLE PROPOSITION DU LABO</span>
+          </label>
+        </div>
+        <div id="contractProposal-${uid}" style="display:none;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--amber);letter-spacing:1px;opacity:.8;margin-bottom:8px">⚠ PROPOSITION LABO</div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer" title="Accord ASTERA/CERP — RSF applicable à partir de 350 € brut/mois">
           <input type="checkbox" id="contratRep-${uid}" checked style="accent-color:var(--cyan);width:14px;height:14px;cursor:pointer">
           <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan);letter-spacing:.5px">CONTRAT RÉPARTITEUR</span>
         </label>
-        <div id="contractDateWrap-${uid}" style="display:none;align-items:center;gap:8px">
-          <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px">DEPUIS LE</span>
-          <input type="date" id="contractDate-${uid}" class="verif-date-input" value="">
-        </div>
-        <div id="contractProposal-${uid}" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--amber);letter-spacing:1px;opacity:.8">⚠ PROPOSITION LABO</div>
       </div>
       <div style="display:flex;align-items:center">
         <div class="year-label">2026</div>
@@ -3356,24 +3363,27 @@ function createLabContDom(lp) {
     });
   }
 
-  // ── Contrat signé ────────────────────────────────────────────────────────────
+  // ── Type de contrat (radios) ─────────────────────────────────────────────
   {
-    const _cbSigned  = document.getElementById(`contractSigned-${uid}`);
-    const _dateWrap  = document.getElementById(`contractDateWrap-${uid}`);
-    const _dateInput = document.getElementById(`contractDate-${uid}`);
-    const _propBnr   = document.getElementById(`contractProposal-${uid}`);
+    const _radioSigned   = document.getElementById(`contractSigned-${uid}`);
+    const _radioProp     = document.getElementById(`contractProposalRadio-${uid}`);
+    const _dateWrap      = document.getElementById(`contractDateWrap-${uid}`);
+    const _dateInput     = document.getElementById(`contractDate-${uid}`);
+    const _propBnr       = document.getElementById(`contractProposal-${uid}`);
     function _syncContractUi() {
-      _dateWrap.style.display  = lp.contractSigned ? 'flex' : 'none';
-      _propBnr.style.display   = lp.contractSigned ? 'none' : '';
+      _dateWrap.style.display = lp.contractSigned ? 'flex' : 'none';
+      _propBnr.style.display  = lp.contractSigned ? 'none' : 'block';
+      if (lp.contractSigned) _radioSigned.checked = true;
+      else _radioProp.checked = true;
     }
-    if (lp.contractSigned) _cbSigned.checked = true;
-    if (lp.contractDate)   _dateInput.value  = lp.contractDate;
+    if (lp.contractDate) _dateInput.value = lp.contractDate;
     _syncContractUi();
     lp._syncContractUi = _syncContractUi;
-    _cbSigned.addEventListener('change', () => {
-      lp.contractSigned = _cbSigned.checked;
-      _syncContractUi();
-      saveState();
+    _radioSigned.addEventListener('change', () => {
+      if (_radioSigned.checked) { lp.contractSigned = true; _syncContractUi(); saveState(); }
+    });
+    _radioProp.addEventListener('change', () => {
+      if (_radioProp.checked) { lp.contractSigned = false; _syncContractUi(); saveState(); }
     });
     _dateInput.addEventListener('change', () => {
       lp.contractDate = _dateInput.value || null;
@@ -4195,10 +4205,8 @@ function initLabPage(conf) {
       s.contractSigned = !!savedLabData.contractSigned;
       s.contractDate   = savedLabData.contractDate || null;
       s.contratRepartiteur = savedLabData.contratRepartiteur ?? true;
-      const _cb = document.getElementById(`contractSigned-${uid}`);
       const _di = document.getElementById(`contractDate-${uid}`);
       const _cr = document.getElementById(`contratRep-${uid}`);
-      if (_cb) _cb.checked = s.contractSigned;
       if (_di) _di.value   = s.contractDate || '';
       if (_cr) _cr.checked = s.contratRepartiteur;
       s._syncContractUi?.();
