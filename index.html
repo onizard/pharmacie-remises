@@ -6627,8 +6627,12 @@ async function launchSimulation() {
           return;
         }
 
-        // Prorata mensuel cumulé : chaque mois, vérifie si le CA annualisé (pace) atteint un palier
-        let cumulCA = 0, cumulQty = 0, totalRemise = 0, monthsElapsed = 0;
+        // Prorata mensuel cumulé :
+        // — RSF déjà incluse dans total_ht (prix net facture) → pas à recalculer
+        // — R2 (RDP) + R3 (presta) : rattrapage rétroactif dès que la moyenne annualisée
+        //   atteint le palier. On paye le delta sur le CA cumulé depuis le début du contrat.
+        //   Si un mois rate le palier, les suivants peuvent récupérer en rattrapage.
+        let cumulCA = 0, cumulQty = 0, r2r3_paid = 0, monthsElapsed = 0;
         months.forEach((mk, idx) => {
           const monthNum = idx + 1;
           if (monthNum < startMonth) return;
@@ -6642,8 +6646,18 @@ async function launchSimulation() {
           const annualizedCA = (cumulCA / monthsElapsed) * 12;
           const conds    = getEffectiveCondsForMonth(lp, n1Year, monthNum);
           const bestCond = getBestCondFromArray(conds, annualizedCA);
-          if (bestCond && bestCond.remiseGlobale !== null)
-            totalRemise += monthCA * (parseFloat(bestCond.remiseGlobale) || 0) / 100;
+          if (bestCond) {
+            // Total R2+R3 théoriquement dû sur le CA cumulé depuis le 1er mois
+            const r2_pct = parseFloat(bestCond.remiseGlobale) || 0;
+            const r3_pct = parseFloat(bestCond.coopR3)        || 0;
+            const r2r3_earned = cumulCA * r2_pct / 100
+                              + cumulCA * r3_pct / 100 * 1.20; // R3 TTC
+            // Rattrapage = nouveau total earned − déjà versé (pas de clawback si palier drop)
+            const catchup = Math.max(0, r2r3_earned - r2r3_paid);
+            r2r3_paid += catchup;
+          }
+          // Palier non atteint → pas de nouveau versement ce mois,
+          // mais le CA s'accumule et sera rattrapé dès que le palier sera atteint
         });
 
         if (cumulCA === 0) return;
@@ -6655,9 +6669,9 @@ async function launchSimulation() {
         const minThresh   = allThr.length ? Math.min(...allThr) : 0;
 
         results.push({
-          name: lp.selectedLab, ca: cumulCA, remise: totalRemise, qty: cumulQty,
-          pondere:      cumulCA > 0 ? totalRemise / cumulCA * 100 : 0,
-          pondereTotal: cumulCA > 0 ? totalRemise / cumulCA * 100 : 0,
+          name: lp.selectedLab, ca: cumulCA, remise: r2r3_paid, qty: cumulQty,
+          pondere:      cumulCA > 0 ? r2r3_paid / cumulCA * 100 : 0,
+          pondereTotal: cumulCA > 0 ? r2r3_paid / cumulCA * 100 : 0,
           caThreshold:  finalCond ? parseFloat(finalCond.caCondition) || 0 : minThresh,
           met: !!finalCond, firstMet: false, isSelected: true,
         });

@@ -10,3 +10,5 @@ services:
         value: "8000"
       - key: SUPABASE_SERVICE_KEY
         sync: false          # à renseigner dans le dashboard Render (secret)
+      - key: GMAIL_APP_PASSWORD
+        sync: false          # app password Gmail (pharmaciemontmagny@gmail.com)

@@ -481,8 +481,11 @@ def _run_grossiste_gmail_sync(user_id: str) -> dict:
 
     from supabase_client import _get_state_sync, _patch_state_sync
 
-    # 1. Connexion IMAP Gmail
-    mail = imaplib.IMAP4_SSL("imap.gmail.com")
+    if not GMAIL_APP_PASS:
+        raise ValueError("GMAIL_APP_PASSWORD non configuré sur le serveur.")
+
+    # 1. Connexion IMAP Gmail (timeout 20s pour éviter un hang silencieux)
+    mail = imaplib.IMAP4_SSL("imap.gmail.com", timeout=20)
     mail.login(GMAIL_USER, GMAIL_APP_PASS)
     mail.select("INBOX")
 
