@@ -1136,9 +1136,15 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
             return
 
         if connector in ("ospharm", "concentrateur"):
-            # Playwright Chromium ne peut pas tourner sur Render (512 MB) → dispatch GH Actions
-            await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
-            await _dispatch_gh_conn_test(user_id, connector)
+            # Test instantané : on sauvegarde les identifiants et on marque connected=true
+            # immédiatement. Le vrai test Playwright se fait au premier lancement du scraper.
+            # L'ancienne approche (dispatch GH Actions self-hosted) était fragile : GH_TOKEN
+            # expiré, runner offline ou URL Keycloak changée bloquaient la connexion
+            # indéfiniment. L'erreur réelle remonte dans ospharm_job.status si les creds
+            # sont mauvais.
+            await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
+            await patch_conn_test(user_id, connector, True,
+                                  "Identifiants enregistrés — vérifiés au prochain lancement")
             return
 
         try:
