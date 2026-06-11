@@ -5254,8 +5254,7 @@ function _verifFillAnnualSummary(year) {
           <td${gapCls(totRec > 0 ? totAtt - totRec : null)}>${fmtGap(totRec > 0 ? totAtt - totRec : null)}</td>
         </tr></tfoot>` : ''}
       </table>
-    </div>
-    ${_verifPrestaAnnualBlock(yr)}`;
+    </div>`;
 }
 function _verifFillMonthDetail(mk) {
   const wrap = document.getElementById('verifMonthDetail'); if (!wrap) return;
@@ -5293,7 +5292,8 @@ function _verifFillMonthDetail(mk) {
     const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
     const pa_osp = osp.ca_brut || ((osp.pa_net || 0) + (osp.remise_totale || 0));
     const pa_tot = pa_osp + (digi.total_ht||0) + (gros.total_ht||0);
-    if (pa_tot <= 0) return '';
+    const presta_ttc = digi.presta_total_ttc || 0;
+    if (pa_tot <= 0 && !presta_ttc) return '';
 
     const qtyDigi = digi.qty || 0;
     const qtyGros = gros.qty || 0;
@@ -5328,12 +5328,14 @@ function _verifFillMonthDetail(mk) {
     if (r3rec    != null) totR3rec  += r3rec;
     rowCount++;
 
-    const presta_ttc = digi.presta_total_ttc || 0;
+    const fse_presta = r3_fse > 0 ? r3_fse : null;
+    const presta_gap = presta_ttc > 0 && fse_presta != null ? fse_presta - presta_ttc : null;
+    const prestaCls  = presta_gap == null ? '' : Math.abs(presta_gap) < 1 ? ' style="color:var(--green)"' : ' style="color:var(--amber)"';
     return `<tr>
       <td>${escH(labDisplay)}</td>
       <td style="color:var(--cyan)">${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
       <td style="color:var(--green)">${qtyGros > 0 ? qtyGros.toLocaleString('fr') : '—'}</td>
-      <td>${fmtE(pa_tot)}</td>
+      <td>${pa_tot > 0 ? fmtE(pa_tot) : '—'}</td>
       <td>${fmtP(rsfPct)}</td>
       <td>${rsfEst != null ? fmtE(rsfEst) : '—'}</td>
       <td class="verif-r2">${fmtP(r2pct)}</td>
@@ -5343,6 +5345,8 @@ function _verifFillMonthDetail(mk) {
       <td class="verif-r3">${r3estTTC != null ? fmtE(r3estTTC) : '—'}</td>
       <td class="verif-r3">${r3rec != null ? fmtE(r3rec) : '—'}</td>
       <td class="verif-r3">${presta_ttc > 0 ? fmtE(presta_ttc) : '—'}</td>
+      <td class="verif-r3">${fse_presta != null ? fmtE(fse_presta) : presta_ttc > 0 ? '<span style="color:var(--amber)">non reçu</span>' : '—'}</td>
+      <td${prestaCls}>${presta_gap != null ? fmtGap(presta_gap) : presta_ttc > 0 ? '—' : ''}</td>
       <td${gapCls(gap)}>${fmtGap(gap)}</td>
     </tr>`;
   }).filter(Boolean).join('');
@@ -5364,7 +5368,9 @@ function _verifFillMonthDetail(mk) {
           <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">REM. 2 REC.</th>
           <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">REM. 3 REC. (FSE)</th>
           <th class="verif-r3" title="Facture de prestation coop émise (Digipharmacie)">PRESTA FACT. TTC</th>
-          <th>ÉCART</th>
+          <th class="verif-r3" title="Virement reçu en banque (FSE)">FSE BANQUE</th>
+          <th class="verif-r3">ÉC. PRESTA</th>
+          <th>ÉCART TOTAL</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
@@ -5376,6 +5382,7 @@ function _verifFillMonthDetail(mk) {
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
           <td></td><td class="verif-r3">${totR3att > 0 ? fmtE(totR3att) : '—'}</td><td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
           <td class="verif-r3">${totPresta > 0 ? fmtE(totPresta) : '—'}</td>
+          <td class="verif-r3">—</td><td class="verif-r3">—</td>
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
         </tr></tfoot>` : ''}
       </table>
@@ -5580,7 +5587,7 @@ function _verifFillTout(year) {
   const rows = keys.map(k => {
     const d      = labAcc[k];
     const pa_tot = d.pa_osp + d.pa_di + d.pa_gr;
-    if (pa_tot <= 0) return '';
+    if (pa_tot <= 0 && !d.presta_ttc) return '';
 
     const qtyDigi = d.qty_di || 0;
     const qtyGros = d.qty_gr || 0;
@@ -5602,6 +5609,10 @@ function _verifFillTout(year) {
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
       : null;
 
+    const fse_presta = r3_fse > 0 ? r3_fse : null;
+    const presta_gap = d.presta_ttc > 0 && fse_presta != null ? fse_presta - d.presta_ttc : null;
+    const prestaCls  = presta_gap == null ? '' : Math.abs(presta_gap) < 1 ? ' style="color:var(--green)"' : ' style="color:var(--amber)"';
+
     totPa    += pa_tot;
     totQtyDi += qtyDigi;
     totQtyGr += qtyGros;
@@ -5616,7 +5627,7 @@ function _verifFillTout(year) {
       <td>${escH(d.display)}</td>
       <td style="color:var(--cyan)">${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
       <td style="color:var(--green)">${qtyGros > 0 ? qtyGros.toLocaleString('fr') : '—'}</td>
-      <td>${fmtE(pa_tot)}</td>
+      <td>${pa_tot > 0 ? fmtE(pa_tot) : '—'}</td>
       <td>${fmtP(rsfPct)}</td>
       <td>${rsfEst != null ? fmtE(rsfEst) : '—'}</td>
       <td class="verif-r2">${fmtP(r2pct)}</td>
@@ -5626,6 +5637,8 @@ function _verifFillTout(year) {
       <td class="verif-r3">${r3estTTC != null ? fmtE(r3estTTC) : '—'}</td>
       <td class="verif-r3">${r3rec != null ? fmtE(r3rec) : '—'}</td>
       <td class="verif-r3">${d.presta_ttc > 0 ? fmtE(d.presta_ttc) : '—'}</td>
+      <td class="verif-r3">${fse_presta != null ? fmtE(fse_presta) : d.presta_ttc > 0 ? '<span style="color:var(--amber)">non reçu</span>' : '—'}</td>
+      <td${prestaCls}>${presta_gap != null ? fmtGap(presta_gap) : d.presta_ttc > 0 ? '—' : ''}</td>
       <td${gapCls(gap)}>${fmtGap(gap)}</td>
     </tr>`;
   }).filter(Boolean).join('');
@@ -5644,7 +5657,9 @@ function _verifFillTout(year) {
           <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">REM. 2 REC.</th>
           <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">REM. 3 REC. (FSE)</th>
           <th class="verif-r3" title="Facture de prestation coop émise (Digipharmacie)">PRESTA FACT. TTC</th>
-          <th>ÉCART</th>
+          <th class="verif-r3" title="Virement reçu en banque (FSE)">FSE BANQUE</th>
+          <th class="verif-r3">ÉC. PRESTA</th>
+          <th>ÉCART TOTAL</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
@@ -5656,6 +5671,7 @@ function _verifFillTout(year) {
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
           <td></td><td class="verif-r3">${totR3att > 0 ? fmtE(totR3att) : '—'}</td><td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
           <td class="verif-r3">${totPresta > 0 ? fmtE(totPresta) : '—'}</td>
+          <td class="verif-r3">—</td><td class="verif-r3">—</td>
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
         </tr></tfoot>` : ''}
       </table>
