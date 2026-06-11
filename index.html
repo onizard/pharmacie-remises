@@ -1330,8 +1330,9 @@
             <input type="file" id="grossisteFileInput" multiple accept=".xlsx,.xls,.pdf,.csv" style="display:none">
           </div>
           <div id="grossisteUploadStatus" class="conn-job-status" style="text-align:center;margin-top:6px;min-height:16px"></div>
-          <div style="text-align:center;margin-top:8px;display:flex;gap:16px;justify-content:center;align-items:center">
+          <div style="text-align:center;margin-top:8px;display:flex;gap:16px;justify-content:center;align-items:center;flex-wrap:wrap">
             <button class="conn-test-btn" id="grossisteSendBtn" style="display:none">ENVOYER</button>
+            <button class="conn-test-btn" id="grossisteGmailBtn" title="Récupère automatiquement les fichiers justificatif_génériques depuis la boite mail">⟳ SYNCHRO GMAIL</button>
             <button class="conn-change-link" id="grossisteDetailsBtn">Détails (0 fichier)</button>
           </div>
           <div id="grossisteFileList" style="display:none;margin-top:10px"></div>
@@ -9190,6 +9191,40 @@ function initConnecteurModal() {
     }
   }
 
+  async function _syncGrossisteGmail() {
+    const statusEl = document.getElementById('grossisteUploadStatus');
+    const btn      = document.getElementById('grossisteGmailBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ SYNCHRO…'; }
+    if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = '⏳ Recherche des justificatifs dans la boite mail…'; }
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) throw new Error('Session expirée');
+      const resp = await fetch(`${API_URL}/run/grossiste_gmail`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
+      const data = await resp.json();
+      if (data.status === 'up_to_date') {
+        if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ Déjà à jour (${data.processed_total || 0} email(s) déjà traité(s))`; }
+      } else {
+        if (data.grossiste_month_stats) {
+          state._grossisteMonthStats = data.grossiste_month_stats;
+          saveState();
+          saveCloudState(serializeState());
+          if (state.currentPageId === 'recap') renderRecap();
+          else if (state.currentPageId === 'verificateur') renderVerificateur();
+        }
+        const months = (data.months || []).join(', ');
+        if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${data.emails_processed} email(s) · ${data.labos} labos · ${(data.total_ht || 0).toLocaleString('fr', {minimumFractionDigits:2})} € HT (${months})`; }
+      }
+    } catch(e) {
+      if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ ${e.message}`; }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '⟳ SYNCHRO GMAIL'; }
+    }
+  }
+
   async function _parseGrossiste(storagePath, accessToken) {
     const statusEl = document.getElementById('grossisteUploadStatus');
     const sendBtn  = document.getElementById('grossisteSendBtn');
@@ -9242,6 +9277,8 @@ function initConnecteurModal() {
       const token = sendBtn.dataset.token;
       if (path && token) _parseGrossiste(path, token);
     });
+
+    document.getElementById('grossisteGmailBtn')?.addEventListener('click', _syncGrossisteGmail);
 
     detailsBtn.addEventListener('click', () => {
       const open = listEl.style.display !== 'none';

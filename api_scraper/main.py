@@ -42,6 +42,9 @@ GH_DIGI_WORKFLOW = "scraper.yml"
 GH_TEST_WORKFLOW = "test_connector.yml"
 GH_FSE_WORKFLOW  = "scraper_fse.yml"
 
+GMAIL_USER     = os.environ.get("GMAIL_USER", "pharmaciemontmagny@gmail.com")
+GMAIL_APP_PASS = os.environ.get("GMAIL_APP_PASSWORD", "")
+
 
 class ConnectBody(BaseModel):
     user: str
@@ -298,64 +301,34 @@ def get_status(job_id: str):
     return job
 
 
-# ── Parse grossiste XLSX ───────────────────────────────────────────────────────
+# ── Grossiste helpers ──────────────────────────────────────────────────────────
 
-class ParseGrossisteBody(BaseModel):
-    storage_path: str  # chemin dans le bucket 'grossiste', ex: "user_id/ts_filename.xlsx"
+_GROSSISTE_LABO_MAP = {
+    "biogaran": "BIOGARAN", "teva": "TEVA", "mylan": "MYLAN",
+    "viatris": "VIATRIS", "zydus": "ZYDUS", "sandoz": "SANDOZ",
+    "zentiva": "ZENTIVA", "arrow": "ARROW", "cristers": "CRISTERS",
+    "eg labo": "EG LABO", "eg labs": "EG LABO", "evolupharm": "EVOLUPHARM",
+    "ranbaxy": "RANBAXY", "actavis": "ACTAVIS", "aurobindo": "AUROBINDO",
+    "intas": "INTAS", "almus": "ALMUS",
+}
 
-@app.post("/parse/grossiste")
-async def parse_grossiste(
-    body: ParseGrossisteBody,
-    authorization: str = Header(default=""),
-):
-    """Télécharge le XLSX grossiste depuis Supabase Storage, parse et sauvegarde grossiste_month_stats."""
-    token = _extract_token(authorization)
-    try:
-        user_id = await verify_token(token)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(
-        _executor,
-        lambda: _parse_grossiste_sync(user_id, body.storage_path)
-    )
-    return result
+def _norm_grossiste_labo(raw: str) -> str:
+    import re
+    n = (raw or "").lower()
+    for kw, canon in _GROSSISTE_LABO_MAP.items():
+        if kw in n:
+            return canon
+    m = re.match(r"([A-Z][A-Z\-\']+)", (raw or "").strip())
+    return m.group(1) if m else (raw or "").upper().split()[0] if raw else "?"
 
 
-def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
+def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
+    """Parse feuille 'Récap par mois' et retourne {year-MM: [{labo, qty, total_ht}]}."""
     import io, re, openpyxl
 
-    from supabase_client import SUPA_URL, SERVICE_KEY
-    HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
-
-    _LABO_MAP = {
-        "biogaran": "BIOGARAN", "teva": "TEVA", "mylan": "MYLAN",
-        "viatris": "VIATRIS", "zydus": "ZYDUS", "sandoz": "SANDOZ",
-        "zentiva": "ZENTIVA", "arrow": "ARROW", "cristers": "CRISTERS",
-        "eg labo": "EG LABO", "eg labs": "EG LABO", "evolupharm": "EVOLUPHARM",
-        "ranbaxy": "RANBAXY", "actavis": "ACTAVIS", "aurobindo": "AUROBINDO",
-        "intas": "INTAS", "almus": "ALMUS",
-    }
-
-    def norm_labo(raw):
-        n = (raw or "").lower()
-        for kw, canon in _LABO_MAP.items():
-            if kw in n:
-                return canon
-        m = re.match(r"([A-Z][A-Z\-\']+)", (raw or "").strip())
-        return m.group(1) if m else (raw or "").upper().split()[0] if raw else "?"
-
-    # 1. Télécharger le XLSX depuis Storage
-    dl_url = f"{SUPA_URL}/storage/v1/object/grossiste/{storage_path}"
-    req = urllib.request.Request(dl_url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        xlsx_bytes = r.read()
-
-    # 2. Parser la feuille "Récap par mois"
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     if "Récap par mois" not in wb.sheetnames:
-        raise HTTPException(status_code=422, detail="Feuille 'Récap par mois' introuvable dans le fichier.")
+        return {}
     ws = wb["Récap par mois"]
 
     month_acc: dict[str, dict] = {}
@@ -374,12 +347,13 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
             continue
         rep_dep, labo_raw, _, qty, _, _, ca_net = (list(row) + [None]*7)[:7]
         if rep_dep == "Rep G" and labo_raw and qty:
-            labo = norm_labo(labo_raw)
+            labo = _norm_grossiste_labo(labo_raw)
             acc  = month_acc[current_month].setdefault(labo, {"qty": 0, "total_ht": 0.0})
             acc["qty"]      += int(qty or 0)
             acc["total_ht"] += float(ca_net or 0)
 
-    grossiste_stats = {
+    wb.close()
+    return {
         mk: sorted(
             [{"labo": l, "qty": d["qty"], "total_ht": round(d["total_ht"], 2)}
              for l, d in labos.items()],
@@ -387,19 +361,12 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
         )
         for mk, labos in sorted(month_acc.items())
     }
-    if not grossiste_stats:
-        raise HTTPException(status_code=422, detail="Aucune donnée extractible — vérifie le format du fichier.")
 
-    # 3. Lire l'état courant et patcher grossiste_month_stats
-    state_url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1"
-    req2 = urllib.request.Request(state_url, headers=HEADERS)
-    with urllib.request.urlopen(req2, timeout=15) as r:
-        rows = json.loads(r.read())
-    state = (rows[0]["state_json"] if rows else {}) or {}
-    # Fusion additive : mois distincts → union ; mois communs → addition par labo
-    existing = state.get("grossiste_month_stats") or {}
+
+def _merge_grossiste_stats(existing: dict, new_stats: dict) -> dict:
+    """Fusion additive : mois distincts → union ; mois communs → addition par labo."""
     merged = dict(existing)
-    for mk, new_rows in grossiste_stats.items():
+    for mk, new_rows in new_stats.items():
         if mk not in merged:
             merged[mk] = new_rows
         else:
@@ -411,18 +378,58 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
                 else:
                     labo_map[nr["labo"]] = dict(nr)
             merged[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])
-    state["grossiste_month_stats"] = merged
+    return merged
 
-    patch_body = json.dumps({"state_json": state}).encode()
-    patch_req  = urllib.request.Request(
-        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
-        data=patch_body, method="PATCH",
-        headers={**HEADERS, "Content-Type": "application/json", "Prefer": "return=minimal"},
+
+# ── Parse grossiste XLSX (depuis MinIO) ────────────────────────────────────────
+
+class ParseGrossisteBody(BaseModel):
+    storage_path: str  # chemin dans le bucket 'grossiste', ex: "user_id/ts_filename.xlsx"
+
+@app.post("/parse/grossiste")
+async def parse_grossiste(
+    body: ParseGrossisteBody,
+    authorization: str = Header(default=""),
+):
+    """Télécharge le XLSX grossiste depuis MinIO Storage, parse et sauvegarde grossiste_month_stats."""
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        _executor,
+        lambda: _parse_grossiste_sync(user_id, body.storage_path)
     )
-    with urllib.request.urlopen(patch_req, timeout=15):
-        pass
+    return result
 
-    months = sorted(grossiste_stats)
+
+def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
+    from supabase_client import SUPA_URL, SERVICE_KEY
+    HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
+
+    # 1. Télécharger le XLSX depuis Storage
+    dl_url = f"{SUPA_URL}/storage/v1/object/grossiste/{storage_path}"
+    req = urllib.request.Request(dl_url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        xlsx_bytes = r.read()
+
+    # 2. Parser
+    grossiste_stats = _parse_grossiste_bytes(xlsx_bytes)
+    if not grossiste_stats:
+        raise HTTPException(status_code=422, detail="Aucune donnée extractible — vérifie le format du fichier.")
+
+    # 3. Mettre à jour l'état
+    from supabase_client import _get_state_sync, _patch_state_sync
+    state = _get_state_sync(user_id) or {}
+    state["grossiste_month_stats"] = _merge_grossiste_stats(
+        state.get("grossiste_month_stats") or {}, grossiste_stats
+    )
+    _patch_state_sync(user_id, state)
+
+    months   = sorted(grossiste_stats)
     total_q  = sum(r["qty"]      for rows in grossiste_stats.values() for r in rows)
     total_ht = sum(r["total_ht"] for rows in grossiste_stats.values() for r in rows)
     return {
@@ -432,6 +439,153 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
         "qty":     total_q,
         "total_ht": round(total_ht, 2),
         "grossiste_month_stats": grossiste_stats,
+    }
+
+
+# ── Job grossiste Gmail — ingestion automatique depuis email ──────────────────
+
+@app.post("/run/grossiste_gmail")
+async def run_grossiste_gmail(authorization: str = Header(default="")):
+    """Récupère les fichiers justificatif_génériques depuis Gmail et met à jour grossiste_month_stats."""
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    if not GMAIL_APP_PASS:
+        raise HTTPException(status_code=503, detail="GMAIL_APP_PASSWORD non configuré sur le serveur.")
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        _executor,
+        lambda: _run_grossiste_gmail_sync(user_id),
+    )
+    return result
+
+
+def _run_grossiste_gmail_sync(user_id: str) -> dict:
+    import imaplib
+    import email as _email_lib
+    from email.header import decode_header as _decode_header
+
+    from supabase_client import _get_state_sync, _patch_state_sync
+
+    # 1. Connexion IMAP Gmail
+    mail = imaplib.IMAP4_SSL("imap.gmail.com")
+    mail.login(GMAIL_USER, GMAIL_APP_PASS)
+    mail.select("INBOX")
+
+    # 2. UIDs déjà traités
+    state = _get_state_sync(user_id) or {}
+    processed_uids: set = set(state.get("grossiste_gmail_uids") or [])
+
+    # 3. Chercher les emails avec "Justificatif" dans le sujet
+    _, search_data = mail.search(None, 'SUBJECT "Justificatif"')
+    candidate_uids = [int(u) for u in (search_data[0].split() if search_data[0] else [])]
+
+    new_uids: list[int] = []
+    emails_info: list[dict] = []
+    combined_stats: dict = {}   # year-MM → {labo → {qty, total_ht}}
+
+    for uid in candidate_uids:
+        if uid in processed_uids:
+            continue
+
+        _, fetch_data = mail.fetch(str(uid).encode(), "(RFC822)")
+        if not fetch_data or not fetch_data[0]:
+            continue
+        raw = fetch_data[0][1]
+        msg = _email_lib.message_from_bytes(raw)
+
+        # Chercher les pièces jointes XLSX
+        xlsx_bytes = None
+        attach_name = ""
+        for part in msg.walk():
+            fn_raw = part.get_filename()
+            if not fn_raw:
+                continue
+            # Décoder le nom encodé (iso-8859-1 / utf-8)
+            decoded_parts = _decode_header(fn_raw)
+            fn = "".join(
+                (t.decode(enc or "utf-8") if isinstance(t, bytes) else t)
+                for t, enc in decoded_parts
+            )
+            ct = part.get_content_type()
+            is_xlsx = fn.lower().endswith(".xlsx") or "spreadsheetml" in ct or "excel" in ct
+            if not is_xlsx:
+                continue
+            payload = part.get_payload(decode=True)
+            if payload and len(payload) > 1000:
+                xlsx_bytes = payload
+                attach_name = fn
+                break
+
+        if not xlsx_bytes:
+            continue
+
+        # Parser le fichier
+        stats = _parse_grossiste_bytes(xlsx_bytes)
+        if not stats:
+            continue
+
+        # Fusionner dans combined_stats (dict brut, avant conversion en listes)
+        for mk, rows in stats.items():
+            if mk not in combined_stats:
+                combined_stats[mk] = {}
+            for r in rows:
+                acc = combined_stats[mk].setdefault(r["labo"], {"qty": 0, "total_ht": 0.0})
+                acc["qty"]      += r["qty"]
+                acc["total_ht"] += r["total_ht"]
+
+        new_uids.append(uid)
+        subject_raw = msg.get("Subject", "")
+        emails_info.append({
+            "uid":     uid,
+            "subject": subject_raw[:80],
+            "date":    msg.get("Date", ""),
+            "file":    attach_name,
+            "months":  sorted(stats.keys()),
+        })
+
+    mail.logout()
+
+    if not new_uids:
+        return {
+            "status":  "up_to_date",
+            "emails_processed": 0,
+            "processed_total":  len(processed_uids),
+        }
+
+    # Convertir combined_stats en format liste
+    new_grossiste_stats = {
+        mk: sorted(
+            [{"labo": l, "qty": d["qty"], "total_ht": round(d["total_ht"], 2)}
+             for l, d in labos.items()],
+            key=lambda r: r["labo"],
+        )
+        for mk, labos in sorted(combined_stats.items())
+    }
+
+    # Fusionner avec l'état existant et sauvegarder
+    merged_stats = _merge_grossiste_stats(
+        state.get("grossiste_month_stats") or {}, new_grossiste_stats
+    )
+    state["grossiste_month_stats"] = merged_stats
+    state["grossiste_gmail_uids"] = sorted(processed_uids | set(new_uids))
+    _patch_state_sync(user_id, state)
+
+    total_q  = sum(r["qty"]      for rows in new_grossiste_stats.values() for r in rows)
+    total_ht = sum(r["total_ht"] for rows in new_grossiste_stats.values() for r in rows)
+    return {
+        "status":                "done",
+        "emails_processed":      len(new_uids),
+        "emails":                emails_info,
+        "months":                sorted(new_grossiste_stats.keys()),
+        "labos":                 len({r["labo"] for rows in new_grossiste_stats.values() for r in rows}),
+        "qty":                   total_q,
+        "total_ht":              round(total_ht, 2),
+        "grossiste_month_stats": merged_stats,
     }
 
 
