@@ -5057,9 +5057,8 @@ function _verifFillAnnualSummary(year) {
 
   // ── Accumulation des achats ────────────────────────────────────────────
   const labAcc = {};
-  const qtyAcc = {};
   const acc = (k, display) => {
-    if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0, rdp:0, presta_ttc:0 };
+    if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, ca_brut:0, pa_di:0, pa_gr:0, rdp:0, presta_ttc:0, qty_di:0, qty_gr:0 };
   };
 
   Object.entries(state._monthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
@@ -5067,7 +5066,6 @@ function _verifFillAnnualSummary(year) {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
       labAcc[k].pa_osp  += r.ca_brut || ((r.pa_net || 0) + (r.remise_totale || 0));
       labAcc[k].ca_brut += r.ca_brut || 0;
-      qtyAcc[k] = (qtyAcc[k] || 0) + (r.qty || 0);
     })
   );
   Object.entries(state._digiMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
@@ -5076,12 +5074,14 @@ function _verifFillAnnualSummary(year) {
       labAcc[k].pa_di      += r.total_ht         || 0;
       labAcc[k].rdp        += r.rdp_total        || 0;
       labAcc[k].presta_ttc += r.presta_total_ttc || 0;
+      labAcc[k].qty_di     += r.qty              || 0;
     })
   );
   Object.entries(state._grossisteMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
-      labAcc[k].pa_gr += r.total_ht || 0;
+      labAcc[k].pa_gr  += r.total_ht || 0;
+      labAcc[k].qty_gr += r.qty      || 0;
     })
   );
 
@@ -5106,14 +5106,15 @@ function _verifFillAnnualSummary(year) {
   const mRef  = yr < today.getFullYear() ? 12 : today.getMonth() + 1;
   const gapCls = v => v == null ? '' : v > 0.5 ? ' style="color:var(--red)"' : v < -0.5 ? ' style="color:var(--green)"' : '';
   const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
-  let totPa=0, totQty=0, totAtt=0, totRec=0, rowCount=0;
+  let totPa=0, totQtyDi=0, totQtyGr=0, totAtt=0, totRec=0, rowCount=0;
 
   const rows = keys.map(k => {
     const d      = labAcc[k];
     const pa_tot = d.pa_osp + d.pa_di + d.pa_gr;
     if (pa_tot <= 0) return '';
 
-    const qty      = qtyAcc[k] || 0;
+    const qtyDigi = d.qty_di || 0;
+    const qtyGros = d.qty_gr || 0;
     const cond    = _verifGetCond(d.display, yr, mRef);
     const r2avg   = _verifR2avg(cond);
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
@@ -5129,9 +5130,10 @@ function _verifFillAnnualSummary(year) {
     const remRec  = (d.rdp || 0) + (fseAcc[k] || 0);
     const gap     = remAtt > 0 ? remAtt - remRec : null;
 
-    totPa  += pa_tot;
-    totQty += qty;
-    totAtt += remAtt;
+    totPa    += pa_tot;
+    totQtyDi += qtyDigi;
+    totQtyGr += qtyGros;
+    totAtt   += remAtt;
     if (remRec > 0) totRec += remRec;
     rowCount++;
 
@@ -5140,7 +5142,8 @@ function _verifFillAnnualSummary(year) {
 
     return `<tr>
       <td>${escH(d.display)}${prorBadge}</td>
-      <td style="color:var(--text-dim)">${qty > 0 ? qty.toLocaleString('fr') : '—'}</td>
+      <td style="color:var(--cyan)">${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
+      <td style="color:var(--green)">${qtyGros > 0 ? qtyGros.toLocaleString('fr') : '—'}</td>
       <td>${fmtE(pa_tot)}</td>
       <td>${remAtt > 0 ? fmtE(remAtt) : '—'}</td>
       <td>${remRec > 0 ? fmtE(remRec) : '—'}</td>
@@ -5154,7 +5157,8 @@ function _verifFillAnnualSummary(year) {
       <table class="verif-tbl">
         <thead><tr>
           <th style="text-align:left">LABO</th>
-          <th>BOITES</th>
+          <th style="color:var(--cyan)">BT. DIGI</th>
+          <th style="color:var(--green)">BT. GROSSISTE</th>
           <th>PA BRUT</th>
           <th>REMISE ATTENDUE</th>
           <th>REMISE REÇUE (FSE)</th>
@@ -5163,7 +5167,8 @@ function _verifFillAnnualSummary(year) {
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
-          <td style="color:var(--text-dim)">${totQty > 0 ? totQty.toLocaleString('fr') : '—'}</td>
+          <td style="color:var(--cyan)">${totQtyDi > 0 ? totQtyDi.toLocaleString('fr') : '—'}</td>
+          <td style="color:var(--green)">${totQtyGr > 0 ? totQtyGr.toLocaleString('fr') : '—'}</td>
           <td>${fmtE(totPa)}</td>
           <td>${fmtE(totAtt)}</td>
           <td>${totRec > 0 ? fmtE(totRec) : '—'}</td>
@@ -5173,9 +5178,6 @@ function _verifFillAnnualSummary(year) {
     </div>
     ${_verifPrestaAnnualBlock(yr)}`;
 }
-
-// ── Détail mensuel ────────────────────────────────────────────────────────────
-
 function _verifFillMonthDetail(mk) {
   const wrap = document.getElementById('verifMonthDetail'); if (!wrap) return;
   // Cas TOUT : cumul annuel
@@ -5206,7 +5208,7 @@ function _verifFillMonthDetail(mk) {
 
   const gapCls = v => v == null ? '' : v > 0.5 ? ' style="color:var(--red)"' : v < -0.5 ? ' style="color:var(--green)"' : '';
   const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
-  let totPa=0, totQty=0, totRsfEst=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
+  let totPa=0, totQtyDi=0, totQtyGr=0, totRsfEst=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
 
   const rows = keys.map(key => {
     const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
@@ -5214,7 +5216,8 @@ function _verifFillMonthDetail(mk) {
     const pa_tot = pa_osp + (digi.total_ht||0) + (gros.total_ht||0);
     if (pa_tot <= 0) return '';
 
-    const qty      = osp.qty || 0;
+    const qtyDigi = digi.qty || 0;
+    const qtyGros = gros.qty || 0;
     const labDisplay = osp.labo || digi.labo || gros.labo || key;
     const cond    = _verifGetCond(labDisplay, mkY, mkM);
     const rsfData = _verifRsfFromStats(osp);
@@ -5236,8 +5239,9 @@ function _verifFillMonthDetail(mk) {
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
       : null;
 
-    totPa   += pa_tot;
-    totQty  += qty;
+    totPa    += pa_tot;
+    totQtyDi += qtyDigi;
+    totQtyGr += qtyGros;
     if (rsfEst   != null) totRsfEst += rsfEst;
     if (r2est    != null) totR2att  += r2est;
     if (r2rec    != null) totR2rec  += r2rec;
@@ -5247,7 +5251,8 @@ function _verifFillMonthDetail(mk) {
 
     return `<tr>
       <td>${escH(labDisplay)}</td>
-      <td style="color:var(--text-dim)">${qty > 0 ? qty.toLocaleString('fr') : '—'}</td>
+      <td style="color:var(--cyan)">${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
+      <td style="color:var(--green)">${qtyGros > 0 ? qtyGros.toLocaleString('fr') : '—'}</td>
       <td>${fmtE(pa_tot)}</td>
       <td>${fmtP(rsfPct)}</td>
       <td>${rsfEst != null ? fmtE(rsfEst) : '—'}</td>
@@ -5267,7 +5272,8 @@ function _verifFillMonthDetail(mk) {
       <table class="verif-tbl">
         <thead><tr>
           <th style="text-align:left">LABO</th>
-          <th>BOITES</th>
+          <th style="color:var(--cyan)">BT. DIGI</th>
+          <th style="color:var(--green)">BT. GROSSISTE</th>
           <th>PA BRUT</th>
           <th>RSF %</th><th>RSF €</th>
           <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">REM. 2 REC.</th>
@@ -5277,7 +5283,8 @@ function _verifFillMonthDetail(mk) {
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL — ${_MONTH_LABELS[mkM-1]} ${mkY}</td>
-          <td style="color:var(--text-dim)">${totQty > 0 ? totQty.toLocaleString('fr') : '—'}</td>
+          <td style="color:var(--cyan)">${totQtyDi > 0 ? totQtyDi.toLocaleString('fr') : '—'}</td>
+          <td style="color:var(--green)">${totQtyGr > 0 ? totQtyGr.toLocaleString('fr') : '—'}</td>
           <td>${fmtE(totPa)}</td>
           <td>—</td><td>${totRsfEst > 0 ? fmtE(totRsfEst) : '—'}</td>
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
@@ -5290,7 +5297,6 @@ function _verifFillMonthDetail(mk) {
     ${_verifMdlBlock(mk)}
     ${_verifPrestaBlock(mk)}`;
 }
-
 function _verifPrestaBlock(mk) {
   const [mkY, mkM] = mk.split('-').map(Number);
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
@@ -5430,13 +5436,11 @@ function _verifFillTout(year) {
 
   // Accumulation achats + RSF pondéré annuel (Σ rsf_rem / Σ rsf_ca)
   const labAcc = {};
-  const qtyAcc = {};
-  const acc = (k, display) => { if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, pa_di:0, pa_gr:0, r2rec:0, presta_ttc:0, rsf_rem:0, rsf_ca:0, r2_rem:0, r2_ca:0 }; };
+  const acc = (k, display) => { if (!labAcc[k]) labAcc[k] = { display, pa_osp:0, pa_di:0, pa_gr:0, r2rec:0, presta_ttc:0, rsf_rem:0, rsf_ca:0, r2_rem:0, r2_ca:0, qty_di:0, qty_gr:0 }; };
   Object.entries(state._monthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
       labAcc[k].pa_osp += r.ca_brut || ((r.pa_net || 0) + (r.remise_totale || 0));
-      qtyAcc[k] = (qtyAcc[k] || 0) + (r.qty || 0);
       if (r.rsf_pond_pct > 0 && r.rsf_ca > 0) {
         labAcc[k].rsf_ca  += r.rsf_ca;
         labAcc[k].rsf_rem += r.rsf_ca * r.rsf_pond_pct / 100;
@@ -5450,15 +5454,17 @@ function _verifFillTout(year) {
   Object.entries(state._digiMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
-      labAcc[k].pa_di     += r.total_ht         || 0;
-      labAcc[k].r2rec     += r.rdp_total        || 0;
+      labAcc[k].pa_di      += r.total_ht         || 0;
+      labAcc[k].r2rec      += r.rdp_total        || 0;
       labAcc[k].presta_ttc += r.presta_total_ttc || 0;
+      labAcc[k].qty_di     += r.qty              || 0;
     })
   );
   Object.entries(state._grossisteMonthStats || {}).filter(([mk]) => mksY(mk)).forEach(([, arr]) =>
     (arr||[]).forEach(r => {
       const k = _verifNormLab(r.labo); acc(k, r.labo);
-      labAcc[k].pa_gr += r.total_ht || 0;
+      labAcc[k].pa_gr  += r.total_ht || 0;
+      labAcc[k].qty_gr += r.qty      || 0;
     })
   );
 
@@ -5483,14 +5489,15 @@ function _verifFillTout(year) {
 
   const today = new Date();
   const mRef  = yr < today.getFullYear() ? 12 : today.getMonth() + 1;
-  let totPa=0, totQty=0, totRsfEst=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
+  let totPa=0, totQtyDi=0, totQtyGr=0, totRsfEst=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
 
   const rows = keys.map(k => {
     const d      = labAcc[k];
     const pa_tot = d.pa_osp + d.pa_di + d.pa_gr;
     if (pa_tot <= 0) return '';
 
-    const qty      = qtyAcc[k] || 0;
+    const qtyDigi = d.qty_di || 0;
+    const qtyGros = d.qty_gr || 0;
     const cond    = _verifGetCond(d.display, yr, mRef);
     const rsfPct  = d.rsf_ca > 0 ? d.rsf_rem / d.rsf_ca * 100 : _verifRSFavg(cond);
     const r2pct   = d.r2_ca  > 0 ? d.r2_rem  / d.r2_ca  * 100 : _verifR2avg(cond);
@@ -5509,8 +5516,9 @@ function _verifFillTout(year) {
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
       : null;
 
-    totPa   += pa_tot;
-    totQty  += qty;
+    totPa    += pa_tot;
+    totQtyDi += qtyDigi;
+    totQtyGr += qtyGros;
     if (rsfEst   != null) totRsfEst += rsfEst;
     if (r2est    != null) totR2att  += r2est;
     if (r2rec    != null) totR2rec  += r2rec;
@@ -5520,7 +5528,8 @@ function _verifFillTout(year) {
 
     return `<tr>
       <td>${escH(d.display)}</td>
-      <td style="color:var(--text-dim)">${qty > 0 ? qty.toLocaleString('fr') : '—'}</td>
+      <td style="color:var(--cyan)">${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
+      <td style="color:var(--green)">${qtyGros > 0 ? qtyGros.toLocaleString('fr') : '—'}</td>
       <td>${fmtE(pa_tot)}</td>
       <td>${fmtP(rsfPct)}</td>
       <td>${rsfEst != null ? fmtE(rsfEst) : '—'}</td>
@@ -5540,7 +5549,8 @@ function _verifFillTout(year) {
       <table class="verif-tbl">
         <thead><tr>
           <th style="text-align:left">LABO</th>
-          <th>BOITES</th>
+          <th style="color:var(--cyan)">BT. DIGI</th>
+          <th style="color:var(--green)">BT. GROSSISTE</th>
           <th>PA BRUT</th>
           <th>RSF %</th><th>RSF €</th>
           <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">REM. 2 REC.</th>
@@ -5550,7 +5560,8 @@ function _verifFillTout(year) {
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL CUMUL ${yr}</td>
-          <td style="color:var(--text-dim)">${totQty > 0 ? totQty.toLocaleString('fr') : '—'}</td>
+          <td style="color:var(--cyan)">${totQtyDi > 0 ? totQtyDi.toLocaleString('fr') : '—'}</td>
+          <td style="color:var(--green)">${totQtyGr > 0 ? totQtyGr.toLocaleString('fr') : '—'}</td>
           <td>${fmtE(totPa)}</td>
           <td>—</td><td>${totRsfEst > 0 ? fmtE(totRsfEst) : '—'}</td>
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
@@ -5563,7 +5574,6 @@ function _verifFillTout(year) {
     ${_verifMdlCumulBlock(yr)}
     ${_verifPrestaAnnualBlock(yr)}`;
 }
-
 function _verifPrestaAnnualBlock(yr) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   // Cumul presta par labo sur l'année
