@@ -6581,6 +6581,13 @@ async function launchSimulation() {
     // Pas de contrat → remise 0. Pas de données achats → labo absent.
     function calcN1FromPurchases(n1Year) {
       const months = Array.from({length:12}, (_, i) => `${n1Year}-${String(i+1).padStart(2,'0')}`);
+
+      // Debug : affiche dans la console les mois disponibles par source
+      const digiKeys  = Object.keys(state._digiMonthStats      || {}).filter(k => k.startsWith(n1Year+'-'));
+      const grosKeys  = Object.keys(state._grossisteMonthStats || {}).filter(k => k.startsWith(n1Year+'-'));
+      console.log(`[N-1 ${n1Year}] digi keys:`, digiKeys, '— gros keys:', grosKeys);
+      if (!grosKeys.length) console.warn('[N-1] _grossisteMonthStats vide ou sans données', n1Year, '— clés disponibles:', Object.keys(state._grossisteMonthStats || {}));
+
       const labMonthData = new Map();
       const addEntry = (labName, mk, ca, qty) => {
         const k = _verifNormLab(labName);
@@ -6594,6 +6601,7 @@ async function launchSimulation() {
         (state._digiMonthStats?.[mk]      || []).forEach(r => addEntry(r.labo, mk, r.total_ht||0, r.qty||0));
         (state._grossisteMonthStats?.[mk] || []).forEach(r => addEntry(r.labo, mk, r.total_ht||0, r.qty||0));
       });
+      console.log(`[N-1 ${n1Year}] labs trouvés:`, [...labMonthData.keys()]);
 
       const processedNorms = new Set();
       const results = [];
