@@ -6566,12 +6566,116 @@ async function launchSimulation() {
       return { labResults, totalRemise, totalCA, totalPaNet: totalCA - totalRemise };
     }
 
+    // ── Scénario N-1 : remises réelles basées sur les ACHATS (digi + grossiste) ─────
+    // Pour chaque labo avec contrat signé : prorata mensuel cumulé sur les achats N-1.
+    // Pas de contrat → remise 0. Pas de données achats → labo absent.
+    function calcN1FromPurchases(n1Year) {
+      const months = Array.from({length:12}, (_, i) => `${n1Year}-${String(i+1).padStart(2,'0')}`);
+      const labMonthData = new Map();
+      const addEntry = (labName, mk, ca, qty) => {
+        const k = _verifNormLab(labName);
+        if (!labMonthData.has(k)) labMonthData.set(k, { monthData:{}, display: labName });
+        const e = labMonthData.get(k);
+        if (!e.monthData[mk]) e.monthData[mk] = { ca:0, qty:0 };
+        e.monthData[mk].ca  += ca;
+        e.monthData[mk].qty += qty;
+      };
+      months.forEach(mk => {
+        (state._digiMonthStats?.[mk]      || []).forEach(r => addEntry(r.labo, mk, r.total_ht||0, r.qty||0));
+        (state._grossisteMonthStats?.[mk] || []).forEach(r => addEntry(r.labo, mk, r.total_ht||0, r.qty||0));
+      });
+
+      const processedNorms = new Set();
+      const results = [];
+
+      state.labPages.forEach(lp => {
+        if (!lp.selectedLab) return;
+        const labNorm = _verifNormLab(lp.selectedLab);
+        processedNorms.add(labNorm);
+        const data = labMonthData.get(labNorm);
+        if (!data) return;
+        const totalCAAll  = months.reduce((s, mk) => s + (data.monthData[mk]?.ca  || 0), 0);
+        const totalQtyAll = months.reduce((s, mk) => s + (data.monthData[mk]?.qty || 0), 0);
+        if (totalCAAll === 0) return;
+
+        if (!lp.contractSigned || !lp.contractDate) {
+          // Aucun contrat signé → remise = 0, données achats affichées pour info
+          results.push({ name: lp.selectedLab, ca: totalCAAll, remise: 0, qty: totalQtyAll,
+            pondere: 0, pondereTotal: 0, caThreshold: 0, met: false, firstMet: false, isSelected: true });
+          return;
+        }
+
+        const cDate = new Date(lp.contractDate);
+        const cYear = cDate.getFullYear();
+        const cMon  = cDate.getMonth() + 1; // 1-indexed
+        const startMonth = cYear < n1Year ? 1 : cYear === n1Year ? cMon : null;
+
+        if (!startMonth) {
+          // Contrat signé après N-1 → aucune remise N-1
+          results.push({ name: lp.selectedLab, ca: totalCAAll, remise: 0, qty: totalQtyAll,
+            pondere: 0, pondereTotal: 0, caThreshold: 0, met: false, firstMet: false, isSelected: true });
+          return;
+        }
+
+        // Prorata mensuel cumulé : chaque mois, vérifie si le CA annualisé (pace) atteint un palier
+        let cumulCA = 0, cumulQty = 0, totalRemise = 0, monthsElapsed = 0;
+        months.forEach((mk, idx) => {
+          const monthNum = idx + 1;
+          if (monthNum < startMonth) return;
+          const monthCA  = data.monthData[mk]?.ca  || 0;
+          const monthQty = data.monthData[mk]?.qty || 0;
+          cumulCA  += monthCA;
+          cumulQty += monthQty;
+          monthsElapsed++;
+          if (cumulCA === 0) return;
+          // CA annualisé = moyenne mensuelle cumulée × 12
+          const annualizedCA = (cumulCA / monthsElapsed) * 12;
+          const conds    = getEffectiveCondsForMonth(lp, n1Year, monthNum);
+          const bestCond = getBestCondFromArray(conds, annualizedCA);
+          if (bestCond && bestCond.remiseGlobale !== null)
+            totalRemise += monthCA * (parseFloat(bestCond.remiseGlobale) || 0) / 100;
+        });
+
+        if (cumulCA === 0) return;
+
+        const lastConds   = getEffectiveCondsForMonth(lp, n1Year, 12);
+        const annFinal    = (cumulCA / monthsElapsed) * 12;
+        const finalCond   = getBestCondFromArray(lastConds, annFinal);
+        const allThr      = lastConds.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
+        const minThresh   = allThr.length ? Math.min(...allThr) : 0;
+
+        results.push({
+          name: lp.selectedLab, ca: cumulCA, remise: totalRemise, qty: cumulQty,
+          pondere:      cumulCA > 0 ? totalRemise / cumulCA * 100 : 0,
+          pondereTotal: cumulCA > 0 ? totalRemise / cumulCA * 100 : 0,
+          caThreshold:  finalCond ? parseFloat(finalCond.caCondition) || 0 : minThresh,
+          met: !!finalCond, firstMet: false, isSelected: true,
+        });
+      });
+
+      // Labos avec achats mais sans conditions configurées → 0 remise
+      labMonthData.forEach((data, labNorm) => {
+        if (processedNorms.has(labNorm)) return;
+        const totalCA  = months.reduce((s, mk) => s + (data.monthData[mk]?.ca  || 0), 0);
+        const totalQty = months.reduce((s, mk) => s + (data.monthData[mk]?.qty || 0), 0);
+        if (totalCA <= 0) return;
+        results.push({ name: data.display, ca: totalCA, remise: 0, qty: totalQty,
+          pondere: 0, pondereTotal: 0, caThreshold: 0, met: false, firstMet: false, isSelected: false });
+      });
+
+      results.sort((a, b) => b.ca - a.ca);
+      const totR = results.reduce((s, r) => s + r.remise, 0);
+      const totC = results.reduce((s, r) => s + r.ca, 0);
+      return { labResults: results, totalRemise: totR, totalCA: totC, totalPaNet: totC - totR };
+    }
+
     await _yield(); _sp(82, '// Scénario N-1 calculé', 'Optimisation des affectations…');
-    // 6a. Scénario N-1 : conditions 2025 sur données N-1 complètes (jan–déc), sans prorata
+    // 6a. Scénario N-1 : achats (digi + grossiste) avec prorata mensuel cumulé
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
-    const actuel = calcScenario(naturalAssignment, { use2025Conds: true });
-    const totalCA = actuel.totalCA;
+    const n1Year = new Date().getFullYear() - 1;
+    const actuel = calcN1FromPurchases(n1Year);
+    const totalCA = actuel.totalCA || csvData.reduce((s, r) => s + r.qty * (r.puht || 0), 0);
 
     // 6c. Optimisé 2 : réalisation des marchés (seuils les plus serrés en priorité)
     // Calcul du CA potentiel par labo avec seuil
@@ -6905,7 +7009,8 @@ async function launchSimulation() {
     opt2.labResults.filter(l => l.isSelected).forEach(l =>
       scenarioStore.set(`opt2_${l.name}`, { assignment: opt2Assignment, labResults: opt2.labResults, filterLab: l.name }));
     scenarioStore.set('opt2_all', { assignment: opt2Assignment, labResults: opt2.labResults });
-    scenarioStore.set('actuel',   { assignment: naturalAssignment, labResults: actuel.labResults });
+    // N-1 = achats agrégés par labo (pas de CIP assignment) → CSV labo-niveau
+    scenarioStore.set('actuel',   { labResults: actuel.labResults, _n1Purchases: true });
     labScenarios.forEach(({ name, scenario, assignment }) => {
       scenarioStore.set(`lab_${name}`, { assignment, labResults: scenario.labResults });
       scenario.labResults.filter(l => l.isSelected).forEach(l =>
@@ -7399,7 +7504,7 @@ async function launchSimulation() {
         </div>
       </div>
       <div class="sim-kpi-row">
-        <div class="sim-kpi"><div class="sim-kpi-label">CA BRUT TOTAL N-1</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">CA ACHATS N-1 (DIGI+GROS)</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET ANNÉE N-1</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">SCÉNARIOS ÉVALUÉS</div><div class="sim-kpi-value amber">${totalScenarios}</div></div>
@@ -7420,7 +7525,7 @@ async function launchSimulation() {
     // ── Scénario N-1 ───────────────────────────────────────────────────────────
     html += `<div class="sim-section">
       <div class="sim-scenario-header">
-        <span>▸ SCÉNARIO ANNÉE N-1</span>
+        <span>▸ REMISES EFFECTIVES N-1 — ACHATS DIGI + GROSSISTE</span>
         ${dlBtn('actuel')}
       </div>
       ${mkScenarioTable(actuel.labResults, true, null)}
@@ -7556,6 +7661,12 @@ async function launchSimulation() {
         btn.addEventListener('click', () => {
           const s = scenarioStore.get(btn.dataset.key);
           if (!s) return;
+          if (s._n1Purchases) {
+            const rows = ['Laboratoire;CA achats HT €;Remise N-1 €;PA net HT €;Taux remise %'];
+            s.labResults.forEach(r => rows.push([r.name, r.ca.toFixed(2).replace('.',','), r.remise.toFixed(2).replace('.',','), (r.ca-r.remise).toFixed(2).replace('.',','), r.pondereTotal.toFixed(2).replace('.',',')+'%'].join(';')));
+            downloadCSV(rows.join('\n'), 'n1_achats.csv');
+            return;
+          }
           const lab = s.filterLab || null;
           const fname = lab ? `scenario_perso_${lab.replace(/\s+/g,'_')}.csv` : 'scenario_personnalise.csv';
           downloadCSV(buildScenarioCSV(s.assignment, s.labResults, lab, null), fname);
@@ -7611,6 +7722,12 @@ async function launchSimulation() {
       btn.addEventListener('click', () => {
         const s = scenarioStore.get(btn.dataset.key);
         if (!s) return;
+        if (s._n1Purchases) {
+          const rows = ['Laboratoire;CA achats HT €;Remise N-1 €;PA net HT €;Taux remise %'];
+          s.labResults.forEach(r => rows.push([r.name, r.ca.toFixed(2).replace('.',','), r.remise.toFixed(2).replace('.',','), (r.ca-r.remise).toFixed(2).replace('.',','), r.pondereTotal.toFixed(2).replace('.',',')+'%'].join(';')));
+          downloadCSV(rows.join('\n'), 'n1_achats.csv');
+          return;
+        }
         const fname = `scenario_${btn.dataset.key.replace(/^lab_/,'').replace(/^opt2_/,'optimise_').replace(/^cond_/,'palier_').replace(/^combo_\d+_/,'groupe_')}.csv`;
         downloadCSV(buildScenarioCSV(s.assignment, s.labResults, s.filterLab || null, s.forcedConds || null), fname);
       });
