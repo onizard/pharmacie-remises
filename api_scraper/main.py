@@ -177,7 +177,7 @@ async def run_connector(
             raise HTTPException(status_code=503, detail="GMAIL_APP_PASSWORD non configuré sur le serveur.")
         loop = asyncio.get_event_loop()
         try:
-            result = await loop.run_in_executor(_executor, lambda: _run_grossiste_gmail_sync(user_id))
+            result = await loop.run_in_executor(_executor, lambda: _run_grossiste_gmail_sync(user_id, user_token=token))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
         return result
@@ -498,7 +498,7 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
 # ── Job grossiste Gmail — géré dans /run/{connector} ci-dessus ────────────────
 
 
-def _run_grossiste_gmail_sync(user_id: str) -> dict:
+def _run_grossiste_gmail_sync(user_id: str, user_token: str = "") -> dict:
     import imaplib
     import email as _email_lib
     from email.header import decode_header as _decode_header
@@ -514,11 +514,11 @@ def _run_grossiste_gmail_sync(user_id: str) -> dict:
     mail.select("INBOX")
 
     # 2. UIDs déjà traités
-    state = _get_state_sync(user_id) or {}
+    state = _get_state_sync(user_id, user_token=user_token) or {}
     processed_uids: set = set(state.get("grossiste_gmail_uids") or [])
 
-    # 3. Chercher les emails avec "Justificatif" dans le sujet
-    _, search_data = mail.search(None, 'SUBJECT "Justificatif"')
+    # 3. Chercher les emails CERP Rouen depuis 2024 (sujet contient é → search par expéditeur)
+    _, search_data = mail.search(None, 'FROM "cerp-rouen.fr" SINCE "01-Jan-2024"')
     candidate_uids = [int(u) for u in (search_data[0].split() if search_data[0] else [])]
 
     new_uids: list[int] = []
@@ -529,13 +529,21 @@ def _run_grossiste_gmail_sync(user_id: str) -> dict:
         if uid in processed_uids:
             continue
 
+        # Vérifier d'abord la structure (léger) avant de télécharger le message complet
+        _, struct_data = mail.fetch(str(uid).encode(), "(BODYSTRUCTURE)")
+        struct_str = str(struct_data[0] if struct_data else b"").lower()
+        has_xlsx = "xlsx" in struct_str or "spreadsheetml" in struct_str or "excel" in struct_str
+        if not has_xlsx:
+            processed_uids.add(uid)  # marquer pour ne plus re-checker
+            continue
+
         _, fetch_data = mail.fetch(str(uid).encode(), "(RFC822)")
         if not fetch_data or not fetch_data[0]:
             continue
         raw = fetch_data[0][1]
         msg = _email_lib.message_from_bytes(raw)
 
-        # Chercher les pièces jointes XLSX
+        # Chercher les pièces jointes XLSX dont le nom contient "justificatif"
         xlsx_bytes = None
         attach_name = ""
         for part in msg.walk():
@@ -551,6 +559,8 @@ def _run_grossiste_gmail_sync(user_id: str) -> dict:
             ct = part.get_content_type()
             is_xlsx = fn.lower().endswith(".xlsx") or "spreadsheetml" in ct or "excel" in ct
             if not is_xlsx:
+                continue
+            if "justificatif" not in fn.lower():
                 continue
             payload = part.get_payload(decode=True)
             if payload and len(payload) > 1000:
@@ -610,7 +620,7 @@ def _run_grossiste_gmail_sync(user_id: str) -> dict:
     )
     state["grossiste_month_stats"] = merged_stats
     state["grossiste_gmail_uids"] = sorted(processed_uids | set(new_uids))
-    _patch_state_sync(user_id, state)
+    _patch_state_sync(user_id, state, user_token=user_token)
 
     total_q  = sum(r["qty"]      for rows in new_grossiste_stats.values() for r in rows)
     total_ht = sum(r["total_ht"] for rows in new_grossiste_stats.values() for r in rows)

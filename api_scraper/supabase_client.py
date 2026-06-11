@@ -33,25 +33,27 @@ def _supa_key() -> str:
     return SERVICE_KEY or SUPA_KEY
 
 
-def _get_state_sync(user_id: str) -> dict:
-    key = _supa_key()
+def _get_state_sync(user_id: str, user_token: str = "") -> dict:
+    key   = _supa_key()
+    bearer = user_token or key
     url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1"
     req = urllib.request.Request(url, headers={
         "apikey":        key,
-        "Authorization": f"Bearer {key}",
+        "Authorization": f"Bearer {bearer}",
     })
     with urllib.request.urlopen(req, timeout=15) as resp:
         rows = json.loads(resp.read())
     return rows[0]["state_json"] if rows else {}
 
 
-def _patch_state_sync(user_id: str, state: dict):
-    key  = _supa_key()
+def _patch_state_sync(user_id: str, state: dict, user_token: str = ""):
+    key    = _supa_key()
+    bearer = user_token or key
     url  = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}"
     body = json.dumps({"state_json": state}).encode()
     req  = urllib.request.Request(url, data=body, method="PATCH", headers={
         "apikey":        key,
-        "Authorization": f"Bearer {key}",
+        "Authorization": f"Bearer {bearer}",
         "Content-Type":  "application/json",
         "Prefer":        "return=minimal",
     })
