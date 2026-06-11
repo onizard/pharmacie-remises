@@ -2336,6 +2336,7 @@ async function autoRunOspharm(mode) {
         }
         state._ospJobRunning = false;
         if (job.status === 'done') {
+          _ospAutoRelaunchDone = false;  // succès — réarme pour la prochaine session
           window._setConnProgress?.('osp', 'ready');
           try {
             const csvData = ospharmRowsToCsvData(filterLast12Months(job.rows || []));
@@ -2406,6 +2407,16 @@ let _simBgRunning = false;
 let _simCachedUserId = null;
 let _precomputedWireAndRender = null;
 let _precomputedMeta = null;
+let _ospAutoRelaunchDone = false;  // évite les boucles si auto-reconnexion répétée
+
+function _tryAutoRelaunchOspharm() {
+  if (_ospAutoRelaunchDone) return false;
+  if (state._ospJobRunning || state._ospConnecting) return false;
+  if (!state.connectors?.ospharm?.connected) return false;
+  _ospAutoRelaunchDone = true;
+  autoRunOspharm().catch(() => {});
+  return true;
+}
 
 async function launchComparateur() {
   try {
@@ -2424,17 +2435,17 @@ async function launchComparateur() {
         hideCompError();
         const simEl = document.getElementById('simResults');
         if (simEl) _renderOspProgress(simEl);
-      } else {
+      } else if (!_tryAutoRelaunchOspharm()) {
         showCompError('Données OSPHARM non disponibles — connectez OSPHARM DATASTAT.');
       }
       return;
     }
     if (job.status === 'error') {
-      showCompError(`Erreur OSPHARM : ${job.error || 'inconnue'}`);
+      if (!_tryAutoRelaunchOspharm()) showCompError(`Erreur OSPHARM : ${job.error || 'inconnue'}`);
       return;
     }
     if (job.status !== 'done') {
-      showCompError('Données OSPHARM non disponibles — connectez OSPHARM DATASTAT.');
+      if (!_tryAutoRelaunchOspharm()) showCompError('Données OSPHARM non disponibles — connectez OSPHARM DATASTAT.');
       return;
     }
     if (!job.rows?.length) {
@@ -2443,7 +2454,7 @@ async function launchComparateur() {
         launchSimulation();
         return;
       }
-      showCompError('Données OSPHARM non chargées — relancez le connecteur OSPHARM DATASTAT.');
+      if (!_tryAutoRelaunchOspharm()) showCompError('Données OSPHARM non chargées — relancez le connecteur OSPHARM DATASTAT.');
       return;
     }
 
@@ -3042,6 +3053,7 @@ function renderRecap() {
   if (!hasMonthly) {
     clearInterval(_ospProgressTimer);
     const ospConnected = state.connectors?.ospharm?.connected;
+    if (ospConnected && !isAdmin) _tryAutoRelaunchOspharm();
     let msg;
     if (!ospConnected) {
       msg = '// Connectez-vous à OSPHARM pour charger vos données de ventes';
