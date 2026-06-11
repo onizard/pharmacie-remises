@@ -534,7 +534,6 @@ def _run_grossiste_gmail_sync(user_id: str, user_token: str = "") -> dict:
         struct_str = str(struct_data[0] if struct_data else b"").lower()
         has_xlsx = "xlsx" in struct_str or "spreadsheetml" in struct_str or "excel" in struct_str
         if not has_xlsx:
-            processed_uids.add(uid)  # marquer pour ne plus re-checker
             continue
 
         _, fetch_data = mail.fetch(str(uid).encode(), "(RFC822)")
