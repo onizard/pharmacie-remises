@@ -133,10 +133,15 @@ async def run_connector(
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-    # grossiste_gmail : délégué au handler dédié (pas de creds nécessaires)
+    # grossiste_gmail : traité ici directement
     if connector == "grossiste_gmail":
+        if not GMAIL_APP_PASS:
+            raise HTTPException(status_code=503, detail="GMAIL_APP_PASSWORD non configuré sur le serveur.")
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(_executor, lambda: _run_grossiste_gmail_sync(user_id))
+        try:
+            result = await loop.run_in_executor(_executor, lambda: _run_grossiste_gmail_sync(user_id))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
         return result
 
     if connector not in SUPPORTED_CONNECTORS:
@@ -452,26 +457,7 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
     }
 
 
-# ── Job grossiste Gmail — ingestion automatique depuis email ──────────────────
-
-@app.post("/run/grossiste_gmail")
-async def run_grossiste_gmail(authorization: str = Header(default="")):
-    """Récupère les fichiers justificatif_génériques depuis Gmail et met à jour grossiste_month_stats."""
-    token = _extract_token(authorization)
-    try:
-        user_id = await verify_token(token)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-    if not GMAIL_APP_PASS:
-        raise HTTPException(status_code=503, detail="GMAIL_APP_PASSWORD non configuré sur le serveur.")
-
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(
-        _executor,
-        lambda: _run_grossiste_gmail_sync(user_id),
-    )
-    return result
+# ── Job grossiste Gmail — géré dans /run/{connector} ci-dessus ────────────────
 
 
 def _run_grossiste_gmail_sync(user_id: str) -> dict:
