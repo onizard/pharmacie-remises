@@ -127,13 +127,23 @@ async def run_connector(
     authorization: str = Header(default=""),
 ):
     """Lance le scraping. OSPHARM → GitHub Actions. DIGIPHARMACIE → local."""
-    if connector not in SUPPORTED_CONNECTORS:
-        raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
-
     token = _extract_token(authorization)
     try:
         user_id = await verify_token(token)
-        creds   = await get_user_creds_for(user_id, connector)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    # grossiste_gmail : délégué au handler dédié (pas de creds nécessaires)
+    if connector == "grossiste_gmail":
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(_executor, lambda: _run_grossiste_gmail_sync(user_id))
+        return result
+
+    if connector not in SUPPORTED_CONNECTORS:
+        raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
+
+    try:
+        creds = await get_user_creds_for(user_id, connector)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
