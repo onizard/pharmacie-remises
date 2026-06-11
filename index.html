@@ -2414,6 +2414,9 @@ function _tryAutoRelaunchOspharm() {
   if (state._ospJobRunning || state._ospConnecting) return false;
   if (!state.connectors?.ospharm?.connected) return false;
   _ospAutoRelaunchDone = true;
+  hideCompError();
+  const simEl = document.getElementById('simResults');
+  if (simEl) _renderOspProgress(simEl);
   autoRunOspharm().catch(() => {});
   return true;
 }
@@ -9816,6 +9819,7 @@ function initConnecteurModal() {
 
   document.getElementById('compRefreshBtn').addEventListener('click', () => {
     if (state._ospJobRunning) return;
+    _ospAutoRelaunchDone = false;
     hideCompError();
     const simEl = document.getElementById('simResults');
     if (simEl) _renderOspProgress(simEl);
