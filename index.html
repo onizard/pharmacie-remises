@@ -3222,7 +3222,6 @@ function createLabContDom(lp) {
             <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--amber);letter-spacing:.5px">SIMPLE PROPOSITION DU LABO</span>
           </label>
         </div>
-        <div id="contractProposal-${uid}" style="display:none;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--amber);letter-spacing:1px;opacity:.8;margin-bottom:8px">⚠ PROPOSITION LABO</div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer" title="Accord ASTERA/CERP — RSF applicable à partir de 350 € brut/mois">
           <input type="checkbox" id="contratRep-${uid}" checked style="accent-color:var(--cyan);width:14px;height:14px;cursor:pointer">
           <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan);letter-spacing:.5px">CONTRAT RÉPARTITEUR</span>
@@ -3369,10 +3368,8 @@ function createLabContDom(lp) {
     const _radioProp     = document.getElementById(`contractProposalRadio-${uid}`);
     const _dateWrap      = document.getElementById(`contractDateWrap-${uid}`);
     const _dateInput     = document.getElementById(`contractDate-${uid}`);
-    const _propBnr       = document.getElementById(`contractProposal-${uid}`);
     function _syncContractUi() {
       _dateWrap.style.display = lp.contractSigned ? 'flex' : 'none';
-      _propBnr.style.display  = lp.contractSigned ? 'none' : 'block';
       if (lp.contractSigned) _radioSigned.checked = true;
       else _radioProp.checked = true;
     }
@@ -4918,14 +4915,12 @@ const _verifNormLab = n => {
 
 // Condition active pour un labo, en tenant compte du contrat configuré
 function _verifGetCond(labDisplay, year, month) {
-  const contract = state.verifContracts?.[year]?.[labDisplay];
   const lp = (state.labPages || []).find(p => p.selectedLab === labDisplay);
   if (!lp) return null;
-  // Lab-page "contrat signé" prend la priorité sur verifContracts pour la date de départ
-  const startDate = (lp.contractSigned && lp.contractDate) ? lp.contractDate : (contract?.startDate || null);
-  const condYear = (startDate ? new Date(startDate).getFullYear() : null) || year;
-  const conds    = getEffectiveCondsForMonth(lp, condYear, month);
-  const idx      = _verifAutoCondIdx(labDisplay, condYear, conds);
+  const startDate = lp.contractSigned ? (lp.contractDate || null) : null;
+  const condYear  = (startDate ? new Date(startDate).getFullYear() : null) || year;
+  const conds     = getEffectiveCondsForMonth(lp, condYear, month);
+  const idx       = _verifAutoCondIdx(labDisplay, condYear, conds);
   return conds?.[idx] ?? conds?.[0] ?? null;
 }
 
@@ -4990,18 +4985,13 @@ function _verifSelectLab(lab) {
 
 function _verifRenderLabGrid() {
   const wrap = document.getElementById('verifLabGrid'); if (!wrap) return;
-  const activeContracts = state.verifContracts?.[_verifSelYear] || {};
   wrap.innerHTML = LABS_ALL.map(lab => {
     const lp_g  = (state.labPages || []).find(p => p.selectedLab === lab);
-    const isOn  = lp_g?.contractSigned || !!activeContracts[lab]?.active;
+    const isOn  = !!lp_g?.contractSigned;
     const isSel = _verifSelLab === lab;
-    const c     = activeContracts[lab];
-    const badge = isOn && c?.type
-      ? `<span style="font-size:8px;opacity:.65;margin-left:4px">${c.type === 'N1' ? '№ 1' : c.type === 'N2' ? '№ 2' : 'GR'}</span>`
-      : '';
     return `<button class="verif-lab-btn${isOn ? ' active' : ''}${isSel ? ' selected' : ''}"
       onclick="_verifSelectLab('${escH(lab)}')"
-    >${escH(lab)}${badge}</button>`;
+    >${escH(lab)}</button>`;
   }).join('');
 }
 
@@ -5009,73 +4999,24 @@ function _verifRenderLabPanel() {
   const wrap = document.getElementById('verifLabPanel'); if (!wrap) return;
   const lab  = _verifSelLab;
   if (!lab) { wrap.innerHTML = ''; return; }
-  const yr   = _verifSelYear;
-  const c    = state.verifContracts?.[yr]?.[lab] || {};
-  const type = c.type || 'N1';
-  const date = c.startDate || (yr - 1) + '-01-01';
-  const types = [['N1', 'Gén. N°1'], ['N2', 'Gén. N°2'], ['GR', 'Grossiste']];
-  const typeBtns = types.map(([t, lbl]) =>
-    `<button onclick="_verifInlinePickType('${t}')"
-      style="flex:1;font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:1px;padding:7px 4px;cursor:pointer;
-             background:${type === t ? 'var(--cyan)' : 'transparent'};
-             border:1px solid ${type === t ? 'var(--cyan)' : 'var(--border)'};
-             color:${type === t ? 'var(--bg)' : 'var(--text-dim)'};transition:all .15s"
-    >${lbl}</button>`
-  ).join('');
+  const lp = (state.labPages || []).find(p => p.selectedLab === lab);
+  if (!lp) { wrap.innerHTML = ''; return; }
+  const typeLabel = lp.contractSigned ? 'CONTRAT LABO SIGNÉ' : 'SIMPLE PROPOSITION';
+  const typeColor = lp.contractSigned ? 'var(--green)' : 'var(--amber)';
+  const dateStr   = lp.contractSigned && lp.contractDate
+    ? `<span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim)">depuis le ${lp.contractDate}</span>`
+    : '';
+  const repLabel  = lp.contratRepartiteur ?? true
+    ? `<span style="color:var(--cyan)">✓ Contrat répartiteur</span>`
+    : `<span style="color:var(--text-dim)">— Pas de contrat répartiteur</span>`;
   wrap.innerHTML = `
-    <div style="background:var(--bg2);border:1px solid var(--amber);padding:14px 18px;margin-bottom:16px">
-      <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:900;color:var(--amber);letter-spacing:2px;margin-bottom:12px">◈ ${escH(lab)}</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
-        <div>
-          <div class="verif-contract-label" style="margin-bottom:6px">TYPE DE CONTRAT</div>
-          <div style="display:flex;gap:5px">${typeBtns}</div>
-        </div>
-        <div>
-          <div class="verif-contract-label" style="margin-bottom:6px">DATE DU CONTRAT</div>
-          <input type="date" id="verifInlineDate" class="verif-date-input" value="${date}" style="width:150px">
-        </div>
-        <div style="display:flex;gap:8px;align-items:flex-end;margin-left:auto">
-          <button onclick="_verifInlineSave()" class="conn-save" style="margin-top:0;padding:7px 18px">ENREGISTRER</button>
-          ${c.active ? `<button onclick="_verifInlineRemove()" style="font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:1px;padding:7px 12px;cursor:pointer;background:transparent;border:1px solid var(--red);color:var(--red);transition:all .2s">RETIRER</button>` : ''}
-        </div>
-      </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);padding:12px 16px;margin-bottom:16px;font-family:'Share Tech Mono',monospace;font-size:11px;display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+      <span style="font-family:'Orbitron',monospace;font-size:11px;font-weight:900;color:var(--amber);letter-spacing:2px">◈ ${escH(lab)}</span>
+      <span style="color:${typeColor}">${typeLabel}</span>
+      ${dateStr}
+      ${repLabel}
+      <span style="color:var(--text-dim);font-size:10px;margin-left:auto">↗ configurable dans MES CONDITIONS LABO</span>
     </div>`;
-}
-
-function _verifInlinePickType(t) {
-  const lab = _verifSelLab; if (!lab) return;
-  const yr  = _verifSelYear;
-  if (!state.verifContracts) state.verifContracts = {};
-  if (!state.verifContracts[yr]) state.verifContracts[yr] = {};
-  if (!state.verifContracts[yr][lab]) state.verifContracts[yr][lab] = {};
-  state.verifContracts[yr][lab].type = t;
-  _verifRenderLabPanel();
-}
-
-function _verifInlineSave() {
-  const lab = _verifSelLab; if (!lab) return;
-  const yr  = _verifSelYear;
-  const dateVal = document.getElementById('verifInlineDate')?.value || '';
-  if (!state.verifContracts) state.verifContracts = {};
-  if (!state.verifContracts[yr]) state.verifContracts[yr] = {};
-  const cur = state.verifContracts[yr][lab] || {};
-  state.verifContracts[yr][lab] = { ...cur, active: true, type: cur.type || 'N1', startDate: dateVal };
-  saveState();
-  _verifRenderLabGrid();
-  _verifRenderLabPanel();
-  _verifRenderYear(yr);
-}
-
-function _verifInlineRemove() {
-  const lab = _verifSelLab; if (!lab) return;
-  const yr  = _verifSelYear;
-  if (state.verifContracts?.[yr]?.[lab]) {
-    state.verifContracts[yr][lab].active = false;
-  }
-  saveState();
-  _verifRenderLabGrid();
-  _verifRenderLabPanel();
-  _verifRenderYear(yr);
 }
 
 function _verifOpenInfoModal() {
@@ -5240,12 +5181,9 @@ function _verifFillAnnualSummary(year) {
     const r2avg   = _verifR2avg(cond);
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
 
-    const _yctr   = state.verifContracts?.[yr] || {};
-    const contract = _yctr[d.display] || Object.entries(_yctr).find(([l]) => _verifNormLab(l) === k)?.[1];
-    const isN1    = contract?.type === 'N1';
     const lp_d    = (state.labPages || []).find(p => p.selectedLab === d.display);
-    const _effStartDate = (lp_d?.contractSigned && lp_d?.contractDate) ? lp_d.contractDate : contract?.startDate;
-    const prorMo  = isN1 ? _verifProrataMonths(_effStartDate, yr) : 12;
+    const _effStartDate = lp_d?.contractSigned ? lp_d?.contractDate : null;
+    const prorMo  = _verifProrataMonths(_effStartDate, yr);
 
     const r2est   = r2avg  != null ? pa_tot * r2avg  / 100       : 0;
     const r3estTTC= r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : 0;
@@ -5260,7 +5198,7 @@ function _verifFillAnnualSummary(year) {
     if (remRec > 0) totRec += remRec;
     rowCount++;
 
-    const prorBadge = isN1 && prorMo < 12
+    const prorBadge = prorMo < 12
       ? ` <span class="verif-prorate-badge" style="font-size:9px">${prorMo}/12</span>` : '';
 
     return `<tr>
