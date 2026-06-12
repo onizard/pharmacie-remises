@@ -69,7 +69,7 @@ app.add_middleware(
     allow_credentials=True,
 )
 
-SUPPORTED_CONNECTORS = {"ospharm", "digipharmacie", "concentrateur"}
+SUPPORTED_CONNECTORS = {"ospharm", "digipharmacie", "concentrateur", "gmail"}
 
 # ── Client-side log store (in-memory, last 200 entries) ───────────────────────
 
@@ -1129,11 +1129,25 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict, user_t
             await _dispatch_gh_conn_test(user_id, connector)
             return
 
-        if connector in ("ospharm", "concentrateur", "gmail"):
+        if connector in ("ospharm", "concentrateur"):
             await save_user_creds(user_id, connector, creds["user"], creds["pass"], True, user_token)
             await patch_conn_test(user_id, connector, True,
                                   "Identifiants enregistrés — vérifiés au prochain lancement",
                                   user_token=user_token)
+            return
+
+        if connector == "gmail":
+            try:
+                import imaplib
+                mail = imaplib.IMAP4_SSL("imap.gmail.com", timeout=20)
+                mail.login(creds["user"], creds["pass"])
+                mail.logout()
+            except Exception as e:
+                await patch_conn_test(user_id, connector, False,
+                                      f"Connexion IMAP échouée : {e}", user_token=user_token)
+                return
+            await save_user_creds(user_id, connector, creds["user"], creds["pass"], True, user_token)
+            await patch_conn_test(user_id, connector, True, "Connexion IMAP réussie", user_token=user_token)
             return
 
         try:
