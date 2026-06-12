@@ -493,7 +493,9 @@
   .rsf-import-drop:hover { border-color:var(--amber); color:var(--amber); background:rgba(255,171,0,.06); }
   .rsf-import-drop.drag-over { background:rgba(255,171,0,.18); border-color:var(--amber); color:var(--amber); }
   .rsf-import-drop.has-file { border-color:var(--green); color:var(--green); border-style:solid; opacity:1; }
-  .rsf-import-drop.uploading { opacity:.4; pointer-events:none; }
+  .rsf-import-drop.uploading { opacity:.7; pointer-events:none; border-style:solid; border-color:var(--amber); }
+  .rsf-import-spin { display:inline-block; width:10px; height:10px; border:2px solid rgba(255,171,0,.25); border-top-color:var(--amber); border-radius:50%; animation:rsf-spin .6s linear infinite; vertical-align:middle; }
+  @keyframes rsf-spin { to { transform:rotate(360deg); } }
   [data-theme="light"] .mon-btn { border-color:rgba(0,100,200,.25); color:#888; }
   [data-theme="light"] .mon-btn.active { border-color:#0066cc; color:#0066cc; background:rgba(0,100,200,.08); }
   [data-theme="light"] .mon-btn.has-override::after { color:#b07000; }
@@ -3955,7 +3957,7 @@ function initLabPage(conf) {
           if (!lab) return;
           const yr  = parseInt(year, 10);
           _dropEl.classList.add('uploading');
-          _textEl.textContent = '…';
+          _textEl.innerHTML = '<span class="rsf-import-spin"></span>';
           try {
             const fd = new FormData();
             fd.append('file', _pendingFile, _pendingFile.name);
