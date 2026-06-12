@@ -154,7 +154,7 @@ async def connect_connector(
         raise HTTPException(status_code=401, detail=str(e))
 
     creds = {"user": body.user, "pass": body.password}
-    background_tasks.add_task(_run_conn_test_async, user_id, connector, creds)
+    background_tasks.add_task(_run_conn_test_async, user_id, connector, creds, token)
     return {"status": "testing"}
 
 
@@ -186,9 +186,11 @@ async def run_connector(
         raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
 
     try:
-        creds = await get_user_creds_for(user_id, connector)
+        creds = await get_user_creds_for(user_id, connector, user_token=token)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lecture credentials: {e}")
 
     _cleanup_jobs()
     job_id = str(uuid.uuid4())
@@ -1113,14 +1115,14 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
 
 # ── Conn test (async wrapper) ──────────────────────────────────────────────────
 
-async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
+async def _run_conn_test_async(user_id: str, connector: str, creds: dict, user_token: str = ""):
     loop = asyncio.get_event_loop()
     try:
         if connector == "digipharmacie":
             # 1. Tenter curl_cffi directement sur Render (rapide, pas de runner)
             try:
                 await loop.run_in_executor(_executor, lambda: _test_digi_curl_only(creds))
-                await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
+                await save_user_creds(user_id, connector, creds["user"], creds["pass"], True, user_token)
                 await patch_conn_test(user_id, connector, True, "Connexion réussie")
                 return
             except RuntimeError as e:
@@ -1131,7 +1133,7 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
                 pass  # Cloudflare bloque Render → fallback runner self-hosted
 
             # 2. Cloudflare bloque → dispatch vers runner self-hosted (IP résidentielle)
-            await save_user_creds(user_id, connector, creds["user"], creds["pass"], False)
+            await save_user_creds(user_id, connector, creds["user"], creds["pass"], False, user_token)
             await _dispatch_gh_conn_test(user_id, connector)
             return
 
@@ -1142,7 +1144,7 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict):
             # expiré, runner offline ou URL Keycloak changée bloquaient la connexion
             # indéfiniment. L'erreur réelle remonte dans ospharm_job.status si les creds
             # sont mauvais.
-            await save_user_creds(user_id, connector, creds["user"], creds["pass"], True)
+            await save_user_creds(user_id, connector, creds["user"], creds["pass"], True, user_token)
             await patch_conn_test(user_id, connector, True,
                                   "Identifiants enregistrés — vérifiés au prochain lancement")
             return

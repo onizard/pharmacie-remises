@@ -30,7 +30,12 @@ async def verify_token(token: str) -> str:
 
 
 def _supa_key() -> str:
-    return SERVICE_KEY or SUPA_KEY
+    # SERVICE_KEY ne doit être utilisé que si c'est un JWT valide (commence par eyJ).
+    # Les clés cloud Supabase au format sb_secret_... ne sont pas des JWT et ne
+    # fonctionnent pas avec le PostgREST self-hosted → on revient sur la clé anon.
+    if SERVICE_KEY and SERVICE_KEY.startswith("eyJ"):
+        return SERVICE_KEY
+    return SUPA_KEY
 
 
 def _get_state_sync(user_id: str, user_token: str = "") -> dict:
@@ -69,9 +74,11 @@ def _patch_state_sync(user_id: str, state: dict, user_token: str = ""):
     raise RuntimeError(f"Supabase patch failed after 3 attempts : {last_err}")
 
 
-def _upsert_connector_sync(user_id: str, connector: str, user: str, password: str, connected: bool):
+def _upsert_connector_sync(user_id: str, connector: str, user: str, password: str, connected: bool,
+                           user_token: str = ""):
     """Atomic upsert via RPC — no read-modify-write, no race conditions."""
-    key  = _supa_key()
+    key    = _supa_key()
+    bearer = user_token or key
     url  = f"{SUPA_URL}/rest/v1/rpc/upsert_connector"
     body = json.dumps({
         "p_user_id":   user_id,
@@ -82,33 +89,34 @@ def _upsert_connector_sync(user_id: str, connector: str, user: str, password: st
     }).encode()
     req = urllib.request.Request(url, data=body, method="POST", headers={
         "apikey":        key,
-        "Authorization": f"Bearer {key}",
+        "Authorization": f"Bearer {bearer}",
         "Content-Type":  "application/json",
     })
     with urllib.request.urlopen(req, timeout=15):
         pass
 
 
-def _get_connectors_sync(user_id: str) -> dict:
+def _get_connectors_sync(user_id: str, user_token: str = "") -> dict:
     """Read only the connectors column (lighter than full state_json)."""
-    key = _supa_key()
+    key    = _supa_key()
+    bearer = user_token or key
     url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=connectors&limit=1"
     req = urllib.request.Request(url, headers={
-        "apikey": key, "Authorization": f"Bearer {key}",
+        "apikey": key, "Authorization": f"Bearer {bearer}",
     })
     with urllib.request.urlopen(req, timeout=15) as r:
         rows = json.loads(r.read())
     return (rows[0].get("connectors") or {}) if rows else {}
 
 
-async def get_user_creds_for(user_id: str, connector: str) -> dict:
+async def get_user_creds_for(user_id: str, connector: str, user_token: str = "") -> dict:
     loop = asyncio.get_event_loop()
     # Try new connectors column first, fall back to state_json for legacy rows
-    conns = await loop.run_in_executor(None, lambda: _get_connectors_sync(user_id))
+    conns = await loop.run_in_executor(None, lambda: _get_connectors_sync(user_id, user_token))
     conn  = conns.get(connector, {})
     if not conn.get("user") or not conn.get("pass"):
         # Legacy fallback
-        state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+        state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id, user_token))
         conn  = state.get("connectors", {}).get(connector, {})
     if not conn.get("user") or not conn.get("pass"):
         raise ValueError(
@@ -118,10 +126,11 @@ async def get_user_creds_for(user_id: str, connector: str) -> dict:
     return {"user": conn["user"], "pass": conn["pass"]}
 
 
-async def save_user_creds(user_id: str, connector: str, user: str, password: str, connected: bool):
+async def save_user_creds(user_id: str, connector: str, user: str, password: str, connected: bool,
+                          user_token: str = ""):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(
-        None, lambda: _upsert_connector_sync(user_id, connector, user, password, connected)
+        None, lambda: _upsert_connector_sync(user_id, connector, user, password, connected, user_token)
     )
 
 
