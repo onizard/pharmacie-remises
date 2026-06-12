@@ -174,8 +174,6 @@ async def run_connector(
 
     # grossiste_gmail : traité ici directement
     if connector == "grossiste_gmail":
-        if not GMAIL_APP_PASS:
-            raise HTTPException(status_code=503, detail="GMAIL_APP_PASSWORD non configuré sur le serveur.")
         loop = asyncio.get_event_loop()
         try:
             result = await loop.run_in_executor(_executor, lambda: _run_grossiste_gmail_sync(user_id, user_token=token))
@@ -487,14 +485,26 @@ def _run_grossiste_gmail_sync(user_id: str, user_token: str = "") -> dict:
     import email as _email_lib
     from email.header import decode_header as _decode_header
 
-    from supabase_client import _get_state_sync, _patch_state_sync
+    from supabase_client import _get_state_sync, _patch_state_sync, _get_connectors_sync
 
-    if not GMAIL_APP_PASS:
-        raise ValueError("GMAIL_APP_PASSWORD non configuré sur le serveur.")
+    # Credentials : user state en priorité, fallback vars d'env Render
+    gmail_user = GMAIL_USER
+    gmail_pass = GMAIL_APP_PASS
+    try:
+        conns = _get_connectors_sync(user_id, user_token)
+        user_gmail = conns.get("gmail", {})
+        if user_gmail.get("user") and user_gmail.get("pass"):
+            gmail_user = user_gmail["user"]
+            gmail_pass = user_gmail["pass"]
+    except Exception:
+        pass
+
+    if not gmail_pass:
+        raise ValueError("Credentials Gmail non configurés — renseignez-les dans CONNECTEURS → GMAIL.")
 
     # 1. Connexion IMAP Gmail (timeout 20s pour éviter un hang silencieux)
     mail = imaplib.IMAP4_SSL("imap.gmail.com", timeout=20)
-    mail.login(GMAIL_USER, GMAIL_APP_PASS)
+    mail.login(gmail_user, gmail_pass)
     mail.select("INBOX")
 
     # 2. UIDs déjà traités
@@ -1119,13 +1129,7 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict, user_t
             await _dispatch_gh_conn_test(user_id, connector)
             return
 
-        if connector in ("ospharm", "concentrateur"):
-            # Test instantané : on sauvegarde les identifiants et on marque connected=true
-            # immédiatement. Le vrai test Playwright se fait au premier lancement du scraper.
-            # L'ancienne approche (dispatch GH Actions self-hosted) était fragile : GH_TOKEN
-            # expiré, runner offline ou URL Keycloak changée bloquaient la connexion
-            # indéfiniment. L'erreur réelle remonte dans ospharm_job.status si les creds
-            # sont mauvais.
+        if connector in ("ospharm", "concentrateur", "gmail"):
             await save_user_creds(user_id, connector, creds["user"], creds["pass"], True, user_token)
             await patch_conn_test(user_id, connector, True,
                                   "Identifiants enregistrés — vérifiés au prochain lancement",

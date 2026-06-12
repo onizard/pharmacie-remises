@@ -1413,6 +1413,35 @@
             <button class="conn-test-btn" id="concReconnectBtn">RECONNECTER</button>
           </div>
         </div>
+        <!-- GMAIL -->
+        <div class="conn-site">
+          <div id="gmailFormView">
+            <form action="javascript:void(0)" onsubmit="return false">
+            <div class="conn-site-title">GMAIL</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-bottom:10px;line-height:1.5">Récupération auto des justificatifs.<br>Utilisez un <span style="color:var(--amber)">mot de passe d'application</span> Google.</div>
+            <div class="conn-field">
+              <div class="conn-label">Adresse Gmail</div>
+              <input class="conn-input" id="gmailUser" type="email" autocomplete="email" placeholder="exemple@gmail.com" />
+            </div>
+            <div class="conn-field">
+              <div class="conn-label">Mot de passe d'application</div>
+              <div class="conn-input-wrap">
+                <input class="conn-input" id="gmailPass" type="password" autocomplete="current-password" placeholder="xxxx xxxx xxxx xxxx" />
+                <button type="button" class="conn-eye" data-target="gmailPass" title="Afficher/masquer">👁</button>
+              </div>
+            </div>
+            <div class="conn-test-row">
+              <button class="conn-test-btn" id="gmailTest">CONNECTER</button>
+              <span class="conn-test-result" id="gmailTestResult"></span>
+            </div>
+            </form>
+          </div>
+          <div class="conn-connected-view" id="gmailConnView" style="display:none">
+            <div class="conn-check-big" id="gmailCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
+            <div class="conn-connected-name">GMAIL</div>
+            <button class="conn-test-btn" id="gmailReconnectBtn">RECONNECTER</button>
+          </div>
+        </div>
         <!-- OSPHARM -->
         <div class="conn-site">
           <div id="ospFormView">
@@ -1690,7 +1719,7 @@ let state = {
   csvRows: 0, csvData: null,
   gers: null,
   userProfile: null,
-  connectors: { ospharm: { user: '', pass: '', connected: false }, digipharmacie: { user: '', pass: '', connected: false }, concentrateur: { user: '', pass: '', connected: false, type: 'fse' } },
+  connectors: { ospharm: { user: '', pass: '', connected: false }, digipharmacie: { user: '', pass: '', connected: false }, concentrateur: { user: '', pass: '', connected: false, type: 'fse' }, gmail: { user: '', pass: '', connected: false } },
   labPages: [],
   currentPageId: 'labs',
   prorataRatios: null,
@@ -8072,9 +8101,11 @@ async function saveProfile() {
       const osp  = saved.connectors.ospharm        || {};
       const digi = saved.connectors.digipharmacie   || {};
       const conc = saved.connectors.concentrateur   || {};
+      const gm   = saved.connectors.gmail           || {};
       state.connectors.ospharm        = { user: osp.user  || '', pass: osp.pass  || '', connected: !!osp.connected };
       state.connectors.digipharmacie  = { user: digi.user || '', pass: digi.pass || '', connected: !!digi.connected };
       state.connectors.concentrateur  = { user: conc.user || '', pass: conc.pass || '', connected: !!conc.connected, type: conc.type || 'fse' };
+      state.connectors.gmail          = { user: gm.user   || '', pass: gm.pass   || '', connected: !!gm.connected };
 
       // Duplication vers la colonne connectors (source de vérité des GitHub Actions)
       // En arrière-plan au démarrage : garantit la cohérence même si saveCloudState avait timeout
@@ -8082,7 +8113,7 @@ async function saveProfile() {
         try {
           const { data: { session: _s } } = await window._sbClient.auth.getSession();
           if (!_s) return;
-          for (const [ck, cr] of [['ospharm', state.connectors.ospharm], ['digipharmacie', state.connectors.digipharmacie], ['concentrateur', state.connectors.concentrateur]]) {
+          for (const [ck, cr] of [['ospharm', state.connectors.ospharm], ['digipharmacie', state.connectors.digipharmacie], ['concentrateur', state.connectors.concentrateur], ['gmail', state.connectors.gmail]]) {
             if (!cr?.user || !cr?.pass) continue;
             await window._sbClient.rpc('upsert_connector', {
               p_user_id:   _s.user.id,
@@ -8791,8 +8822,9 @@ function initConnecteurModal() {
     document.getElementById('digiPass').value = '';
     document.getElementById('concUser').value = c.concentrateur?.user || '';
     document.getElementById('concPass').value = '';
-    document.getElementById('ospTestResult').textContent  = '';
-    document.getElementById('digiTestResult').textContent = '';
+    document.getElementById('ospTestResult').textContent   = '';
+    document.getElementById('digiTestResult').textContent  = '';
+    document.getElementById('gmailTestResult').textContent = '';
     document.getElementById('concTestResult').textContent = '';
     document.getElementById('ospReqStatus').textContent   = '';
     document.getElementById('digiReqStatus').textContent  = '';
@@ -8800,9 +8832,10 @@ function initConnecteurModal() {
     _setConnProgress('digi', 'reset');
     _setConnProgress('osp', 'reset');
     _concRefreshTypeButtons();
-    showView('osp',  c.ospharm.connected);
-    showView('digi', c.digipharmacie.connected);
-    showView('conc', c.concentrateur?.connected || false);
+    showView('osp',   c.ospharm.connected);
+    showView('digi',  c.digipharmacie.connected);
+    showView('conc',  c.concentrateur?.connected || false);
+    showView('gmail', c.gmail?.connected || false);
     modal.classList.add('open');
     refreshConnJobStatuses();
     // Vérifications asynchrones
@@ -8832,9 +8865,10 @@ function initConnecteurModal() {
     document.getElementById(userId)?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById(passId)?.focus(); });
     document.getElementById(passId)?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById(btnId)?.click(); });
   };
-  _connEnter('ospUser',  'ospPass',  'ospTest');
-  _connEnter('digiUser', 'digiPass', 'digiTest');
-  _connEnter('concUser', 'concPass', 'concTest');
+  _connEnter('ospUser',   'ospPass',   'ospTest');
+  _connEnter('digiUser',  'digiPass',  'digiTest');
+  _connEnter('concUser',  'concPass',  'concTest');
+  _connEnter('gmailUser', 'gmailPass', 'gmailTest');
 
   function _showConnResult(el, html, cls) {
     el.className = `conn-test-result ${cls}`;
@@ -9751,8 +9785,9 @@ function initConnecteurModal() {
     anaBtn.addEventListener('click', _univAnalyse);
   })();
 
-  document.getElementById('ospTest').addEventListener('click',  () => connectConn('ospharm', 'osp'));
-  document.getElementById('digiTest').addEventListener('click', () => connectConn('digipharmacie', 'digi'));
+  document.getElementById('ospTest').addEventListener('click',   () => connectConn('ospharm', 'osp'));
+  document.getElementById('digiTest').addEventListener('click',  () => connectConn('digipharmacie', 'digi'));
+  document.getElementById('gmailTest').addEventListener('click', () => connectConn('gmail', 'gmail'));
   ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
   });
@@ -9766,7 +9801,8 @@ function initConnecteurModal() {
     showView(prefix, false);  // bascule vers formView (showView gère readOnly si connected)
     setTimeout(() => passInp?.focus(), 80);
   }
-  document.getElementById('ospReconnectBtn').addEventListener('click', () => _showReconnectForm('osp', 'ospharm'));
+  document.getElementById('ospReconnectBtn').addEventListener('click',   () => _showReconnectForm('osp',   'ospharm'));
+  document.getElementById('gmailReconnectBtn').addEventListener('click', () => _showReconnectForm('gmail', 'gmail'));
   document.getElementById('ospRelancerBtn').addEventListener('click', async () => {
     const btn = document.getElementById('ospRelancerBtn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
