@@ -323,7 +323,6 @@
   .labs-user-view [id^="condTabs-"],
   .labs-user-view [id^="condTabs25-"],
   .labs-user-view .cond-tab-idem,
-  .labs-user-view [id^="copy26to25-"],
   .labs-user-view .rsf-section { display: none !important; }
   .labs-user-view [id^="condPanels-"] .cond-panel:not(:first-child),
   .labs-user-view [id^="condPanels25-"] .cond-panel:not(:first-child) { display: none !important; }
@@ -488,6 +487,8 @@
   .mon-btn:hover { border-color:var(--cyan); color:var(--cyan); }
   .mon-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,.13); font-weight:bold; }
   .mon-btn.has-override::after { content:'●'; position:absolute; top:1px; right:2px; font-size:6px; color:var(--amber); line-height:1; }
+  .mon-idem-mois { font-family:'Share Tech Mono',monospace; font-size:10px; padding:3px 9px; background:transparent; border:1px solid rgba(255,171,0,.4); color:var(--amber); border-radius:3px; cursor:pointer; letter-spacing:.5px; transition:all .15s; margin-left:6px; opacity:.8; }
+  .mon-idem-mois:hover { border-color:var(--amber); opacity:1; background:rgba(255,171,0,.1); }
   [data-theme="light"] .mon-btn { border-color:rgba(0,100,200,.25); color:#888; }
   [data-theme="light"] .mon-btn.active { border-color:#0066cc; color:#0066cc; background:rgba(0,100,200,.08); }
   [data-theme="light"] .mon-btn.has-override::after { color:#b07000; }
@@ -3340,16 +3341,13 @@ function createLabContDom(lp) {
         <div class="year-label">2026</div>
         ${isAdmin ? `<label class="cgv-drop-label" id="cgvDrop26-${uid}" title="Déposer le PDF CGV 2026 ou cliquer pour charger les conditions depuis la DB"><span class="cgv-led" id="cgvLed26-${uid}"></span><input type="file" accept=".pdf" style="display:none" id="cgvFile26-${uid}"></label>` : ''}
       </div>
-      <div class="mon-btns" id="monBtns26-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}</div>
+      <div class="mon-btns" id="monBtns26-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}<button class="mon-idem-mois" title="Appliquer ce palier à tous les mois 2026">IDEM MOIS</button></div>
       <div class="cond-tabs" id="condTabs-${uid}"></div>
       <div id="condPanels-${uid}"></div>
       <div style="margin-top:24px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="display:flex;align-items:center">
-            <div class="year-label year-label-toggle" id="yearToggle25-${uid}">2025 ▶</div>
-            ${isAdmin ? `<label class="cgv-drop-label" id="cgvDrop25-${uid}" title="Déposer le PDF CGV 2025 ou cliquer pour charger les conditions depuis la DB"><span class="cgv-led" id="cgvLed25-${uid}"></span><input type="file" accept=".pdf" style="display:none" id="cgvFile25-${uid}"></label>` : ''}
-          </div>
-          <button id="copy26to25-${uid}" title="Copier les conditions 2026 sur 2025" style="font-size:11px;padding:2px 10px;background:none;border:1px solid rgba(0,229,255,.35);color:var(--cyan);border-radius:4px;cursor:pointer;letter-spacing:.5px;opacity:.8">Copier derniers CGV</button>
+        <div style="display:flex;align-items:center">
+          <div class="year-label year-label-toggle" id="yearToggle25-${uid}">2025 ▶</div>
+          ${isAdmin ? `<label class="cgv-drop-label" id="cgvDrop25-${uid}" title="Déposer le PDF CGV 2025 ou cliquer pour charger les conditions depuis la DB"><span class="cgv-led" id="cgvLed25-${uid}"></span><input type="file" accept=".pdf" style="display:none" id="cgvFile25-${uid}"></label>` : ''}
         </div>
         <div id="yearBody25-${uid}" style="display:none">
           <div id="contractRow25-${uid}" style="padding:10px 0 14px;border-bottom:1px solid rgba(0,229,255,.08);margin-bottom:14px">
@@ -3371,7 +3369,7 @@ function createLabContDom(lp) {
               <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan);letter-spacing:.5px">CONTRAT RÉPARTITEUR</span>
             </label>
           </div>
-          <div class="mon-btns" id="monBtns25-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}</div>
+          <div class="mon-btns" id="monBtns25-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}<button class="mon-idem-mois" title="Appliquer ce palier à tous les mois 2025">IDEM MOIS</button></div>
           <div class="cond-tabs" id="condTabs25-${uid}"></div>
           <div id="condPanels25-${uid}"></div>
         </div>
@@ -3412,6 +3410,24 @@ function createLabContDom(lp) {
     _refreshActive();
     _refreshDots();
     lp[`_refreshMonBtns${yearSuffix}`] = () => { _refreshActive(); _refreshDots(); };
+
+    const idemMoisBtn = container.querySelector('.mon-idem-mois');
+    if (idemMoisBtn) {
+      idemMoisBtn.addEventListener('click', () => {
+        const activeMon = lp[monKey];
+        if (!activeMon) { showToast('Sélectionnez un mois d\'abord'); return; }
+        const srcConds = getEffectiveCondsForMonth(lp, yearNum, activeMon);
+        if (!lp.condsByMonth) lp.condsByMonth = { 2025: {}, 2026: {} };
+        if (!lp.condsByMonth[yearNum]) lp.condsByMonth[yearNum] = {};
+        for (let m = 1; m <= 12; m++) {
+          lp.condsByMonth[yearNum][m] = JSON.parse(JSON.stringify(srcConds));
+        }
+        lp[`_refreshMonBtns${yearSuffix}`]?.();
+        const MNAMES = ['JAN','FÉV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DÉC'];
+        showToast(`Paliers ${MNAMES[activeMon-1]} → tous les mois ${yearNum}`);
+        saveState();
+      });
+    }
   }
   _wireMonBtns('26');
   _wireMonBtns('25');
@@ -3423,49 +3439,6 @@ function createLabContDom(lp) {
       const open = _body25.style.display === 'none';
       _body25.style.display = open ? '' : 'none';
       _toggle25.textContent = open ? '2025 ▼' : '2025 ▶';
-    });
-  }
-  const _copy26to25 = document.getElementById(`copy26to25-${uid}`);
-  if (_copy26to25) {
-    _copy26to25.addEventListener('click', async () => {
-      if (!lp.selectedLab || !lp.conditions?.length) return;
-      if (!confirm(`Écraser les conditions 2025 avec une copie des conditions 2026 de ${lp.selectedLab} (base + mois) ?`)) return;
-      if (_body25.style.display === 'none') {
-        _body25.style.display = '';
-        _toggle25.textContent = '2025 ▼';
-      }
-
-      // Deep-copy d'un tableau de conditions (génère de nouveaux uids)
-      const _deepCopyConds = conds => (conds || []).map(c => ({
-        uid:           'c' + Date.now() + '_' + Math.random().toString(36).slice(2),
-        remiseGlobale:  c.remiseGlobale,
-        caCondition:    c.caCondition,
-        coopR3:         c.coopR3 ?? null,
-        exceptions:     JSON.parse(JSON.stringify(c.exceptions    || {})),
-        remise2Except:  JSON.parse(JSON.stringify(c.remise2Except || {})),
-        rsfOnly:        JSON.parse(JSON.stringify(c.rsfOnly       || { enabled: false, libelles: [] })),
-        showR3:         c.showR3      || false,
-        forceFirst:     c.forceFirst  || false,
-        rsfValues:      c.rsfValues.map(r => ({ ...r })),
-      }));
-
-      // 1. Copier les conditions de BASE 2026 → 2025
-      const base2026 = lp._baseConds2026 || lp.conditions;
-      const fakeData = {
-        selectedLab:   lp.selectedLab,
-        conditions2025: _deepCopyConds(base2026),
-      };
-      await lp._restoreFromSave2025(fakeData);
-
-      // 2. Copier les overrides MENSUELS 2026 → 2025
-      if (!lp.condsByMonth) lp.condsByMonth = { 2025: {}, 2026: {} };
-      if (!lp.condsByMonth[2025]) lp.condsByMonth[2025] = {};
-      Object.entries(lp.condsByMonth?.[2026] || {}).forEach(([mon, conds]) => {
-        lp.condsByMonth[2025][parseInt(mon)] = _deepCopyConds(Array.isArray(conds) ? conds : [conds]);
-      });
-
-      lp._refreshMonBtns25?.();
-      saveState();
     });
   }
 
@@ -3689,24 +3662,22 @@ function initLabPage(conf) {
     el.condTabs.appendChild(addBtn);
 
     const idemBtn = document.createElement('div');
-    idemBtn.className = 'cond-tab-idem'; idemBtn.textContent = 'IDEM';
-    idemBtn.title = 'Dupliquer ce palier pour tous les mois suivants';
+    idemBtn.className = 'cond-tab-idem'; idemBtn.textContent = 'IDEM ANS';
+    idemBtn.title = 'Copier ces paliers vers le même mois de l\'autre année';
     idemBtn.addEventListener('click', () => {
-      const yearNum  = year === '2025' ? 2025 : 2026;
-      const monKey   = year === '2025' ? 'activeMon2025' : 'activeMon2026';
+      const yearNum   = year === '2025' ? 2025 : 2026;
+      const otherYear = year === '2025' ? 2026 : 2025;
+      const monKey    = year === '2025' ? 'activeMon2025' : 'activeMon2026';
       const activeMon = s[monKey];
       if (!activeMon) { showToast('Sélectionnez un mois d\'abord'); return; }
-      if (activeMon >= 12) { showToast('Aucun mois suivant à dupliquer'); return; }
-      if (!s.rsfPaliers || !s.rsfPaliers.length) { showToast('RSF non chargé — réessayez dans un instant'); return; }
       const srcConds = getEffectiveCondsForMonth(s, yearNum, activeMon);
       if (!s.condsByMonth) s.condsByMonth = { 2025: {}, 2026: {} };
-      if (!s.condsByMonth[yearNum]) s.condsByMonth[yearNum] = {};
-      for (let m = activeMon + 1; m <= 12; m++) {
-        s.condsByMonth[yearNum][m] = JSON.parse(JSON.stringify(srcConds));
-      }
-      if (year === '2025') s._refreshMonBtns25?.();
-      else                 s._refreshMonBtns26?.();
-      showToast(`Paliers dupliqués → ${['JAN','FEV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DEC'].slice(activeMon).join(' ')}`);
+      if (!s.condsByMonth[otherYear]) s.condsByMonth[otherYear] = {};
+      s.condsByMonth[otherYear][activeMon] = JSON.parse(JSON.stringify(srcConds));
+      if (otherYear === 2025) s._refreshMonBtns25?.();
+      else                    s._refreshMonBtns26?.();
+      const MNAMES = ['JAN','FÉV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DÉC'];
+      showToast(`Paliers ${yearNum}/${MNAMES[activeMon-1]} → ${otherYear}/${MNAMES[activeMon-1]}`);
       saveState();
     });
     el.condTabs.appendChild(idemBtn);
