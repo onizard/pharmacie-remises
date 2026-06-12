@@ -18,7 +18,10 @@ import urllib.request
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 SUPA_URL     = "https://api.break-pharma.fr"
-SERVICE_KEY  = os.environ.get("SUPABASE_SERVICE_KEY", "")
+_SUPA_KEY_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLXNlbGYiLCJpYXQiOjE3ODA4NTM5MTV9.CWLe1kClQhffk3EL_WgVOQQUERn6IwF7xNqbBL9lUKI"
+_RAW_SERVICE = os.environ.get("SUPABASE_SERVICE_KEY", "")
+# Clés cloud Supabase (sb_secret_...) ne sont pas des JWT valides pour PostgREST self-hosted
+SERVICE_KEY  = _RAW_SERVICE if (_RAW_SERVICE and _RAW_SERVICE.startswith("eyJ")) else _SUPA_KEY_ANON
 USER_ID      = os.environ.get("USER_ID", "")
 
 OSPHARM_URL  = "https://datastat.ospharm.org/"

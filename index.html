@@ -8193,10 +8193,6 @@ async function saveProfile() {
               saveState();
               if (state.currentPageId === 'recap') renderRecap();
             }
-            // Ne relancer que si les données ont plus de 24h
-            if (_jobAge2 > 24 * 3600 * 1000) {
-              autoRunOspharm().catch(() => {});
-            }
             return;
           }
 
@@ -8244,8 +8240,8 @@ async function saveProfile() {
           const effectiveAge = cloudCompletedAt
             ? Date.now() - cloudCompletedAt
             : digiAge;
-          // Re-lancer si données absentes ou périmées (> 24h)
-          if (!hasDigi || effectiveAge > 24 * 3600 * 1000) {
+          // Re-lancer uniquement si aucune donnée locale et aucune en base
+          if (!hasDigi && !Object.keys(sj.digi_month_stats || {}).length) {
             autoRunDigi().catch(() => {});
           }
         } catch(_) {
