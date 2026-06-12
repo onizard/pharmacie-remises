@@ -4450,8 +4450,15 @@ async function fetchRSF2025(lab) {
     counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
     if (best !== null) firstMap.set(rsf_pct, best);
   });
+  // Always count from normalized DB (references_pharmacie) — the RPC returns aggregated
+  // rows (one per distinct rsf_pct / rsf_first_pct combination), not one per reference.
+  const cntRes = await fetch(
+    `${SUPA_URL}/rest/v1/references_pharmacie?select=rsf_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null&limit=2000`,
+    { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
+  );
+  const cntData = cntRes.ok ? await cntRes.json() : [];
   const countMap = new Map();
-  data.forEach(r => { countMap.set(r.rsf_pct, (countMap.get(r.rsf_pct) || 0) + 1); });
+  cntData.forEach(r => { countMap.set(r.rsf_pct, (countMap.get(r.rsf_pct) || 0) + 1); });
   return { paliers, firstMap, countMap };
 }
 
