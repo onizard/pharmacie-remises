@@ -489,6 +489,11 @@
   .mon-btn.has-override::after { content:'●'; position:absolute; top:1px; right:2px; font-size:6px; color:var(--amber); line-height:1; }
   .mon-idem-mois { font-family:'Share Tech Mono',monospace; font-size:10px; padding:3px 9px; background:transparent; border:1px solid rgba(255,171,0,.4); color:var(--amber); border-radius:3px; cursor:pointer; letter-spacing:.5px; transition:all .15s; margin-left:6px; opacity:.8; }
   .mon-idem-mois:hover { border-color:var(--amber); opacity:1; background:rgba(255,171,0,.1); }
+  .rsf-import-drop { display:inline-flex; align-items:center; gap:5px; cursor:pointer; padding:2px 8px; border-radius:4px; border:1px dashed rgba(255,171,0,.35); color:rgba(255,171,0,.55); font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:.5px; transition:all .2s; }
+  .rsf-import-drop:hover { border-color:var(--amber); color:var(--amber); background:rgba(255,171,0,.06); }
+  .rsf-import-drop.drag-over { background:rgba(255,171,0,.18); border-color:var(--amber); color:var(--amber); }
+  .rsf-import-drop.has-file { border-color:var(--green); color:var(--green); border-style:solid; opacity:1; }
+  .rsf-import-drop.uploading { opacity:.4; pointer-events:none; }
   [data-theme="light"] .mon-btn { border-color:rgba(0,100,200,.25); color:#888; }
   [data-theme="light"] .mon-btn.active { border-color:#0066cc; color:#0066cc; background:rgba(0,100,200,.08); }
   [data-theme="light"] .mon-btn.has-override::after { color:#b07000; }
@@ -3772,7 +3777,10 @@ function initLabPage(conf) {
       <div class="rsf-section" id="rsfSec-${uid}-${cond.uid}">
         <div class="rsf-header">
           <div class="lab-tag" id="rsfToggle-${uid}-${cond.uid}">TABLEAU DES REMISES ${year}</div>
-          <div class="rsf-info" id="rsfInfo-${uid}-${cond.uid}">—</div>
+          ${isAdmin ? `<label class="rsf-import-drop" id="rsfImportDrop-${uid}-${cond.uid}" title="Déposer le PDF CGV pour mettre à jour rsf_history (${year})">
+            <span id="rsfImportText-${uid}-${cond.uid}">↑ CGV</span>
+            <input type="file" accept=".pdf" style="display:none" id="rsfImportFile-${uid}-${cond.uid}">
+          </label>` : ''}
         </div>
         <div class="rsf-body" id="rsfBody-${uid}-${cond.uid}" style="display:none">
           <div class="rsf-table-wrap">
@@ -3918,6 +3926,89 @@ function initLabPage(conf) {
         rsfBody.style.display = open ? '' : 'none';
       });
     }
+
+    // ── CGV RSF import drop zone (admin only) ──────────────────────────────
+    if (isAdmin) {
+      const _dropEl  = document.getElementById(`rsfImportDrop-${uid}-${cond.uid}`);
+      const _fileEl  = document.getElementById(`rsfImportFile-${uid}-${cond.uid}`);
+      const _textEl  = document.getElementById(`rsfImportText-${uid}-${cond.uid}`);
+      if (_dropEl && _fileEl && _textEl) {
+        let _pendingFile = null;
+
+        const _setFile = f => {
+          _pendingFile = f;
+          if (f) {
+            const short = f.name.length > 22 ? f.name.slice(0, 20) + '…' : f.name;
+            _textEl.textContent = `${short}  ↵`;
+            _dropEl.classList.add('has-file');
+            _dropEl.title = `${f.name} — Appuyez sur Entrée pour importer`;
+          } else {
+            _textEl.textContent = '↑ CGV';
+            _dropEl.classList.remove('has-file');
+            _dropEl.title = `Déposer le PDF CGV pour mettre à jour rsf_history (${year})`;
+          }
+        };
+
+        const _submit = async () => {
+          if (!_pendingFile) return;
+          const lab = s.selectedLab;
+          if (!lab) return;
+          const yr  = parseInt(year, 10);
+          _dropEl.classList.add('uploading');
+          _textEl.textContent = '…';
+          try {
+            const fd = new FormData();
+            fd.append('file', _pendingFile, _pendingFile.name);
+            fd.append('labo', lab);
+            fd.append('year', String(yr));
+            const { data: { session: _sess } } = await sb.auth.getSession();
+            const tok = _sess?.access_token || '';
+            const res = await fetch(`${API_URL}/import/rsf_history`, {
+              method: 'POST',
+              headers: tok ? { 'Authorization': `Bearer ${tok}` } : {},
+              body: fd,
+            });
+            if (!res.ok) {
+              const err = await res.text();
+              throw new Error(err || res.statusText);
+            }
+            const data = await res.json();
+            _dropEl.classList.remove('uploading', 'has-file');
+            _textEl.textContent = `✓ ${data.count} réf`;
+            _pendingFile = null;
+            _fileEl.value = '';
+            showToast(`RSF ${yr} importé — ${data.count} références`);
+            if (yr === 2025) { lp._reloadRSF2025?.(); }
+            else             { lp._reloadRSF?.();     }
+          } catch (e) {
+            _dropEl.classList.remove('uploading');
+            _setFile(_pendingFile);
+            showToast(`Erreur import CGV : ${e.message}`);
+          }
+        };
+
+        _dropEl.addEventListener('dragover',  e => { e.preventDefault(); _dropEl.classList.add('drag-over'); });
+        _dropEl.addEventListener('dragleave', () => _dropEl.classList.remove('drag-over'));
+        _dropEl.addEventListener('drop', e => {
+          e.preventDefault();
+          _dropEl.classList.remove('drag-over');
+          const f = e.dataTransfer.files?.[0];
+          if (f && f.name.toLowerCase().endsWith('.pdf')) _setFile(f);
+        });
+        _fileEl.addEventListener('change', () => {
+          const f = _fileEl.files?.[0];
+          if (f) _setFile(f);
+        });
+        document.addEventListener('keydown', e => {
+          if (e.key !== 'Enter' || !_pendingFile || _dropEl.classList.contains('uploading')) return;
+          const ae  = document.activeElement;
+          const tag = ae?.tagName?.toUpperCase();
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+          e.preventDefault();
+          _submit();
+        });
+      }
+    }
   }
 
   function wireRsfOnly(cond) {
@@ -4041,11 +4132,9 @@ function initLabPage(conf) {
     const lab     = s.selectedLab;
     const tbody   = document.getElementById(`tbody-${uid}-${cond.uid}`);
     const rsfSec  = document.getElementById(`rsfSec-${uid}-${cond.uid}`);
-    const rsfInfo = document.getElementById(`rsfInfo-${uid}-${cond.uid}`);
     const excptsEl = document.getElementById(`excpts-${uid}-${cond.uid}`);
     const table   = document.getElementById(`rsfTable-${uid}-${cond.uid}`);
 
-    rsfInfo.textContent = `${cond.rsfValues.length} groupe${cond.rsfValues.length > 1 ? 's' : ''} de remise détecté${cond.rsfValues.length > 1 ? 's' : ''}`;
     table.classList.toggle('show-r3', lab === 'Biogaran');
     const r3Btn = document.getElementById(`r3Btn-${uid}-${cond.uid}`);
     if (r3Btn) {

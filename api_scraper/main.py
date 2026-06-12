@@ -21,7 +21,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Path, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, Path, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -749,6 +749,96 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
 # ── Parse XLSX FSE Banque (HTP+OI) ───────────────────────────────────────────
 #
 # Format export OSPHARM FSE Banque → XLSX avec colonnes :
+@app.post("/import/rsf_history")
+async def import_rsf_history(
+    file:          UploadFile = File(...),
+    labo:          str        = Form(...),
+    year:          int        = Form(...),
+    authorization: str        = Header(default=""),
+):
+    """Parse un PDF CGV labo et upsert les taux RSF/RDP dans rsf_history."""
+    token = _extract_token(authorization)
+    try:
+        await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    name = (file.filename or "").lower()
+    if not name.endswith(".pdf"):
+        raise HTTPException(status_code=422, detail="Fichier PDF requis (.pdf)")
+
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) < 200:
+        raise HTTPException(status_code=422, detail="PDF trop court ou vide")
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        _executor,
+        lambda: _import_rsf_history_sync(pdf_bytes, labo, year, file.filename or "upload.pdf"),
+    )
+    return result
+
+
+def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: str) -> dict:
+    import io, pdfplumber as _pdfplumber
+    from supabase_client import SUPA_URL, SERVICE_KEY
+
+    # CIP13  libellé  PFHT€  REMISE%  RDP%
+    LINE_RE = _re.compile(
+        r"(\d{13})\s+"
+        r".+?"
+        r"([\d]+[,.][\d]+)\s*€\s+"
+        r"([\d]+(?:[,.][\d]+)?)\s*%\s+"
+        r"([\d]+(?:[,.][\d]+)?)\s*%"
+    )
+    rows: dict[str, tuple] = {}
+    with _pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            for line in text.splitlines():
+                m = LINE_RE.search(line)
+                if m:
+                    cip13 = m.group(1)
+                    pfht  = float(m.group(2).replace(",", "."))
+                    rsf   = -abs(float(m.group(3).replace(",", ".")))
+                    rdp   = -abs(float(m.group(4).replace(",", ".")))
+                    rows[cip13] = (pfht, rsf, rdp)
+
+    if not rows:
+        raise HTTPException(status_code=422, detail="Aucun CIP13 trouvé dans le PDF")
+
+    data = [
+        {"cip13": cip, "labo": labo, "year": year, "rsf_pct": rsf, "rdp_pct": rdp, "pfht": pfht}
+        for cip, (pfht, rsf, rdp) in rows.items()
+    ]
+    HEADERS = {
+        "apikey":        SERVICE_KEY,
+        "Authorization": f"Bearer {SERVICE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "resolution=merge-duplicates,return=minimal",
+    }
+    chunk = 500
+    for i in range(0, len(data), chunk):
+        body = json.dumps(data[i:i+chunk]).encode()
+        req  = urllib.request.Request(
+            f"{SUPA_URL}/rest/v1/rsf_history?on_conflict=cip13%2Clabo%2Cyear",
+            data=body, method="POST", headers=HEADERS,
+        )
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+
+    # Upload PDF dans MinIO pour archive
+    try:
+        from supabase_client import upload_file_sync
+        _safe_filename = filename.replace(" ", "_")
+        upload_file_sync("admin", "rsf_history", f"{labo}_{year}_{_safe_filename}", pdf_bytes, "application/pdf")
+    except Exception as e:
+        print(f"[warn] MinIO upload failed: {e}", flush=True)
+
+    print(f"[import_rsf_history] {labo} {year} → {len(rows)} CIP13", flush=True)
+    return {"count": len(rows), "labo": labo, "year": year}
+
+
 #   Date (DD/MM/YYYY) | Libellé | Montant (TTC, euros)
 #
 # Libellé format labo : "VIR BIOGARAN - 9006671913 - 2000065455 - Emetteur 300030154000020476361"
