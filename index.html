@@ -703,6 +703,7 @@
   .verif-tbl td:first-child { text-align: left; font-weight: 700; letter-spacing: .3px; }
   .verif-tbl tr:hover td { background: var(--bg2); }
   .verif-tbl tfoot td { border-top: 1px solid var(--border); border-bottom: none; font-weight: 700; }
+  .verif-cat-row td { background: rgba(255,171,0,.06) !important; pointer-events: none; }
   .verif-r2 { color: var(--amber); }
   .verif-r3 { color: var(--green); }
   .verif-total { color: var(--cyan); font-weight: 700; }
@@ -1726,6 +1727,8 @@ let state = {
   condTolerance: 1.0,
   _grossisteUploads: [],
   _grossisteGmailFiles: [],
+  _digiUploads: [],
+  _fseUploads: [],
   _grossisteMonthStats: null,
   _fseMonthStats: null,
   _escompteStats: null,  // { "YYYY-MM": { "CERP": { ca_spec_gen_ht, remise_spec_gen_ht, ... } } }
@@ -1760,6 +1763,8 @@ function serializeState() {
     digiMonthStats:    state._digiMonthStats    || null,
     grossisteUploads:      state._grossisteUploads      || [],
     grossisteGmailFiles:   state._grossisteGmailFiles   || [],
+    digiUploads:           state._digiUploads           || [],
+    fseUploads:            state._fseUploads            || [],
     grossisteMonthStats:   state._grossisteMonthStats   || null,
     fseMonthStats:         state._fseMonthStats         || null,
     escompteStats:         state._escompteStats         || null,
@@ -5267,131 +5272,111 @@ function _verifFillAnnualSummary(year) {
 }
 function _verifFillMonthDetail(mk) {
   const wrap = document.getElementById('verifMonthDetail'); if (!wrap) return;
-  // Cas TOUT : cumul annuel
   if (mk.endsWith('-ALL')) { _verifFillTout(parseInt(mk)); return; }
   const [mkY, mkM] = mk.split('-').map(Number);
   const fmtE  = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP  = v => v != null ? v.toFixed(1) + ' %' : '—';
   const TVA_R3 = 1.20;
+  const NCOLS  = 12;
 
-  const ospMap  = {}, digiMap = {}, grosMap = {};
-  ((state._monthStats||{})[mk]||[]).forEach(r  => ospMap [_verifNormLab(r.labo)] = r);
-  ((state._digiMonthStats||{})[mk]||[]).forEach(r  => digiMap[_verifNormLab(r.labo)] = r);
-  ((state._grossisteMonthStats||{})[mk]||[]).forEach(r  => grosMap [_verifNormLab(r.labo)] = r);
-
+  const ospMap = {}, digiMap = {}, grosMap = {};
+  ((state._monthStats||{})[mk]||[]).forEach(r => ospMap[_verifNormLab(r.labo)] = r);
+  ((state._digiMonthStats||{})[mk]||[]).forEach(r => digiMap[_verifNormLab(r.labo)] = r);
+  ((state._grossisteMonthStats||{})[mk]||[]).forEach(r => grosMap[_verifNormLab(r.labo)] = r);
   const fseMap = {};
-  Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, stats]) => {
-    fseMap[_verifNormLab(labo)] = stats;
-  });
+  Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, stats]) => { fseMap[_verifNormLab(labo)] = stats; });
 
-  const selNorm  = _verifSelLab ? _verifNormLab(_verifSelLab) : null;
-  const allKeys  = [...new Set([...Object.keys(ospMap),...Object.keys(digiMap),...Object.keys(grosMap)])].sort();
-  const keys     = selNorm ? allKeys.filter(k => k === selNorm) : allKeys;
-
-  if (!keys.length) {
-    wrap.innerHTML = `<div class="verif-note">// Aucune donnée pour ${_MONTH_LABELS[mkM-1]} ${mkY}</div>`;
-    return;
-  }
+  const selNorm = _verifSelLab ? _verifNormLab(_verifSelLab) : null;
+  const allKeys = [...new Set([...Object.keys(ospMap),...Object.keys(digiMap),...Object.keys(grosMap)])].sort();
+  const keys    = selNorm ? allKeys.filter(k => k === selNorm) : allKeys;
+  if (!keys.length) { wrap.innerHTML = `<div class="verif-note">// Aucune donnée pour ${_MONTH_LABELS[mkM-1]} ${mkY}</div>`; return; }
 
   const gapCls = v => v == null ? '' : v > 0.5 ? ' style="color:var(--red)"' : v < -0.5 ? ' style="color:var(--green)"' : '';
   const fmtGap = v => v == null ? '—' : (v > 0 ? '+' : '') + fmtE(v);
   let totPa=0, totQtyDi=0, totQtyGr=0, totRsfEst=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
 
-  const rows = keys.map(key => {
+  const rowObjs = keys.map(key => {
     const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
-    const pa_osp = osp.ca_brut || ((osp.pa_net || 0) + (osp.remise_totale || 0));
-    const pa_tot = pa_osp + (digi.total_ht||0) + (gros.total_ht||0);
-    const presta_ttc = digi.presta_total_ttc || 0;
-    if (pa_tot <= 0 && !presta_ttc) return '';
-
-    const qtyDigi = digi.qty || 0;
-    const qtyGros = gros.qty || 0;
+    const pa_tot = (osp.ca_brut || ((osp.pa_net||0)+(osp.remise_totale||0))) + (digi.total_ht||0) + (gros.total_ht||0);
+    if (pa_tot <= 0 && !(digi.presta_total_ttc > 0)) return null;
     const labDisplay = osp.labo || digi.labo || gros.labo || key;
+    const qtyDigi = digi.qty || 0, qtyGros = gros.qty || 0;
     const cond    = _verifGetCond(labDisplay, mkY, mkM);
     const rsfData = _verifRsfFromStats(osp);
     const rsfPct  = rsfData.pct ?? _verifRSFavg(cond);
     const r2pct   = osp.r2_pond_pct > 0 ? osp.r2_pond_pct : _verifR2avg(cond);
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
-
-    const rsfEst   = rsfData.eur ?? (rsfPct != null ? pa_tot * rsfPct / 100 : null);
-    const r2est    = r2pct  != null ? (osp.r2_ca || pa_tot) * r2pct  / 100 : null;
-    const r3estTTC = r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
-    const _fse     = fseMap[key];
+    const rsfEst  = rsfData.eur ?? (rsfPct != null ? pa_tot * rsfPct / 100 : null);
+    const r2est   = r2pct != null ? (osp.r2_ca || pa_tot) * r2pct / 100 : null;
+    const r3estTTC= r3pct > 0 ? pa_tot * r3pct / 100 * TVA_R3 : null;
+    const _fse    = fseMap[key];
     const r2rec_tot = (digi.rdp_total || 0) + (_fse?.r2_ttc || 0);
-    const r2rec    = r2rec_tot  > 0 ? r2rec_tot : null;
-    // R3 : virement FSE banque uniquement — la facture presta n'est pas un reçu
+    const r2rec   = r2rec_tot > 0 ? r2rec_tot : null;
     const r3_fse  = (_fse?.r3_ttc ?? (_fse && !_fse.r2_ttc ? _fse.montant_ttc : 0)) || 0;
     const r3rec   = r3_fse > 0 ? r3_fse : null;
-
-    const gap = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
-      ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
-      : null;
-
-    totPa    += pa_tot;
-    totQtyDi += qtyDigi;
-    totQtyGr += qtyGros;
+    const gap     = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
+      ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0)) : null;
+    totPa += pa_tot; totQtyDi += qtyDigi; totQtyGr += qtyGros;
     if (rsfEst   != null) totRsfEst += rsfEst;
     if (r2est    != null) totR2att  += r2est;
     if (r2rec    != null) totR2rec  += r2rec;
     if (r3estTTC != null) totR3att  += r3estTTC;
     if (r3rec    != null) totR3rec  += r3rec;
     rowCount++;
-
-    const fse_presta = r3_fse > 0 ? r3_fse : null;
-    const presta_gap = presta_ttc > 0 && fse_presta != null ? fse_presta - presta_ttc : null;
-    const prestaCls  = presta_gap == null ? '' : Math.abs(presta_gap) < 1 ? ' style="color:var(--green)"' : ' style="color:var(--amber)"';
-    return `<tr>
+    const rsfTip = rsfEst != null ? ` title="RSF estimé : ${fmtE(rsfEst)}"` : '';
+    return { rsfPct, html: `<tr>
       <td>${escH(labDisplay)}</td>
-      <td style="color:var(--cyan)">${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
+      <td>${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
       <td style="color:var(--green)">${qtyGros > 0 ? qtyGros.toLocaleString('fr') : '—'}</td>
       <td>${pa_tot > 0 ? fmtE(pa_tot) : '—'}</td>
-      <td>${fmtP(rsfPct)}</td>
-      <td>${rsfEst != null ? fmtE(rsfEst) : '—'}</td>
+      <td${rsfTip}>${fmtP(rsfPct)}</td>
       <td class="verif-r2">${fmtP(r2pct)}</td>
       <td class="verif-r2">${r2est != null ? fmtE(r2est) : '—'}</td>
       <td class="verif-r2">${r2rec != null ? fmtE(r2rec) : '—'}</td>
       <td class="verif-r3">${r3pct > 0 ? fmtP(r3pct) : '—'}</td>
       <td class="verif-r3">${r3estTTC != null ? fmtE(r3estTTC) : '—'}</td>
       <td class="verif-r3">${r3rec != null ? fmtE(r3rec) : '—'}</td>
-      <td class="verif-r3">${presta_ttc > 0 ? fmtE(presta_ttc) : '—'}</td>
-      <td class="verif-r3">${fse_presta != null ? fmtE(fse_presta) : presta_ttc > 0 ? '<span style="color:var(--amber)">non reçu</span>' : '—'}</td>
-      <td${prestaCls}>${presta_gap != null ? fmtGap(presta_gap) : presta_ttc > 0 ? '—' : ''}</td>
       <td${gapCls(gap)}>${fmtGap(gap)}</td>
-    </tr>`;
-  }).filter(Boolean).join('');
+    </tr>` };
+  }).filter(Boolean);
 
-  let totPresta = 0;
-  // recalculate presta total from digiMap
-  keys.forEach(key => { totPresta += digiMap[key]?.presta_total_ttc || 0; });
+  rowObjs.sort((a, b) => (b.rsfPct ?? -1) - (a.rsfPct ?? -1));
+  let lastTier;
+  const rows = rowObjs.map(ro => {
+    const tier = ro.rsfPct != null ? Math.round(ro.rsfPct / 5) * 5 : null;
+    let pre = '';
+    if (tier !== lastTier) {
+      lastTier = tier;
+      pre = `<tr class="verif-cat-row"><td colspan="${NCOLS}" style="font-family:'Orbitron',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:var(--amber);padding:5px 10px">▸ RSF ${tier != null ? tier + ' %' : '—'}</td></tr>`;
+    }
+    return pre + ro.html;
+  }).join('');
 
   const totGap = (totR2att + totR3att) > 0 ? (totR2att + totR3att) - (totR2rec + totR3rec) : null;
+  const r2Hdr  = `<a onclick="_verifOpenInvoices('r2')" style="cursor:pointer;color:var(--amber);text-decoration:underline dotted">REM. 2 REC.</a>`;
+  const r3Hdr  = `<a onclick="_verifOpenInvoices('r3')" style="cursor:pointer;color:var(--green);text-decoration:underline dotted">REM. 3 REC.</a>`;
   wrap.innerHTML = `
     <div style="overflow-x:auto">
       <table class="verif-tbl">
         <thead><tr>
-          <th style="text-align:left">LABO</th>
-          <th style="color:var(--cyan)" title="Quantité facturée par le laboratoire (Digipharmacie)">QTÉ FACT.</th>
+          <th style="text-align:left">CATÉGORIES RSF</th>
+          <th title="Quantité facturée directement par le laboratoire (Digipharmacie)">QTÉ DIRECT</th>
           <th style="color:var(--green)" title="Quantité livrée par le répartiteur (Excel grossiste)">QTÉ RÉP.</th>
           <th>PA BRUT</th>
-          <th>RSF %</th><th>RSF €</th>
-          <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">REM. 2 REC.</th>
-          <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">REM. 3 REC. (FSE)</th>
-          <th class="verif-r3" title="Facture de prestation coop émise (Digipharmacie)">PRESTA FACT. TTC</th>
-          <th class="verif-r3" title="Virement reçu en banque (FSE)">FSE BANQUE</th>
-          <th class="verif-r3">ÉC. PRESTA</th>
+          <th title="Survoler chaque ligne pour voir le montant estimé en €">RSF %</th>
+          <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">${r2Hdr}</th>
+          <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">${r3Hdr}</th>
           <th>ÉCART TOTAL</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL — ${_MONTH_LABELS[mkM-1]} ${mkY}</td>
-          <td style="color:var(--cyan)">${totQtyDi > 0 ? totQtyDi.toLocaleString('fr') : '—'}</td>
+          <td>${totQtyDi > 0 ? totQtyDi.toLocaleString('fr') : '—'}</td>
           <td style="color:var(--green)">${totQtyGr > 0 ? totQtyGr.toLocaleString('fr') : '—'}</td>
           <td>${fmtE(totPa)}</td>
-          <td>—</td><td>${totRsfEst > 0 ? fmtE(totRsfEst) : '—'}</td>
+          <td>—</td>
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
           <td></td><td class="verif-r3">${totR3att > 0 ? fmtE(totR3att) : '—'}</td><td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
-          <td class="verif-r3">${totPresta > 0 ? fmtE(totPresta) : '—'}</td>
-          <td class="verif-r3">—</td><td class="verif-r3">—</td>
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
         </tr></tfoot>` : ''}
       </table>
@@ -5399,6 +5384,55 @@ function _verifFillMonthDetail(mk) {
     ${_verifEscompteBlock(mk)}
     ${_verifMdlBlock(mk)}`;
 }
+async function _verifOpenInvoices(type) {
+  const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('fr') : '';
+  const title   = type === 'r2' ? 'AVOIRS / RDP — REMISE 2' : 'FSE BANQUE — REMISE 3';
+
+  let popup = document.getElementById('verifInvPopup');
+  if (!popup) {
+    popup = document.createElement('div');
+    popup.id = 'verifInvPopup';
+    popup.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--border);padding:16px;z-index:9999;max-width:380px;min-width:260px;font-family:"Share Tech Mono",monospace;box-shadow:0 4px 24px rgba(0,0,0,.6)';
+    document.body.appendChild(popup);
+  }
+
+  let rows = '';
+  if (type === 'r2') {
+    const files = state._digiUploads || [];
+    if (!files.length) {
+      rows = `<div style="color:var(--text-dim);font-size:11px;line-height:1.6">Aucun PDF indexé.<br>Déposez vos PDFs avoirs/RDP Digipharmacie dans <span style="color:var(--cyan)">CONNECTEURS → DÉPÔT</span>.</div>`;
+    } else {
+      rows = files.map(f => `<div style="margin-bottom:6px"><span style="color:var(--text);font-size:11px">${escH(f.name)}</span> <span style="color:var(--text-dim);font-size:10px">${(f.months||[]).join(', ')}</span></div>`).join('');
+    }
+  } else {
+    const files = state._fseUploads || [];
+    if (!files.length) {
+      rows = `<div style="color:var(--text-dim);font-size:11px;line-height:1.6">Aucun fichier FSE indexé.<br>Déposez votre XLSX FSE banque dans <span style="color:var(--cyan)">CONNECTEURS → DÉPÔT</span>.</div>`;
+    } else {
+      const { data: { session } } = await window._sbClient.auth.getSession().catch(() => ({ data: {} }));
+      rows = (await Promise.all(files.map(async f => {
+        let href = '#';
+        if (f.path && session) {
+          const { data: sd } = await window._sbClient.storage.from('fse-bank').createSignedUrl(f.path, 3600).catch(() => ({ data: null }));
+          if (sd?.signedUrl) href = sd.signedUrl;
+        }
+        const link = href !== '#'
+          ? `<a href="${escH(href)}" download="${escH(f.name)}" style="color:var(--cyan)">${escH(f.name)}</a>`
+          : `<span style="color:var(--text)">${escH(f.name)}</span>`;
+        return `<div style="margin-bottom:6px">${link} <span style="color:var(--text-dim);font-size:10px">${(f.months||[]).join(', ')} · ${fmtDate(f.uploaded_at)}</span></div>`;
+      }))).join('');
+    }
+  }
+
+  popup.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-family:'Orbitron',monospace;font-size:9px;font-weight:700;color:var(--amber);letter-spacing:2px">${title}</span>
+      <button onclick="document.getElementById('verifInvPopup').style.display='none'" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px;line-height:1">✕</button>
+    </div>
+    ${rows}`;
+  popup.style.display = 'block';
+}
+
 function _verifPrestaBlock(mk) {
   const [mkY, mkM] = mk.split('-').map(Number);
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
@@ -5592,95 +5626,87 @@ function _verifFillTout(year) {
   const today = new Date();
   const mRef  = yr < today.getFullYear() ? 12 : today.getMonth() + 1;
   let totPa=0, totQtyDi=0, totQtyGr=0, totRsfEst=0, totR2att=0, totR2rec=0, totR3att=0, totR3rec=0, rowCount=0;
+  const NCOLS = 12;
 
-  const rows = keys.map(k => {
+  const rowObjs = keys.map(k => {
     const d      = labAcc[k];
     const pa_tot = d.pa_osp + d.pa_di + d.pa_gr;
-    if (pa_tot <= 0 && !d.presta_ttc) return '';
-
-    const qtyDigi = d.qty_di || 0;
-    const qtyGros = d.qty_gr || 0;
+    if (pa_tot <= 0 && !d.presta_ttc) return null;
+    const qtyDigi = d.qty_di || 0, qtyGros = d.qty_gr || 0;
     const cond    = _verifGetCond(d.display, yr, mRef);
     const rsfPct  = d.rsf_ca > 0 ? d.rsf_rem / d.rsf_ca * 100 : _verifRSFavg(cond);
     const r2pct   = d.r2_ca  > 0 ? d.r2_rem  / d.r2_ca  * 100 : _verifR2avg(cond);
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
-
-    const rsfEst   = d.rsf_rem > 0 ? d.rsf_rem : (rsfPct != null ? pa_tot * rsfPct / 100 : null);
-    const r2est    = d.r2_rem  > 0 ? d.r2_rem  : (r2pct  != null ? (d.r2_ca || pa_tot) * r2pct / 100 : null);
-    const r3estTTC = r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
+    const rsfEst  = d.rsf_rem > 0 ? d.rsf_rem : (rsfPct != null ? pa_tot * rsfPct / 100 : null);
+    const r2est   = d.r2_rem  > 0 ? d.r2_rem  : (r2pct  != null ? (d.r2_ca || pa_tot) * r2pct / 100 : null);
+    const r3estTTC= r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
     const r2rec_tot = (d.r2rec || 0) + (fseAcc[k]?.r2 || 0);
-    const r2rec     = r2rec_tot  > 0 ? r2rec_tot : null;
-    // R3 : virement FSE banque uniquement
-    const r3_fse = fseAcc[k]?.r3 || 0;
-    const r3rec  = r3_fse > 0 ? r3_fse : null;
-
+    const r2rec   = r2rec_tot  > 0 ? r2rec_tot : null;
+    const r3_fse  = fseAcc[k]?.r3 || 0;
+    const r3rec   = r3_fse > 0 ? r3_fse : null;
     const gap = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
-      ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0))
-      : null;
-
-    const fse_presta = r3_fse > 0 ? r3_fse : null;
-    const presta_gap = d.presta_ttc > 0 && fse_presta != null ? fse_presta - d.presta_ttc : null;
-    const prestaCls  = presta_gap == null ? '' : Math.abs(presta_gap) < 1 ? ' style="color:var(--green)"' : ' style="color:var(--amber)"';
-
-    totPa    += pa_tot;
-    totQtyDi += qtyDigi;
-    totQtyGr += qtyGros;
+      ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0)) : null;
+    totPa += pa_tot; totQtyDi += qtyDigi; totQtyGr += qtyGros;
     if (rsfEst   != null) totRsfEst += rsfEst;
     if (r2est    != null) totR2att  += r2est;
     if (r2rec    != null) totR2rec  += r2rec;
     if (r3estTTC != null) totR3att  += r3estTTC;
     if (r3rec    != null) totR3rec  += r3rec;
     rowCount++;
-
-    return `<tr>
+    const rsfTip = rsfEst != null ? ` title="RSF estimé : ${fmtE(rsfEst)}"` : '';
+    return { rsfPct, html: `<tr>
       <td>${escH(d.display)}</td>
-      <td style="color:var(--cyan)">${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
+      <td>${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
       <td style="color:var(--green)">${qtyGros > 0 ? qtyGros.toLocaleString('fr') : '—'}</td>
       <td>${pa_tot > 0 ? fmtE(pa_tot) : '—'}</td>
-      <td>${fmtP(rsfPct)}</td>
-      <td>${rsfEst != null ? fmtE(rsfEst) : '—'}</td>
+      <td${rsfTip}>${fmtP(rsfPct)}</td>
       <td class="verif-r2">${fmtP(r2pct)}</td>
       <td class="verif-r2">${r2est != null ? fmtE(r2est) : '—'}</td>
       <td class="verif-r2">${r2rec != null ? fmtE(r2rec) : '—'}</td>
       <td class="verif-r3">${r3pct > 0 ? fmtP(r3pct) : '—'}</td>
       <td class="verif-r3">${r3estTTC != null ? fmtE(r3estTTC) : '—'}</td>
       <td class="verif-r3">${r3rec != null ? fmtE(r3rec) : '—'}</td>
-      <td class="verif-r3">${d.presta_ttc > 0 ? fmtE(d.presta_ttc) : '—'}</td>
-      <td class="verif-r3">${fse_presta != null ? fmtE(fse_presta) : d.presta_ttc > 0 ? '<span style="color:var(--amber)">non reçu</span>' : '—'}</td>
-      <td${prestaCls}>${presta_gap != null ? fmtGap(presta_gap) : d.presta_ttc > 0 ? '—' : ''}</td>
       <td${gapCls(gap)}>${fmtGap(gap)}</td>
-    </tr>`;
-  }).filter(Boolean).join('');
+    </tr>` };
+  }).filter(Boolean);
 
-  const totPresta = keys.reduce((s, k) => s + (labAcc[k]?.presta_ttc || 0), 0);
+  rowObjs.sort((a, b) => (b.rsfPct ?? -1) - (a.rsfPct ?? -1));
+  let lastTier;
+  const rows = rowObjs.map(ro => {
+    const tier = ro.rsfPct != null ? Math.round(ro.rsfPct / 5) * 5 : null;
+    let pre = '';
+    if (tier !== lastTier) {
+      lastTier = tier;
+      pre = `<tr class="verif-cat-row"><td colspan="${NCOLS}" style="font-family:'Orbitron',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:var(--amber);padding:5px 10px">▸ RSF ${tier != null ? tier + ' %' : '—'}</td></tr>`;
+    }
+    return pre + ro.html;
+  }).join('');
+
   const totGap = (totR2att + totR3att) > 0 ? (totR2att + totR3att) - (totR2rec + totR3rec) : null;
+  const r2Hdr  = `<a onclick="_verifOpenInvoices('r2')" style="cursor:pointer;color:var(--amber);text-decoration:underline dotted">REM. 2 REC.</a>`;
+  const r3Hdr  = `<a onclick="_verifOpenInvoices('r3')" style="cursor:pointer;color:var(--green);text-decoration:underline dotted">REM. 3 REC.</a>`;
   wrap.innerHTML = `
     <div style="overflow-x:auto">
       <table class="verif-tbl">
         <thead><tr>
-          <th style="text-align:left">LABO</th>
-          <th style="color:var(--cyan)" title="Quantité facturée par le laboratoire (Digipharmacie)">QTÉ FACT.</th>
+          <th style="text-align:left">CATÉGORIES RSF</th>
+          <th title="Quantité facturée directement par le laboratoire (Digipharmacie)">QTÉ DIRECT</th>
           <th style="color:var(--green)" title="Quantité livrée par le répartiteur (Excel grossiste)">QTÉ RÉP.</th>
           <th>PA BRUT</th>
-          <th>RSF %</th><th>RSF €</th>
-          <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">REM. 2 REC.</th>
-          <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">REM. 3 REC. (FSE)</th>
-          <th class="verif-r3" title="Facture de prestation coop émise (Digipharmacie)">PRESTA FACT. TTC</th>
-          <th class="verif-r3" title="Virement reçu en banque (FSE)">FSE BANQUE</th>
-          <th class="verif-r3">ÉC. PRESTA</th>
+          <th title="Survoler chaque ligne pour voir le montant estimé en €">RSF %</th>
+          <th class="verif-r2">REM. 2 %</th><th class="verif-r2">REM. 2 ATT.</th><th class="verif-r2">${r2Hdr}</th>
+          <th class="verif-r3">REM. 3 %</th><th class="verif-r3">REM. 3 ATT.</th><th class="verif-r3">${r3Hdr}</th>
           <th>ÉCART TOTAL</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL CUMUL ${yr}</td>
-          <td style="color:var(--cyan)">${totQtyDi > 0 ? totQtyDi.toLocaleString('fr') : '—'}</td>
+          <td>${totQtyDi > 0 ? totQtyDi.toLocaleString('fr') : '—'}</td>
           <td style="color:var(--green)">${totQtyGr > 0 ? totQtyGr.toLocaleString('fr') : '—'}</td>
           <td>${fmtE(totPa)}</td>
-          <td>—</td><td>${totRsfEst > 0 ? fmtE(totRsfEst) : '—'}</td>
+          <td>—</td>
           <td></td><td class="verif-r2">${fmtE(totR2att)}</td><td class="verif-r2">${totR2rec > 0 ? fmtE(totR2rec) : '—'}</td>
           <td></td><td class="verif-r3">${totR3att > 0 ? fmtE(totR3att) : '—'}</td><td class="verif-r3">${totR3rec > 0 ? fmtE(totR3rec) : '—'}</td>
-          <td class="verif-r3">${totPresta > 0 ? fmtE(totPresta) : '—'}</td>
-          <td class="verif-r3">—</td><td class="verif-r3">—</td>
           <td${gapCls(totGap)}>${fmtGap(totGap)}</td>
         </tr></tfoot>` : ''}
       </table>
@@ -8138,6 +8164,8 @@ async function saveProfile() {
     if (saved.grossisteGmailFiles?.length) {
       state._grossisteGmailFiles = saved.grossisteGmailFiles;
     }
+    if (saved.digiUploads?.length)  state._digiUploads = saved.digiUploads;
+    if (saved.fseUploads?.length)   state._fseUploads  = saved.fseUploads;
     if (saved.grossisteMonthStats && Object.keys(saved.grossisteMonthStats).length) {
       state._grossisteMonthStats = saved.grossisteMonthStats;
     }
@@ -9715,6 +9743,9 @@ function initConnecteurModal() {
           if (data.escompte_stats)   { state._escompteStats  = data.escompte_stats;   }
           if (data.mdl_stats)        { state._mdlStats        = data.mdl_stats;        }
           if (data.digi_month_stats || data.escompte_stats || data.mdl_stats) { saveState(); if (state.currentPageId === 'recap') renderRecap(); }
+          // Indexer le fichier pour les liens de téléchargement du vérificateur
+          state._digiUploads = [{ name: entry.file.name, months: data.months || [], lines: data.lines || 0, uploaded_at: Date.now() }, ...(state._digiUploads || []).slice(0, 19)];
+          saveState();
           const escLabel = data.escompte_cerp ? ` · ${data.escompte_cerp} escompte` : '';
           const mdlLabel = data.mdl_cerp       ? ` · ${data.mdl_cerp} MDL`          : '';
           entry.status = 'done'; entry.statusMsg = `${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}${escLabel}${mdlLabel}`;
@@ -9754,6 +9785,9 @@ function initConnecteurModal() {
             saveState();
             if (state.currentPageId === 'verificateur') renderVerificateur();
           }
+          // Indexer le fichier FSE pour les liens de téléchargement du vérificateur
+          state._fseUploads = [{ name: entry.file.name, path, months: data.months || [], uploaded_at: Date.now() }, ...(state._fseUploads || []).slice(0, 9)];
+          saveState();
           entry.status = 'done'; entry.statusMsg = `${(data.months||[]).length} mois · ${(data.total_ttc||0).toLocaleString('fr',{minimumFractionDigits:2})} € TTC`;
         } else if (entry.type === 'csv') {
           entry.status = 'error'; entry.statusMsg = '// CSV OSPHARM : parser en cours de développement';
