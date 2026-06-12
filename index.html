@@ -4303,7 +4303,9 @@ function initLabPage(conf) {
             });
             if (cond.coopR3 != null) cond.rsfValues.forEach(r => { r.remise3 = String(cond.coopR3); });
             console.log('[BP] defaults appliqués non-admin:', lab, 'paliers:', cond.rsfValues.map(r => r.rsf_pct + '→' + r.remise2).join(' | '));
-          } else {
+          } else if (cond.rsfValues.every(r => !r.remise2 && !r.remise3)) {
+            // Pas de defaults admin ET valeurs sauvegardées vides → mkRsfValues a déjà
+            // initialisé depuis _rsfDefaults via la fonction elle-même (ligne 1681)
             console.warn('[BP] pas de defaults pour', lab, '— _rsfDefaults:', window._rsfDefaults ? Object.keys(window._rsfDefaults).join(', ') : 'undefined');
           }
           const exc = window._labExceptions?.[lab];
@@ -4318,6 +4320,32 @@ function initLabPage(conf) {
         document.getElementById(`rgSec-${uid}-${cond.uid}`)?.classList.add('visible');
         renderCondTable(cond);
       });
+      // Fallback : aucune condition sauvegardée (migration, nouveau compte) → créer depuis template admin
+      if (s[condKey].length === 0) {
+        const cond = mkCondState('c0');
+        cond.rsfValues = mkRsfValues(lab, paliers);
+        if (!isAdmin) {
+          const _tKey = year === '2025' ? 'conds25' : 'conds26';
+          const tmpl0 = window._labConditions?.[lab]?.[_tKey]?.[0] || null;
+          const defs  = window._rsfDefaults?.[lab];
+          const exc   = window._labExceptions?.[lab];
+          if (tmpl0) {
+            cond.rsfOnly    = { ...(tmpl0.rsfOnly    || { enabled: false, libelles: [] }) };
+            cond.showR3     = tmpl0.showR3     || false;
+            cond.forceFirst = tmpl0.forceFirst || false;
+          }
+          if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; if (cond.coopR3 == null) r.remise3 = d.remise3 || ''; } });
+          if (exc) { Object.assign(cond.exceptions, exc.exceptions || {}); Object.assign(cond.remise2Except, exc.remise2Except || {}); }
+        }
+        applyDefaultExcepts(cond, lab);
+        s[condKey].push(cond);
+        const panel = buildCondPanel(cond);
+        panel.classList.add('active');
+        el.condPanels.appendChild(panel);
+        wireCondition(cond);
+        document.getElementById(`rgSec-${uid}-${cond.uid}`)?.classList.add('visible');
+        renderCondTable(cond);
+      }
       el.condTabs.classList.add('visible');
       renderCondTabs();
       // Si une récupération depuis rsf_defaults a eu lieu, sauvegarder immédiatement en cloud
