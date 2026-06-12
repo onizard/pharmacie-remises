@@ -5191,6 +5191,7 @@ function _verifFillAnnualSummary(year) {
     const remRec  = (d.rdp || 0) + (fseAcc[k] || 0);
     const gap     = remAtt > 0 ? remAtt - remRec : null;
 
+    const qtyTot = qtyDigi + qtyGros;
     totPa    += pa_tot;
     totQtyDi += qtyDigi;
     totQtyGr += qtyGros;
@@ -5203,8 +5204,7 @@ function _verifFillAnnualSummary(year) {
 
     return `<tr>
       <td>${escH(d.display)}${prorBadge}</td>
-      <td style="color:var(--cyan)">${qtyDigi > 0 ? qtyDigi.toLocaleString('fr') : '—'}</td>
-      <td style="color:var(--green)">${qtyGros > 0 ? qtyGros.toLocaleString('fr') : '—'}</td>
+      <td title="Labo direct : ${qtyDigi.toLocaleString('fr')} | Répartiteur : ${qtyGros.toLocaleString('fr')}">${qtyTot > 0 ? qtyTot.toLocaleString('fr') : '—'}</td>
       <td>${fmtE(pa_tot)}</td>
       <td>${remAtt > 0 ? fmtE(remAtt) : '—'}</td>
       <td>${remRec > 0 ? fmtE(remRec) : '—'}</td>
@@ -5218,8 +5218,7 @@ function _verifFillAnnualSummary(year) {
       <table class="verif-tbl">
         <thead><tr>
           <th style="text-align:left">LABO</th>
-          <th style="color:var(--cyan)" title="Quantité facturée par le laboratoire (Digipharmacie)">QTÉ FACT.</th>
-          <th style="color:var(--green)" title="Quantité livrée par le répartiteur (Excel grossiste)">QTÉ RÉP.</th>
+          <th title="Total boites (labo direct + répartiteur) — survoler une ligne pour le détail">QTÉ TOTAL</th>
           <th>PA BRUT</th>
           <th>REMISE ATTENDUE</th>
           <th>REMISE REÇUE (FSE)</th>
@@ -5228,8 +5227,7 @@ function _verifFillAnnualSummary(year) {
         <tbody>${rows}</tbody>
         ${rowCount > 1 ? `<tfoot><tr>
           <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
-          <td style="color:var(--cyan)">${totQtyDi > 0 ? totQtyDi.toLocaleString('fr') : '—'}</td>
-          <td style="color:var(--green)">${totQtyGr > 0 ? totQtyGr.toLocaleString('fr') : '—'}</td>
+          <td>${(totQtyDi + totQtyGr) > 0 ? (totQtyDi + totQtyGr).toLocaleString('fr') : '—'}</td>
           <td>${fmtE(totPa)}</td>
           <td>${fmtE(totAtt)}</td>
           <td>${totRec > 0 ? fmtE(totRec) : '—'}</td>
