@@ -4610,17 +4610,15 @@ async function fetchRSF2025(lab) {
     counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
     if (best !== null) firstMap.set(rsf_pct, best);
   });
-  // Always count from normalized DB (references_pharmacie) — the RPC returns aggregated
-  // rows (one per distinct rsf_pct / rsf_first_pct combination), not one per reference.
+  // Compter depuis rsf_history year=2025 (pas references_pharmacie qui contient 2026)
   const cntRes = await fetch(
-    `${SUPA_URL}/rest/v1/references_pharmacie?select=rsf_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null&limit=2000`,
+    `${SUPA_URL}/rest/v1/rsf_history?select=rsf_pct&labo=eq.${encodeURIComponent(lab)}&year=eq.2025&rsf_pct=not.is.null&limit=2000`,
     { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
   );
   const cntData = cntRes.ok ? await cntRes.json() : [];
   const countMap = new Map();
-  cntData.forEach(r => { countMap.set(r.rsf_pct, (countMap.get(r.rsf_pct) || 0) + 1); });
-  const filteredPaliers = paliers.filter(p => (countMap.get(p) || 0) > 0);
-  return { paliers: filteredPaliers, firstMap, countMap };
+  cntData.forEach(r => { countMap.set(parseFloat(r.rsf_pct), (countMap.get(parseFloat(r.rsf_pct)) || 0) + 1); });
+  return { paliers, firstMap, countMap };
 }
 
 function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onLibellesChange = null) {
