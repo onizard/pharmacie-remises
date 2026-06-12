@@ -6785,11 +6785,13 @@ async function launchSimulation() {
         const allThr      = lastConds.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
         const minThresh   = allThr.length ? Math.min(...allThr) : 0;
 
+        // caThreshold affiché = CA cible proratisé selon les mois actifs (contrat débuté en cours d'année)
+        const _annThr = finalCond ? parseFloat(finalCond.caCondition) || 0 : minThresh;
         results.push({
           name: lp.selectedLab, ca: cumulCA, remise: r2r3_paid, qty: cumulQty,
           pondere:      cumulCA > 0 ? r2r3_paid / cumulCA * 100 : 0,
           pondereTotal: cumulCA > 0 ? r2r3_paid / cumulCA * 100 : 0,
-          caThreshold:  finalCond ? parseFloat(finalCond.caCondition) || 0 : minThresh,
+          caThreshold:  _annThr * monthsElapsed / 12,
           met: !!finalCond, firstMet: false, isSelected: true,
         });
       });
@@ -7666,7 +7668,7 @@ async function launchSimulation() {
     // ── Scénario N-1 ───────────────────────────────────────────────────────────
     html += `<div class="sim-section">
       <div class="sim-scenario-header">
-        <span>▸ REMISES EFFECTIVES N-1 — ACHATS DIGI + GROSSISTE</span>
+        <span>▸ SCÉNARIO N-1</span>
         ${dlBtn('actuel')}
       </div>
       ${mkScenarioTable(actuel.labResults, true, null)}
