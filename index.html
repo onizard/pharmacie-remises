@@ -1714,6 +1714,9 @@ function mkLabState(uid) {
     contractSigned: false,
     contractDate: null,
     contratRepartiteur: true,
+    contractSigned25: false,
+    contractDate25: null,
+    contratRepartiteur25: true,
   };
 }
 
@@ -1811,6 +1814,9 @@ function serializeState() {
       contractSigned: lp.contractSigned || false,
       contractDate: lp.contractDate || null,
       contratRepartiteur: lp.contratRepartiteur ?? true,
+      contractSigned25: lp.contractSigned25 || false,
+      contractDate25: lp.contractDate25 || null,
+      contratRepartiteur25: lp.contratRepartiteur25 ?? true,
     })),
     verifContracts: state.verifContracts || {},
   };
@@ -2456,6 +2462,8 @@ function _compFingerprint() {
         const c26 = lp._baseConds2026 || lp.conditions || [];
         return (lp.selectedLab || '') + ':' + (lp.contractSigned ? '1' : '0')
             + ':' + (lp.contractDate || '')
+            + ':' + (lp.contractSigned25 ? '1' : '0')
+            + ':' + (lp.contractDate25 || '')
             + ':' + c26.map(c => [c.caCondition, c.remiseGlobale, c.coopR3].join('|')).join(',');
     }).join('~');
     return JSON.stringify({
@@ -3342,6 +3350,23 @@ function createLabContDom(lp) {
           <button id="copy26to25-${uid}" title="Copier les conditions 2026 sur 2025" style="font-size:11px;padding:2px 10px;background:none;border:1px solid rgba(0,229,255,.35);color:var(--cyan);border-radius:4px;cursor:pointer;letter-spacing:.5px;opacity:.8">Copier derniers CGV</button>
         </div>
         <div id="yearBody25-${uid}" style="display:none">
+          <div id="contractRow25-${uid}" style="padding:10px 0 14px;border-bottom:1px solid rgba(0,229,255,.08);margin-bottom:14px">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:8px">TYPE DE CONTRAT N-1</div>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="contractSigned25-${uid}" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
+                <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green);letter-spacing:.5px">CONTRAT LABO SIGNÉ</span>
+              </label>
+              <div id="contractDateWrap25-${uid}" style="display:none;align-items:center;gap:8px;padding-left:22px">
+                <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px">DEPUIS LE</span>
+                <input type="date" id="contractDate25-${uid}" class="verif-date-input" value="">
+              </div>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer" title="Accord ASTERA/CERP — RSF applicable à partir de 350 € brut/mois">
+              <input type="checkbox" id="contratRep25-${uid}" checked style="accent-color:var(--cyan);width:14px;height:14px;cursor:pointer">
+              <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan);letter-spacing:.5px">CONTRAT RÉPARTITEUR</span>
+            </label>
+          </div>
           <div class="mon-btns" id="monBtns25-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}</div>
           <div class="cond-tabs" id="condTabs25-${uid}"></div>
           <div id="condPanels25-${uid}"></div>
@@ -3497,6 +3522,36 @@ function createLabContDom(lp) {
         saveState();
       });
     }
+  }
+
+  // ── Type de contrat N-1 (2025) ───────────────────────────────────────────
+  {
+    const _cbSigned25  = document.getElementById(`contractSigned25-${uid}`);
+    const _dateWrap25  = document.getElementById(`contractDateWrap25-${uid}`);
+    const _dateInput25 = document.getElementById(`contractDate25-${uid}`);
+    const _crCb25      = document.getElementById(`contratRep25-${uid}`);
+    function _syncContractUi25() {
+      if (!_dateWrap25) return;
+      _dateWrap25.style.display = lp.contractSigned25 ? 'flex' : 'none';
+      if (_cbSigned25) _cbSigned25.checked = !!lp.contractSigned25;
+    }
+    if (_dateInput25 && lp.contractDate25) _dateInput25.value = lp.contractDate25;
+    if (_crCb25) _crCb25.checked = lp.contratRepartiteur25 ?? true;
+    _syncContractUi25();
+    lp._syncContractUi25 = _syncContractUi25;
+    _cbSigned25?.addEventListener('change', () => {
+      lp.contractSigned25 = _cbSigned25.checked;
+      _syncContractUi25();
+      saveState();
+    });
+    _dateInput25?.addEventListener('change', () => {
+      lp.contractDate25 = _dateInput25.value || null;
+      saveState();
+    });
+    _crCb25?.addEventListener('change', () => {
+      lp.contratRepartiteur25 = _crCb25.checked;
+      saveState();
+    });
   }
 
   initLabPage({
@@ -4306,6 +4361,15 @@ function initLabPage(conf) {
       if (_di) _di.value   = s.contractDate || '';
       if (_cr) _cr.checked = s.contratRepartiteur;
       s._syncContractUi?.();
+      // Restore N-1 contract
+      s.contractSigned25 = !!savedLabData.contractSigned25;
+      s.contractDate25   = savedLabData.contractDate25 || null;
+      s.contratRepartiteur25 = savedLabData.contratRepartiteur25 ?? true;
+      const _di25 = document.getElementById(`contractDate25-${uid}`);
+      const _cr25 = document.getElementById(`contratRep25-${uid}`);
+      if (_di25) _di25.value   = s.contractDate25 || '';
+      if (_cr25) _cr25.checked = s.contratRepartiteur25;
+      s._syncContractUi25?.();
     }
     s.rsfPaliers = [];
     s[condKey] = [];
@@ -5316,7 +5380,9 @@ function _verifFillAnnualSummary(year) {
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
 
     const lp_d    = (state.labPages || []).find(p => p.selectedLab === d.display);
-    const _effStartDate = lp_d?.contractSigned ? lp_d?.contractDate : null;
+    const _effStartDate = yr === 2025
+      ? (lp_d?.contractSigned25 ? lp_d?.contractDate25 : null)
+      : (lp_d?.contractSigned   ? lp_d?.contractDate   : null);
     const prorMo  = _verifProrataMonths(_effStartDate, yr);
 
     const r2est   = r2avg  != null ? pa_tot * r2avg  / 100       : 0;
@@ -6656,13 +6722,14 @@ async function launchSimulation() {
             (state.gers != null && _ca26 > 0 && _ca26 >= 0.9 * state.gers)
             || (cond26?.forceFirst ?? false)
           );
-          const _useRsf = e.lp?.contratRepartiteur ?? true;
+          const _useRsf25 = e.lp?.contratRepartiteur25 ?? true;
+          const _useRsf26 = e.lp?.contratRepartiteur    ?? true;
           e.rows.forEach(({ row, ref, price }) => {
-            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf) : 0;
-            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf) : 0;
+            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25) : 0;
+            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26) : 0;
             e.remise += row.qty * price * (r25 + r26) / 100;
-            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf) : 0;
-            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf) : 0;
+            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25) : 0;
+            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26) : 0;
             e.remiseSansR3 += row.qty * price * (s25 + s26) / 100;
           });
           e.bestCond    = cond26 || cond25;
@@ -6789,14 +6856,14 @@ async function launchSimulation() {
         const totalQtyAll = months.reduce((s, mk) => s + (data.monthData[mk]?.qty || 0), 0);
         if (totalCAAll === 0) return;
 
-        if (!lp.contractSigned || !lp.contractDate) {
-          // Aucun contrat signé → remise = 0, données achats affichées pour info
+        if (!lp.contractSigned25 || !lp.contractDate25) {
+          // Aucun contrat signé N-1 → remise = 0, données achats affichées pour info
           results.push({ name: lp.selectedLab, ca: totalCAAll, remise: 0, qty: totalQtyAll,
             pondere: 0, pondereTotal: 0, caThreshold: 0, met: false, firstMet: false, isSelected: true });
           return;
         }
 
-        const cDate = new Date(lp.contractDate);
+        const cDate = new Date(lp.contractDate25);
         const cYear = cDate.getFullYear();
         const cMon  = cDate.getMonth() + 1; // 1-indexed
         const startMonth = cYear < n1Year ? 1 : cYear === n1Year ? cMon : null;
