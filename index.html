@@ -2446,6 +2446,64 @@ let _precomputedWireAndRender = null;
 let _precomputedMeta = null;
 let _ospAutoRelaunchDone = false;  // évite les boucles si auto-reconnexion répétée
 
+function _compFingerprint() {
+    const ospKeys = Object.keys(state._monthStats || {}).sort().join(',');
+    const ospCnt  = Object.values(state._monthStats || {}).reduce((s, a) => s + a.length, 0);
+    const grosKeys = Object.keys(state._grossisteMonthStats || {}).sort().join(',');
+    const grosTot  = Object.values(state._grossisteMonthStats || {}).flat()
+        .reduce((s, r) => s + (r.total_ht || 0), 0);
+    const labSig = (state.labPages || []).map(lp => {
+        const c26 = lp._baseConds2026 || lp.conditions || [];
+        return (lp.selectedLab || '') + ':' + (lp.contractSigned ? '1' : '0')
+            + ':' + (lp.contractDate || '')
+            + ':' + c26.map(c => [c.caCondition, c.remiseGlobale, c.coopR3].join('|')).join(',');
+    }).join('~');
+    return JSON.stringify({
+        osp: ospKeys + '/' + ospCnt,
+        digi: state._digiSavedAt || 0,
+        gros: grosKeys + '/' + Math.round(grosTot),
+        labs: labSig,
+        tol: state.condTolerance || 1
+    });
+}
+function _saveCompCache(html) {
+    if (!_simCachedUserId) return;
+    try {
+        localStorage.setItem('bp_comp_' + _simCachedUserId, JSON.stringify({ fp: _compFingerprint(), html }));
+    } catch(e) {}
+}
+function _loadCompCache(userId) {
+    const uid = userId || _simCachedUserId;
+    if (!uid) return null;
+    try {
+        const raw = localStorage.getItem('bp_comp_' + uid);
+        if (!raw) return null;
+        const { fp, html } = JSON.parse(raw);
+        return fp === _compFingerprint() ? html : null;
+    } catch(e) { return null; }
+}
+function _setupCachedPrecomputed(html) {
+    _precomputedWireAndRender = function() {
+        const _cont = document.getElementById('simResults');
+        if (!_cont) return;
+        _cont.innerHTML = html;
+        _simResultsReady = true;
+        document.getElementById('tolBtn')?.addEventListener('click', () => {
+            state.condTolerance = (state.condTolerance ?? 1.0) < 1 ? 1.0 : 0.95;
+            _simResultsReady = false; _precomputedWireAndRender = null; _precomputedMeta = null;
+            launchSimulation();
+        });
+        document.getElementById('tryAgainBtn')?.addEventListener('click', () => {
+            _simResultsReady = false; _precomputedWireAndRender = null; _precomputedMeta = null;
+            launchSimulation();
+        });
+        _cont.querySelectorAll('.dl-btn, .sim-dl-inline').forEach(btn => {
+            btn.addEventListener('click', () => showToast('↺ Relancez l\'analyse (TRY AGAIN) pour activer les téléchargements.'));
+        });
+    };
+    _precomputedMeta = { cipCount: '—', labCount: '—' };
+}
+
 function _tryAutoRelaunchOspharm() {
   if (_ospAutoRelaunchDone) return false;
   if (state._ospJobRunning || state._ospConnecting) return false;
@@ -2514,6 +2572,12 @@ async function launchComparateur() {
       state._monthSavedAt = Date.now();
     }
     saveState();
+    const _cachedHtml = _loadCompCache();
+    if (_cachedHtml) {
+      _setupCachedPrecomputed(_cachedHtml);
+      if (state.currentPageId === 'results') setTimeout(() => launchSimulation(), 0);
+      return true;
+    }
     launchSimulation();
     return true;
 
@@ -7893,7 +7957,7 @@ async function launchSimulation() {
 
     _simResultsReady = true;
     if (_simCachedUserId) {
-      try { sessionStorage.setItem(`bp_comp_${_simCachedUserId}`, container.innerHTML); } catch(_) {}
+      try { _saveCompCache(container.innerHTML); } catch(_) {}
     }
     }; // fin _wireAndRender
 
@@ -8097,15 +8161,7 @@ async function saveProfile() {
       const { data: { session } } = await sb.auth.getSession();
       if (session) {
         isAdmin = (session.user.email === ADMIN_EMAIL);
-        if (!isAdmin) {
-          try {
-            const _cachedHtml = sessionStorage.getItem(`bp_comp_${session.user.id}`);
-            if (_cachedHtml) {
-              const _simEl = document.getElementById('simResults');
-              if (_simEl) { _simEl.innerHTML = _cachedHtml; _simResultsReady = true; }
-            }
-          } catch(_) {}
-        }
+        _simCachedUserId = session.user.id;
         if (isAdmin && typeof checkAdminNotifications === 'function') checkAdminNotifications();
         if (!isAdmin) await loadRsfDefaults();
         if (!_isPostReset) {
@@ -8687,15 +8743,20 @@ async function saveProfile() {
   // Pré-calcul comparateur en arrière-plan dès le login (résultats prêts quand l'user y accède)
   const _canBgCompute = state.connectors?.ospharm?.connected || state.csvData?.length > 0;
   if (_canBgCompute && !_simRunning && !_precomputedWireAndRender) {
-    setTimeout(() => {
-      if (_simRunning || _precomputedWireAndRender) return;
-      _simBgMode = true;
-      if (state.csvData?.length) {
-        launchSimulation();
-      } else {
-        launchComparateur().catch(() => { _simBgMode = false; _simRunning = false; });
-      }
-    }, 1500);
+    const _initCacheHtml = _loadCompCache();
+    if (_initCacheHtml) {
+      _setupCachedPrecomputed(_initCacheHtml);
+    } else {
+      setTimeout(() => {
+        if (_simRunning || _precomputedWireAndRender) return;
+        _simBgMode = true;
+        if (state.csvData?.length) {
+          launchSimulation();
+        } else {
+          launchComparateur().catch(() => { _simBgMode = false; _simRunning = false; });
+        }
+      }, 1500);
+    }
   }
 })();
 
