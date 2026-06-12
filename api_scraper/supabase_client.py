@@ -149,14 +149,15 @@ async def patch_connector_connected(user_id: str, connector: str, connected: boo
     )
 
 
-async def patch_conn_test(user_id: str, connector: str, ok: bool, message: str):
+async def patch_conn_test(user_id: str, connector: str, ok: bool, message: str,
+                          user_token: str = ""):
     loop  = asyncio.get_event_loop()
-    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id, user_token))
     state.setdefault("conn_test", {})[connector] = {
         "status":  "ok" if ok else "fail",
         "message": message,
     }
-    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))
+    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state, user_token))
 
 
 STORAGE_BUCKET = "bp-files"
@@ -220,9 +221,10 @@ def get_signed_url_sync(path: str, expires_in: int = 2_592_000) -> str:
 
 
 async def patch_job_status(user_id: str, job_key: str, status: str, message: str, data: list,
-                           file_url: str = "", period_start: str = "", period_end: str = ""):
+                           file_url: str = "", period_start: str = "", period_end: str = "",
+                           user_token: str = ""):
     loop  = asyncio.get_event_loop()
-    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+    state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id, user_token))
     job = {
         "status":   status,
         "message":  message,
@@ -236,4 +238,4 @@ async def patch_job_status(user_id: str, job_key: str, status: str, message: str
         job["period_start"] = period_start
         job["period_end"]   = period_end
     state[job_key] = job
-    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state))
+    await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state, user_token))

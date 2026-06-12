@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from supabase_client import (
     _get_state_sync,
+    _patch_state_sync,
     get_user_creds_for,
     patch_conn_test,
     patch_connector_connected,
@@ -196,27 +197,27 @@ async def run_connector(
     job_id = str(uuid.uuid4())
 
     if connector == "ospharm":
-        background_tasks.add_task(_dispatch_gh_ospharm, user_id)
+        background_tasks.add_task(_dispatch_gh_ospharm, user_id, token)
         return {"job_id": job_id, "mode": "github_actions"}
 
     # DIGIPHARMACIE : dispatch GitHub Actions (self-hosted, proxy résidentiel, camoufox)
-    background_tasks.add_task(_dispatch_gh_digi, user_id)
+    background_tasks.add_task(_dispatch_gh_digi, user_id, token)
     return {"job_id": job_id, "mode": "github_actions"}
 
 
-async def _dispatch_gh_digi(user_id: str):
+async def _dispatch_gh_digi(user_id: str, user_token: str = ""):
     """Déclenche scraper.yml sur GitHub Actions (self-hosted, proxy résidentiel)."""
-    # Guard : un seul run à la fois — évite les doubles dispatches
     loop  = asyncio.get_event_loop()
-    cur   = await loop.run_in_executor(None, lambda: _get_state_sync(user_id))
+    cur   = await loop.run_in_executor(None, lambda: _get_state_sync(user_id, user_token))
     if (cur.get("verif_job") or {}).get("status") == "running":
         print(f"  [gh-dispatch] verif_job déjà en cours pour {user_id[:8]} — dispatch ignoré")
         return
     await patch_job_status(user_id, "verif_job", "running",
-                           "Job en attente de démarrage…", [])
+                           "Job en attente de démarrage…", [], user_token=user_token)
     if not GH_TOKEN:
         await patch_job_status(user_id, "verif_job", "error",
-                               "GH_TOKEN manquant sur le serveur — contacter l'admin", [])
+                               "GH_TOKEN manquant sur le serveur — contacter l'admin", [],
+                               user_token=user_token)
         return
     url  = f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{GH_DIGI_WORKFLOW}/dispatches"
     body = json.dumps({"ref": "master", "inputs": {"user_id": user_id}}).encode()
@@ -232,18 +233,19 @@ async def _dispatch_gh_digi(user_id: str):
     except Exception as e:
         print(f"  [gh-dispatch] ERREUR digi: {e}")
         await patch_job_status(user_id, "verif_job", "error",
-                               f"Impossible de lancer le workflow GitHub: {e}", [])
+                               f"Impossible de lancer le workflow GitHub: {e}", [],
+                               user_token=user_token)
 
 
-async def _dispatch_gh_ospharm(user_id: str):
+async def _dispatch_gh_ospharm(user_id: str, user_token: str = ""):
     """Déclenche le workflow GitHub Actions scraper_ospharm.yml."""
-    # Marque immédiatement le job comme "running" dans Supabase
     await patch_job_status(user_id, "ospharm_job", "running",
-                           "Chargement des données en cours…", [])
+                           "Chargement des données en cours…", [], user_token=user_token)
 
     if not GH_TOKEN:
         await patch_job_status(user_id, "ospharm_job", "error",
-                               "GH_TOKEN manquant sur le serveur — contacter l'admin", [])
+                               "GH_TOKEN manquant sur le serveur — contacter l'admin", [],
+                               user_token=user_token)
         return
 
     url  = f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{GH_WORKFLOW}/dispatches"
@@ -260,7 +262,8 @@ async def _dispatch_gh_ospharm(user_id: str):
     except Exception as e:
         print(f"  [gh-dispatch] ERREUR: {e}")
         await patch_job_status(user_id, "ospharm_job", "error",
-                               f"Impossible de lancer le workflow GitHub: {e}", [])
+                               f"Impossible de lancer le workflow GitHub: {e}", [],
+                               user_token=user_token)
 
 
 @app.post("/run/fse-export")
@@ -274,30 +277,30 @@ async def run_fse_export(
         user_id = await verify_token(token)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
-    background_tasks.add_task(_dispatch_gh_fse, user_id)
+    background_tasks.add_task(_dispatch_gh_fse, user_id, token)
     return {"status": "dispatched"}
 
 
-async def _dispatch_gh_fse(user_id: str):
+async def _dispatch_gh_fse(user_id: str, user_token: str = ""):
     """Déclenche scraper_fse.yml sur GitHub Actions (dates auto : jan N-1 → aujourd'hui)."""
     import datetime as _dt
     today     = _dt.date.today()
     date_from = f"{today.year - 1}-01-01"
     date_to   = today.strftime("%Y-%m-%d")
 
-    # Mise à jour statut
+    loop = asyncio.get_event_loop()
     try:
-        state = _supa_get_state_for(user_id)
+        state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id, user_token))
         state["fse_job"] = {"status": "running", "message": f"Export FSE lancé ({date_from} → {date_to})…", "error": ""}
-        _supa_patch_state_for(user_id, state)
+        await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state, user_token))
     except Exception:
         pass
 
     if not GH_TOKEN:
         try:
-            state = _supa_get_state_for(user_id)
+            state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id, user_token))
             state["fse_job"] = {"status": "error", "message": "", "error": "GH_TOKEN manquant sur le serveur"}
-            _supa_patch_state_for(user_id, state)
+            await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state, user_token))
         except Exception:
             pass
         return
@@ -320,32 +323,11 @@ async def _dispatch_gh_fse(user_id: str):
     except Exception as e:
         print(f"  [gh-dispatch] ERREUR fse: {e}")
         try:
-            state = _supa_get_state_for(user_id)
+            state = await loop.run_in_executor(None, lambda: _get_state_sync(user_id, user_token))
             state["fse_job"] = {"status": "error", "message": "", "error": str(e)}
-            _supa_patch_state_for(user_id, state)
+            await loop.run_in_executor(None, lambda: _patch_state_sync(user_id, state, user_token))
         except Exception:
             pass
-
-
-def _supa_get_state_for(user_id: str) -> dict:
-    from supabase_client import SERVICE_KEY, SUPA_URL
-    headers = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
-    url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1"
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=15) as r:
-        rows = json.loads(r.read())
-    return (rows[0]["state_json"] if rows else {}) or {}
-
-
-def _supa_patch_state_for(user_id: str, state: dict):
-    from supabase_client import SERVICE_KEY, SUPA_URL
-    headers = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
-               "Content-Type": "application/json", "Prefer": "return=minimal"}
-    url  = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}"
-    body = json.dumps({"state_json": state}).encode()
-    req  = urllib.request.Request(url, data=body, method="PATCH", headers=headers)
-    with urllib.request.urlopen(req, timeout=15):
-        pass
 
 
 @app.get("/status/{job_id}")
@@ -1146,7 +1128,8 @@ async def _run_conn_test_async(user_id: str, connector: str, creds: dict, user_t
             # sont mauvais.
             await save_user_creds(user_id, connector, creds["user"], creds["pass"], True, user_token)
             await patch_conn_test(user_id, connector, True,
-                                  "Identifiants enregistrés — vérifiés au prochain lancement")
+                                  "Identifiants enregistrés — vérifiés au prochain lancement",
+                                  user_token=user_token)
             return
 
         try:
