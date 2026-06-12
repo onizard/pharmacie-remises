@@ -3316,13 +3316,15 @@ function createLabContDom(lp) {
       <div id="contractRow-${uid}" style="padding:10px 0 14px;border-bottom:1px solid rgba(0,229,255,.08);margin-bottom:14px">
         <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:8px">TYPE DE CONTRAT</div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-            <input type="radio" name="contractType-${uid}" id="contractSigned-${uid}" value="signed" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
-            <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green);letter-spacing:.5px">CONTRAT LABO SIGNÉ</span>
-          </label>
-          <div id="contractDateWrap-${uid}" style="display:none;align-items:center;gap:8px;padding-left:22px">
-            <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px">DEPUIS LE</span>
-            <input type="date" id="contractDate-${uid}" class="verif-date-input" value="">
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="radio" name="contractType-${uid}" id="contractSigned-${uid}" value="signed" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
+              <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green);letter-spacing:.5px">CONTRAT LABO SIGNÉ</span>
+            </label>
+            <div id="contractDateWrap-${uid}" style="display:none;align-items:center;gap:8px">
+              <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px">DEPUIS LE</span>
+              <input type="date" id="contractDate-${uid}" class="verif-date-input" value="">
+            </div>
           </div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="radio" name="contractType-${uid}" id="contractProposalRadio-${uid}" value="proposal" style="accent-color:var(--amber);width:14px;height:14px;cursor:pointer">
@@ -3353,13 +3355,15 @@ function createLabContDom(lp) {
           <div id="contractRow25-${uid}" style="padding:10px 0 14px;border-bottom:1px solid rgba(0,229,255,.08);margin-bottom:14px">
             <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:8px">TYPE DE CONTRAT N-1</div>
             <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="contractSigned25-${uid}" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
-                <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green);letter-spacing:.5px">CONTRAT LABO SIGNÉ</span>
-              </label>
-              <div id="contractDateWrap25-${uid}" style="display:none;align-items:center;gap:8px;padding-left:22px">
-                <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px">DEPUIS LE</span>
-                <input type="date" id="contractDate25-${uid}" class="verif-date-input" value="">
+              <div style="display:flex;align-items:center;gap:10px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <input type="checkbox" id="contractSigned25-${uid}" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
+                  <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green);letter-spacing:.5px">CONTRAT LABO SIGNÉ</span>
+                </label>
+                <div id="contractDateWrap25-${uid}" style="display:none;align-items:center;gap:8px">
+                  <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:.5px">DEPUIS LE</span>
+                  <input type="date" id="contractDate25-${uid}" class="verif-date-input" value="">
+                </div>
               </div>
             </div>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer" title="Accord ASTERA/CERP — RSF applicable à partir de 350 € brut/mois">
@@ -4615,7 +4619,8 @@ async function fetchRSF2025(lab) {
   const cntData = cntRes.ok ? await cntRes.json() : [];
   const countMap = new Map();
   cntData.forEach(r => { countMap.set(r.rsf_pct, (countMap.get(r.rsf_pct) || 0) + 1); });
-  return { paliers, firstMap, countMap };
+  const filteredPaliers = paliers.filter(p => (countMap.get(p) || 0) > 0);
+  return { paliers: filteredPaliers, firstMap, countMap };
 }
 
 function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onLibellesChange = null) {
