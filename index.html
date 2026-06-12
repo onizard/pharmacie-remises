@@ -4348,7 +4348,7 @@ function initLabPage(conf) {
       }
       el.condTabs.classList.add('visible');
       renderCondTabs();
-      // Si une récupération depuis rsf_defaults a eu lieu, sauvegarder immédiatement en cloud
+      // (save géré globalement après _initDone = true)
       const _anyRecovered = s[condKey].some(c => c.rsfValues.some(r => r.remise2));
       if (isAdmin && _anyRecovered) saveState();
     } catch(err) { console.error(err); }
@@ -8677,6 +8677,10 @@ async function saveProfile() {
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
   _initDone = true;
+  // Pour non-admin : persiste les defaults admin appliqués en mémoire (rsfValues, exceptions)
+  // afin que le prochain login charge directement depuis le cloud state sans re-dépendre
+  // de loadRsfDefaults au moment critique de la restauration.
+  if (!isAdmin && saved?.labPages?.length) saveState();
 
   // Pré-calcul comparateur en arrière-plan dès le login (résultats prêts quand l'user y accède)
   const _canBgCompute = state.connectors?.ospharm?.connected || state.csvData?.length > 0;
