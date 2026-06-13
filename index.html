@@ -6887,26 +6887,50 @@ async function launchSimulation() {
     function calcN1FromPurchases(n1Year) {
       const months = Array.from({length:12}, (_, i) => `${n1Year}-${String(i+1).padStart(2,'0')}`);
 
-      // Debug : affiche dans la console les mois disponibles par source
       const digiKeys  = Object.keys(state._digiMonthStats      || {}).filter(k => k.startsWith(n1Year+'-'));
       const grosKeys  = Object.keys(state._grossisteMonthStats || {}).filter(k => k.startsWith(n1Year+'-'));
       console.log(`[N-1 ${n1Year}] digi keys:`, digiKeys, '— gros keys:', grosKeys);
       if (!grosKeys.length) console.warn('[N-1] _grossisteMonthStats vide ou sans données', n1Year, '— clés disponibles:', Object.keys(state._grossisteMonthStats || {}));
 
+      // Par mois par labo : ca_digi (direct, net=brut), ca_gros_net (grossiste après RSF), ca_gros_brut (grossiste catalogue)
       const labMonthData = new Map();
-      const addEntry = (labName, mk, ca, qty) => {
+      const addEntry = (labName, mk, ca_net, qty, ca_brut_gros) => {
         const k = _verifNormLab(labName);
         if (!labMonthData.has(k)) labMonthData.set(k, { monthData:{}, display: labName });
         const e = labMonthData.get(k);
-        if (!e.monthData[mk]) e.monthData[mk] = { ca:0, qty:0 };
-        e.monthData[mk].ca  += ca;
+        if (!e.monthData[mk]) e.monthData[mk] = { ca_digi:0, ca_gros_net:0, ca_gros_brut:0, qty:0 };
+        if (ca_brut_gros > 0) {
+          e.monthData[mk].ca_gros_net  += ca_net;
+          e.monthData[mk].ca_gros_brut += ca_brut_gros;
+        } else {
+          e.monthData[mk].ca_digi += ca_net;
+        }
         e.monthData[mk].qty += qty;
       };
       months.forEach(mk => {
-        (state._digiMonthStats?.[mk]      || []).forEach(r => addEntry(r.labo, mk, r.total_ht||0, r.qty||0));
-        (state._grossisteMonthStats?.[mk] || []).forEach(r => addEntry(r.labo, mk, r.total_ht||0, r.qty||0));
+        (state._digiMonthStats?.[mk]      || []).forEach(r => addEntry(r.labo, mk, r.total_ht||0, r.qty||0, 0));
+        (state._grossisteMonthStats?.[mk] || []).forEach(r => addEntry(r.labo, mk, r.total_ht||0, r.qty||0, r.ca_brut||0));
       });
       console.log(`[N-1 ${n1Year}] labs trouvés:`, [...labMonthData.keys()]);
+
+      // Calcule RSF grossiste sur 12 mois pour un labo (indépendant du contrat direct)
+      // RSF = max(0, ca_brut - ca_net) par mois où ca_brut >= 350€ et contrat répartiteur actif
+      const _calcRSF = (data, useRep) => {
+        if (!useRep) return 0;
+        return months.reduce((s, mk) => {
+          const md = data.monthData[mk];
+          if (!md || md.ca_gros_brut < 350) return s;
+          return s + Math.max(0, md.ca_gros_brut - md.ca_gros_net);
+        }, 0);
+      };
+
+      // CA brut total : digi (net=brut car pas de RSF) + grossiste brut catalogue
+      const _totalBrut = (data) => months.reduce((s, mk) => {
+        const md = data.monthData[mk];
+        if (!md) return s;
+        const gros_brut = md.ca_gros_brut > 0 ? md.ca_gros_brut : md.ca_gros_net;
+        return s + md.ca_digi + gros_brut;
+      }, 0);
 
       const processedNorms = new Set();
       const results = [];
@@ -6917,85 +6941,81 @@ async function launchSimulation() {
         processedNorms.add(labNorm);
         const data = labMonthData.get(labNorm);
         if (!data) return;
-        const totalCAAll  = months.reduce((s, mk) => s + (data.monthData[mk]?.ca  || 0), 0);
+
+        const useRep      = lp.contratRepartiteur25 ?? true;
+        const rsf_total   = _calcRSF(data, useRep);
+        const totalCABrut = _totalBrut(data);
         const totalQtyAll = months.reduce((s, mk) => s + (data.monthData[mk]?.qty || 0), 0);
-        if (totalCAAll === 0) return;
+        if (totalCABrut === 0) return;
 
         if (!lp.contractSigned25 || !lp.contractDate25) {
-          // Aucun contrat signé N-1 → remise = 0, données achats affichées pour info
-          results.push({ name: lp.selectedLab, ca: totalCAAll, remise: 0, qty: totalQtyAll,
-            pondere: 0, pondereTotal: 0, caThreshold: 0, met: false, firstMet: false, isSelected: true });
+          // Pas de contrat direct : seule la RSF du grossiste s'applique
+          results.push({ name: lp.selectedLab, ca: totalCABrut, remise: rsf_total, qty: totalQtyAll,
+            pondere: totalCABrut > 0 ? rsf_total / totalCABrut * 100 : 0,
+            pondereTotal: totalCABrut > 0 ? rsf_total / totalCABrut * 100 : 0,
+            caThreshold: 0, met: rsf_total > 0, firstMet: false, isSelected: true });
           return;
         }
 
         const cDate = new Date(lp.contractDate25);
         const cYear = cDate.getFullYear();
-        const cMon  = cDate.getMonth() + 1; // 1-indexed
+        const cMon  = cDate.getMonth() + 1;
         const startMonth = cYear < n1Year ? 1 : cYear === n1Year ? cMon : null;
 
         if (!startMonth) {
-          // Contrat signé après N-1 → aucune remise N-1
-          results.push({ name: lp.selectedLab, ca: totalCAAll, remise: 0, qty: totalQtyAll,
-            pondere: 0, pondereTotal: 0, caThreshold: 0, met: false, firstMet: false, isSelected: true });
+          // Contrat signé après N-1 → RSF grossiste uniquement
+          results.push({ name: lp.selectedLab, ca: totalCABrut, remise: rsf_total, qty: totalQtyAll,
+            pondere: totalCABrut > 0 ? rsf_total / totalCABrut * 100 : 0,
+            pondereTotal: totalCABrut > 0 ? rsf_total / totalCABrut * 100 : 0,
+            caThreshold: 0, met: rsf_total > 0, firstMet: false, isSelected: true });
           return;
         }
 
-        // Prorata mensuel cumulé :
-        // — RSF déjà incluse dans total_ht (prix net facture) → pas à recalculer
-        // — R2 (RDP) + R3 (presta) : rattrapage rétroactif dès que la moyenne annualisée
-        //   atteint le palier. On paye le delta sur le CA cumulé depuis le début du contrat.
-        //   Si un mois rate le palier, les suivants peuvent récupérer en rattrapage.
+        // R2+R3 : rattrapage prorata sur CA brut depuis le début du contrat
         let cumulCA = 0, cumulQty = 0, r2r3_paid = 0, monthsElapsed = 0;
         months.forEach((mk, idx) => {
           const monthNum = idx + 1;
           if (monthNum < startMonth) return;
-          const monthCA  = data.monthData[mk]?.ca  || 0;
-          const monthQty = data.monthData[mk]?.qty || 0;
-          cumulCA  += monthCA;
-          cumulQty += monthQty;
+          const md = data.monthData[mk];
+          if (!md) return;
+          const gros_brut  = md.ca_gros_brut > 0 ? md.ca_gros_brut : md.ca_gros_net;
+          const monthBrut  = md.ca_digi + gros_brut;
+          cumulCA  += monthBrut;
+          cumulQty += md.qty;
           monthsElapsed++;
           if (cumulCA === 0) return;
-          // CA annualisé = moyenne mensuelle cumulée × 12
           const annualizedCA = (cumulCA / monthsElapsed) * 12;
           const conds    = getEffectiveCondsForMonth(lp, n1Year, monthNum);
           const bestCond = getBestCondFromArray(conds, annualizedCA);
           if (bestCond) {
-            // Total R2+R3 théoriquement dû sur le CA cumulé depuis le 1er mois
             const r2_pct = parseFloat(bestCond.remiseGlobale) || 0;
             const r3_pct = parseFloat(bestCond.coopR3)        || 0;
-            const r2r3_earned = cumulCA * r2_pct / 100
-                              + cumulCA * r3_pct / 100 * 1.20; // R3 TTC
-            // Rattrapage = nouveau total earned − déjà versé (pas de clawback si palier drop)
-            const catchup = Math.max(0, r2r3_earned - r2r3_paid);
-            r2r3_paid += catchup;
+            const r2r3_earned = cumulCA * r2_pct / 100 + cumulCA * r3_pct / 100 * 1.20;
+            r2r3_paid += Math.max(0, r2r3_earned - r2r3_paid);
           }
-          // Palier non atteint → pas de nouveau versement ce mois,
-          // mais le CA s'accumule et sera rattrapé dès que le palier sera atteint
         });
 
-        if (cumulCA === 0) return;
-
+        const totalRemise = rsf_total + r2r3_paid;
         const lastConds   = getEffectiveCondsForMonth(lp, n1Year, 12);
-        const annFinal    = (cumulCA / monthsElapsed) * 12;
+        const annFinal    = monthsElapsed > 0 ? (cumulCA / monthsElapsed) * 12 : 0;
         const finalCond   = getBestCondFromArray(lastConds, annFinal);
         const allThr      = lastConds.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
         const minThresh   = allThr.length ? Math.min(...allThr) : 0;
+        const _annThr     = finalCond ? parseFloat(finalCond.caCondition) || 0 : minThresh;
 
-        // caThreshold affiché = CA cible proratisé selon les mois actifs (contrat débuté en cours d'année)
-        const _annThr = finalCond ? parseFloat(finalCond.caCondition) || 0 : minThresh;
         results.push({
-          name: lp.selectedLab, ca: cumulCA, remise: r2r3_paid, qty: cumulQty,
-          pondere:      cumulCA > 0 ? r2r3_paid / cumulCA * 100 : 0,
-          pondereTotal: cumulCA > 0 ? r2r3_paid / cumulCA * 100 : 0,
-          caThreshold:  _annThr * monthsElapsed / 12,
+          name: lp.selectedLab, ca: totalCABrut, remise: totalRemise, qty: totalQtyAll,
+          pondere:      totalCABrut > 0 ? totalRemise / totalCABrut * 100 : 0,
+          pondereTotal: totalCABrut > 0 ? totalRemise / totalCABrut * 100 : 0,
+          caThreshold:  _annThr * (monthsElapsed || 12) / 12,
           met: !!finalCond, firstMet: false, isSelected: true,
         });
       });
 
-      // Labos avec achats mais sans conditions configurées → 0 remise
+      // Labos avec achats mais sans conditions configurées
       labMonthData.forEach((data, labNorm) => {
         if (processedNorms.has(labNorm)) return;
-        const totalCA  = months.reduce((s, mk) => s + (data.monthData[mk]?.ca  || 0), 0);
+        const totalCA  = _totalBrut(data);
         const totalQty = months.reduce((s, mk) => s + (data.monthData[mk]?.qty || 0), 0);
         if (totalCA <= 0) return;
         results.push({ name: data.display, ca: totalCA, remise: 0, qty: totalQty,

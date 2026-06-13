@@ -380,17 +380,18 @@ def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
             continue
         if current_month is None:
             continue
-        rep_dep, labo_raw, _, qty, _, _, ca_net = (list(row) + [None]*7)[:7]
+        rep_dep, labo_raw, _, qty, ca_brut_raw, _, ca_net = (list(row) + [None]*7)[:7]
         if rep_dep == "Rep G" and labo_raw and qty:
             labo = _norm_grossiste_labo(labo_raw)
-            acc  = month_acc[current_month].setdefault(labo, {"qty": 0, "total_ht": 0.0})
+            acc  = month_acc[current_month].setdefault(labo, {"qty": 0, "total_ht": 0.0, "ca_brut": 0.0})
             acc["qty"]      += int(qty or 0)
             acc["total_ht"] += float(ca_net or 0)
+            acc["ca_brut"]  += float(ca_brut_raw or 0)
 
     wb.close()
     return {
         mk: sorted(
-            [{"labo": l, "qty": d["qty"], "total_ht": round(d["total_ht"], 2)}
+            [{"labo": l, "qty": d["qty"], "total_ht": round(d["total_ht"], 2), "ca_brut": round(d["ca_brut"], 2)}
              for l, d in labos.items()],
             key=lambda r: r["labo"],
         )
@@ -410,6 +411,7 @@ def _merge_grossiste_stats(existing: dict, new_stats: dict) -> dict:
                 if nr["labo"] in labo_map:
                     labo_map[nr["labo"]]["qty"]      += nr["qty"]
                     labo_map[nr["labo"]]["total_ht"]  = round(labo_map[nr["labo"]]["total_ht"] + nr["total_ht"], 2)
+                    labo_map[nr["labo"]]["ca_brut"]   = round(labo_map[nr["labo"]].get("ca_brut", 0) + nr.get("ca_brut", 0), 2)
                 else:
                     labo_map[nr["labo"]] = dict(nr)
             merged[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])
@@ -574,9 +576,10 @@ def _run_grossiste_gmail_sync(user_id: str, user_token: str = "") -> dict:
             if mk not in combined_stats:
                 combined_stats[mk] = {}
             for r in rows:
-                acc = combined_stats[mk].setdefault(r["labo"], {"qty": 0, "total_ht": 0.0})
+                acc = combined_stats[mk].setdefault(r["labo"], {"qty": 0, "total_ht": 0.0, "ca_brut": 0.0})
                 acc["qty"]      += r["qty"]
                 acc["total_ht"] += r["total_ht"]
+                acc["ca_brut"]  += r.get("ca_brut", 0)
 
         new_uids.append(uid)
         subject_raw = msg.get("Subject", "")
@@ -600,7 +603,7 @@ def _run_grossiste_gmail_sync(user_id: str, user_token: str = "") -> dict:
     # Convertir combined_stats en format liste
     new_grossiste_stats = {
         mk: sorted(
-            [{"labo": l, "qty": d["qty"], "total_ht": round(d["total_ht"], 2)}
+            [{"labo": l, "qty": d["qty"], "total_ht": round(d["total_ht"], 2), "ca_brut": round(d.get("ca_brut", 0), 2)}
              for l, d in labos.items()],
             key=lambda r: r["labo"],
         )
