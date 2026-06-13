@@ -495,6 +495,9 @@
   .rsf-import-drop.has-file { border-color:var(--green); color:var(--green); border-style:solid; opacity:1; }
   .rsf-import-drop.uploading { opacity:.7; pointer-events:none; border-style:solid; border-color:var(--amber); }
   .rsf-import-spin { display:inline-block; width:10px; height:10px; border:2px solid rgba(255,171,0,.25); border-top-color:var(--amber); border-radius:50%; animation:rsf-spin .6s linear infinite; vertical-align:middle; }
+  .rsf-send-btn { display:none; align-items:center; justify-content:center; width:20px; height:20px; border:1px solid var(--amber); border-radius:3px; background:rgba(255,171,0,.08); color:var(--amber); font-size:12px; cursor:pointer; margin-left:4px; transition:background .15s,box-shadow .15s; padding:0; line-height:1; vertical-align:middle; }
+  .rsf-send-btn:hover { background:rgba(255,171,0,.22); box-shadow:0 0 7px rgba(255,171,0,.45); }
+  .rsf-send-btn.visible { display:inline-flex; }
   @keyframes rsf-spin { to { transform:rotate(360deg); } }
   [data-theme="light"] .mon-btn { border-color:rgba(0,100,200,.25); color:#888; }
   [data-theme="light"] .mon-btn.active { border-color:#0066cc; color:#0066cc; background:rgba(0,100,200,.08); }
@@ -3805,7 +3808,7 @@ function initLabPage(conf) {
           ${isAdmin ? `<label class="rsf-import-drop" id="rsfImportDrop-${uid}-${cond.uid}" title="Déposer le PDF CGV pour mettre à jour rsf_history (${year})">
             <span id="rsfImportText-${uid}-${cond.uid}">↑ CGV</span>
             <input type="file" accept=".pdf" style="display:none" id="rsfImportFile-${uid}-${cond.uid}">
-          </label>` : ''}
+          </label><button class="rsf-send-btn" id="rsfSendBtn-${uid}-${cond.uid}" title="Importer le PDF">⬆</button>` : ''}
         </div>
         <div class="rsf-body" id="rsfBody-${uid}-${cond.uid}" style="display:none">
           <div class="rsf-table-wrap">
@@ -3957,6 +3960,7 @@ function initLabPage(conf) {
       const _dropEl  = document.getElementById(`rsfImportDrop-${uid}-${cond.uid}`);
       const _fileEl  = document.getElementById(`rsfImportFile-${uid}-${cond.uid}`);
       const _textEl  = document.getElementById(`rsfImportText-${uid}-${cond.uid}`);
+      const _sendBtn = document.getElementById(`rsfSendBtn-${uid}-${cond.uid}`);
       if (_dropEl && _fileEl && _textEl) {
         let _pendingFile = null;
 
@@ -3964,13 +3968,15 @@ function initLabPage(conf) {
           _pendingFile = f;
           if (f) {
             const short = f.name.length > 22 ? f.name.slice(0, 20) + '…' : f.name;
-            _textEl.textContent = `${short}  ↵`;
+            _textEl.textContent = short;
             _dropEl.classList.add('has-file');
-            _dropEl.title = `${f.name} — Appuyez sur Entrée pour importer`;
+            _dropEl.title = f.name;
+            _sendBtn?.classList.add('visible');
           } else {
             _textEl.textContent = '↑ CGV';
             _dropEl.classList.remove('has-file');
             _dropEl.title = `Déposer le PDF CGV pour mettre à jour rsf_history (${year})`;
+            _sendBtn?.classList.remove('visible');
           }
         };
 
@@ -3982,6 +3988,7 @@ function initLabPage(conf) {
           if (!lab) return;
           const yr  = parseInt(year, 10);
           _dropEl.classList.add('uploading');
+          _sendBtn?.classList.remove('visible');
           _spin('Upload…');
           try {
             const fd = new FormData();
@@ -4017,6 +4024,8 @@ function initLabPage(conf) {
           }
         };
 
+        _sendBtn?.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); _submit(); });
+
         _dropEl.addEventListener('dragover',  e => { e.preventDefault(); _dropEl.classList.add('drag-over'); });
         _dropEl.addEventListener('dragleave', () => _dropEl.classList.remove('drag-over'));
         _dropEl.addEventListener('drop', e => {
@@ -4028,14 +4037,6 @@ function initLabPage(conf) {
         _fileEl.addEventListener('change', () => {
           const f = _fileEl.files?.[0];
           if (f) _setFile(f);
-        });
-        document.addEventListener('keydown', e => {
-          if (e.key !== 'Enter' || !_pendingFile || _dropEl.classList.contains('uploading')) return;
-          const ae  = document.activeElement;
-          const tag = ae?.tagName?.toUpperCase();
-          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-          e.preventDefault();
-          _submit();
         });
       }
     }
