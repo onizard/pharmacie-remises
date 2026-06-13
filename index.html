@@ -6705,6 +6705,31 @@ async function launchSimulation() {
       }
     }
 
+    // 3b-pre. Overlay rsf_pct year-specific depuis rsf_history (pour les labos sélectionnés)
+    //         Stocké dans ref.rsf_pct_by_year = {2025: pct, 2026: pct}
+    //         Permet à getRemise d'utiliser le bon groupe RSF selon l'année de la condition.
+    const rsfHistMap = new Map(); // cip13 → {2025: rsf_pct, 2026: rsf_pct}
+    if (ourLabs.size > 0) {
+      const _H = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+      await Promise.all([...ourLabs].flatMap(lab => [2025, 2026].map(async yr => {
+        const url = `${SUPA_URL}/rest/v1/rsf_history?select=cip13,rsf_pct&labo=eq.${encodeURIComponent(lab)}&year=eq.${yr}&limit=5000`;
+        const rows = await fetch(url, { headers: _H }).then(r => r.ok ? r.json() : []).catch(() => []);
+        rows.forEach(r => {
+          if (!rsfHistMap.has(r.cip13)) rsfHistMap.set(r.cip13, {});
+          rsfHistMap.get(r.cip13)[yr] = r.rsf_pct;
+        });
+      })));
+    }
+    const _applyRsfHist = ref => { const h = rsfHistMap.get(ref.cip13); if (h) ref.rsf_pct_by_year = h; };
+    refMap.forEach(_applyRsfHist);
+    libelleMap.forEach(refs => refs.forEach(_applyRsfHist));
+
+    // Marquer l'année sur chaque condition pour que getRemise choisisse le bon rsf_pct_by_year
+    state.labPages.forEach(lp => {
+      (lp.conditions     || []).forEach(c => { c._year = 2026; });
+      (lp.conditions2025 || []).forEach(c => { c._year = 2025; });
+    });
+
     // 3b. Form-agnostic libelle map : "AMLODIPINE 5MG 30CP" ≡ "AMLODIPINE 5MG 30GELULE"
     //     Sert à trouver les équivalents d'un autre labo quand seule la forme galénique diffère.
     function formNormKey(lib) {
@@ -6833,11 +6858,13 @@ async function launchSimulation() {
     // Passer cond=null signifie "aucun palier atteint" → RSF uniquement.
     // useRsf=false (contrat répartiteur non coché) → RSF = 0
     function getRemise(ref, cond, firstMet = false, useRsf = true) {
-      const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
+      const yearRsf = (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
+        ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
+      const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : yearRsf;
       const baseRSF = useRsf ? Math.abs(parseFloat(baseRSFPct) || 0) : 0;
       if (!cond) return baseRSF;
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
-      const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
+      const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(yearRsf));
       if (!rsfRow) return baseRSF;
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
@@ -6850,14 +6877,13 @@ async function launchSimulation() {
     }
 
     function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true) {
-      // Retourne la remise AVANT la dernière remise active :
-      //   si remise3 existe → RSF + remise2 (sans remise3)
-      //   si remise3 absente → RSF seul (remise2 est la dernière, on l'exclut aussi)
-      const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
+      const yearRsf = (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
+        ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
+      const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : yearRsf;
       const baseRSF = useRsf ? Math.abs(parseFloat(baseRSFPct) || 0) : 0;
       if (!cond) return baseRSF;
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
-      const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
+      const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(yearRsf));
       if (!rsfRow) return baseRSF;
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
@@ -6868,8 +6894,7 @@ async function launchSimulation() {
         }
       }
       const r3 = parseFloat(rsfRow.remise3) || 0;
-      if (r3 === 0) return baseRSF; // pas de remise3 → remise2 est la dernière → on l'exclut
-      // remise3 présente → on inclut remise2 mais pas remise3
+      if (r3 === 0) return baseRSF;
       return baseRSF + (parseFloat(rsfRow.remise2) || 0);
     }
 
@@ -7899,6 +7924,7 @@ async function launchSimulation() {
             const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
             rows.forEach(r => {
               if (!r.libelle) return;
+              const h = rsfHistMap.get(r.cip13); if (h) r.rsf_pct_by_year = h;
               if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
               if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
                 libelleMap.get(r.libelle).push(r);
@@ -8081,6 +8107,7 @@ async function launchSimulation() {
           const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&limit=10000`;
           const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
           rows.forEach(r => {
+            const h = rsfHistMap.get(r.cip13); if (h) r.rsf_pct_by_year = h;
             if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
             if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
               libelleMap.get(r.libelle).push(r);
