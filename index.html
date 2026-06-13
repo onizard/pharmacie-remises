@@ -4840,8 +4840,8 @@ async function doSearch(term, dropdown, exc, chipsWrap, inp, rsf_pct = null, lab
   }
 
   const t = encodeURIComponent(term);
-  const rsfFilter = (rsf_pct !== null && labName)
-    ? `&rsf_pct=eq.${rsf_pct}&labo=eq.${encodeURIComponent(labName)}`
+  const rsfFilter = labName
+    ? `&labo=eq.${encodeURIComponent(labName)}`
     : '';
   const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)${rsfFilter}&order=libelle.asc&limit=100`;
   try {
