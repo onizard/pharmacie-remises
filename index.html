@@ -3974,13 +3974,15 @@ function initLabPage(conf) {
           }
         };
 
+        const _spin = txt => { _textEl.innerHTML = `<span class="rsf-import-spin"></span><span style="margin-left:4px">${txt}</span>`; };
+
         const _submit = async () => {
           if (!_pendingFile) return;
           const lab = s.selectedLab;
           if (!lab) return;
           const yr  = parseInt(year, 10);
           _dropEl.classList.add('uploading');
-          _textEl.innerHTML = '<span class="rsf-import-spin"></span>';
+          _spin('Upload…');
           try {
             const fd = new FormData();
             fd.append('file', _pendingFile, _pendingFile.name);
@@ -3998,14 +4000,16 @@ function initLabPage(conf) {
               throw new Error(err || res.statusText);
             }
             const data = await res.json();
+            _spin('Sync…');
+            const reloadFn = yr === 2025 ? lp._reloadRSF2025 : lp._reloadRSF;
+            await reloadFn?.call(lp);
+            _spin('Fill…');
+            await autoFillFromRsfHistory(lab, yr, s[condKey]);
             _dropEl.classList.remove('uploading', 'has-file');
             _textEl.textContent = `✓ ${data.count} réf`;
             _pendingFile = null;
             _fileEl.value = '';
             showToast(`RSF ${yr} importé — ${data.count} références`);
-            const reloadFn = yr === 2025 ? lp._reloadRSF2025 : lp._reloadRSF;
-            await reloadFn?.call(lp);
-            await autoFillFromRsfHistory(lab, yr, s[condKey]);
           } catch (e) {
             _dropEl.classList.remove('uploading');
             _setFile(_pendingFile);
