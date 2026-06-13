@@ -4003,8 +4003,9 @@ function initLabPage(conf) {
             _pendingFile = null;
             _fileEl.value = '';
             showToast(`RSF ${yr} importé — ${data.count} références`);
-            if (yr === 2025) { lp._reloadRSF2025?.(); }
-            else             { lp._reloadRSF?.();     }
+            const reloadFn = yr === 2025 ? lp._reloadRSF2025 : lp._reloadRSF;
+            await reloadFn?.call(lp);
+            await autoFillFromRsfHistory(lab, yr, s[condKey]);
           } catch (e) {
             _dropEl.classList.remove('uploading');
             _setFile(_pendingFile);
@@ -4152,6 +4153,87 @@ function initLabPage(conf) {
       if (lab === 'Biogaran') { row.remise3 = (rg - coopBase).toFixed(2); }
       if (i3 && lab === 'Biogaran') { i3.value = row.remise3; i3.classList.add('auto-a'); }
     });
+  }
+
+  // ── Auto-fill RDP + exceptions depuis rsf_history après import CGV ──────────
+  async function autoFillFromRsfHistory(lab, yr, conds) {
+    try {
+      const res = await fetch(
+        `${SUPA_URL}/rest/v1/rsf_history?labo=eq.${encodeURIComponent(lab)}&year=eq.${yr}&select=cip13,rsf_pct,rdp_pct&limit=5000`,
+        { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
+      );
+      if (!res.ok) return;
+      const rows = await res.json();
+      if (!rows.length) return;
+
+      // Grouper par rsf_pct → {cip13, rdp}[]
+      const groups = new Map();
+      rows.forEach(r => {
+        const key = String(r.rsf_pct);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push({ cip13: r.cip13, rdp: Math.abs(parseFloat(r.rdp_pct || 0)) });
+      });
+
+      // Modal RDP par groupe + produits exceptions
+      const groupModal = new Map();
+      const groupExcs  = new Map();
+      groups.forEach((items, key) => {
+        const cnt = new Map();
+        items.forEach(({ rdp }) => cnt.set(rdp, (cnt.get(rdp) || 0) + 1));
+        let modal = 0, best = 0;
+        cnt.forEach((n, rdp) => { if (n > best || (n === best && rdp > modal)) { modal = rdp; best = n; } });
+        groupModal.set(key, modal);
+        groupExcs.set(key, items.filter(({ rdp }) => rdp !== modal));
+      });
+
+      // Récupérer les libellés des produits exception
+      const excCips = new Set();
+      groupExcs.forEach(items => items.forEach(({ cip13 }) => excCips.add(cip13)));
+      const cipToLib = new Map();
+      if (excCips.size > 0) {
+        const r2 = await fetch(
+          `${SUPA_URL}/rest/v1/references_pharmacie?cip13=in.(${[...excCips].join(',')})&select=cip13,libelle&limit=1000`,
+          { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
+        );
+        if (r2.ok) (await r2.json()).forEach(r => cipToLib.set(r.cip13, r.libelle));
+      }
+
+      conds.forEach(cond => {
+        // Remplir remise2 (RDP) pour chaque palier si modal > 0
+        cond.rsfValues.forEach(r => {
+          const key = String(r.rsf_pct);
+          if (!groupModal.has(key) || r.excluded) return;
+          const modal = groupModal.get(key);
+          if (modal > 0) r.remise2 = modal.toFixed(2);
+        });
+
+        // Reconstruire les exceptions
+        cond.exceptions = {};
+        groupExcs.forEach((items, key) => {
+          const byRdp = new Map();
+          items.forEach(({ cip13, rdp }) => {
+            const lib = cipToLib.get(cip13);
+            if (!lib) return;
+            if (!byRdp.has(rdp)) byRdp.set(rdp, []);
+            byRdp.get(rdp).push(lib);
+          });
+          byRdp.forEach((libelles, rdp) => {
+            if (!cond.exceptions[key]) {
+              cond.exceptions[key] = { libelles: libelles.map(text => ({ id: Date.now() + Math.random(), text })), remise2: rdp.toFixed(2), remise3: '' };
+            }
+          });
+        });
+
+        // Mettre à jour hasExcept
+        cond.rsfValues.forEach(r => { r.hasExcept = !!(cond.exceptions[String(r.rsf_pct)]?.libelles?.length); });
+
+        renderCondTable(cond);
+        if (cond.remiseGlobale !== null) autoFillCond(cond);
+      });
+
+      saveState();
+      showToast('✓ RDP et exceptions remplis depuis les CGV');
+    } catch(e) { console.error('[BP] autoFillFromRsfHistory:', e); }
   }
 
   // ── Render table for one condition ───────────────────────────────────────────
