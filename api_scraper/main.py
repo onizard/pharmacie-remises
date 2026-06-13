@@ -784,16 +784,18 @@ async def import_rsf_history(
 
 def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: str) -> dict:
     import io, pdfplumber as _pdfplumber
+    import urllib.parse
     from supabase_client import SUPA_URL, SERVICE_KEY
 
     # CIP13  libellé  PFHT€  REMISE%  RDP%
     LINE_RE = _re.compile(
         r"(\d{13})\s+"
-        r".+?"
+        r"(.+?)\s+"
         r"([\d]+[,.][\d]+)\s*€\s+"
         r"([\d]+(?:[,.][\d]+)?)\s*%\s+"
         r"([\d]+(?:[,.][\d]+)?)\s*%"
     )
+    # cip13 → (pfht, rsf, rdp, libelle)
     rows: dict[str, tuple] = {}
     with _pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
@@ -801,36 +803,66 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
             for line in text.splitlines():
                 m = LINE_RE.search(line)
                 if m:
-                    cip13 = m.group(1)
-                    pfht  = float(m.group(2).replace(",", "."))
-                    rsf   = -abs(float(m.group(3).replace(",", ".")))
-                    rdp   = -abs(float(m.group(4).replace(",", ".")))
-                    rows[cip13] = (pfht, rsf, rdp)
+                    cip13   = m.group(1)
+                    libelle = m.group(2).strip().upper()
+                    pfht    = float(m.group(3).replace(",", "."))
+                    rsf     = -abs(float(m.group(4).replace(",", ".")))
+                    rdp     = -abs(float(m.group(5).replace(",", ".")))
+                    rows[cip13] = (pfht, rsf, rdp, libelle)
 
     if not rows:
         raise HTTPException(status_code=422, detail="Aucun CIP13 trouvé dans le PDF")
 
-    data = [
-        {"cip13": cip, "labo": labo, "year": year, "rsf_pct": rsf, "rdp_pct": rdp, "pfht": pfht}
-        for cip, (pfht, rsf, rdp) in rows.items()
-    ]
     HEADERS = {
         "apikey":        SERVICE_KEY,
         "Authorization": f"Bearer {SERVICE_KEY}",
         "Content-Type":  "application/json",
         "Prefer":        "resolution=merge-duplicates,return=minimal",
     }
+
+    # 1. Supprimer les anciennes lignes labo+year (remplacement propre)
+    labo_enc = urllib.parse.quote(labo)
+    del_req = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/rsf_history?labo=eq.{labo_enc}&year=eq.{year}",
+        method="DELETE",
+        headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"},
+    )
+    with urllib.request.urlopen(del_req, timeout=30):
+        pass
+
+    # 2. Insérer toutes les nouvelles lignes avec libellé
+    rsf_data = [
+        {"cip13": cip, "labo": labo, "year": year,
+         "rsf_pct": rsf, "rdp_pct": rdp, "pfht": pfht, "libelle": lib}
+        for cip, (pfht, rsf, rdp, lib) in rows.items()
+    ]
     chunk = 500
-    for i in range(0, len(data), chunk):
-        body = json.dumps(data[i:i+chunk]).encode()
+    for i in range(0, len(rsf_data), chunk):
+        body = json.dumps(rsf_data[i:i+chunk]).encode()
         req  = urllib.request.Request(
-            f"{SUPA_URL}/rest/v1/rsf_history?on_conflict=cip13%2Clabo%2Cyear",
-            data=body, method="POST", headers=HEADERS,
+            f"{SUPA_URL}/rest/v1/rsf_history",
+            data=body, method="POST",
+            headers={**HEADERS, "Prefer": "return=minimal"},
         )
         with urllib.request.urlopen(req, timeout=30):
             pass
 
-    # Upload PDF dans MinIO pour archive
+    # 3. Synchroniser references_pharmacie (upsert — pas de suppression pour préserver l'historique)
+    refs_data = [
+        {"cip13": cip, "labo": labo, "libelle": lib, "puht": pfht, "rsf_pct": rsf}
+        for cip, (pfht, rsf, rdp, lib) in rows.items()
+    ]
+    for i in range(0, len(refs_data), chunk):
+        body = json.dumps(refs_data[i:i+chunk]).encode()
+        req  = urllib.request.Request(
+            f"{SUPA_URL}/rest/v1/references_pharmacie?on_conflict=cip13",
+            data=body, method="POST",
+            headers={**HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"},
+        )
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+
+    # 4. Upload PDF dans MinIO pour archive
     try:
         from supabase_client import upload_file_sync
         _safe_filename = filename.replace(" ", "_")

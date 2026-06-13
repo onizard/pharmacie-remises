@@ -4436,7 +4436,7 @@ function initLabPage(conf) {
         excptsEl.querySelectorAll('.excpt-r3-inp').forEach((i2, i) => { if (i > 0) i2.value = val; });
         saveState();
       } : null;
-      excptsEl.appendChild(buildRowExceptBlock(row.rsf_pct, exc, s.selectedLab, propagateR3, syncLibelles));
+      excptsEl.appendChild(buildRowExceptBlock(row.rsf_pct, exc, s.selectedLab, propagateR3, syncLibelles, year));
     });
   }
 
@@ -4790,7 +4790,7 @@ async function fetchRSF2025(lab) {
   return { paliers, firstMap, countMap };
 }
 
-function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onLibellesChange = null) {
+function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onLibellesChange = null, labYear = '2026') {
   const block = document.createElement('div');
   block.className = 'row-except-block';
 
@@ -4859,7 +4859,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onL
   block.appendChild(remisesRow);
 
   let debounce, focusIdx = -1;
-  inp.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doSearch(inp.value, dropdown, exc, chipsWrap, inp, rsf_pct, labName, onLibellesChange), 300); });
+  inp.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doSearch(inp.value, dropdown, exc, chipsWrap, inp, rsf_pct, labName, onLibellesChange, labYear), 300); });
   inp.addEventListener('keydown', e => {
     const opts = dropdown.querySelectorAll('.libelle-option');
     if (!opts.length) return;
@@ -4925,22 +4925,8 @@ function isMultiCipInput(term) {
   return parts.length > 1 && parts.every(p => /^\d{5,}$/.test(p));
 }
 
-const _rsfCipCache = new Map();
 
-async function getRsfGroupCips(labName, rsf_pct) {
-  const key = `${labName}|${rsf_pct}`;
-  if (_rsfCipCache.has(key)) return _rsfCipCache.get(key);
-  const res = await fetch(
-    `${SUPA_URL}/rest/v1/rsf_history?select=cip13&labo=eq.${encodeURIComponent(labName)}&year=eq.2025&rsf_pct=eq.${rsf_pct}&limit=2000`,
-    { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
-  );
-  const data = res.ok ? await res.json() : [];
-  const cips = data.map(r => r.cip13);
-  _rsfCipCache.set(key, cips);
-  return cips;
-}
-
-async function doSearch(term, dropdown, exc, chipsWrap, inp, rsf_pct = null, labName = '', onAfterChange = null) {
+async function doSearch(term, dropdown, exc, chipsWrap, inp, rsf_pct = null, labName = '', onAfterChange = null, labYear = '2026') {
   term = term.trim();
   if (term.length < 2) { dropdown.classList.remove('visible'); dropdown.innerHTML = ''; return; }
 
@@ -4962,37 +4948,59 @@ async function doSearch(term, dropdown, exc, chipsWrap, inp, rsf_pct = null, lab
   }
 
   const t = encodeURIComponent(term);
-  let url;
-  if (rsf_pct !== null && labName) {
-    const cips = await getRsfGroupCips(labName, rsf_pct);
-    if (!cips.length) { dropdown.classList.remove('visible'); return; }
-    url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&cip13=in.(${cips.join(',')})&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)&order=libelle.asc&limit=100`;
-  } else {
-    const laboFilter = labName ? `&labo=eq.${encodeURIComponent(labName)}` : '';
-    url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)${laboFilter}&order=libelle.asc&limit=100`;
-  }
+  const H = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
   try {
-    const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
-    if (!res.ok) return;
-    const data = await res.json();
+    let results = []; // [{cip13, libelle, storeLibelle}]
+    if (rsf_pct !== null && labName) {
+      // Recherche dans rsf_history (year-aware, libellé PDF)
+      const yr = parseInt(labYear, 10) || 2026;
+      const histRes = await fetch(
+        `${SUPA_URL}/rest/v1/rsf_history?select=cip13,libelle&labo=eq.${encodeURIComponent(labName)}&year=eq.${yr}&rsf_pct=eq.${rsf_pct}&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)&order=libelle.asc&limit=100`,
+        { headers: H }
+      );
+      const histData = histRes.ok ? await histRes.json() : [];
+      if (!histData.length) { dropdown.classList.remove('visible'); return; }
+      // Récupérer libellés normalisés depuis references_pharmacie (pour le stockage simulation)
+      const cips = histData.map(r => r.cip13);
+      const normRes = await fetch(
+        `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,libelle&cip13=in.(${cips.join(',')})&limit=500`,
+        { headers: H }
+      );
+      const normMap = new Map();
+      if (normRes.ok) (await normRes.json()).forEach(r => normMap.set(r.cip13, r.libelle));
+      results = histData.map(r => ({
+        cip13: r.cip13,
+        libelle: r.libelle || r.cip13,                   // affiché (PDF)
+        storeLibelle: normMap.get(r.cip13) || r.libelle || r.cip13,  // stocké (normalisé si dispo)
+      }));
+    } else {
+      const laboFilter = labName ? `&labo=eq.${encodeURIComponent(labName)}` : '';
+      const res = await fetch(
+        `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)${laboFilter}&order=libelle.asc&limit=100`,
+        { headers: H }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      results = data.map(r => ({ cip13: r.cip13, libelle: r.libelle, storeLibelle: r.libelle }));
+    }
     const already = new Set(exc.libelles.map(l => l.text));
     const seen = new Set();
     const uniq = [];
-    for (const r of data) {
-      if (!seen.has(r.libelle) && !already.has(r.libelle)) { seen.add(r.libelle); uniq.push(r); }
+    for (const r of results) {
+      if (!seen.has(r.storeLibelle) && !already.has(r.storeLibelle)) { seen.add(r.storeLibelle); uniq.push(r); }
       if (uniq.length >= 8) break;
     }
     dropdown.innerHTML = '';
     if (!uniq.length) { dropdown.classList.remove('visible'); return; }
     uniq.forEach(row => {
       const opt = document.createElement('div');
-      opt.className = 'libelle-option'; opt.dataset.text = row.libelle;
+      opt.className = 'libelle-option'; opt.dataset.text = row.storeLibelle;
       const nameSpan = document.createElement('span'); nameSpan.textContent = row.libelle;
       const cipSpan = document.createElement('span');
       cipSpan.style.cssText = 'float:right;opacity:.45;font-size:12px;letter-spacing:1px;font-family:monospace';
       cipSpan.textContent = row.cip13;
       opt.appendChild(nameSpan); opt.appendChild(cipSpan);
-      opt.addEventListener('mousedown', e => { e.preventDefault(); pickLibelle(row.libelle, exc, chipsWrap, onAfterChange); inp.value = ''; dropdown.classList.remove('visible'); });
+      opt.addEventListener('mousedown', e => { e.preventDefault(); pickLibelle(row.storeLibelle, exc, chipsWrap, onAfterChange); inp.value = ''; dropdown.classList.remove('visible'); });
       dropdown.appendChild(opt);
     });
     dropdown.classList.add('visible');
