@@ -4121,6 +4121,7 @@ function initLabPage(conf) {
   function autoFillCond(cond) {
     const rg = cond.remiseGlobale, lab = s.selectedLab;
     if (rg === null) return;
+    const coopBase = (lab === 'Biogaran' && year === '2025') ? 40 : 30;
     const tbody = document.getElementById(`tbody-${uid}-${cond.uid}`);
     if (!tbody) return;
     const firstMet = (state.gers != null && cond.caCondition != null &&
@@ -4138,7 +4139,7 @@ function initLabPage(conf) {
           row.remise2 = r2;
           if (i2) { i2.value = r2; i2.classList.add('auto-c'); }
         }
-        if (lab === 'Biogaran') { row.remise3 = (rg - 30).toFixed(2); if (i3) { i3.value = row.remise3; i3.classList.add('auto-a'); } }
+        if (lab === 'Biogaran') { row.remise3 = (rg - coopBase).toFixed(2); if (i3) { i3.value = row.remise3; i3.classList.add('auto-a'); } }
         return;
       }
       if (row.excluded || abs === 0) {
@@ -4148,7 +4149,7 @@ function initLabPage(conf) {
         row.remise2 = Math.max(0, rg - abs).toFixed(2);
         if (i2) { i2.value = row.remise2; i2.classList.add('auto-c'); }
       }
-      if (lab === 'Biogaran') { row.remise3 = (rg - 30).toFixed(2); }
+      if (lab === 'Biogaran') { row.remise3 = (rg - coopBase).toFixed(2); }
       if (i3 && lab === 'Biogaran') { i3.value = row.remise3; i3.classList.add('auto-a'); }
     });
   }
