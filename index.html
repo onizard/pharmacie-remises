@@ -9103,8 +9103,10 @@ function initConnecteurModal() {
     document.getElementById('ospPass').value  = '';
     document.getElementById('digiUser').value = c.digipharmacie.user;
     document.getElementById('digiPass').value = '';
-    document.getElementById('concUser').value = c.concentrateur?.user || '';
-    document.getElementById('concPass').value = '';
+    document.getElementById('concUser').value  = c.concentrateur?.user || '';
+    document.getElementById('concPass').value  = '';
+    document.getElementById('gmailUser').value = c.gmail?.user || '';
+    document.getElementById('gmailPass').value = '';
     document.getElementById('ospTestResult').textContent   = '';
     document.getElementById('digiTestResult').textContent  = '';
     document.getElementById('gmailTestResult').textContent = '';
@@ -9311,6 +9313,9 @@ function initConnecteurModal() {
         state._digiProgressFirstNum = null;
         goTo('recap');
         renderRecap();
+      } else if (connKey === 'gmail') {
+        closeModal();
+        return;
       }
       _triggerWorkflow(connKey, prefix);
     } catch(e) {
