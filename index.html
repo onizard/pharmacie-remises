@@ -3988,7 +3988,7 @@ function initLabPage(conf) {
             fd.append('file', _pendingFile, _pendingFile.name);
             fd.append('labo', lab);
             fd.append('year', String(yr));
-            const { data: { session: _sess } } = await sb.auth.getSession();
+            const { data: { session: _sess } } = await window._sbClient.auth.getSession();
             const tok = _sess?.access_token || '';
             const res = await fetch(`${API_URL}/import/rsf_history`, {
               method: 'POST',
