@@ -444,8 +444,9 @@ async def parse_grossiste(
 
 
 def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
-    from supabase_client import SUPA_URL, SERVICE_KEY
-    HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
+    from supabase_client import SUPA_URL, _supa_key
+    _tok = _supa_key()
+    HEADERS = {"apikey": _tok, "Authorization": f"Bearer {_tok}"}
 
     # 1. Télécharger le XLSX depuis Storage
     dl_url = f"{SUPA_URL}/storage/v1/object/grossiste/{storage_path}"
@@ -672,8 +673,9 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
                          _compute_escompte_stats, _merge_escompte_stats,
                          _compute_mdl_stats, _merge_mdl_stats)
 
-    from supabase_client import SERVICE_KEY, SUPA_URL
-    HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
+    from supabase_client import SUPA_URL, _supa_key
+    _tok = _supa_key()
+    HEADERS = {"apikey": _tok, "Authorization": f"Bearer {_tok}"}
 
     # Écrire le PDF dans un fichier temp, extraire les lignes
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -785,7 +787,9 @@ async def import_rsf_history(
 def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: str) -> dict:
     import io, pdfplumber as _pdfplumber
     import urllib.parse
-    from supabase_client import SUPA_URL, SERVICE_KEY
+    from supabase_client import SUPA_URL, _supa_key
+
+    tok = _supa_key()
 
     # CIP13  libellé  PFHT€  REMISE%  RDP%
     LINE_RE = _re.compile(
@@ -814,8 +818,8 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
         raise HTTPException(status_code=422, detail="Aucun CIP13 trouvé dans le PDF")
 
     HEADERS = {
-        "apikey":        SERVICE_KEY,
-        "Authorization": f"Bearer {SERVICE_KEY}",
+        "apikey":        tok,
+        "Authorization": f"Bearer {tok}",
         "Content-Type":  "application/json",
         "Prefer":        "resolution=merge-duplicates,return=minimal",
     }
@@ -825,7 +829,7 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
     del_req = urllib.request.Request(
         f"{SUPA_URL}/rest/v1/rsf_history?labo=eq.{labo_enc}&year=eq.{year}",
         method="DELETE",
-        headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"},
+        headers={"apikey": tok, "Authorization": f"Bearer {tok}"},
     )
     with urllib.request.urlopen(del_req, timeout=30):
         pass
@@ -908,8 +912,9 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
     import io, re as _re, datetime as _dt
     import openpyxl
 
-    from supabase_client import SERVICE_KEY, SUPA_URL
-    HEADERS = {"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
+    from supabase_client import SUPA_URL, _supa_key
+    _tok = _supa_key()
+    HEADERS = {"apikey": _tok, "Authorization": f"Bearer {_tok}"}
 
     # ── Labos génériqueurs connus ──────────────────────────────────────────────
     _LABO_KEYS = [
@@ -1498,12 +1503,13 @@ async def explore_digi_espace_client(
 
 def _explore_digi_espace_client_sync(user_id: str) -> dict:
     import asyncio as _asyncio
-    from supabase_client import SERVICE_KEY, SUPA_URL
+    from supabase_client import SUPA_URL, _supa_key
+    _tok = _supa_key()
 
     creds = {}
     try:
         url = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=connectors&limit=1"
-        req = urllib.request.Request(url, headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"})
+        req = urllib.request.Request(url, headers={"apikey": _tok, "Authorization": f"Bearer {_tok}"})
         with urllib.request.urlopen(req, timeout=15) as r:
             rows = json.loads(r.read())
         conns = (rows[0].get("connectors") or {}) if rows else {}
@@ -1522,7 +1528,8 @@ def _explore_digi_espace_client_sync(user_id: str) -> dict:
 async def _explore_async(creds: dict, user_id: str) -> dict:
     import os as _os
     from camoufox.async_api import AsyncCamoufox
-    from supabase_client import SERVICE_KEY, SUPA_URL
+    from supabase_client import SUPA_URL, _supa_key
+    _tok = _supa_key()
 
     BASE = "https://app.digipharmacie.fr"
     PROXY_URL = _os.environ.get("PROXY_URL", "")
@@ -1633,7 +1640,7 @@ async def _explore_async(creds: dict, user_id: str) -> dict:
     # Sauvegarder en base
     try:
         url  = f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1"
-        req  = urllib.request.Request(url, headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"})
+        req  = urllib.request.Request(url, headers={"apikey": _tok, "Authorization": f"Bearer {_tok}"})
         with urllib.request.urlopen(req, timeout=15) as r:
             rows = json.loads(r.read())
         state = rows[0]["state_json"] if rows else {}
@@ -1641,7 +1648,7 @@ async def _explore_async(creds: dict, user_id: str) -> dict:
         body = json.dumps({"state_json": state}).encode()
         req2 = urllib.request.Request(f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
                                       data=body, method="PATCH",
-                                      headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+                                      headers={"apikey": _tok, "Authorization": f"Bearer {_tok}",
                                                "Content-Type": "application/json", "Prefer": "return=minimal"})
         with urllib.request.urlopen(req2, timeout=15): pass
     except Exception as e:
