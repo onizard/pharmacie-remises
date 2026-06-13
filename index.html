@@ -4818,6 +4818,21 @@ function isMultiCipInput(term) {
   return parts.length > 1 && parts.every(p => /^\d{5,}$/.test(p));
 }
 
+const _rsfCipCache = new Map();
+
+async function getRsfGroupCips(labName, rsf_pct) {
+  const key = `${labName}|${rsf_pct}`;
+  if (_rsfCipCache.has(key)) return _rsfCipCache.get(key);
+  const res = await fetch(
+    `${SUPA_URL}/rest/v1/rsf_history?select=cip13&labo=eq.${encodeURIComponent(labName)}&year=eq.2025&rsf_pct=eq.${rsf_pct}&limit=2000`,
+    { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
+  );
+  const data = res.ok ? await res.json() : [];
+  const cips = data.map(r => r.cip13);
+  _rsfCipCache.set(key, cips);
+  return cips;
+}
+
 async function doSearch(term, dropdown, exc, chipsWrap, inp, rsf_pct = null, labName = '', onAfterChange = null) {
   term = term.trim();
   if (term.length < 2) { dropdown.classList.remove('visible'); dropdown.innerHTML = ''; return; }
@@ -4840,10 +4855,15 @@ async function doSearch(term, dropdown, exc, chipsWrap, inp, rsf_pct = null, lab
   }
 
   const t = encodeURIComponent(term);
-  const rsfFilter = labName
-    ? `&labo=eq.${encodeURIComponent(labName)}`
-    : '';
-  const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)${rsfFilter}&order=libelle.asc&limit=100`;
+  let url;
+  if (rsf_pct !== null && labName) {
+    const cips = await getRsfGroupCips(labName, rsf_pct);
+    if (!cips.length) { dropdown.classList.remove('visible'); return; }
+    url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&cip13=in.(${cips.join(',')})&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)&order=libelle.asc&limit=100`;
+  } else {
+    const laboFilter = labName ? `&labo=eq.${encodeURIComponent(labName)}` : '';
+    url = `${SUPA_URL}/rest/v1/references_pharmacie?select=libelle,cip13&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)${laboFilter}&order=libelle.asc&limit=100`;
+  }
   try {
     const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
     if (!res.ok) return;
