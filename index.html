@@ -4029,7 +4029,9 @@ function initLabPage(conf) {
             _textEl.textContent = `✓ ${data.count} réf`;
             _pendingFile = null;
             _fileEl.value = '';
-            showToast(`RSF ${yr} importé — ${data.count} références`);
+            if (data.rsf_dist) console.log('[CGV import] rsf_dist:', JSON.stringify(data.rsf_dist));
+            const _distInfo = data.rsf_dist ? ` [dist: ${Object.entries(data.rsf_dist).map(([k,v])=>`${k}%×${v}`).join(', ')}]` : '';
+            showToast(`RSF ${yr} importé — ${data.count} références${_distInfo}`);
             saveState();
           } catch (e) {
             _dropEl.classList.remove('uploading');

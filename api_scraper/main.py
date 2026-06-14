@@ -898,6 +898,10 @@ def _parse_tabular_rows(raw_bytes: bytes, filename: str) -> "dict[str, tuple]":
         lib_i = next((i for i, h in enumerate(headers_lo) if "libelle" in h or (h.startswith("lib") and h != "libelle"[:len(h)] and "cip" not in h)), None)
         if lib_i is None:
             lib_i = next((i for i, h in enumerate(headers_lo) if "lib" in h and i != cip_i), None)
+        print(f"[xlsx] headers={headers_raw} cip_i={cip_i} rsf_i={rsf_i} lib_i={lib_i}", flush=True)
+        if rsf_i is not None and len(all_rows) > 1:
+            sample = [repr(all_rows[i][rsf_i]) for i in range(1, min(4, len(all_rows)))]
+            print(f"[xlsx] sample rsf col values: {sample}", flush=True)
         if cip_i is None:
             return rows
         for raw_row in all_rows[1:]:
@@ -1000,8 +1004,10 @@ def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filenam
     except Exception as e:
         print(f"[warn] MinIO upload failed: {e}", flush=True)
 
-    print(f"[import_rsf_history_csv] {labo} {year} → {len(rows)} CIP13", flush=True)
-    return {"count": len(rows), "labo": labo, "year": year}
+    from collections import Counter
+    rsf_dist = dict(Counter(round(rsf, 4) for _, (_, rsf, _, _) in rows.items()).most_common(10))
+    print(f"[import_rsf_history_csv] {labo} {year} → {len(rows)} CIP13, rsf dist={rsf_dist}", flush=True)
+    return {"count": len(rows), "labo": labo, "year": year, "rsf_dist": rsf_dist}
 
 
 def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: str) -> dict:
