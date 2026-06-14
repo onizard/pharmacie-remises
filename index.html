@@ -4030,6 +4030,7 @@ function initLabPage(conf) {
             _pendingFile = null;
             _fileEl.value = '';
             showToast(`RSF ${yr} importé — ${data.count} références`);
+            saveState();
           } catch (e) {
             _dropEl.classList.remove('uploading');
             _setFile(_pendingFile);
@@ -4628,6 +4629,13 @@ function initLabPage(conf) {
         cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
         applyRsf25Default(cond);
         renderCondTable(cond);
+        // Ouvrir le corps du tableau RSF si fermé (évite que les groupes restent masqués après import)
+        const _rsfTog = document.getElementById(`rsfToggle-${uid}-${cond.uid}`);
+        const _rsfBod = document.getElementById(`rsfBody-${uid}-${cond.uid}`);
+        if (_rsfTog && _rsfBod && !_rsfTog.classList.contains('rsf-open')) {
+          _rsfTog.classList.add('rsf-open');
+          _rsfBod.style.display = '';
+        }
         if (cond.remiseGlobale !== null) autoFillCond(cond);
       });
     } catch(err) { console.error(err); }
