@@ -1027,20 +1027,50 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
         r"([\d]+(?:[,.][\d]+)?)\s*%\s+"
         r"(?:([\d]+(?:[,.][\d]+)?)\s*%|(-))"
     )
-    # cip13 → (pfht, rsf, rdp, libelle)
+    # Viatris : CIP13  libellé  QTE_CARTON  QTE_FARDEAU  PFHT€  RSF_STD%  PRIX_STD€  [RSF_RIG%  PRIX_RIG€]
+    # TAUX RIG (40 %) = RSF First, uniquement pour les produits du répertoire (palier 22 %)
+    # On skippe explicitement les deux colonnes quantité pour éviter de confondre
+    # un séparateur milliers ("1 235,61") avec une colonne entière.
+    _VIAT_PRICE = r"[\d]+(?:[ \xa0]\d{3})?[,.]\d+"   # prix avec séparateur milliers optionnel
+    VIATRIS_LINE_RE = _re.compile(
+        r"(\d{13})\s+"                              # CIP13
+        r"(.+?)\s+"                                 # Libellé (lazy, sans les qty)
+        r"\d+\s+\d+\s+"                            # QTE_CARTON  QTE_FARDEAU (skip)
+        r"(" + _VIAT_PRICE + r")\s*€\s+"           # PFHT€
+        r"([\d]+[,.]\d+)\s*%\s+"                   # TAUX REMISE STANDARD%
+        r"" + _VIAT_PRICE + r"\s*€\s+"             # PRIX NET STANDARD€ (skip)
+        r"(?:([\d]+[,.]\d+)\s*%\s+"                # Optional: TAUX RIG%
+        r"" + _VIAT_PRICE + r"\s*€)?"              # Optional: PRIX RIG€ (skip)
+    )
+    _is_viatris = labo.strip().lower().startswith("viatris")
+
+    def _viat_float(s: str) -> float:
+        return float(s.replace("\xa0", "").replace(" ", "").replace(",", "."))
+
+    # cip13 → (pfht, rsf, rdp, rsf_first, libelle)
     rows: dict[str, tuple] = {}
     with _pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
             text = page.extract_text() or ""
             for line in text.splitlines():
-                m = LINE_RE.search(line)
-                if m:
-                    cip13   = m.group(1)
-                    libelle = m.group(2).strip().upper()
-                    pfht    = float(m.group(3).replace(",", "."))
-                    rsf     = -abs(float(m.group(4).replace(",", ".")))
-                    rdp     = -abs(float(m.group(5).replace(",", "."))) if m.group(5) else 0.0
-                    rows[cip13] = (pfht, rsf, rdp, libelle)
+                if _is_viatris:
+                    m = VIATRIS_LINE_RE.search(line)
+                    if m:
+                        cip13     = m.group(1)
+                        libelle   = m.group(2).strip().upper()
+                        pfht      = _viat_float(m.group(3))
+                        rsf       = -abs(_viat_float(m.group(4)))
+                        rsf_first = -abs(_viat_float(m.group(5))) if m.group(5) else 0.0
+                        rows[cip13] = (pfht, rsf, 0.0, rsf_first, libelle)
+                else:
+                    m = LINE_RE.search(line)
+                    if m:
+                        cip13   = m.group(1)
+                        libelle = m.group(2).strip().upper()
+                        pfht    = float(m.group(3).replace(",", "."))
+                        rsf     = -abs(float(m.group(4).replace(",", ".")))
+                        rdp     = -abs(float(m.group(5).replace(",", "."))) if m.group(5) else 0.0
+                        rows[cip13] = (pfht, rsf, rdp, 0.0, libelle)
 
     if not rows:
         raise HTTPException(status_code=422, detail="Aucun CIP13 trouvé dans le PDF")
@@ -1065,8 +1095,8 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
     # 2. Insérer toutes les nouvelles lignes avec libellé
     rsf_data = [
         {"cip13": cip, "labo": labo, "year": year,
-         "rsf_pct": rsf, "rdp_pct": rdp, "pfht": pfht, "libelle": lib}
-        for cip, (pfht, rsf, rdp, lib) in rows.items()
+         "rsf_pct": rsf, "rdp_pct": rdp, "rsf_first_pct": rsf_first, "pfht": pfht, "libelle": lib}
+        for cip, (pfht, rsf, rdp, rsf_first, lib) in rows.items()
     ]
     chunk = 500
     for i in range(0, len(rsf_data), chunk):
@@ -1082,7 +1112,7 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
     # 3. Synchroniser references_pharmacie (upsert — pas de suppression pour préserver l'historique)
     refs_data = [
         {"cip13": cip, "labo": labo, "libelle": lib, "puht": pfht, "rsf_pct": rsf}
-        for cip, (pfht, rsf, rdp, lib) in rows.items()
+        for cip, (pfht, rsf, rdp, rsf_first, lib) in rows.items()
     ]
     for i in range(0, len(refs_data), chunk):
         body = json.dumps(refs_data[i:i+chunk]).encode()
