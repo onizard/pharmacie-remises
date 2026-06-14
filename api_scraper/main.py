@@ -791,13 +791,13 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
 
     tok = _supa_key()
 
-    # CIP13  libellé  PFHT€  REMISE%  RDP%
+    # CIP13  libellé  PFHT€  REMISE%  RDP% (ou - quand pas de RDP)
     LINE_RE = _re.compile(
         r"(\d{13})\s+"
         r"(.+?)\s+"
         r"([\d]+[,.][\d]+)\s*€\s+"
         r"([\d]+(?:[,.][\d]+)?)\s*%\s+"
-        r"([\d]+(?:[,.][\d]+)?)\s*%"
+        r"(?:([\d]+(?:[,.][\d]+)?)\s*%|(-))"
     )
     # cip13 → (pfht, rsf, rdp, libelle)
     rows: dict[str, tuple] = {}
@@ -811,7 +811,7 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
                     libelle = m.group(2).strip().upper()
                     pfht    = float(m.group(3).replace(",", "."))
                     rsf     = -abs(float(m.group(4).replace(",", ".")))
-                    rdp     = -abs(float(m.group(5).replace(",", ".")))
+                    rdp     = -abs(float(m.group(5).replace(",", "."))) if m.group(5) else 0.0
                     rows[cip13] = (pfht, rsf, rdp, libelle)
 
     if not rows:
