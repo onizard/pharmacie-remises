@@ -4318,8 +4318,9 @@ function initLabPage(conf) {
           if (modal > 0) r.remise2 = modal.toFixed(2);
         });
 
-        // Reconstruire les exceptions
-        cond.exceptions = {};
+        // Reconstruire les exceptions (exceptions = stockage cloud/lab_config ; remise2Except = affiché)
+        cond.exceptions    = {};
+        cond.remise2Except = {};
         groupExcs.forEach((items, key) => {
           const byRdp = new Map();
           items.forEach(({ cip13, rdp }) => {
@@ -4330,7 +4331,9 @@ function initLabPage(conf) {
           });
           byRdp.forEach((libelles, rdp) => {
             if (!cond.exceptions[key]) {
-              cond.exceptions[key] = { libelles: libelles.map(text => ({ id: Date.now() + Math.random(), text })), remise2: rdp.toFixed(2), remise3: '' };
+              const mk = () => ({ libelles: libelles.map(text => ({ id: Date.now() + Math.random(), text })), remise2: rdp.toFixed(2), remise3: '' });
+              cond.exceptions[key]    = mk();
+              cond.remise2Except[key] = mk();
             }
           });
         });
