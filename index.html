@@ -3971,10 +3971,10 @@ function initLabPage(conf) {
       const _fileEl  = document.getElementById(`rsfImportFile-${uid}-${cond.uid}`);
       const _textEl  = document.getElementById(`rsfImportText-${uid}-${cond.uid}`);
       const _sendBtn = document.getElementById(`rsfSendBtn-${uid}-${cond.uid}`);
+      const _isValidCgv = name => /\.(pdf|csv|xlsx)$/i.test(name);
+
       if (_dropEl && _fileEl && _textEl) {
         let _pendingFile = null;
-
-        const _isValidCgv = name => /\.(pdf|csv)$/i.test(name);
 
         const _setFile = f => {
           _pendingFile = f;
