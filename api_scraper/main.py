@@ -872,6 +872,12 @@ def _parse_tabular_rows(raw_bytes: bytes, filename: str) -> "dict[str, tuple]":
     is_xlsx = filename.lower().endswith(".xlsx")
 
     def _pct(val) -> float:
+        # openpyxl retourne 0.025 pour une cellule Excel formatée "2,50%" (stockée en décimal)
+        if isinstance(val, (int, float)):
+            v = float(val)
+            if v != 0 and abs(v) < 1:
+                v *= 100  # 0.025 → 2.5
+            return -abs(v)
         v = str(val or "0").strip().rstrip("%").replace(",", ".").strip()
         return -abs(float(v)) if v else 0.0
 
@@ -888,7 +894,7 @@ def _parse_tabular_rows(raw_bytes: bytes, filename: str) -> "dict[str, tuple]":
         headers_raw = [str(c or "").strip() for c in all_rows[0]]
         headers_lo  = [h.lower() for h in headers_raw]
         cip_i = next((i for i, h in enumerate(headers_lo) if h in ("cip13", "cip")), None)
-        rsf_i = next((i for i, h in enumerate(headers_lo) if "rsf" in h), None)
+        rsf_i = next((i for i, h in enumerate(headers_lo) if "rsf" in h or "remise" in h or "taux" in h or "palier" in h), None)
         lib_i = next((i for i, h in enumerate(headers_lo) if "libelle" in h or (h.startswith("lib") and h != "libelle"[:len(h)] and "cip" not in h)), None)
         if lib_i is None:
             lib_i = next((i for i, h in enumerate(headers_lo) if "lib" in h and i != cip_i), None)
@@ -916,7 +922,7 @@ def _parse_tabular_rows(raw_bytes: bytes, filename: str) -> "dict[str, tuple]":
         reader = csv.DictReader(io.StringIO(text))
         fieldnames = reader.fieldnames or []
         cip_col = next((f for f in fieldnames if f.strip().lower() in ("cip13", "cip")), None)
-        rsf_col = next((f for f in fieldnames if "rsf" in f.strip().lower()), None)
+        rsf_col = next((f for f in fieldnames if any(k in f.strip().lower() for k in ("rsf", "remise", "taux", "palier"))), None)
         lib_col = next((f for f in fieldnames if "libelle" in f.strip().lower() or ("lib" in f.strip().lower() and "cip" not in f.strip().lower())), None)
         if not cip_col:
             raise HTTPException(status_code=422, detail=f"Colonne CIP13 introuvable — colonnes : {fieldnames}")
