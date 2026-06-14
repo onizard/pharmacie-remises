@@ -494,6 +494,12 @@
   .rsf-import-drop.drag-over { background:rgba(255,171,0,.18); border-color:var(--amber); color:var(--amber); }
   .rsf-import-drop.has-file { border-color:var(--green); color:var(--green); border-style:solid; opacity:1; }
   .rsf-import-drop.uploading { opacity:.7; pointer-events:none; border-style:solid; border-color:var(--amber); }
+  .rsf-exc-drop { border-color:rgba(0,255,136,.3); color:rgba(0,255,136,.5); }
+  .rsf-exc-drop:hover { border-color:var(--green); color:var(--green); background:rgba(0,255,136,.05); }
+  .rsf-exc-drop.drag-over { background:rgba(0,255,136,.14); border-color:var(--green); color:var(--green); }
+  .rsf-exc-drop.uploading { border-color:var(--green); }
+  .rsf-exc-send { border-color:var(--green); background:rgba(0,255,136,.07); color:var(--green); }
+  .rsf-exc-send:hover { background:rgba(0,255,136,.18); box-shadow:0 0 7px rgba(0,255,136,.4); }
   .rsf-import-spin { display:inline-block; width:10px; height:10px; border:2px solid rgba(255,171,0,.25); border-top-color:var(--amber); border-radius:50%; animation:rsf-spin .6s linear infinite; vertical-align:middle; }
   .rsf-send-btn { display:none; align-items:center; justify-content:center; width:20px; height:20px; border:1px solid var(--amber); border-radius:3px; background:rgba(255,171,0,.08); color:var(--amber); font-size:12px; cursor:pointer; margin-left:4px; transition:background .15s,box-shadow .15s; padding:0; line-height:1; vertical-align:middle; }
   .rsf-send-btn:hover { background:rgba(255,171,0,.22); box-shadow:0 0 7px rgba(255,171,0,.45); }
@@ -3805,10 +3811,14 @@ function initLabPage(conf) {
       <div class="rsf-section" id="rsfSec-${uid}-${cond.uid}">
         <div class="rsf-header">
           <div class="lab-tag" id="rsfToggle-${uid}-${cond.uid}">TABLEAU DES REMISES ${year}</div>
-          ${isAdmin ? `<label class="rsf-import-drop" id="rsfImportDrop-${uid}-${cond.uid}" title="Déposer le PDF CGV pour mettre à jour rsf_history (${year})">
+          ${isAdmin ? `<label class="rsf-import-drop" id="rsfImportDrop-${uid}-${cond.uid}" title="Déposer PDF/CSV/XLSX CGV pour mettre à jour rsf_history (${year})">
             <span id="rsfImportText-${uid}-${cond.uid}">↑ CGV</span>
-            <input type="file" accept=".pdf,.csv" style="display:none" id="rsfImportFile-${uid}-${cond.uid}">
-          </label><button class="rsf-send-btn" id="rsfSendBtn-${uid}-${cond.uid}" title="Importer le PDF">⬆</button>` : ''}
+            <input type="file" accept=".pdf,.csv,.xlsx" style="display:none" id="rsfImportFile-${uid}-${cond.uid}">
+          </label><button class="rsf-send-btn" id="rsfSendBtn-${uid}-${cond.uid}" title="Importer CGV">⬆</button>
+          <label class="rsf-import-drop rsf-exc-drop" id="rsfExcDrop-${uid}-${cond.uid}" title="Déposer le fichier d'exceptions (CSV/XLSX) — ajoute les refs dans les blocs exception sans écraser les CGV">
+            <span id="rsfExcText-${uid}-${cond.uid}">↑ EXC</span>
+            <input type="file" accept=".pdf,.csv,.xlsx" style="display:none" id="rsfExcFile-${uid}-${cond.uid}">
+          </label><button class="rsf-send-btn rsf-exc-send" id="rsfExcBtn-${uid}-${cond.uid}" title="Importer exceptions">⬆</button>` : ''}
         </div>
         <div class="rsf-body" id="rsfBody-${uid}-${cond.uid}" style="display:none">
           <div class="rsf-table-wrap">
@@ -4039,6 +4049,99 @@ function initLabPage(conf) {
         _fileEl.addEventListener('change', () => {
           const f = _fileEl.files?.[0];
           if (f) _setFile(f);
+        });
+      }
+
+      // ── Drop zone exceptions ────────────────────────────────────────────────
+      const _excDropEl = document.getElementById(`rsfExcDrop-${uid}-${cond.uid}`);
+      const _excFileEl = document.getElementById(`rsfExcFile-${uid}-${cond.uid}`);
+      const _excTextEl = document.getElementById(`rsfExcText-${uid}-${cond.uid}`);
+      const _excBtn    = document.getElementById(`rsfExcBtn-${uid}-${cond.uid}`);
+      if (_excDropEl && _excFileEl && _excTextEl) {
+        let _pendingExcFile = null;
+
+        const _setExcFile = f => {
+          _pendingExcFile = f;
+          if (f) {
+            _excTextEl.textContent = f.name.length > 10 ? f.name.slice(0, 9) + '…' : f.name;
+            _excDropEl.classList.add('has-file');
+            _excDropEl.title = f.name;
+            _excBtn?.classList.add('visible');
+          } else {
+            _excTextEl.textContent = '↑ EXC';
+            _excDropEl.classList.remove('has-file');
+            _excDropEl.title = 'Déposer le fichier d\'exceptions (CSV/XLSX)';
+            _excBtn?.classList.remove('visible');
+          }
+        };
+
+        const _spinExc = txt => { _excTextEl.innerHTML = `<span class="rsf-import-spin" style="border-top-color:var(--green)"></span><span style="margin-left:4px">${txt}</span>`; };
+
+        const _submitExc = async () => {
+          if (!_pendingExcFile) return;
+          const lab = s.selectedLab;
+          if (!lab) return;
+          const yr = parseInt(year, 10);
+          _excDropEl.classList.add('uploading');
+          _excBtn?.classList.remove('visible');
+          _spinExc('Parse…');
+          try {
+            const fd = new FormData();
+            fd.append('file', _pendingExcFile, _pendingExcFile.name);
+            fd.append('labo', lab);
+            fd.append('year', String(yr));
+            const { data: { session: _sess } } = await window._sbClient.auth.getSession();
+            const tok = _sess?.access_token || '';
+            const res = await fetch(`${API_URL}/import/rsf_exceptions`, {
+              method: 'POST',
+              headers: tok ? { 'Authorization': `Bearer ${tok}` } : {},
+              body: fd,
+            });
+            if (!res.ok) { const err = await res.text(); throw new Error(err || res.statusText); }
+            const data = await res.json();
+
+            // Grouper par rsf_pct et injecter dans cond.remise2Except
+            if (!cond.remise2Except) cond.remise2Except = {};
+            const byGroup = {};
+            (data.refs || []).forEach(r => {
+              const key = String(r.rsf_pct);
+              if (!byGroup[key]) byGroup[key] = [];
+              byGroup[key].push({ id: Date.now() + Math.random(), text: r.libelle });
+            });
+            Object.entries(byGroup).forEach(([key, libs]) => {
+              if (!cond.remise2Except[key]) cond.remise2Except[key] = { libelles: [], remise2: '', remise3: '' };
+              const existing = new Set(cond.remise2Except[key].libelles.map(l => l.text));
+              libs.forEach(l => { if (!existing.has(l.text)) cond.remise2Except[key].libelles.push(l); });
+              const row = cond.rsfValues.find(r => String(r.rsf_pct) === key);
+              if (row) row.hasExcept = true;
+            });
+            renderCondTable(cond);
+            saveState();
+
+            _excDropEl.classList.remove('uploading', 'has-file');
+            _excTextEl.textContent = `✓ ${data.count}`;
+            _pendingExcFile = null;
+            _excFileEl.value = '';
+            showToast(`${data.count} exceptions importées (${data.total_cips} CIP total)`);
+          } catch (e) {
+            _excDropEl.classList.remove('uploading');
+            _setExcFile(_pendingExcFile);
+            showToast(`Erreur import exceptions : ${e.message}`);
+          }
+        };
+
+        _excBtn?.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); _submitExc(); });
+        _excDropEl.addEventListener('dragover',  e => { e.preventDefault(); _excDropEl.classList.add('drag-over'); });
+        _excDropEl.addEventListener('dragleave', () => _excDropEl.classList.remove('drag-over'));
+        _excDropEl.addEventListener('drop', e => {
+          e.preventDefault();
+          _excDropEl.classList.remove('drag-over');
+          const f = e.dataTransfer.files?.[0];
+          if (f && _isValidCgv(f.name)) _setExcFile(f);
+        });
+        _excFileEl.addEventListener('change', () => {
+          const f = _excFileEl.files?.[0];
+          if (f) _setExcFile(f);
         });
       }
     }

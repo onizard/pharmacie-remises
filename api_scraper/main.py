@@ -769,73 +769,179 @@ async def import_rsf_history(
         raise HTTPException(status_code=401, detail=str(e))
 
     name = (file.filename or "").lower()
-    if not name.endswith(".pdf") and not name.endswith(".csv"):
-        raise HTTPException(status_code=422, detail="Fichier PDF ou CSV requis")
+    if not any(name.endswith(e) for e in (".pdf", ".csv", ".xlsx")):
+        raise HTTPException(status_code=422, detail="Fichier PDF, CSV ou XLSX requis")
 
     raw_bytes = await file.read()
     if len(raw_bytes) < 10:
         raise HTTPException(status_code=422, detail="Fichier trop court ou vide")
 
-    fname = file.filename or ("upload.csv" if name.endswith(".csv") else "upload.pdf")
+    fname = file.filename or "upload"
     loop = asyncio.get_event_loop()
-    if name.endswith(".csv"):
-        result = await loop.run_in_executor(
-            _executor,
-            lambda: _import_rsf_history_csv_sync(raw_bytes, labo, year, fname),
-        )
-    else:
+    if name.endswith(".pdf"):
         result = await loop.run_in_executor(
             _executor,
             lambda: _import_rsf_history_sync(raw_bytes, labo, year, fname),
         )
+    else:
+        result = await loop.run_in_executor(
+            _executor,
+            lambda: _import_rsf_history_csv_sync(raw_bytes, labo, year, fname),
+        )
     return result
 
 
-def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filename: str) -> dict:
-    """Parse un CSV CGV labo (CIP13, LIBELLE, rsf%) et upsert dans rsf_history."""
-    import csv, io, urllib.parse
+@app.post("/import/rsf_exceptions")
+async def import_rsf_exceptions(
+    file:          UploadFile = File(...),
+    labo:          str        = Form(...),
+    year:          int        = Form(...),
+    authorization: str        = Header(default=""),
+):
+    """Parse un fichier d'exceptions (xlsx/csv) et retourne les refs depuis rsf_history."""
+    token = _extract_token(authorization)
+    try:
+        await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    name = (file.filename or "").lower()
+    if not any(name.endswith(e) for e in (".pdf", ".csv", ".xlsx")):
+        raise HTTPException(status_code=422, detail="Fichier PDF, CSV ou XLSX requis")
+
+    raw_bytes = await file.read()
+    if len(raw_bytes) < 10:
+        raise HTTPException(status_code=422, detail="Fichier trop court ou vide")
+
+    fname = file.filename or "upload"
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        _executor,
+        lambda: _parse_rsf_exceptions_sync(raw_bytes, fname, labo, year),
+    )
+    return result
+
+
+def _parse_rsf_exceptions_sync(raw_bytes: bytes, filename: str, labo: str, year: int) -> dict:
+    """Extrait les CIP13 du fichier, les croise avec rsf_history et retourne les refs trouvées."""
+    import urllib.parse
     from supabase_client import SUPA_URL, _supa_key
 
-    # Détection encoding : essai UTF-8, fallback latin-1
-    for enc in ("utf-8-sig", "utf-8", "latin-1", "cp1252"):
-        try:
-            text = csv_bytes.decode(enc)
-            break
-        except UnicodeDecodeError:
-            continue
+    # Extraire la liste des CIP13 depuis le fichier
+    if filename.lower().endswith(".pdf"):
+        import io, pdfplumber as _pdfplumber
+        cips = []
+        with _pdfplumber.open(io.BytesIO(raw_bytes)) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                cips += _re.findall(r"\b(\d{13})\b", text)
+        cips = list(dict.fromkeys(cips))  # dédoublonnage ordre-préservé
     else:
-        raise HTTPException(status_code=422, detail="Encodage CSV non reconnu")
+        tabular = _parse_tabular_rows(raw_bytes, filename)
+        cips = list(tabular.keys())
 
-    rows: dict[str, tuple] = {}
-    reader = csv.DictReader(io.StringIO(text))
-    headers = [h.strip().lower() for h in (reader.fieldnames or [])]
+    if not cips:
+        raise HTTPException(status_code=422, detail="Aucun CIP13 trouvé dans le fichier")
 
-    # Colonnes attendues — CIP13 + RSF obligatoires, LIBELLE optionnel
-    cip_col  = next((f for f in reader.fieldnames or [] if f.strip().lower() in ("cip13", "cip")), None)
-    rsf_col  = next((f for f in reader.fieldnames or [] if "rsf" in f.strip().lower()), None)
-    lib_col  = next((f for f in reader.fieldnames or [] if "libelle" in f.strip().lower() or "lib" in f.strip().lower()), None)
+    tok = _supa_key()
+    H = {"apikey": tok, "Authorization": f"Bearer {tok}"}
+    labo_enc = urllib.parse.quote(labo)
+    refs = []
 
-    if not cip_col or not rsf_col:
-        raise HTTPException(status_code=422, detail=f"Colonnes CIP13 et RSF% requises — trouvé : {reader.fieldnames}")
+    # Requête par chunks de 200 (limite URL safe)
+    for i in range(0, len(cips), 200):
+        chunk = cips[i:i+200]
+        url = (f"{SUPA_URL}/rest/v1/rsf_history"
+               f"?select=cip13,libelle,rsf_pct"
+               f"&labo=eq.{labo_enc}&year=eq.{year}"
+               f"&cip13=in.({','.join(chunk)})"
+               f"&limit=200")
+        req = urllib.request.Request(url, headers=H)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            refs += json.loads(r.read())
 
-    def _pct(val: str) -> float:
-        v = val.strip().rstrip("%").replace(",", ".").strip()
+    print(f"[import_rsf_exceptions] {labo} {year} → {len(refs)}/{len(cips)} CIP13 trouvés", flush=True)
+    return {"refs": refs, "count": len(refs), "total_cips": len(cips)}
+
+
+def _parse_tabular_rows(raw_bytes: bytes, filename: str) -> "dict[str, tuple]":
+    """Parse CSV ou XLSX → {cip13: (pfht, rsf, rdp, libelle)}.
+    Colonnes attendues : CIP13 (obligatoire), LIBELLE (optionnel), RSF% (optionnel).
+    """
+    import csv, io
+    is_xlsx = filename.lower().endswith(".xlsx")
+
+    def _pct(val) -> float:
+        v = str(val or "0").strip().rstrip("%").replace(",", ".").strip()
         return -abs(float(v)) if v else 0.0
 
-    for row in reader:
-        cip13 = (row.get(cip_col) or "").strip()
-        if len(cip13) != 13 or not cip13.isdigit():
-            continue
-        rsf_raw = row.get(rsf_col, "0")
-        try:
-            rsf = _pct(rsf_raw)
-        except ValueError:
-            continue
-        lib = (row.get(lib_col, "") or "").strip().upper() if lib_col else cip13
-        rows[cip13] = (0.0, rsf, 0.0, lib)
+    rows: dict[str, tuple] = {}
 
+    if is_xlsx:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes), data_only=True)
+        ws = wb.active
+        all_rows = list(ws.iter_rows(values_only=True))
+        if not all_rows:
+            return rows
+        # Première ligne = headers
+        headers_raw = [str(c or "").strip() for c in all_rows[0]]
+        headers_lo  = [h.lower() for h in headers_raw]
+        cip_i = next((i for i, h in enumerate(headers_lo) if h in ("cip13", "cip")), None)
+        rsf_i = next((i for i, h in enumerate(headers_lo) if "rsf" in h), None)
+        lib_i = next((i for i, h in enumerate(headers_lo) if "libelle" in h or (h.startswith("lib") and h != "libelle"[:len(h)] and "cip" not in h)), None)
+        if lib_i is None:
+            lib_i = next((i for i, h in enumerate(headers_lo) if "lib" in h and i != cip_i), None)
+        if cip_i is None:
+            return rows
+        for raw_row in all_rows[1:]:
+            cip13 = str(raw_row[cip_i] or "").strip().replace(".0", "")
+            if len(cip13) != 13 or not cip13.isdigit():
+                continue
+            rsf = 0.0
+            if rsf_i is not None:
+                try: rsf = _pct(raw_row[rsf_i])
+                except (ValueError, TypeError): pass
+            lib = str(raw_row[lib_i] or "").strip().upper() if lib_i is not None else cip13
+            rows[cip13] = (0.0, rsf, 0.0, lib)
+    else:
+        # CSV
+        for enc in ("utf-8-sig", "utf-8", "latin-1", "cp1252"):
+            try:
+                text = raw_bytes.decode(enc); break
+            except UnicodeDecodeError:
+                continue
+        else:
+            raise HTTPException(status_code=422, detail="Encodage CSV non reconnu")
+        reader = csv.DictReader(io.StringIO(text))
+        fieldnames = reader.fieldnames or []
+        cip_col = next((f for f in fieldnames if f.strip().lower() in ("cip13", "cip")), None)
+        rsf_col = next((f for f in fieldnames if "rsf" in f.strip().lower()), None)
+        lib_col = next((f for f in fieldnames if "libelle" in f.strip().lower() or ("lib" in f.strip().lower() and "cip" not in f.strip().lower())), None)
+        if not cip_col:
+            raise HTTPException(status_code=422, detail=f"Colonne CIP13 introuvable — colonnes : {fieldnames}")
+        for row in reader:
+            cip13 = (row.get(cip_col) or "").strip()
+            if len(cip13) != 13 or not cip13.isdigit():
+                continue
+            rsf = 0.0
+            if rsf_col:
+                try: rsf = _pct(row.get(rsf_col, "0"))
+                except ValueError: pass
+            lib = (row.get(lib_col, "") or "").strip().upper() if lib_col else cip13
+            rows[cip13] = (0.0, rsf, 0.0, lib)
+
+    return rows
+
+
+def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filename: str) -> dict:
+    """Parse CSV ou XLSX CGV labo et upsert dans rsf_history."""
+    import urllib.parse
+    from supabase_client import SUPA_URL, _supa_key
+
+    rows = _parse_tabular_rows(csv_bytes, filename)
     if not rows:
-        raise HTTPException(status_code=422, detail="Aucun CIP13 valide trouvé dans le CSV")
+        raise HTTPException(status_code=422, detail="Aucun CIP13 valide trouvé dans le fichier")
 
     tok = _supa_key()
     HEADERS = {
