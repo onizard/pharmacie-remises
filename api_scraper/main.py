@@ -1027,14 +1027,16 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
         r"([\d]+(?:[,.][\d]+)?)\s*%\s+"
         r"(?:([\d]+(?:[,.][\d]+)?)\s*%|(-))"
     )
-    # Viatris : CIP13  libellé  QTE_CARTON  QTE_FARDEAU  PFHT€  RSF_STD%  PRIX_STD€  [RSF_RIG%  PRIX_RIG€]
-    # TAUX RIG (40 %) = RSF First, uniquement pour les produits du répertoire (palier 22 %)
-    # On skippe explicitement les deux colonnes quantité pour éviter de confondre
-    # un séparateur milliers ("1 235,61") avec une colonne entière.
+    # Viatris : CIP13  [libellé]  QTE_CARTON  QTE_FARDEAU  PFHT€  RSF_STD%  PRIX_STD€  [RSF_RIG%  PRIX_RIG€]
+    # TAUX RIG (40 %) = RSF First, uniquement pour les produits du répertoire (palier 22 %).
+    # Le libellé est optionnel : pdfplumber peut l'extraire sur la ligne PRÉCÉDENTE quand le nom
+    # est trop long pour la cellule PDF (le libellé overflow sort avant la ligne de données).
+    # On skippe explicitement QTE_CARTON/QTE_FARDEAU pour ne pas confondre avec un séparateur
+    # de milliers ("105 0 749,36€" ≠ "1 235,61€").
     _VIAT_PRICE = r"[\d]+(?:[ \xa0]\d{3})?[,.]\d+"   # prix avec séparateur milliers optionnel
     VIATRIS_LINE_RE = _re.compile(
         r"(\d{13})\s+"                              # CIP13
-        r"(.+?)\s+"                                 # Libellé (lazy, sans les qty)
+        r"(?:(.+?)\s+)?"                            # Libellé inline optionnel (lazy)
         r"\d+\s+\d+\s+"                            # QTE_CARTON  QTE_FARDEAU (skip)
         r"(" + _VIAT_PRICE + r")\s*€\s+"           # PFHT€
         r"([\d]+[,.]\d+)\s*%\s+"                   # TAUX REMISE STANDARD%
@@ -1052,16 +1054,32 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
     with _pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
             text = page.extract_text() or ""
+            prev_lib = ""   # libellé extrait sur la ligne précédente (overflow)
             for line in text.splitlines():
                 if _is_viatris:
                     m = VIATRIS_LINE_RE.search(line)
                     if m:
-                        cip13     = m.group(1)
-                        libelle   = m.group(2).strip().upper()
+                        cip13      = m.group(1)
+                        inline_lib = (m.group(2) or "").strip()
+                        # Si le libellé inline est court (<20 car) c'est la colonne INFORMATION
+                        # (ex: "BUD", "Switch", "Hors répertoire") — le vrai nom est dans prev_lib
+                        if prev_lib and len(inline_lib) < 20:
+                            lib_raw = (prev_lib + (" " + inline_lib if inline_lib else "")).strip()
+                        else:
+                            lib_raw = inline_lib or prev_lib
+                        libelle   = lib_raw.upper()
                         pfht      = _viat_float(m.group(3))
                         rsf       = -abs(_viat_float(m.group(4)))
                         rsf_first = -abs(_viat_float(m.group(5))) if m.group(5) else 0.0
                         rows[cip13] = (pfht, rsf, 0.0, rsf_first, libelle)
+                        prev_lib  = ""
+                    else:
+                        # Ligne sans CIP13 ni prix = candidat libellé pour le prochain produit
+                        stripped = line.strip()
+                        if stripped and not _re.search(r"\d{13}", line) and "€" not in line:
+                            prev_lib = stripped
+                        else:
+                            prev_lib = ""
                 else:
                     m = LINE_RE.search(line)
                     if m:
