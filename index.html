@@ -1803,7 +1803,7 @@ function serializeState() {
         caCondition: c.caCondition,
         coopR3: c.coopR3 ?? null,
         rsfValues: c.rsfValues.map(r => ({
-          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept, custom: r.custom || false,
+          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept, custom: r.custom || false, remise2Manual: r.remise2Manual || false, remise3Manual: r.remise3Manual || false,
         })),
         exceptions: c.exceptions,
         remise2Except: c.remise2Except,
@@ -1818,7 +1818,7 @@ function serializeState() {
         caCondition: c.caCondition,
         coopR3: c.coopR3 ?? null,
         rsfValues: c.rsfValues.map(r => ({
-          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept, custom: r.custom || false,
+          rsf_pct: r.rsf_pct, remise2: r.remise2, remise3: r.remise3, excluded: r.excluded, hasExcept: r.hasExcept, custom: r.custom || false, remise2Manual: r.remise2Manual || false, remise3Manual: r.remise3Manual || false,
         })),
         exceptions: c.exceptions,
         remise2Except: c.remise2Except,
@@ -4229,7 +4229,7 @@ function initLabPage(conf) {
 
   function applyRsf25Default(cond) {
     const row = cond.rsfValues.find(r => !r.excluded && Math.abs(parseFloat(r.rsf_pct)) === 2.5);
-    if (!row) return;
+    if (!row || row.remise2Manual) return;
     row.remise2 = rsf25R2(s.selectedLab, cond.caCondition);
   }
 
@@ -4249,23 +4249,23 @@ function initLabPage(conf) {
       const firstRsf = firstMet ? s.rsfFirstMap.get(row.rsf_pct) : undefined;
       const abs = firstRsf != null ? Math.abs(firstRsf) : Math.abs(row.rsf_pct);
       if (!row.excluded && abs === 2.5) {
-        if (lab !== 'Biogaran') {
+        if (lab !== 'Biogaran' && !row.remise2Manual) {
           const r2 = rsf25R2(lab, cond.caCondition);
           row.remise2 = r2;
           if (i2) { i2.value = r2; i2.classList.add('auto-c'); }
         }
-        if (lab === 'Biogaran') { row.remise3 = (rg - coopBase).toFixed(2); if (i3) { i3.value = row.remise3; i3.classList.add('auto-a'); } }
+        if (lab === 'Biogaran' && !row.remise3Manual) { row.remise3 = (rg - coopBase).toFixed(2); if (i3) { i3.value = row.remise3; i3.classList.add('auto-a'); } }
         return;
       }
-      if (row.excluded || abs === 0) {
+      if ((row.excluded || abs === 0) && !row.remise2Manual) {
         row.remise2 = '0';
         if (i2) { i2.value = '0'; i2.classList.add('auto-c'); }
-      } else if (lab !== 'Biogaran') {
+      } else if (lab !== 'Biogaran' && !row.remise2Manual) {
         row.remise2 = Math.max(0, rg - abs).toFixed(2);
         if (i2) { i2.value = row.remise2; i2.classList.add('auto-c'); }
       }
-      if (lab === 'Biogaran') { row.remise3 = (rg - coopBase).toFixed(2); }
-      if (i3 && lab === 'Biogaran') { i3.value = row.remise3; i3.classList.add('auto-a'); }
+      if (lab === 'Biogaran' && !row.remise3Manual) { row.remise3 = (rg - coopBase).toFixed(2); }
+      if (i3 && lab === 'Biogaran' && !row.remise3Manual) { i3.value = row.remise3; i3.classList.add('auto-a'); }
     });
   }
 
@@ -4318,7 +4318,7 @@ function initLabPage(conf) {
           const key = String(r.rsf_pct);
           if (!groupModal.has(key) || r.excluded) return;
           const modal = groupModal.get(key);
-          if (modal > 0) r.remise2 = modal.toFixed(2);
+          if (modal > 0 && !r.remise2Manual) r.remise2 = modal.toFixed(2);
         });
 
         // Reconstruire les exceptions (exceptions = stockage cloud/lab_config ; remise2Except = affiché)
@@ -4450,6 +4450,7 @@ function initLabPage(conf) {
       inp2.addEventListener('input', e => {
         if (!isAdmin) return;
         cond.rsfValues[idx].remise2 = e.target.value;
+        cond.rsfValues[idx].remise2Manual = !!e.target.value.trim();
         inp2.classList.remove('auto-c');
         cond.rsfValues[idx].excluded = false;
         inp2.classList.remove('excl-r2');
@@ -4468,9 +4469,10 @@ function initLabPage(conf) {
         if (!isAdmin) return;
         const val = e.target.value;
         cond.rsfValues[idx].remise3 = val;
+        cond.rsfValues[idx].remise3Manual = !!val.trim();
         inp3.classList.remove('auto-a');
         if (idx === 0) {
-          cond.rsfValues.forEach((r, i) => { if (i > 0) r.remise3 = val; });
+          cond.rsfValues.forEach((r, i) => { if (i > 0) { r.remise3 = val; r.remise3Manual = !!val.trim(); } });
           tbody.querySelectorAll('.inp-r3').forEach((el, i) => { if (i > 0) { el.value = val; el.classList.remove('auto-a'); } });
         }
         saveState();
@@ -4622,7 +4624,7 @@ function initLabPage(conf) {
         (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
         cond.rsfValues = mkRsfValues(s.selectedLab, paliers).map(r => {
           const p = prev[String(r.rsf_pct)];
-          return p ? { ...r, remise2: p.remise2, remise3: p.remise3, excluded: p.excluded, hasExcept: p.hasExcept } : r;
+          return p ? { ...r, remise2: p.remise2, remise3: p.remise3, excluded: p.excluded, hasExcept: p.hasExcept, remise2Manual: p.remise2Manual || false, remise3Manual: p.remise3Manual || false } : r;
         });
         Object.values(prev).filter(r => r.custom).forEach(cr => {
           if (!cond.rsfValues.some(r => String(r.rsf_pct) === String(cr.rsf_pct)))
@@ -4702,12 +4704,12 @@ function initLabPage(conf) {
         cond.rsfValues = paliers.map(v => {
           const sv = sc.rsfValues.find(r => String(r.rsf_pct) === String(v));
           return sv
-            ? { rsf_pct: v, remise2: sv.excluded && !sv.remise2 ? '0' : sv.remise2, remise3: sv.remise3, excluded: sv.excluded, hasExcept: sv.hasExcept || false }
+            ? { rsf_pct: v, remise2: sv.excluded && !sv.remise2 ? '0' : sv.remise2, remise3: sv.remise3, excluded: sv.excluded, hasExcept: sv.hasExcept || false, remise2Manual: sv.remise2Manual || false, remise3Manual: sv.remise3Manual || false }
             : { rsf_pct: v, remise2: '', remise3: '', excluded: lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v)), hasExcept: false };
         });
         (sc.rsfValues || []).filter(r => r.custom).forEach(cr => {
           if (!cond.rsfValues.some(r => String(r.rsf_pct) === String(cr.rsf_pct)))
-            cond.rsfValues.push({ rsf_pct: cr.rsf_pct, remise2: cr.remise2 || '', remise3: cr.remise3 || '', excluded: cr.excluded || false, hasExcept: cr.hasExcept || false, custom: true });
+            cond.rsfValues.push({ rsf_pct: cr.rsf_pct, remise2: cr.remise2 || '', remise3: cr.remise3 || '', excluded: cr.excluded || false, hasExcept: cr.hasExcept || false, custom: true, remise2Manual: cr.remise2Manual || false, remise3Manual: cr.remise3Manual || false });
         });
         cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
         // Récupération admin : si toutes les remise2 sont vides (état cloud tronqué)
@@ -9011,9 +9013,9 @@ async function saveProfile() {
         if (defs) cond.rsfValues.forEach(r => {
           const d = defs[String(r.rsf_pct)];
           if (d) {
-            r.remise2 = d.remise2 || '';
-            // Ne pas écraser remise3 si l'user a entré sa propre valeur Coop
-            if (cond.coopR3 == null) r.remise3 = d.remise3 || '';
+            if (!r.remise2Manual) r.remise2 = d.remise2 || '';
+            // Ne pas écraser remise3 si l'user a entré sa propre valeur Coop ou posée manuellement
+            if (!r.remise3Manual && cond.coopR3 == null) r.remise3 = d.remise3 || '';
           }
         });
         // Re-appliquer la valeur Coop de l'user si elle existe
@@ -9069,7 +9071,7 @@ async function saveProfile() {
       const _applyArr = (arr, exc) => (Array.isArray(arr) ? arr : [arr]).forEach(cond => {
         if (!cond || _seen.has(cond)) return;
         _seen.add(cond);
-        if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
+        if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { if (!r.remise2Manual) r.remise2 = d.remise2; if (!r.remise3Manual) r.remise3 = d.remise3; } });
         if (exc) { Object.assign(cond.exceptions, exc.exceptions || {}); Object.assign(cond.remise2Except, exc.remise2Except || {}); }
       });
       [lp.conditions, lp._baseConds2026, ...Object.values(lp.condsByMonth?.[2026] || {})].filter(Boolean).forEach(arr => _applyArr(arr, exc26));
@@ -9116,11 +9118,11 @@ async function saveProfile() {
           const exc25 = getLabExc(lp.selectedLab, '2025');
           if (!defs && !exc26 && !exc25) return;
           (lp.conditions || []).forEach(cond => {
-            if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
+            if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; r.remise2Manual = false; r.remise3Manual = false; } });
             if (exc26) { Object.assign(cond.exceptions, exc26.exceptions || {}); Object.assign(cond.remise2Except, exc26.remise2Except || {}); }
           });
           (lp.conditions2025 || []).forEach(cond => {
-            if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
+            if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; r.remise2Manual = false; r.remise3Manual = false; } });
             if (exc25) { Object.assign(cond.exceptions, exc25.exceptions || {}); Object.assign(cond.remise2Except, exc25.remise2Except || {}); }
           });
           if (lp._reRenderCondTables)     lp._reRenderCondTables();
