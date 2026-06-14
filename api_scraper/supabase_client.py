@@ -3,30 +3,61 @@ Supabase helpers — vérification JWT + lecture/écriture de user_state
 """
 
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import os
+import time
 import urllib.request
 
 SUPA_URL    = "https://api.break-pharma.fr"
 SUPA_KEY    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLXNlbGYiLCJpYXQiOjE3ODA4NTM5MTV9.CWLe1kClQhffk3EL_WgVOQQUERn6IwF7xNqbBL9lUKI"
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
+# Clé HMAC-SHA256 utilisée par GoTrue pour signer les JWT utilisateurs
+_JWT_SECRET = os.environ.get(
+    "GOTRUE_JWT_SECRET",
+    "OyS6Vj-ximYGsVAj4izBUtx21EvQRbzymIUjmg__ZciE-9XFgpAB0SOmnPDlTVcU",
+)
+
+
+def _b64url_decode(s: str) -> bytes:
+    s += "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s)
+
+
+def _verify_jwt_local(token: str) -> dict:
+    """Vérifie la signature HMAC-SHA256 du JWT GoTrue localement — sans appel réseau."""
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("JWT mal formé")
+        header_b64, payload_b64, sig_b64 = parts
+        expected_sig = hmac.new(
+            _JWT_SECRET.encode(), f"{header_b64}.{payload_b64}".encode(), hashlib.sha256
+        ).digest()
+        actual_sig = _b64url_decode(sig_b64)
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            raise ValueError("Signature JWT invalide")
+        payload = json.loads(_b64url_decode(payload_b64))
+        exp = payload.get("exp")
+        if exp and time.time() > exp:
+            raise ValueError("JWT expiré")
+        return payload
+    except (ValueError, KeyError, Exception) as e:
+        raise ValueError(f"JWT invalide : {e}")
+
 
 async def verify_token(token: str) -> str:
-    url = f"{SUPA_URL}/auth/v1/user"
-    req = urllib.request.Request(url, headers={
-        "apikey":        SUPA_KEY,
-        "Authorization": f"Bearer {token}",
-    })
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-        uid = data.get("id")
-        if not uid:
-            raise ValueError("Token invalide — aucun user_id retourné")
-        return uid
-    except urllib.request.HTTPError as e:
-        raise ValueError(f"Token refusé par Supabase : HTTP {e.code}")
+    """Vérifie le token JWT GoTrue et retourne le user_id (sub)."""
+    if not token:
+        raise ValueError("Token manquant")
+    payload = _verify_jwt_local(token)
+    uid = payload.get("sub")
+    if not uid:
+        raise ValueError("Token invalide — aucun sub (user_id)")
+    return uid
 
 
 def _supa_key() -> str:
