@@ -3807,7 +3807,7 @@ function initLabPage(conf) {
           <div class="lab-tag" id="rsfToggle-${uid}-${cond.uid}">TABLEAU DES REMISES ${year}</div>
           ${isAdmin ? `<label class="rsf-import-drop" id="rsfImportDrop-${uid}-${cond.uid}" title="Déposer le PDF CGV pour mettre à jour rsf_history (${year})">
             <span id="rsfImportText-${uid}-${cond.uid}">↑ CGV</span>
-            <input type="file" accept=".pdf" style="display:none" id="rsfImportFile-${uid}-${cond.uid}">
+            <input type="file" accept=".pdf,.csv" style="display:none" id="rsfImportFile-${uid}-${cond.uid}">
           </label><button class="rsf-send-btn" id="rsfSendBtn-${uid}-${cond.uid}" title="Importer le PDF">⬆</button>` : ''}
         </div>
         <div class="rsf-body" id="rsfBody-${uid}-${cond.uid}" style="display:none">
@@ -3964,6 +3964,8 @@ function initLabPage(conf) {
       if (_dropEl && _fileEl && _textEl) {
         let _pendingFile = null;
 
+        const _isValidCgv = name => /\.(pdf|csv)$/i.test(name);
+
         const _setFile = f => {
           _pendingFile = f;
           if (f) {
@@ -3975,7 +3977,7 @@ function initLabPage(conf) {
           } else {
             _textEl.textContent = '↑ CGV';
             _dropEl.classList.remove('has-file');
-            _dropEl.title = `Déposer le PDF CGV pour mettre à jour rsf_history (${year})`;
+            _dropEl.title = `Déposer le PDF ou CSV CGV pour mettre à jour rsf_history (${year})`;
             _sendBtn?.classList.remove('visible');
           }
         };
@@ -4032,7 +4034,7 @@ function initLabPage(conf) {
           e.preventDefault();
           _dropEl.classList.remove('drag-over');
           const f = e.dataTransfer.files?.[0];
-          if (f && f.name.toLowerCase().endsWith('.pdf')) _setFile(f);
+          if (f && _isValidCgv(f.name)) _setFile(f);
         });
         _fileEl.addEventListener('change', () => {
           const f = _fileEl.files?.[0];

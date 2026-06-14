@@ -761,7 +761,7 @@ async def import_rsf_history(
     year:          int        = Form(...),
     authorization: str        = Header(default=""),
 ):
-    """Parse un PDF CGV labo et upsert les taux RSF/RDP dans rsf_history."""
+    """Parse un PDF ou CSV CGV labo et upsert les taux RSF/RDP dans rsf_history."""
     token = _extract_token(authorization)
     try:
         await verify_token(token)
@@ -769,19 +769,127 @@ async def import_rsf_history(
         raise HTTPException(status_code=401, detail=str(e))
 
     name = (file.filename or "").lower()
-    if not name.endswith(".pdf"):
-        raise HTTPException(status_code=422, detail="Fichier PDF requis (.pdf)")
+    if not name.endswith(".pdf") and not name.endswith(".csv"):
+        raise HTTPException(status_code=422, detail="Fichier PDF ou CSV requis")
 
-    pdf_bytes = await file.read()
-    if len(pdf_bytes) < 200:
-        raise HTTPException(status_code=422, detail="PDF trop court ou vide")
+    raw_bytes = await file.read()
+    if len(raw_bytes) < 10:
+        raise HTTPException(status_code=422, detail="Fichier trop court ou vide")
 
+    fname = file.filename or ("upload.csv" if name.endswith(".csv") else "upload.pdf")
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(
-        _executor,
-        lambda: _import_rsf_history_sync(pdf_bytes, labo, year, file.filename or "upload.pdf"),
-    )
+    if name.endswith(".csv"):
+        result = await loop.run_in_executor(
+            _executor,
+            lambda: _import_rsf_history_csv_sync(raw_bytes, labo, year, fname),
+        )
+    else:
+        result = await loop.run_in_executor(
+            _executor,
+            lambda: _import_rsf_history_sync(raw_bytes, labo, year, fname),
+        )
     return result
+
+
+def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filename: str) -> dict:
+    """Parse un CSV CGV labo (CIP13, LIBELLE, rsf%) et upsert dans rsf_history."""
+    import csv, io, urllib.parse
+    from supabase_client import SUPA_URL, _supa_key
+
+    # Détection encoding : essai UTF-8, fallback latin-1
+    for enc in ("utf-8-sig", "utf-8", "latin-1", "cp1252"):
+        try:
+            text = csv_bytes.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise HTTPException(status_code=422, detail="Encodage CSV non reconnu")
+
+    rows: dict[str, tuple] = {}
+    reader = csv.DictReader(io.StringIO(text))
+    headers = [h.strip().lower() for h in (reader.fieldnames or [])]
+
+    # Colonnes attendues — CIP13 + RSF obligatoires, LIBELLE optionnel
+    cip_col  = next((f for f in reader.fieldnames or [] if f.strip().lower() in ("cip13", "cip")), None)
+    rsf_col  = next((f for f in reader.fieldnames or [] if "rsf" in f.strip().lower()), None)
+    lib_col  = next((f for f in reader.fieldnames or [] if "libelle" in f.strip().lower() or "lib" in f.strip().lower()), None)
+
+    if not cip_col or not rsf_col:
+        raise HTTPException(status_code=422, detail=f"Colonnes CIP13 et RSF% requises — trouvé : {reader.fieldnames}")
+
+    def _pct(val: str) -> float:
+        v = val.strip().rstrip("%").replace(",", ".").strip()
+        return -abs(float(v)) if v else 0.0
+
+    for row in reader:
+        cip13 = (row.get(cip_col) or "").strip()
+        if len(cip13) != 13 or not cip13.isdigit():
+            continue
+        rsf_raw = row.get(rsf_col, "0")
+        try:
+            rsf = _pct(rsf_raw)
+        except ValueError:
+            continue
+        lib = (row.get(lib_col, "") or "").strip().upper() if lib_col else cip13
+        rows[cip13] = (0.0, rsf, 0.0, lib)
+
+    if not rows:
+        raise HTTPException(status_code=422, detail="Aucun CIP13 valide trouvé dans le CSV")
+
+    tok = _supa_key()
+    HEADERS = {
+        "apikey": tok, "Authorization": f"Bearer {tok}",
+        "Content-Type": "application/json", "Prefer": "return=minimal",
+    }
+
+    labo_enc = urllib.parse.quote(labo)
+    del_req = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/rsf_history?labo=eq.{labo_enc}&year=eq.{year}",
+        method="DELETE",
+        headers={"apikey": tok, "Authorization": f"Bearer {tok}"},
+    )
+    with urllib.request.urlopen(del_req, timeout=30):
+        pass
+
+    rsf_data = [
+        {"cip13": cip, "labo": labo, "year": year,
+         "rsf_pct": rsf, "rdp_pct": rdp, "pfht": pfht, "libelle": lib}
+        for cip, (pfht, rsf, rdp, lib) in rows.items()
+    ]
+    chunk = 500
+    for i in range(0, len(rsf_data), chunk):
+        body = json.dumps(rsf_data[i:i+chunk]).encode()
+        req  = urllib.request.Request(
+            f"{SUPA_URL}/rest/v1/rsf_history",
+            data=body, method="POST",
+            headers={**HEADERS, "Prefer": "return=minimal"},
+        )
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+
+    refs_data = [
+        {"cip13": cip, "labo": labo, "libelle": lib, "puht": pfht, "rsf_pct": rsf}
+        for cip, (pfht, rsf, rdp, lib) in rows.items()
+    ]
+    for i in range(0, len(refs_data), chunk):
+        body = json.dumps(refs_data[i:i+chunk]).encode()
+        req  = urllib.request.Request(
+            f"{SUPA_URL}/rest/v1/references_pharmacie?on_conflict=cip13",
+            data=body, method="POST",
+            headers={**HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"},
+        )
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+
+    try:
+        from supabase_client import upload_file_sync
+        upload_file_sync("admin", "rsf_history", f"{labo}_{year}_{filename.replace(' ', '_')}", csv_bytes, "text/csv")
+    except Exception as e:
+        print(f"[warn] MinIO upload failed: {e}", flush=True)
+
+    print(f"[import_rsf_history_csv] {labo} {year} → {len(rows)} CIP13", flush=True)
+    return {"count": len(rows), "labo": labo, "year": year}
 
 
 def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: str) -> dict:
