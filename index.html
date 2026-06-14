@@ -1772,6 +1772,7 @@ let _lastGoodLabPages = null;
 function serializeState() {
   return {
     v: 1,
+    savedAt: Date.now(),
     gers: state.gers,
     userProfile: state.userProfile || null,
     connectors: state.connectors,
@@ -1858,7 +1859,7 @@ function _buildLsJson(data) {
     })};
   }
   const metaJson = JSON.stringify({
-    v: data.v, gers: data.gers, userProfile: data.userProfile, connectors: data.connectors,
+    v: data.v, savedAt: data.savedAt, gers: data.gers, userProfile: data.userProfile, connectors: data.connectors,
     currentPageId: data.currentPageId, csvRows: data.csvRows, prorataRatios: data.prorataRatios,
     labPages: data.labPages, verifContracts: data.verifContracts,
     digiSavedAt: data.digiSavedAt || null, fseSavedAt: data.fseSavedAt || null,
@@ -8626,7 +8627,24 @@ async function saveProfile() {
             if (cloud.connectors && Object.keys(cloud.connectors).length) {
               cs.connectors = cloud.connectors;
             }
-            localStorage.setItem(LS_KEY, JSON.stringify(cs));
+            // Ne pas écraser localStorage si la version locale est plus récente que le cloud.
+            // Évite de perdre les données saisies quand le cloud save async n'a pas pu se terminer
+            // avant la fermeture de l'onglet (pagehide → localStorage sync, cloud async).
+            const _localTs = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}').savedAt || 0; } catch(_) { return 0; } })();
+            const _cloudTs = cs.savedAt || 0;
+            if (_cloudTs >= _localTs) {
+              localStorage.setItem(LS_KEY, JSON.stringify(cs));
+            } else {
+              // Local plus récent : fusionner seulement les connectors depuis le cloud
+              console.log('[BP] Local plus récent (localTs=' + _localTs + ' > cloudTs=' + _cloudTs + ') — localStorage conservé');
+              if (cloud.connectors && Object.keys(cloud.connectors).length) {
+                try {
+                  const _localRaw = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+                  _localRaw.connectors = cs.connectors;
+                  localStorage.setItem(LS_KEY, JSON.stringify(_localRaw));
+                } catch(_) {}
+              }
+            }
           } else if (!isAdmin) {
             try { const ls = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); ls.csvData = null; ls.csvRows = 0; ls.prorataRatios = null; localStorage.setItem(LS_KEY, JSON.stringify(ls)); } catch(_) {}
           }
