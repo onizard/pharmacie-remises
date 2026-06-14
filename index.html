@@ -4021,8 +4021,8 @@ function initLabPage(conf) {
             }
             const data = await res.json();
             _spin('Sync…');
-            const reloadFn = yr === 2025 ? lp._reloadRSF2025 : lp._reloadRSF;
-            await reloadFn?.call(lp);
+            const reloadFn = yr === 2025 ? s._reloadRSF2025 : s._reloadRSF;
+            await reloadFn?.call(s);
             _spin('Fill…');
             await autoFillFromRsfHistory(lab, yr, s[condKey]);
             _dropEl.classList.remove('uploading', 'has-file');
