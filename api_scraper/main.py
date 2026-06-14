@@ -837,7 +837,7 @@ def _parse_rsf_exceptions_sync(raw_bytes: bytes, filename: str, labo: str, year:
                 cips += _re.findall(r"\b(\d{13})\b", text)
         cips = list(dict.fromkeys(cips))  # dédoublonnage ordre-préservé
     else:
-        tabular = _parse_tabular_rows(raw_bytes, filename)
+        tabular = _parse_tabular_rows(raw_bytes, filename, labo=labo)
         cips = list(tabular.keys())
 
     if not cips:
@@ -864,12 +864,14 @@ def _parse_rsf_exceptions_sync(raw_bytes: bytes, filename: str, labo: str, year:
     return {"refs": refs, "count": len(refs), "total_cips": len(cips)}
 
 
-def _parse_tabular_rows(raw_bytes: bytes, filename: str) -> "dict[str, tuple]":
+def _parse_tabular_rows(raw_bytes: bytes, filename: str, labo: str = "") -> "dict[str, tuple]":
     """Parse CSV ou XLSX → {cip13: (pfht, rsf, rdp, libelle)}.
     Colonnes attendues : CIP13 (obligatoire), LIBELLE (optionnel), RSF% (optionnel).
+    La colonne RSF peut aussi s'appeler comme le labo (ex : "Teva").
     """
     import csv, io
     is_xlsx = filename.lower().endswith(".xlsx")
+    _labo_lo = labo.strip().lower()
 
     def _pct(val) -> float:
         # openpyxl retourne 0.025 pour une cellule Excel formatée "2,50%" (stockée en décimal)
@@ -894,7 +896,7 @@ def _parse_tabular_rows(raw_bytes: bytes, filename: str) -> "dict[str, tuple]":
         headers_raw = [str(c or "").strip() for c in all_rows[0]]
         headers_lo  = [h.lower() for h in headers_raw]
         cip_i = next((i for i, h in enumerate(headers_lo) if h in ("cip13", "cip")), None)
-        rsf_i = next((i for i, h in enumerate(headers_lo) if "rsf" in h or "remise" in h or "taux" in h or "palier" in h), None)
+        rsf_i = next((i for i, h in enumerate(headers_lo) if "rsf" in h or "remise" in h or "taux" in h or "palier" in h or (_labo_lo and h == _labo_lo)), None)
         lib_i = next((i for i, h in enumerate(headers_lo) if "libelle" in h or (h.startswith("lib") and h != "libelle"[:len(h)] and "cip" not in h)), None)
         if lib_i is None:
             lib_i = next((i for i, h in enumerate(headers_lo) if "lib" in h and i != cip_i), None)
@@ -926,7 +928,7 @@ def _parse_tabular_rows(raw_bytes: bytes, filename: str) -> "dict[str, tuple]":
         reader = csv.DictReader(io.StringIO(text))
         fieldnames = reader.fieldnames or []
         cip_col = next((f for f in fieldnames if f.strip().lower() in ("cip13", "cip")), None)
-        rsf_col = next((f for f in fieldnames if any(k in f.strip().lower() for k in ("rsf", "remise", "taux", "palier"))), None)
+        rsf_col = next((f for f in fieldnames if any(k in f.strip().lower() for k in ("rsf", "remise", "taux", "palier")) or (_labo_lo and f.strip().lower() == _labo_lo)), None)
         lib_col = next((f for f in fieldnames if "libelle" in f.strip().lower() or ("lib" in f.strip().lower() and "cip" not in f.strip().lower())), None)
         if not cip_col:
             raise HTTPException(status_code=422, detail=f"Colonne CIP13 introuvable — colonnes : {fieldnames}")
@@ -949,7 +951,7 @@ def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filenam
     import urllib.parse
     from supabase_client import SUPA_URL, _supa_key
 
-    rows = _parse_tabular_rows(csv_bytes, filename)
+    rows = _parse_tabular_rows(csv_bytes, filename, labo=labo)
     if not rows:
         raise HTTPException(status_code=422, detail="Aucun CIP13 valide trouvé dans le fichier")
 
