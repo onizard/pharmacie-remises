@@ -4836,33 +4836,62 @@ function initLabPage(conf) {
 
 // ── Shared functions ───────────────────────────────────────────────────────────
 async function fetchRSF(lab) {
+  // Priorité : rsf_history year=2026 via RPC (paliers de l'année en cours uniquement).
+  // Fallback automatique vers references_pharmacie si aucun import 2026 pour ce labo.
+  const _buildMaps = (data, isHistory) => {
+    const paliers = [...new Set(data.map(r => parseFloat(r.rsf_pct)))].sort((a, b) => a - b);
+    const firstCounts = new Map();
+    data.forEach(r => {
+      if (r.rsf_first_pct != null && parseFloat(r.rsf_first_pct) <= parseFloat(r.rsf_pct)) {
+        if (!firstCounts.has(parseFloat(r.rsf_pct))) firstCounts.set(parseFloat(r.rsf_pct), new Map());
+        const c = firstCounts.get(parseFloat(r.rsf_pct));
+        const fv = parseFloat(r.rsf_first_pct);
+        c.set(fv, (c.get(fv) || 0) + 1);
+      }
+    });
+    const firstMap = new Map();
+    firstCounts.forEach((counts, rsf_pct) => {
+      let best = null, bestN = 0;
+      counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
+      if (best !== null) firstMap.set(rsf_pct, best);
+    });
+    const countMap = new Map();
+    data.forEach(r => { countMap.set(parseFloat(r.rsf_pct), (countMap.get(parseFloat(r.rsf_pct)) || 0) + 1); });
+    return { paliers, firstMap, countMap };
+  };
+
+  try {
+    const rpcRes = await fetch(`${SUPA_URL}/rest/v1/rpc/get_rsf_paliers`, {
+      method: 'POST',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_labo: lab, p_year: 2026 }),
+    });
+    if (rpcRes.ok) {
+      const rpcData = await rpcRes.json();
+      if (rpcData.length) {
+        const { paliers, firstMap } = _buildMaps(rpcData, true);
+        // countMap depuis rsf_history year=2026 (nombre de réfs par palier)
+        const cntRes = await fetch(
+          `${SUPA_URL}/rest/v1/rsf_history?select=rsf_pct&labo=eq.${encodeURIComponent(lab)}&year=eq.2026&rsf_pct=not.is.null&limit=2000`,
+          { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
+        );
+        const cntData = cntRes.ok ? await cntRes.json() : [];
+        const countMap = new Map();
+        (cntData.length ? cntData : rpcData).forEach(r => {
+          const k = parseFloat(r.rsf_pct);
+          countMap.set(k, (countMap.get(k) || 0) + 1);
+        });
+        return { paliers, firstMap, countMap };
+      }
+    }
+  } catch (_) {}
+
+  // Fallback : references_pharmacie (multi-années, utilisé si aucun import rsf_history 2026)
   const url = `${SUPA_URL}/rest/v1/references_pharmacie`
     + `?select=rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null&order=rsf_pct.asc&limit=2000`;
   const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const paliers = [...new Set(data.map(r => r.rsf_pct))].sort((a, b) => a - b);
-  // Build firstMap: for each standard palier, use the most frequent (mode) rsf_first_pct
-  // that is at least as good as the standard (more negative = better discount).
-  // Guards against: (a) First worse than standard due to stale data, (b) non-deterministic
-  // "last wins" when a palier has heterogeneous First values.
-  const firstCounts = new Map();
-  data.forEach(r => {
-    if (r.rsf_first_pct != null && r.rsf_first_pct <= r.rsf_pct) {
-      if (!firstCounts.has(r.rsf_pct)) firstCounts.set(r.rsf_pct, new Map());
-      const c = firstCounts.get(r.rsf_pct);
-      c.set(r.rsf_first_pct, (c.get(r.rsf_first_pct) || 0) + 1);
-    }
-  });
-  const firstMap = new Map();
-  firstCounts.forEach((counts, rsf_pct) => {
-    let best = null, bestN = 0;
-    counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
-    if (best !== null) firstMap.set(rsf_pct, best);
-  });
-  const countMap = new Map();
-  data.forEach(r => { countMap.set(r.rsf_pct, (countMap.get(r.rsf_pct) || 0) + 1); });
-  return { paliers, firstMap, countMap };
+  return _buildMaps(await res.json(), false);
 }
 
 async function fetchRSF2025(lab) {
