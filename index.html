@@ -1933,12 +1933,9 @@ function _showSaveBadge(isError = false, isPending = false) {
 }
 
 async function saveCloudState(data) {
-  // Même garde que saveState et _flushState : si session absente au démarrage,
-  // l'état est vide (labPages:[]). Ne jamais écrire dans ce cas.
-  if (!_sessionExistedAtInit) {
-    if (isAdmin) setTimeout(() => showToast('⚠ saveCloud BLOQUÉ — pas de session init'), 0);
-    return false;
-  }
+  // Garde cloud-first : si la session n'existait pas au démarrage (page incognito pré-login),
+  // l'état est vide. Bloquer pour ne jamais écraser le cloud avec labPages:[].
+  if (!_sessionExistedAtInit) return false;
   _cloudSavePending = true;
   _showSaveBadge(false, true); // spinner amber
   try {
@@ -2002,13 +1999,8 @@ async function saveCloudState(data) {
 // Flush immédiat au cloud quand l'onglet est masqué (fermeture, changement d'onglet)
 function _flushState() {
   if (!_initDone) return;
-  // Si la session n'existait pas au démarrage (login post-chargement), l'état est vide.
-  // Ne pas flusher : ça écraserait le cloud avec labPages:[].
-  // Le location.reload() qui suit le SIGNED_IN rechargera la page avec une vraie session.
-  if (!_sessionExistedAtInit) {
-    if (isAdmin) setTimeout(() => showToast('✓ flush bloqué (pas de session init) — rechargement en cours'), 0);
-    return;
-  }
+  // Page incognito pré-login : état vide, ne jamais flusher vers le cloud.
+  if (!_sessionExistedAtInit) return;
   clearTimeout(_saveTimer);
   clearTimeout(_cloudSaveTimer);
   const data = serializeState();
@@ -2238,12 +2230,7 @@ function applyRsfDefaults() {
 
 function saveState() {
   if (!_initDone) return;
-  // Si la session n'existait pas au démarrage (login post-chargement), l'état local est vide.
-  // Ne pas sauvegarder : écraserait le cloud avant le rechargement avec labPages:[].
-  if (!_sessionExistedAtInit) {
-    if (isAdmin) setTimeout(() => showToast('⚠ saveState BLOQUÉ — pas de session init'), 0);
-    return;
-  }
+  if (!_sessionExistedAtInit) return;
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
     const data    = serializeState();
@@ -2674,6 +2661,10 @@ function _setupCachedPrecomputed(html) {
         });
         _cont.querySelectorAll('.dl-btn, .sim-dl-inline').forEach(btn => {
             btn.addEventListener('click', () => showToast('↺ Relancez l\'analyse (TRY AGAIN) pour activer les téléchargements.'));
+        });
+        document.getElementById('customSimBtn')?.addEventListener('click', () => {
+            _simResultsReady = false; _precomputedWireAndRender = null; _precomputedMeta = null;
+            launchSimulation();
         });
     };
     _precomputedMeta = { cipCount: '—', labCount: '—' };
@@ -4138,11 +4129,16 @@ function initLabPage(conf) {
             fd.append('file', _pendingFile, _pendingFile.name);
             fd.append('labo', lab);
             fd.append('year', String(yr));
-            const { data: { session: _sess } } = await window._sbClient.auth.getSession();
+            let { data: { session: _sess } } = await window._sbClient.auth.getSession();
+            if (!_sess?.access_token) {
+              const { data: _ref } = await window._sbClient.auth.refreshSession();
+              _sess = _ref?.session;
+            }
             const tok = _sess?.access_token || '';
+            if (!tok) throw new Error('Session expirée — veuillez vous reconnecter');
             const res = await fetch(`${API_URL}/import/rsf_history`, {
               method: 'POST',
-              headers: tok ? { 'Authorization': `Bearer ${tok}` } : {},
+              headers: { 'Authorization': `Bearer ${tok}` },
               body: fd,
             });
             if (!res.ok) {
@@ -8791,11 +8787,6 @@ async function saveProfile() {
             }
           }
           console.log('[BP] Cloud state chargé :', cloud ? `labPages=${cloud.state_json?.labPages?.length ?? 0}` : 'aucune ligne en base', '| user_id =', session.user.id, '| email =', session.user.email);
-          if (isAdmin) {
-            const _nbLabs = cloud?.state_json?.labPages?.length ?? 0;
-            const _ts = cloud?.state_json?.savedAt ? new Date(cloud.state_json.savedAt).toLocaleString('fr-FR') : '?';
-            setTimeout(() => showToast(`☁ Cloud : ${_nbLabs} labs · ${session.user.email} · ${_ts}`), 500);
-          }
           if (cloud?.state_json) {
             _startupCloudState = cloud.state_json;
             if (cloud.state_json.labPages?.length) {
@@ -8806,16 +8797,19 @@ async function saveProfile() {
             if (cloud.connectors && Object.keys(cloud.connectors).length) {
               cs.connectors = cloud.connectors;
             }
-            // Ne pas écraser localStorage si la version locale est plus récente que le cloud.
-            // Évite de perdre les données saisies quand le cloud save async n'a pas pu se terminer
-            // avant la fermeture de l'onglet (pagehide → localStorage sync, cloud async).
+            // Architecture cloud-first : le cloud est la source de vérité.
+            // localStorage est un cache de chargement rapide — toujours mis à jour depuis le cloud.
+            // Exception : si localStorage est PLUS RÉCENT que le cloud (crash pendant l'écriture
+            // async, fenêtre de ~1s entre saveState et saveCloudState), on conserve les données
+            // locales et on force une synchro immédiate vers le cloud au démarrage.
             const _localTs = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}').savedAt || 0; } catch(_) { return 0; } })();
             const _cloudTs = cs.savedAt || 0;
             if (_cloudTs >= _localTs) {
-              localStorage.setItem(LS_KEY, JSON.stringify(cs));
+              // Cloud identique ou plus récent → mettre à jour le cache local
+              try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
             } else {
-              // Local plus récent : fusionner seulement les connectors depuis le cloud
-              console.log('[BP] Local plus récent (localTs=' + _localTs + ' > cloudTs=' + _cloudTs + ') — localStorage conservé');
+              // Local plus récent (crash recovery) → conserver localStorage, fusionner les connectors
+              console.log('[BP] Local plus récent (localTs=' + _localTs + ' > cloudTs=' + _cloudTs + ') — sync cloud forcée au démarrage');
               if (cloud.connectors && Object.keys(cloud.connectors).length) {
                 try {
                   const _localRaw = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
@@ -8832,12 +8826,15 @@ async function saveProfile() {
     }
   } catch(e) { console.error('[BP] Init EXCEPTION globale :', e); }
 
-  // Fallback : si localStorage vide (cache effacé, quota), utiliser l'état cloud chargé en mémoire
+  // Source de vérité : cloud (via _startupCloudState, chargé en tête d'init).
+  // Quand cloud >= local : localStorage a été mis à jour ci-dessus → _lsRaw == cloud.
+  // Quand local > cloud (crash recovery) : localStorage est conservé → _lsRaw == local.
+  // Dans tous les cas : saved = meilleure donnée disponible, cloud est synchronisé au démarrage.
   const _lsRaw = loadSavedState();
   const saved = _lsRaw || _startupCloudState;
-  // Vrai si on charge depuis le cloud (nouvel appareil sans localStorage) — évite les rechargements inutiles
+  // _loadedFromCloud : vrai si le cloud a fourni les données (nouvel appareil, localStorage vide)
   const _loadedFromCloud = !_lsRaw && !!_startupCloudState;
-  console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| via localStorage =', !!_lsRaw, '| fromCloud =', _loadedFromCloud);
+  console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| cache local =', !!_lsRaw, '| cloud =', !!_startupCloudState, '| fromCloud =', _loadedFromCloud);
   if (saved) {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
@@ -9376,10 +9373,10 @@ async function saveProfile() {
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
   _initDone = true;
-  // Synchronisation cloud immédiate au démarrage (bypasse le debounce 1200ms).
-  // Garantit que la cloud est à jour même si l'utilisateur ferme l'onglet rapidement
-  // ou si le keepalive pagehide échoue (payload > 60KB).
-  if (saved?.labPages?.length) {
+  // Synchro cloud systématique au démarrage (bypass le debounce 1200ms).
+  // Garantit que le cloud est à jour après un crash (local > cloud) ou une récupération.
+  // La garde _sessionExistedAtInit dans saveCloudState bloque les pages sans session valide.
+  {
     const _initData = serializeState();
     saveCloudState(_initData).catch(() => {});
   }
