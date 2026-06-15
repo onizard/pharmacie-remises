@@ -1964,6 +1964,13 @@ async function saveCloudState(data) {
       } else if (_localLen > 0) {
         _lastGoodLabPages = payload.labPages;
       }
+      // Préserver les stats cloud si le local est vide (keepalive slim ne les inclut pas)
+      const _hasItems = v => v && (Array.isArray(v) ? v.length > 0 : typeof v === 'object' && Object.keys(v).length > 0);
+      for (const sk of ['monthStats', 'monthMeta', 'digiMonthStats', 'grossisteMonthStats', 'fseMonthStats', 'escompteStats', 'mdlStats', 'grossisteUploads', 'digiUploads', 'fseUploads', 'grossisteGmailFiles']) {
+        if (!_hasItems(payload[sk]) && _hasItems(cur?.state_json?.[sk])) {
+          payload[sk] = cur.state_json[sk];
+        }
+      }
     } catch(_) {
       // Si la lecture DB échoue, utiliser le cache mémoire comme garde
       if (!payload.labPages?.length && _lastGoodLabPages?.length) {
@@ -2007,6 +2014,11 @@ function _flushState() {
         connectors: data.connectors, labPages: data.labPages,
         verifContracts: data.verifContracts,
         digiSavedAt: data.digiSavedAt || null, fseSavedAt: data.fseSavedAt || null,
+        // Listes de fichiers traités : petites, critiques pour l'historique inter-appareils
+        grossisteUploads:    data.grossisteUploads    || [],
+        digiUploads:         data.digiUploads         || [],
+        fseUploads:          data.fseUploads          || [],
+        grossisteGmailFiles: data.grossisteGmailFiles || [],
       };
       const _body = JSON.stringify([{ user_id: _cachedFlushSession.user_id, state_json: _slim }]);
       if (_body.length < 60000) { // keepalive limit ~64 KB
@@ -8806,8 +8818,11 @@ async function saveProfile() {
   } catch(e) { console.error('[BP] Init EXCEPTION globale :', e); }
 
   // Fallback : si localStorage vide (cache effacé, quota), utiliser l'état cloud chargé en mémoire
-  const saved = loadSavedState() || _startupCloudState;
-  console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| via localStorage =', !!loadSavedState());
+  const _lsRaw = loadSavedState();
+  const saved = _lsRaw || _startupCloudState;
+  // Vrai si on charge depuis le cloud (nouvel appareil sans localStorage) — évite les rechargements inutiles
+  const _loadedFromCloud = !_lsRaw && !!_startupCloudState;
+  console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| via localStorage =', !!_lsRaw, '| fromCloud =', _loadedFromCloud);
   if (saved) {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
@@ -8958,9 +8973,9 @@ async function saveProfile() {
           const { data: row } = await window._sbClient.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           const sj = row?.state_json || {};
-          // Toujours charger grossiste_month_stats depuis Supabase si absent localement
-          if (sj.grossiste_month_stats && Object.keys(sj.grossiste_month_stats).length) {
-            state._grossisteMonthStats = sj.grossiste_month_stats;
+          // Toujours charger grossisteMonthStats depuis Supabase si absent localement
+          if (sj.grossisteMonthStats && Object.keys(sj.grossisteMonthStats).length) {
+            state._grossisteMonthStats = sj.grossisteMonthStats;
           }
           if (sj.grossisteGmailFiles?.length && !state._grossisteGmailFiles?.length) {
             state._grossisteGmailFiles = sj.grossisteGmailFiles;
@@ -8972,10 +8987,10 @@ async function saveProfile() {
             return;
           }
           // Charger les données cloud si absentes localement
-          if (!hasDigi && sj.digi_month_stats && Object.keys(sj.digi_month_stats).length) {
-            state._digiMonthStats = sj.digi_month_stats;
-            if (sj.escompte_stats) state._escompteStats = sj.escompte_stats;
-            if (sj.mdl_stats)      state._mdlStats      = sj.mdl_stats;
+          if (!hasDigi && sj.digiMonthStats && Object.keys(sj.digiMonthStats).length) {
+            state._digiMonthStats = sj.digiMonthStats;
+            if (sj.escompteStats) state._escompteStats = sj.escompteStats;
+            if (sj.mdlStats)      state._mdlStats      = sj.mdlStats;
             saveState();
             if (state.currentPageId === 'recap') renderRecap();
           }
@@ -8986,7 +9001,7 @@ async function saveProfile() {
             ? Date.now() - cloudCompletedAt
             : digiAge;
           // Re-lancer uniquement si aucune donnée locale et aucune en base
-          if (!hasDigi && !Object.keys(sj.digi_month_stats || {}).length) {
+          if (!hasDigi && !Object.keys(sj.digiMonthStats || {}).length) {
             autoRunDigi().catch(() => {});
           }
         } catch(_) {
@@ -9003,8 +9018,8 @@ async function saveProfile() {
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           const sj = row?.state_json || {};
           // Charger les données FSE cloud si absentes localement
-          if (sj.fse_month_stats && Object.keys(sj.fse_month_stats).length) {
-            state._fseMonthStats = sj.fse_month_stats;
+          if (sj.fseMonthStats && Object.keys(sj.fseMonthStats).length) {
+            state._fseMonthStats = sj.fseMonthStats;
             const cloudTs = sj.fse_job?.completed_at
               ? new Date(sj.fse_job.completed_at).getTime() : null;
             if (cloudTs && (!state._fseSavedAt || cloudTs > state._fseSavedAt)) {
@@ -9021,7 +9036,8 @@ async function saveProfile() {
           const localAge = state._fseSavedAt ? Date.now() - state._fseSavedAt : Infinity;
           const effectiveAge = Math.min(cloudAge, localAge);
           const hasFse = Object.keys(state._fseMonthStats || {}).length > 0;
-          if (!hasFse || effectiveAge > 24 * 3600 * 1000) {
+          // Sur un nouvel appareil (données chargées depuis cloud), ne pas relancer auto si on a déjà des données
+          if (!hasFse || (effectiveAge > 24 * 3600 * 1000 && !_loadedFromCloud)) {
             if (!await _waitApiReady(12_000)) return; // serveur cold — on réessaiera demain
             const r = await fetch(`${API_URL}/run/fse-export`, {
               method: 'POST',
