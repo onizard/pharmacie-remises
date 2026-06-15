@@ -1935,7 +1935,10 @@ function _showSaveBadge(isError = false, isPending = false) {
 async function saveCloudState(data) {
   // Même garde que saveState et _flushState : si session absente au démarrage,
   // l'état est vide (labPages:[]). Ne jamais écrire dans ce cas.
-  if (!_sessionExistedAtInit) { return false; }
+  if (!_sessionExistedAtInit) {
+    if (isAdmin) setTimeout(() => showToast('⚠ saveCloud BLOQUÉ — pas de session init'), 0);
+    return false;
+  }
   _cloudSavePending = true;
   _showSaveBadge(false, true); // spinner amber
   try {
@@ -2237,7 +2240,10 @@ function saveState() {
   if (!_initDone) return;
   // Si la session n'existait pas au démarrage (login post-chargement), l'état local est vide.
   // Ne pas sauvegarder : écraserait le cloud avant le rechargement avec labPages:[].
-  if (!_sessionExistedAtInit) return;
+  if (!_sessionExistedAtInit) {
+    if (isAdmin) setTimeout(() => showToast('⚠ saveState BLOQUÉ — pas de session init'), 0);
+    return;
+  }
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
     const data    = serializeState();
