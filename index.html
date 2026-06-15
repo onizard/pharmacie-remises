@@ -4740,12 +4740,25 @@ function initLabPage(conf) {
     el.condTabs.classList.remove('visible');
     el.loading.classList.add('visible');
     try {
-      const { paliers, firstMap, countMap } = await fetchFn(lab);
+      // rsf_defaults doit être chargé avant les conditions (récupération + template)
+      if (isAdmin && !window._rsfDefaults) await loadRsfDefaults();
+      // Reconstruction des paliers depuis les rsfValues déjà sauvegardées (évite ~18 requêtes réseau).
+      // Si les paliers ont changé depuis la dernière sauvegarde, le fetch fond de tâche les met à jour.
+      const _savedPcts = (savedLabData[savedCondKey] || [])
+        .flatMap(sc => (sc.rsfValues || []).filter(r => !r.custom).map(r => parseFloat(r.rsf_pct)))
+        .filter(v => !isNaN(v));
+      let paliers, firstMap, countMap;
+      if (_savedPcts.length) {
+        paliers  = [...new Set(_savedPcts)].sort((a, b) => a - b);
+        firstMap = new Map();
+        countMap = new Map();
+        fetchFn(lab).then(f => { s.rsfPaliers = f.paliers; s.rsfFirstMap = f.firstMap; s.rsfCountMap = f.countMap || new Map(); }).catch(() => {});
+      } else {
+        ({ paliers, firstMap, countMap } = await fetchFn(lab));
+      }
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
       s.rsfCountMap = countMap || new Map();
-      // Pré-charger rsf_defaults pour la récupération si besoin (doit être hors du forEach)
-      if (isAdmin && !window._rsfDefaults) await loadRsfDefaults();
       // Template admin : flags comportement uniquement (rsfOnly, showR3, forceFirst)
       // NE touche PAS caCondition/remiseGlobale/coopR3 — valeurs propres à l'user
       const _templateKey = year === '2025' ? 'conds25' : 'conds26';
