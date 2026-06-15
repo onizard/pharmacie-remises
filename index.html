@@ -902,13 +902,13 @@
   .conn-site-title { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--amber); margin-bottom: 16px; }
   .conn-field { margin-bottom: 12px; }
   .conn-label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px; }
-  .conn-input-wrap { display: flex; align-items: center; gap: 6px; }
-  .conn-input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 13px; padding: 6px 10px; outline: none; transition: border-color .2s; }
+  .conn-input-wrap { position: relative; }
+  .conn-input { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 13px; padding: 6px 32px 6px 10px; outline: none; transition: border-color .2s; }
   .conn-input:focus { border-color: var(--cyan-dim); }
   .conn-input.error { border-color: var(--red); }
   @keyframes conn-shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
   .conn-input.shake { animation: conn-shake .35s ease; }
-  .conn-eye { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 15px; padding: 2px 4px; }
+  .conn-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 15px; padding: 2px; line-height: 1; }
   .conn-eye:hover { color: var(--cyan); }
   .conn-status { font-size: 11px; margin-top: 8px; min-height: 14px; }
   .conn-status.ok { color: var(--green); }
@@ -1385,7 +1385,7 @@
               <div class="conn-label">Mot de passe</div>
               <div class="conn-input-wrap">
                 <input class="conn-input" id="digiPass" type="password" autocomplete="current-password" placeholder="••••••••" />
-                <button class="conn-eye" data-target="digiPass" title="Afficher/masquer">👁</button>
+                <button type="button" class="conn-eye" data-target="digiPass" title="Afficher/masquer">👁</button>
               </div>
             </div>
             <div class="conn-test-row">
@@ -1490,7 +1490,7 @@
               <div class="conn-label">Mot de passe</div>
               <div class="conn-input-wrap">
                 <input class="conn-input" id="ospPass" type="password" autocomplete="current-password" placeholder="••••••••" />
-                <button class="conn-eye" data-target="ospPass" title="Afficher/masquer">👁</button>
+                <button type="button" class="conn-eye" data-target="ospPass" title="Afficher/masquer">👁</button>
               </div>
             </div>
             <div class="conn-test-row">
