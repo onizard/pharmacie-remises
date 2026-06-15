@@ -408,7 +408,8 @@
   }
   .cond-tabs.visible { display: flex; }
   .cond-tab {
-    display: flex; align-items: center; gap: 5px;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    flex: 1; min-width: 0;
     padding: 6px 10px; margin-bottom: -1px;
     font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700;
     letter-spacing: 1px; text-transform: uppercase;
@@ -1208,6 +1209,12 @@
       showScreen('sRP');
     }
     if (event === 'SIGNED_IN' && !_inRecovery) {
+      // Si l'init s'est terminée sans session (réseau coupé lors du changement d'IP),
+      // et que GoTrue vient de récupérer un token → recharger pour relancer l'init avec session.
+      if (_initDone && !_sessionExistedAtInit && !_reloadAfterLogin) {
+        location.reload();
+        return;
+      }
       unlock();
     }
     // Rafraîchit le cache session pour le flush keepalive (TOKEN_REFRESHED arrive toutes les ~55 min)
@@ -1769,6 +1776,8 @@ let state = {
 const LS_KEY = 'org_state_v1';
 // Protège contre la sauvegarde d'un état vide pendant l'initialisation async
 let _initDone = false;
+// True si l'init a trouvé une session GoTrue valide (cloud chargé). False = init sans session.
+let _sessionExistedAtInit = false;
 // Cache mémoire du cloud state chargé au démarrage — fallback si localStorage indisponible
 let _startupCloudState = null;
 // Derniers labPages valides connus — garde contre l'écrasement accidentel au cloud
@@ -8639,6 +8648,7 @@ async function saveProfile() {
     if (sb) {
       const { data: { session } } = await sb.auth.getSession();
       if (session) {
+        _sessionExistedAtInit = true;
         isAdmin = (session.user.email === ADMIN_EMAIL);
         _simCachedUserId = session.user.id;
         // Mise en cache pour le flush keepalive (accès sync en pagehide)
@@ -9235,10 +9245,13 @@ async function saveProfile() {
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
   _initDone = true;
-  // Pour non-admin : persiste les defaults admin appliqués en mémoire (rsfValues, exceptions)
-  // afin que le prochain login charge directement depuis le cloud state sans re-dépendre
-  // de loadRsfDefaults au moment critique de la restauration.
-  if (!isAdmin && saved?.labPages?.length) saveState();
+  // Synchronisation cloud immédiate au démarrage (bypasse le debounce 1200ms).
+  // Garantit que la cloud est à jour même si l'utilisateur ferme l'onglet rapidement
+  // ou si le keepalive pagehide échoue (payload > 60KB).
+  if (saved?.labPages?.length) {
+    const _initData = serializeState();
+    saveCloudState(_initData).catch(() => {});
+  }
 
   // Pré-calcul comparateur en arrière-plan dès le login (résultats prêts quand l'user y accède)
   const _canBgCompute = state.connectors?.ospharm?.connected || state.csvData?.length > 0;
