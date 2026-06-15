@@ -8724,6 +8724,11 @@ async function saveProfile() {
             }
           }
           console.log('[BP] Cloud state chargé :', cloud ? `labPages=${cloud.state_json?.labPages?.length ?? 0}` : 'aucune ligne en base', '| user_id =', session.user.id, '| email =', session.user.email);
+          if (isAdmin) {
+            const _nbLabs = cloud?.state_json?.labPages?.length ?? 0;
+            const _ts = cloud?.state_json?.savedAt ? new Date(cloud.state_json.savedAt).toLocaleString('fr-FR') : '?';
+            setTimeout(() => showToast(`☁ Cloud : ${_nbLabs} labs · ${session.user.email} · ${_ts}`), 500);
+          }
           if (cloud?.state_json) {
             _startupCloudState = cloud.state_json;
             if (cloud.state_json.labPages?.length) {
@@ -9282,6 +9287,12 @@ async function saveProfile() {
   } else {
     goTo('recap');
     setTimeout(() => renderRecap(), 0);
+  }
+
+  // Diagnostic admin : affiche ce qui a été restauré
+  if (isAdmin) {
+    const _restoredLabs = state.labPages.filter(lp => lp.selectedLab).map(lp => `${lp.selectedLab}(${(lp.conditions||[]).length}c)`).join(', ');
+    setTimeout(() => showToast(`✓ Restauré : ${state.labPages.filter(lp=>lp.selectedLab).length} labs — ${_restoredLabs || 'aucune condition'}`), 1000);
   }
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
