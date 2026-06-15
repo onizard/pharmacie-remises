@@ -1169,6 +1169,8 @@
     document.getElementById('aLErr').textContent = '⚠ Erreur de chargement — rechargez la page.';
     return;
   }
+  window._initDone = false;
+  window._sessionExistedAtInit = false;
   const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
   window._sbClient = sb;
 
@@ -1212,7 +1214,7 @@
     if (event === 'SIGNED_IN' && !_inRecovery) {
       // Si l'init s'est terminée sans session (réseau coupé lors du changement d'IP),
       // et que GoTrue vient de récupérer un token → recharger pour relancer l'init avec session.
-      if (_initDone && !_sessionExistedAtInit && !_reloadAfterLogin) {
+      if (window._initDone && !window._sessionExistedAtInit && !_reloadAfterLogin) {
         location.reload();
         return;
       }
@@ -1801,9 +1803,9 @@ let state = {
 // ── Persistence ────────────────────────────────────────────────────────────────
 const LS_KEY = 'org_state_v1';
 // Protège contre la sauvegarde d'un état vide pendant l'initialisation async
-let _initDone = false;
+_initDone = false;
 // True si l'init a trouvé une session GoTrue valide (cloud chargé). False = init sans session.
-let _sessionExistedAtInit = false;
+_sessionExistedAtInit = false;
 // Cache mémoire du cloud state chargé au démarrage — fallback si localStorage indisponible
 let _startupCloudState = null;
 // Derniers labPages valides connus — garde contre l'écrasement accidentel au cloud
