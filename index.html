@@ -1951,12 +1951,15 @@ async function saveCloudState(data) {
       for (const k of ['ospharm_job', 'verif_job', 'conn_test']) {
         if (cur?.state_json?.[k] && payload[k] === undefined) payload[k] = cur.state_json[k];
       }
-      // Ne jamais écraser labPages cloud si le local est vide OU significativement plus petit
-      // (guard contre le bug isEmpty qui supprimait des labs au clic)
+      // Ne jamais écraser labPages cloud si le local n'a aucun lab configuré (selectedLab).
+      // Un tableau de 9 items avec selectedLab:null (restore incomplet) est traité comme vide.
       const _guardPages = cur?.state_json?.labPages?.length ? cur.state_json.labPages : _lastGoodLabPages;
+      const _localConfigured  = (payload.labPages || []).filter(lp => lp.selectedLab).length;
+      const _guardConfigured  = (_guardPages  || []).filter(lp => lp.selectedLab).length;
+      // Alias de commodité pour la logique de fusion (par nb total d'items)
       const _localLen  = payload.labPages?.length ?? 0;
       const _guardLen  = _guardPages?.length ?? 0;
-      if (_localLen === 0 && _guardLen > 0) {
+      if (_localConfigured === 0 && _guardConfigured > 0) {
         payload.labPages = _guardPages;
       } else if (_localLen > 0 && _guardLen > _localLen + 1) {
         // Local a moins de labs que le cloud : fusionner — valeurs locales prioritaires
@@ -9373,10 +9376,10 @@ async function saveProfile() {
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
   _initDone = true;
-  // Synchro cloud systématique au démarrage (bypass le debounce 1200ms).
-  // Garantit que le cloud est à jour après un crash (local > cloud) ou une récupération.
-  // La garde _sessionExistedAtInit dans saveCloudState bloque les pages sans session valide.
-  {
+  // Synchro cloud au démarrage seulement si des labs sont présents dans saved.
+  // Évite d'écraser le cloud avec [] si l'état était vide (nouvel utilisateur, cloud indisponible…).
+  // Le cas "local plus récent que cloud" est déjà couvert : saved = _lsRaw (labs présents).
+  if (saved?.labPages?.length) {
     const _initData = serializeState();
     saveCloudState(_initData).catch(() => {});
   }
