@@ -1623,6 +1623,19 @@
 
   <div class="bp-toast" id="bpToast"></div>
 
+  <!-- Journal des toasts (admin only) -->
+  <div id="toastLogBtn" style="display:none;position:fixed;bottom:8px;right:12px;z-index:99998;background:var(--bg2);border:1px solid rgba(0,229,255,.25);color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.8px;padding:4px 10px;cursor:pointer;opacity:.6;" onclick="document.getElementById('toastLogPanel').style.display=document.getElementById('toastLogPanel').style.display==='none'?'flex':'none'">📋 LOG</div>
+  <div id="toastLogPanel" style="display:none;position:fixed;bottom:34px;right:12px;z-index:99999;background:var(--bg2);border:1px solid rgba(0,229,255,.3);width:min(500px,92vw);max-height:40vh;flex-direction:column;font-family:'Share Tech Mono',monospace;font-size:11px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid rgba(0,229,255,.15)">
+      <span style="color:var(--cyan);letter-spacing:1px">JOURNAL TOASTS</span>
+      <div style="display:flex;gap:8px">
+        <button onclick="(()=>{const t=document.getElementById('toastLogList').innerText;navigator.clipboard.writeText(t).then(()=>showToast('✓ Copié')).catch(()=>{});})()" style="background:none;border:1px solid var(--cyan);color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:10px;padding:2px 8px;cursor:pointer">COPIER</button>
+        <button onclick="document.getElementById('toastLogList').innerHTML='';_toastLog=[]" style="background:none;border:1px solid rgba(255,255,255,.2);color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:10px;padding:2px 8px;cursor:pointer">VIDER</button>
+      </div>
+    </div>
+    <div id="toastLogList" style="overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:4px;color:var(--text-dim);line-height:1.6"></div>
+  </div>
+
 
 </div>
 
@@ -2275,6 +2288,7 @@ function updateMainTabs() {
 }
 
 let _toastTimer;
+let _toastLog = [];
 function showToast(msg) {
   const el = document.getElementById('bpToast');
   if (!el) return;
@@ -2282,6 +2296,17 @@ function showToast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   _toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+  // Journal admin
+  const ts = new Date().toLocaleTimeString('fr-FR');
+  _toastLog.push(`[${ts}] ${msg}`);
+  const list = document.getElementById('toastLogList');
+  if (list) {
+    const line = document.createElement('div');
+    line.style.cssText = 'border-bottom:1px solid rgba(255,255,255,.06);padding:2px 0;word-break:break-all';
+    line.textContent = `[${ts}] ${msg}`;
+    list.appendChild(line);
+    list.scrollTop = list.scrollHeight;
+  }
 }
 
 function labHasPalier(lp) {
@@ -9016,6 +9041,7 @@ async function saveProfile() {
   if (isAdmin) {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
     window.syncAllCgvLeds?.();
+    document.getElementById('toastLogBtn').style.display = 'block';
   }
 
   await fetchAndSortLabs();
