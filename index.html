@@ -1625,8 +1625,7 @@
 
   <div class="bp-toast" id="bpToast"></div>
 
-  <!-- Journal des toasts (admin only) -->
-  <div id="toastLogBtn" style="display:none;position:fixed;bottom:12px;right:16px;z-index:99998;background:#001820;border:2px solid var(--cyan);color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:1px;padding:6px 14px;cursor:pointer;opacity:1;box-shadow:0 0 10px rgba(0,229,255,.4);" onclick="document.getElementById('toastLogPanel').style.display=document.getElementById('toastLogPanel').style.display==='none'?'flex':'none'">📋 LOG DEBUG</div>
+  <!-- Journal des toasts (admin only) — bouton retiré, panel conservé pour accès console -->
   <div id="toastLogPanel" style="display:none;position:fixed;bottom:34px;right:12px;z-index:99999;background:var(--bg2);border:1px solid rgba(0,229,255,.3);width:min(500px,92vw);max-height:40vh;flex-direction:column;font-family:'Share Tech Mono',monospace;font-size:11px;">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid rgba(0,229,255,.15)">
       <span style="color:var(--cyan);letter-spacing:1px">JOURNAL TOASTS</span>
@@ -4834,7 +4833,7 @@ function initLabPage(conf) {
         paliers  = [...new Set(_savedPcts)].sort((a, b) => a - b);
         firstMap = new Map();
         countMap = new Map();
-        fetchFn(lab).then(f => { s.rsfPaliers = f.paliers; s.rsfFirstMap = f.firstMap; s.rsfCountMap = f.countMap || new Map(); }).catch(() => {});
+        fetchFn(lab).then(f => { s.rsfPaliers = f.paliers; s.rsfFirstMap = f.firstMap; s.rsfCountMap = f.countMap || new Map(); s._reRenderCondTables?.(); s._reRenderCondTables2025?.(); }).catch(() => {});
       } else {
         ({ paliers, firstMap, countMap } = await fetchFn(lab));
       }
@@ -9114,7 +9113,6 @@ async function saveProfile() {
   if (isAdmin) {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
     window.syncAllCgvLeds?.();
-    document.getElementById('toastLogBtn').style.display = 'block';
   }
 
   await fetchAndSortLabs();
