@@ -7238,13 +7238,12 @@ async function launchSimulation() {
           );
           const _useRsf25 = e.lp?.contratRepartiteur25 ?? true;
           const _useRsf26 = e.lp?.contratRepartiteur    ?? true;
-          const _bioCoeff = _getBiogCoeff(e.lp, e.ca);
           e.rows.forEach(({ row, ref, price }) => {
-            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25, _bioCoeff) : 0;
-            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26, _bioCoeff) : 0;
+            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25) : 0;
+            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26) : 0;
             e.remise += row.qty * price * (r25 + r26) / 100;
-            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25, _bioCoeff) : 0;
-            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26, _bioCoeff) : 0;
+            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25) : 0;
+            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26) : 0;
             e.remiseSansR3 += row.qty * price * (s25 + s26) / 100;
           });
           e.bestCond    = cond26 || cond25;
@@ -7306,15 +7305,14 @@ async function launchSimulation() {
           }
           e.firstMet    = firstMet;
           const _useRsf2 = e.lp?.contratRepartiteur ?? true;
-          const _bioCoeff2 = _getBiogCoeff(e.lp, e.ca);
           e.rows.forEach(({ row, ref, price }) => {
             const remisePct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemise(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff2);
+              : getRemise(ref, effectiveCond, firstMet, _useRsf2);
             e.remise += row.qty * price * remisePct / 100;
             const remiseSansR3Pct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff2);
+              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2);
             e.remiseSansR3 += row.qty * price * remiseSansR3Pct / 100;
           });
         }
