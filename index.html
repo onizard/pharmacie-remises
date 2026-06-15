@@ -409,8 +409,8 @@
   .cond-tabs.visible { display: flex; }
   .cond-tab {
     display: flex; align-items: center; justify-content: center; gap: 5px;
-    flex: 1; min-width: 0;
-    padding: 6px 10px; margin-bottom: -1px;
+    flex: 1; min-width: 0; position: relative;
+    padding: 6px 10px 6px 10px; margin-bottom: -1px;
     font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700;
     letter-spacing: 1px; text-transform: uppercase;
     border: 1px solid var(--border); border-bottom: none;
@@ -441,8 +441,9 @@
   }
   .cond-tab-idem:hover { background: rgba(255,171,0,.12); opacity: 1; }
   .cond-tab-close {
-    font-size: 13px; color: var(--text-dim);
-    cursor: pointer; transition: color .15s; line-height: 1;
+    position: absolute; top: 2px; right: 3px;
+    font-size: 11px; line-height: 1;
+    color: var(--text-dim); cursor: pointer; transition: color .15s;
   }
   .cond-tab-close:hover { color: var(--red); }
   .cond-tab[draggable="true"] { cursor: grab; }
@@ -3702,7 +3703,11 @@ function initLabPage(conf) {
       if (i > 0) {
         const x = document.createElement('span');
         x.className = 'cond-tab-close'; x.textContent = '×';
-        x.addEventListener('click', e => { e.stopPropagation(); removeCondition(cond.uid); });
+        x.addEventListener('click', e => {
+          e.stopPropagation();
+          if (!confirm(`Supprimer le palier P${i + 1} ?`)) return;
+          removeCondition(cond.uid);
+        });
         tab.appendChild(x);
       }
       tab.addEventListener('click', () => activateCondition(i));
