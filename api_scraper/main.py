@@ -1029,58 +1029,106 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
     )
     # Viatris : CIP13  [libellé]  QTE_CARTON  QTE_FARDEAU  PFHT€  RSF_STD%  PRIX_STD€  [RSF_RIG%  PRIX_RIG€]
     # TAUX RIG (40 %) = RSF First, uniquement pour les produits du répertoire (palier 22 %).
-    # Le libellé est optionnel : pdfplumber peut l'extraire sur la ligne PRÉCÉDENTE quand le nom
-    # est trop long pour la cellule PDF (le libellé overflow sort avant la ligne de données).
-    # On skippe explicitement QTE_CARTON/QTE_FARDEAU pour ne pas confondre avec un séparateur
-    # de milliers ("105 0 749,36€" ≠ "1 235,61€").
-    _VIAT_PRICE = r"[\d]+(?:[ \xa0]\d{3})?[,.]\d+"   # prix avec séparateur milliers optionnel
-    VIATRIS_LINE_RE = _re.compile(
-        r"(\d{13})\s+"                              # CIP13
-        r"(?:(.+?)\s+)?"                            # Libellé inline optionnel (lazy)
-        r"\d+\s+\d+\s+"                            # QTE_CARTON  QTE_FARDEAU (skip)
-        r"(" + _VIAT_PRICE + r")\s*€\s+"           # PFHT€
-        r"([\d]+[,.]\d+)\s*%\s+"                   # TAUX REMISE STANDARD%
-        r"" + _VIAT_PRICE + r"\s*€\s+"             # PRIX NET STANDARD€ (skip)
-        r"(?:([\d]+[,.]\d+)\s*%\s+"                # Optional: TAUX RIG%
-        r"" + _VIAT_PRICE + r"\s*€)?"              # Optional: PRIX RIG€ (skip)
-    )
+    # Parser séquentiel (string ops + petits regex) pour éviter le backtracking catastrophique
+    # du regex monolithique avec groupe optionnel lazy (?:(.+?)\s+)? qui prenait 53s sur 45 pages.
+    # Extraction du texte : pymupdf (fitz) reconstruit les lignes par coordonnées Y — 53x plus
+    # rapide que pdfplumber.extract_text() (1s vs 53s pour le PDF Viatris 45 pages, 2 Mo).
     _is_viatris = labo.strip().lower().startswith("viatris")
+    _VP = r"[\d]+(?:[ \xa0]\d{3})?[,.]\d+"   # prix avec séparateur milliers optionnel
 
     def _viat_float(s: str) -> float:
         return float(s.replace("\xa0", "").replace(" ", "").replace(",", "."))
 
+    def _parse_viatris_line(line: str) -> tuple | None:
+        """Retourne (cip13, pfht, rsf, rsf_first, inline_lib) ou None."""
+        if "€" not in line or "%" not in line:
+            return None
+        cip_m = _re.search(r"(?<!\d)(\d{13})(?!\d)", line)
+        if not cip_m:
+            return None
+        cip13   = cip_m.group(1)
+        cip_end = cip_m.end()
+
+        # PFHT = juste avant le 1er € après le CIP13
+        euro_pos = line.find("€", cip_end)
+        if euro_pos == -1:
+            return None
+        pre_euro = line[cip_end:euro_pos]
+        pfht_m = _re.search(r"(" + _VP + r")\s*$", pre_euro)
+        if not pfht_m:
+            return None
+        pfht = _viat_float(pfht_m.group(1))
+
+        # Filtre produits OTC/conseil : le dernier token AVANT le PFHT est un % décimal
+        # (TVA type "10,0%" ou "5,5%") → format différent du répertoire (qui a QTE1 QTE2).
+        # Ne pas utiliser "%" in inline_lib : les dosages comme "2% CREME" ou "0,2% 5ML"
+        # contiennent aussi "%", mais leur DERNIER token avant PFHT est un entier (QTE_FARDEAU).
+        pre_pfht = pre_euro[:pfht_m.start()].strip()
+        last_tok = pre_pfht.rsplit(None, 1)[-1] if pre_pfht else ""
+        if last_tok.endswith("%"):
+            return None   # OTC/non-répertoire — TVA% immédiatement avant PFHT
+
+        inline_lib = _re.sub(r"(\s+\d+)+\s*$", "", pre_pfht).strip()
+
+        # RSF% et PRIX_STD€ après le PFHT€
+        after_pfht = line[euro_pos + 1:]
+        rsf_m = _re.search(r"([\d]+[,.]\d+)\s*%\s+" + _VP + r"\s*€", after_pfht)
+        if not rsf_m:
+            return None
+        rsf = -abs(float(rsf_m.group(1).replace(",", ".")))
+
+        # RIG% optionnel : même pattern après PRIX_STD€
+        after_rsf = after_pfht[rsf_m.end():]
+        rig_m = _re.search(r"([\d]+[,.]\d+)\s*%\s+" + _VP + r"\s*€", after_rsf)
+        rsf_first = -abs(float(rig_m.group(1).replace(",", "."))) if rig_m else 0.0
+
+        return (cip13, pfht, rsf, rsf_first, inline_lib)
+
+    def _fitz_page_lines(page) -> list[str]:
+        """Reconstruit les lignes du tableau Viatris en regroupant les mots par coordonnée Y."""
+        from collections import defaultdict as _dd
+        words = page.get_text("words")   # (x0,y0,x1,y1,word,block,line,word_no)
+        by_y: dict = _dd(list)
+        for x0, y0, _x1, _y1, word, *_ in words:
+            by_y[round(y0 / 3) * 3].append((x0, word))
+        lines = []
+        for _y, row in sorted(by_y.items()):
+            row.sort(key=lambda t: t[0])
+            lines.append(" ".join(w for _, w in row))
+        return lines
+
     # cip13 → (pfht, rsf, rdp, rsf_first, libelle)
     rows: dict[str, tuple] = {}
-    with _pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text() or ""
-            prev_lib = ""   # libellé extrait sur la ligne précédente (overflow)
-            for line in text.splitlines():
-                if _is_viatris:
-                    m = VIATRIS_LINE_RE.search(line)
-                    if m:
-                        cip13      = m.group(1)
-                        inline_lib = (m.group(2) or "").strip()
-                        # Si le libellé inline est court (<20 car) c'est la colonne INFORMATION
-                        # (ex: "BUD", "Switch", "Hors répertoire") — le vrai nom est dans prev_lib
-                        if prev_lib and len(inline_lib) < 20:
-                            lib_raw = (prev_lib + (" " + inline_lib if inline_lib else "")).strip()
-                        else:
-                            lib_raw = inline_lib or prev_lib
-                        libelle   = lib_raw.upper()
-                        pfht      = _viat_float(m.group(3))
-                        rsf       = -abs(_viat_float(m.group(4)))
-                        rsf_first = -abs(_viat_float(m.group(5))) if m.group(5) else 0.0
-                        rows[cip13] = (pfht, rsf, 0.0, rsf_first, libelle)
-                        prev_lib  = ""
+
+    if _is_viatris:
+        import fitz as _fitz
+        doc = _fitz.open(stream=io.BytesIO(pdf_bytes), filetype="pdf")
+        for page in doc:
+            prev_lib = ""
+            for line in _fitz_page_lines(page):
+                result = _parse_viatris_line(line)
+                if result:
+                    cip13, pfht, rsf, rsf_first, inline_lib = result
+                    # Si libellé inline court (<20 car) → c'est la colonne INFORMATION
+                    # ("BUD", "Switch", "Hors répertoire"), le vrai nom est dans prev_lib
+                    if prev_lib and len(inline_lib) < 20:
+                        lib_raw = (prev_lib + (" " + inline_lib if inline_lib else "")).strip()
                     else:
-                        # Ligne sans CIP13 ni prix = candidat libellé pour le prochain produit
-                        stripped = line.strip()
-                        if stripped and not _re.search(r"\d{13}", line) and "€" not in line:
-                            prev_lib = stripped
-                        else:
-                            prev_lib = ""
+                        lib_raw = inline_lib or prev_lib
+                    rows[cip13] = (pfht, rsf, 0.0, rsf_first, lib_raw.upper())
+                    prev_lib = ""
                 else:
+                    stripped = line.strip()
+                    if stripped and "€" not in line and not _re.search(r"\d{13}", line):
+                        prev_lib = stripped
+                    else:
+                        prev_lib = ""
+        doc.close()
+    else:
+        with _pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                for line in text.splitlines():
                     m = LINE_RE.search(line)
                     if m:
                         cip13   = m.group(1)
