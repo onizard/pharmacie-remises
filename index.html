@@ -2016,34 +2016,43 @@ function _flushState() {
   if (_cachedFlushSession) {
     try {
       // Guard keepalive : si le local n'a aucun lab configuré mais _lastGoodLabPages en a,
-    // utiliser les bons labs pour ne pas wiper le cloud via le keepalive (sans read-before-write).
-    const _keepaliveLabs = (data.labPages || []).some(lp => lp.selectedLab)
-      ? data.labPages
-      : (_lastGoodLabPages || data.labPages);
-    const _slim = {
-        v: data.v, savedAt: data.savedAt, gers: data.gers,
-        connectors: data.connectors, labPages: _keepaliveLabs,
-        verifContracts: data.verifContracts,
-        digiSavedAt: data.digiSavedAt || null, fseSavedAt: data.fseSavedAt || null,
-        // Listes de fichiers traités : petites, critiques pour l'historique inter-appareils
-        grossisteUploads:    data.grossisteUploads    || [],
-        digiUploads:         data.digiUploads         || [],
-        fseUploads:          data.fseUploads          || [],
-        grossisteGmailFiles: data.grossisteGmailFiles || [],
-      };
-      const _body = JSON.stringify([{ user_id: _cachedFlushSession.user_id, state_json: _slim }]);
-      if (_body.length < 60000) { // keepalive limit ~64 KB
-        fetch(`${SUPA_URL}/rest/v1/user_state`, {
-          method: 'POST', keepalive: true,
-          headers: {
-            'apikey': SUPA_KEY,
-            'Authorization': `Bearer ${_cachedFlushSession.token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates,return=minimal',
-          },
-          body: _body,
-        }).catch(() => {});
-        console.log('[BP] keepalive flush envoyé :', _body.length, 'octets');
+      // utiliser les bons labs pour ne pas wiper le cloud via le keepalive (sans read-before-write).
+      const _keepaliveLabs = (data.labPages || []).some(lp => lp.selectedLab)
+        ? data.labPages
+        : (_lastGoodLabPages || data.labPages);
+      // Sécurité critique : si aucun lab configuré nulle part, ne pas envoyer le keepalive.
+      // Scénario protégé : onglet ouvert avant que les labs soient restaurés (ex. cloud vide →
+      // LS vide → state.labPages=[] → fermeture d'onglet). Sans ce guard, le keepalive
+      // écraserait un cloud valide avec labPages:[]. saveCloudState() (ci-dessous) a son propre
+      // read-before-write avec _guardConfigured et gère ça correctement.
+      if (_keepaliveLabs.some(lp => lp.selectedLab)) {
+        const _slim = {
+          v: data.v, savedAt: data.savedAt, gers: data.gers,
+          connectors: data.connectors, labPages: _keepaliveLabs,
+          verifContracts: data.verifContracts,
+          digiSavedAt: data.digiSavedAt || null, fseSavedAt: data.fseSavedAt || null,
+          // Listes de fichiers traités : petites, critiques pour l'historique inter-appareils
+          grossisteUploads:    data.grossisteUploads    || [],
+          digiUploads:         data.digiUploads         || [],
+          fseUploads:          data.fseUploads          || [],
+          grossisteGmailFiles: data.grossisteGmailFiles || [],
+        };
+        const _body = JSON.stringify([{ user_id: _cachedFlushSession.user_id, state_json: _slim }]);
+        if (_body.length < 60000) { // keepalive limit ~64 KB
+          fetch(`${SUPA_URL}/rest/v1/user_state`, {
+            method: 'POST', keepalive: true,
+            headers: {
+              'apikey': SUPA_KEY,
+              'Authorization': `Bearer ${_cachedFlushSession.token}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'resolution=merge-duplicates,return=minimal',
+            },
+            body: _body,
+          }).catch(() => {});
+          console.log('[BP] keepalive flush envoyé :', _body.length, 'octets');
+        }
+      } else {
+        console.log('[BP] keepalive ignoré : aucun lab configuré (cloud protégé par saveCloudState)');
       }
     } catch(_) {}
   }
