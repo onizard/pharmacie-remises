@@ -2013,9 +2013,14 @@ function _flushState() {
   // Payload allégé (sans grosses stats OSPHARM/Digi qui sont récupérables) pour rester < 64 KB.
   if (_cachedFlushSession) {
     try {
-      const _slim = {
+      // Guard keepalive : si le local n'a aucun lab configuré mais _lastGoodLabPages en a,
+    // utiliser les bons labs pour ne pas wiper le cloud via le keepalive (sans read-before-write).
+    const _keepaliveLabs = (data.labPages || []).some(lp => lp.selectedLab)
+      ? data.labPages
+      : (_lastGoodLabPages || data.labPages);
+    const _slim = {
         v: data.v, savedAt: data.savedAt, gers: data.gers,
-        connectors: data.connectors, labPages: data.labPages,
+        connectors: data.connectors, labPages: _keepaliveLabs,
         verifContracts: data.verifContracts,
         digiSavedAt: data.digiSavedAt || null, fseSavedAt: data.fseSavedAt || null,
         // Listes de fichiers traités : petites, critiques pour l'historique inter-appareils
@@ -8834,9 +8839,20 @@ async function saveProfile() {
   // Quand local > cloud (crash recovery) : localStorage est conservé → _lsRaw == local.
   // Dans tous les cas : saved = meilleure donnée disponible, cloud est synchronisé au démarrage.
   const _lsRaw = loadSavedState();
-  const saved = _lsRaw || _startupCloudState;
+  let saved = _lsRaw || _startupCloudState;
   // _loadedFromCloud : vrai si le cloud a fourni les données (nouvel appareil, localStorage vide)
-  const _loadedFromCloud = !_lsRaw && !!_startupCloudState;
+  let _loadedFromCloud = !_lsRaw && !!_startupCloudState;
+  // Guard cloud-first : si le local n'a aucun lab configuré mais le cloud en a,
+  // le localStorage était vide (wipe, crash, sync perdue) → cloud prioritaire.
+  // On ignore le timestamp "local plus récent" dans ce cas.
+  const _localHasLabs = (saved?.labPages || []).some(lp => lp.selectedLab);
+  const _cloudHasLabs = (_startupCloudState?.labPages || []).some(lp => lp.selectedLab);
+  if (!_localHasLabs && _cloudHasLabs) {
+    saved = _startupCloudState;
+    _loadedFromCloud = true;
+    try { localStorage.setItem(LS_KEY, JSON.stringify(_startupCloudState)); } catch(_) {}
+    console.log('[BP] Local vide / Cloud configuré → cloud prioritaire, localStorage mis à jour');
+  }
   console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| cache local =', !!_lsRaw, '| cloud =', !!_startupCloudState, '| fromCloud =', _loadedFromCloud);
   if (saved) {
     state.gers = saved.gers ?? null;
