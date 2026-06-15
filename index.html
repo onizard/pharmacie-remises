@@ -9345,13 +9345,11 @@ async function saveProfile() {
     btnReset.addEventListener('touchcancel', cancelReset);
   }
 
-  if (isAdmin) setTimeout(() => showToast(`⚙ saved.labPages=${saved?.labPages?.length ?? 'null'} | state.labPages=${state.labPages.length} | createLabContDom OK`), 100);
 
   if (saved && saved.labPages) {
     console.log('[BP] Restauration labPages :', saved.labPages.length, saved.labPages.map(p => p.selectedLab));
     const _sp0 = saved.labPages[0];
     const _lp0 = state.labPages.find(l => l.uid === _sp0?.uid);
-    if (isAdmin) setTimeout(() => showToast(`⚙ sp[0]=${_sp0?.selectedLab}|uid=${_sp0?.uid?.slice(0,8)} | lp trouvé=${!!_lp0} | _restoreFromSave=${!!_lp0?._restoreFromSave}`), 600);
     for (const sp of saved.labPages) {
       const lp = state.labPages.find(l => l.uid === sp.uid);
       console.log('[BP] restore', sp.selectedLab, '| lp trouvé:', !!lp, '| _restoreFromSave:', !!(lp?._restoreFromSave), '| conditions:', sp.conditions?.length);
@@ -9391,12 +9389,6 @@ async function saveProfile() {
   } else {
     goTo('recap');
     setTimeout(() => renderRecap(), 0);
-  }
-
-  // Diagnostic admin : affiche ce qui a été restauré
-  if (isAdmin) {
-    const _restoredLabs = state.labPages.filter(lp => lp.selectedLab).map(lp => `${lp.selectedLab}(${(lp.conditions||[]).length}c)`).join(', ');
-    setTimeout(() => showToast(`✓ Restauré : ${state.labPages.filter(lp=>lp.selectedLab).length} labs — ${_restoredLabs || 'aucune condition'}`), 1000);
   }
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
