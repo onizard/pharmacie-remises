@@ -1331,6 +1331,7 @@
   </button>
   <div class="account-dropdown" id="accountDropdown">
     <div class="account-menu-item" id="menuParams">⚙&nbsp; Paramètres</div>
+    <div class="account-menu-item" id="menuForceSync">↑&nbsp; Forcer sync cloud</div>
     <div class="account-menu-item danger" id="menuLogout">⏻&nbsp; Déconnexion</div>
   </div>
 </div>
@@ -8530,6 +8531,28 @@ document.addEventListener('input', saveState);
   document.getElementById('menuParams')?.addEventListener('click', () => {
     dropdown.classList.remove('open');
     openProfileModal();
+  });
+
+  document.getElementById('menuForceSync')?.addEventListener('click', async () => {
+    dropdown.classList.remove('open');
+    const btn = document.getElementById('menuForceSync');
+    btn.textContent = '↑ Sync en cours…';
+    btn.style.opacity = '0.5';
+    btn.style.pointerEvents = 'none';
+    try {
+      const ok = await saveCloudState(serializeState());
+      btn.textContent = ok ? '✓ Sync réussie' : '✗ Erreur sync';
+      btn.style.color = ok ? 'var(--green)' : 'var(--red)';
+    } catch(e) {
+      btn.textContent = '✗ Erreur sync';
+      btn.style.color = 'var(--red)';
+    }
+    setTimeout(() => {
+      btn.textContent = '↑ Forcer sync cloud';
+      btn.style.opacity = '';
+      btn.style.pointerEvents = '';
+      btn.style.color = '';
+    }, 3000);
   });
 })();
 // ── Profile modal (éléments hors script, câblés dans DOMContentLoaded) ──
