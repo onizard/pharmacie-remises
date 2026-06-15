@@ -1624,7 +1624,7 @@
   <div class="bp-toast" id="bpToast"></div>
 
   <!-- Journal des toasts (admin only) -->
-  <div id="toastLogBtn" style="display:none;position:fixed;bottom:8px;right:12px;z-index:99998;background:var(--bg2);border:1px solid rgba(0,229,255,.25);color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.8px;padding:4px 10px;cursor:pointer;opacity:.6;" onclick="document.getElementById('toastLogPanel').style.display=document.getElementById('toastLogPanel').style.display==='none'?'flex':'none'">📋 LOG</div>
+  <div id="toastLogBtn" style="display:none;position:fixed;bottom:12px;right:16px;z-index:99998;background:#001820;border:2px solid var(--cyan);color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:1px;padding:6px 14px;cursor:pointer;opacity:1;box-shadow:0 0 10px rgba(0,229,255,.4);" onclick="document.getElementById('toastLogPanel').style.display=document.getElementById('toastLogPanel').style.display==='none'?'flex':'none'">📋 LOG DEBUG</div>
   <div id="toastLogPanel" style="display:none;position:fixed;bottom:34px;right:12px;z-index:99999;background:var(--bg2);border:1px solid rgba(0,229,255,.3);width:min(500px,92vw);max-height:40vh;flex-direction:column;font-family:'Share Tech Mono',monospace;font-size:11px;">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid rgba(0,229,255,.15)">
       <span style="color:var(--cyan);letter-spacing:1px">JOURNAL TOASTS</span>
@@ -1646,6 +1646,17 @@ const ADMIN_EMAIL = 'contact@break-pharma.fr';
 const ADMIN_UID   = '12d76016-ae1b-44bd-85fd-8551c3bd2cbf';
 const API_URL     = 'https://pharmacie-remises.onrender.com';
 let   isAdmin     = false;
+
+// ── Catch toutes les erreurs async non gérées → toast admin ───────────────────
+window.addEventListener('unhandledrejection', e => {
+  if (!isAdmin) return;
+  const msg = e.reason?.message || String(e.reason) || '?';
+  setTimeout(() => showToast(`✗ PROMISE ERR: ${msg.slice(0, 80)}`), 0);
+});
+window.addEventListener('error', e => {
+  if (!isAdmin) return;
+  setTimeout(() => showToast(`✗ JS ERR: ${e.message?.slice(0, 80)} @${e.lineno}`), 0);
+});
 
 // ── Forwarding console.error / console.warn → /client-log ─────────────────────
 (function() {
@@ -9284,8 +9295,14 @@ async function saveProfile() {
     for (const sp of saved.labPages) {
       const lp = state.labPages.find(l => l.uid === sp.uid);
       console.log('[BP] restore', sp.selectedLab, '| lp trouvé:', !!lp, '| _restoreFromSave:', !!(lp?._restoreFromSave), '| conditions:', sp.conditions?.length);
+      if (isAdmin) showToast(`→ ${sp.selectedLab || '?'} | lp=${!!lp} | fn=${!!(lp?._restoreFromSave)}`);
       if (lp && sp.selectedLab && lp._restoreFromSave) {
-        try { await lp._restoreFromSave(sp); } catch(e) { console.error('[BP] _restoreFromSave ERREUR', sp.selectedLab, e); if (isAdmin) showToast(`✗ _restoreFromSave ${sp.selectedLab}: ${e.message}`); }
+        try {
+          await lp._restoreFromSave(sp);
+          if (isAdmin) showToast(`✓ ${sp.selectedLab} → selectedLab=${lp.selectedLab || 'NULL!'}`);
+        } catch(e) { console.error('[BP] _restoreFromSave ERREUR', sp.selectedLab, e); if (isAdmin) showToast(`✗ _restoreFromSave ${sp.selectedLab}: ${e.message}`); }
+      } else if (isAdmin && (!lp || !sp.selectedLab || !lp?._restoreFromSave)) {
+        showToast(`⚠ SKIP ${sp.selectedLab}: lp=${!!lp} sel=${!!sp.selectedLab} fn=${!!(lp?._restoreFromSave)}`);
       }
       if (lp && sp.selectedLab && lp._restoreFromSave2025) {
         try { await lp._restoreFromSave2025(sp); } catch(e) { console.error('[BP] _restoreFromSave2025 ERREUR', sp.selectedLab, e); }
