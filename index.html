@@ -1933,6 +1933,9 @@ function _showSaveBadge(isError = false, isPending = false) {
 }
 
 async function saveCloudState(data) {
+  // Même garde que saveState et _flushState : si session absente au démarrage,
+  // l'état est vide (labPages:[]). Ne jamais écrire dans ce cas.
+  if (!_sessionExistedAtInit) { return false; }
   _cloudSavePending = true;
   _showSaveBadge(false, true); // spinner amber
   try {
@@ -1999,7 +2002,10 @@ function _flushState() {
   // Si la session n'existait pas au démarrage (login post-chargement), l'état est vide.
   // Ne pas flusher : ça écraserait le cloud avec labPages:[].
   // Le location.reload() qui suit le SIGNED_IN rechargera la page avec une vraie session.
-  if (!_sessionExistedAtInit) return;
+  if (!_sessionExistedAtInit) {
+    if (isAdmin) setTimeout(() => showToast('✓ flush bloqué (pas de session init) — rechargement en cours'), 0);
+    return;
+  }
   clearTimeout(_saveTimer);
   clearTimeout(_cloudSaveTimer);
   const data = serializeState();
@@ -2229,6 +2235,9 @@ function applyRsfDefaults() {
 
 function saveState() {
   if (!_initDone) return;
+  // Si la session n'existait pas au démarrage (login post-chargement), l'état local est vide.
+  // Ne pas sauvegarder : écraserait le cloud avant le rechargement avec labPages:[].
+  if (!_sessionExistedAtInit) return;
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
     const data    = serializeState();
