@@ -1989,6 +1989,10 @@ async function saveCloudState(data) {
 // Flush immédiat au cloud quand l'onglet est masqué (fermeture, changement d'onglet)
 function _flushState() {
   if (!_initDone) return;
+  // Si la session n'existait pas au démarrage (login post-chargement), l'état est vide.
+  // Ne pas flusher : ça écraserait le cloud avec labPages:[].
+  // Le location.reload() qui suit le SIGNED_IN rechargera la page avec une vraie session.
+  if (!_sessionExistedAtInit) return;
   clearTimeout(_saveTimer);
   clearTimeout(_cloudSaveTimer);
   const data = serializeState();
@@ -9295,14 +9299,10 @@ async function saveProfile() {
     for (const sp of saved.labPages) {
       const lp = state.labPages.find(l => l.uid === sp.uid);
       console.log('[BP] restore', sp.selectedLab, '| lp trouvé:', !!lp, '| _restoreFromSave:', !!(lp?._restoreFromSave), '| conditions:', sp.conditions?.length);
-      if (isAdmin) showToast(`→ ${sp.selectedLab || '?'} | lp=${!!lp} | fn=${!!(lp?._restoreFromSave)}`);
       if (lp && sp.selectedLab && lp._restoreFromSave) {
-        try {
-          await lp._restoreFromSave(sp);
-          if (isAdmin) showToast(`✓ ${sp.selectedLab} → selectedLab=${lp.selectedLab || 'NULL!'}`);
-        } catch(e) { console.error('[BP] _restoreFromSave ERREUR', sp.selectedLab, e); if (isAdmin) showToast(`✗ _restoreFromSave ${sp.selectedLab}: ${e.message}`); }
-      } else if (isAdmin && (!lp || !sp.selectedLab || !lp?._restoreFromSave)) {
-        showToast(`⚠ SKIP ${sp.selectedLab}: lp=${!!lp} sel=${!!sp.selectedLab} fn=${!!(lp?._restoreFromSave)}`);
+        try { await lp._restoreFromSave(sp); } catch(e) { console.error('[BP] _restoreFromSave ERREUR', sp.selectedLab, e); if (isAdmin) showToast(`✗ _restoreFromSave ${sp.selectedLab}: ${e.message}`); }
+      } else if (isAdmin && sp.selectedLab && (!lp || !lp?._restoreFromSave)) {
+        showToast(`⚠ SKIP ${sp.selectedLab}: lp=${!!lp} fn=${!!(lp?._restoreFromSave)}`);
       }
       if (lp && sp.selectedLab && lp._restoreFromSave2025) {
         try { await lp._restoreFromSave2025(sp); } catch(e) { console.error('[BP] _restoreFromSave2025 ERREUR', sp.selectedLab, e); }
