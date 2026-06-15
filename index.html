@@ -7128,10 +7128,23 @@ async function launchSimulation() {
       );
     }
 
+    // Coefficient Biogaran : réalisation < 80% → RSF seul ; ≥ 80% → r3Mult = 0.90 + réal×0.10
+    // Retourne null si le labo n'est pas Biogaran ou si aucun CA cible configuré.
+    function _getBiogCoeff(lp, ca) {
+      if (lp?.selectedLab !== 'Biogaran') return null;
+      const allC = [...(lp.conditions || []), ...(lp.conditions2025 || [])];
+      const maxCA = Math.max(0, ...allC.map(c => parseFloat(c.caCondition) || 0));
+      if (!maxCA) return null;
+      const real = ca / maxCA;
+      if (real < 0.80) return { skipR2: true, r3Mult: 0 };
+      return { skipR2: false, r3Mult: Math.min(1, 0.90 + real * 0.10) };
+    }
+
     // Helper: remise effective pour une ref, avec une condition déjà résolue.
     // Passer cond=null signifie "aucun palier atteint" → RSF uniquement.
     // useRsf=false (contrat répartiteur non coché) → RSF = 0
-    function getRemise(ref, cond, firstMet = false, useRsf = true) {
+    // bioCoeff={skipR2, r3Mult} → règle Biogaran (réalisation marché)
+    function getRemise(ref, cond, firstMet = false, useRsf = true, bioCoeff = null) {
       const yearRsf = (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
         ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
       const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : yearRsf;
@@ -7140,17 +7153,18 @@ async function launchSimulation() {
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(yearRsf));
       if (!rsfRow) return baseRSF;
+      if (bioCoeff?.skipR2) return baseRSF;
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
         if (exc && exc.libelles.some(l => l.text === ref.libelle)) {
           const excR3 = (exc.remise3 !== undefined && exc.remise3 !== '') ? (parseFloat(exc.remise3) || 0) : (parseFloat(rsfRow.remise3) || 0);
-          return baseRSF + (parseFloat(exc.remise2) || 0) + excR3;
+          return baseRSF + (parseFloat(exc.remise2) || 0) + excR3 * (bioCoeff?.r3Mult ?? 1);
         }
       }
-      return baseRSF + (parseFloat(rsfRow.remise2) || 0) + (parseFloat(rsfRow.remise3) || 0);
+      return baseRSF + (parseFloat(rsfRow.remise2) || 0) + (parseFloat(rsfRow.remise3) || 0) * (bioCoeff?.r3Mult ?? 1);
     }
 
-    function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true) {
+    function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true, bioCoeff = null) {
       const yearRsf = (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
         ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
       const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : yearRsf;
@@ -7159,6 +7173,7 @@ async function launchSimulation() {
       if (cond.rsfOnly.enabled && cond.rsfOnly.libelles.some(l => l.text === ref.libelle)) return baseRSF;
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(yearRsf));
       if (!rsfRow) return baseRSF;
+      if (bioCoeff?.skipR2) return baseRSF;
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
         if (exc && exc.libelles.some(l => l.text === ref.libelle)) {
@@ -7223,12 +7238,13 @@ async function launchSimulation() {
           );
           const _useRsf25 = e.lp?.contratRepartiteur25 ?? true;
           const _useRsf26 = e.lp?.contratRepartiteur    ?? true;
+          const _bioCoeff = _getBiogCoeff(e.lp, e.ca);
           e.rows.forEach(({ row, ref, price }) => {
-            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25) : 0;
-            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26) : 0;
+            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25, _bioCoeff) : 0;
+            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26, _bioCoeff) : 0;
             e.remise += row.qty * price * (r25 + r26) / 100;
-            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25) : 0;
-            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26) : 0;
+            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25, _bioCoeff) : 0;
+            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26, _bioCoeff) : 0;
             e.remiseSansR3 += row.qty * price * (s25 + s26) / 100;
           });
           e.bestCond    = cond26 || cond25;
@@ -7290,14 +7306,15 @@ async function launchSimulation() {
           }
           e.firstMet    = firstMet;
           const _useRsf2 = e.lp?.contratRepartiteur ?? true;
+          const _bioCoeff2 = _getBiogCoeff(e.lp, e.ca);
           e.rows.forEach(({ row, ref, price }) => {
             const remisePct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemise(ref, effectiveCond, firstMet, _useRsf2);
+              : getRemise(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff2);
             e.remise += row.qty * price * remisePct / 100;
             const remiseSansR3Pct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2);
+              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff2);
             e.remiseSansR3 += row.qty * price * remiseSansR3Pct / 100;
           });
         }
@@ -7405,6 +7422,18 @@ async function launchSimulation() {
           return;
         }
 
+        // Biogaran N-1 : validation marché à 80% du CA cible (source grossiste)
+        let _bioN1SkipR2R3 = false, _bioN1R3Mult = 1.0;
+        if (lp.selectedLab === 'Biogaran') {
+          const _allBioC = [...(lp.conditions || []), ...(lp.conditions2025 || [])];
+          const _caCible = Math.max(0, ..._allBioC.map(c => parseFloat(c.caCondition) || 0));
+          if (_caCible > 0) {
+            const _real = totalCABrut / _caCible;
+            if (_real < 0.80) { _bioN1SkipR2R3 = true; }
+            else { _bioN1R3Mult = Math.min(1, 0.90 + _real * 0.10); }
+          }
+        }
+
         // R2+R3 : rattrapage prorata sur CA brut depuis le début du contrat
         let cumulCA = 0, cumulQty = 0, r2r3_paid = 0, monthsElapsed = 0;
         months.forEach((mk, idx) => {
@@ -7417,13 +7446,13 @@ async function launchSimulation() {
           cumulCA  += monthBrut;
           cumulQty += md.qty;
           monthsElapsed++;
-          if (cumulCA === 0) return;
+          if (cumulCA === 0 || _bioN1SkipR2R3) return;
           const annualizedCA = (cumulCA / monthsElapsed) * 12;
           const conds    = getEffectiveCondsForMonth(lp, n1Year, monthNum);
           const bestCond = getBestCondFromArray(conds, annualizedCA);
           if (bestCond) {
             const r2_pct = parseFloat(bestCond.remiseGlobale) || 0;
-            const r3_pct = parseFloat(bestCond.coopR3)        || 0;
+            const r3_pct = (parseFloat(bestCond.coopR3) || 0) * _bioN1R3Mult;
             const r2r3_earned = cumulCA * r2_pct / 100 + cumulCA * r3_pct / 100 * 1.20;
             r2r3_paid += Math.max(0, r2r3_earned - r2r3_paid);
           }

@@ -99,6 +99,47 @@ CLOUDFLARE_API_KEY=...
 - `camoufox fetch` : téléchargé lazily au premier scraping Digipharmacie (pas au build Docker)
 - `python-multipart` requis dans requirements.txt pour les endpoints UploadFile
 
+## Règle métier spécifique : contrat Biogaran (marché générique)
+
+### Principe
+Biogaran impose un CA annuel contractuel. Le seuil de validation du marché est **80%** de ce CA.
+Le CA cible = `caCondition` du palier (condition) avec la remise la plus élevée.
+
+### Remises selon réalisation annuelle
+| Réalisation | RSF | Remise 2 (RDP) | Remise 3 (coop) |
+|---|---|---|---|
+| < 80% | ✓ | ✗ | ✗ |
+| ≥ 80% | ✓ | ✓ | 90% immédiat + rattrapage avril N+1 |
+
+**Formule coop effective annuelle** (si réalisation ≥ 80%) :
+```
+coop_effective = remise3 × (90% + réalisation% × 10%)
+```
+Exemples : 80% → 98% de remise3 | 90% → 99% | 100% → 100%
+
+Le rattrapage d'avril N+1 = `réalisation% × 10% × remise3` (versé en une fois).
+
+### Calcul de la réalisation
+
+**N-1 (scénario passé)** :
+- Source : données grossiste réelles (`_grossisteMonthStats`) — **jamais OSPHARM** (OSPHARM = ventes, grossiste = achats)
+- `réalisation = CA grossiste Biogaran N-1 / caCondition_max`
+
+**N (année en cours, au mois échu)** :
+- CA mensuel requis = `caCondition_max / 12`
+- Règle de déblocage coop mensuel : la coop est **bloquée** tant que la moyenne mensuelle depuis janvier < seuil mensuel (CA_annuel/12)
+- Dès que la moyenne mensuelle depuis janvier ≥ seuil mensuel → coop débloquée (versée à 90%)
+- Exemple : pharmacie en retard en mars, rattrapée en juin → coop débloquée en juin, versée sur juin+rattrapage des mois bloqués
+- Le 10% restant reste toujours en avril N+1, proratisé à la réalisation finale
+
+### Implémentation dans le code
+- Champ concerné : `remise3` dans `rsfValues` (colonne Remise 3 du tableau RSF)
+- Labo concerné : `'Biogaran'` uniquement
+- `caCondition_max` = max(`caCondition`) sur toutes les conditions du lab Biogaran
+- Dans la simulation : appliquer le coefficient `(0.9 + min(réalisation, 1.0) * 0.1)` à remise3 si réalisation ≥ 0.8, sinon remise2=0, remise3=0
+- Source N-1 : `state._grossisteMonthStats` filtré sur année N-1, clé labo = 'Biogaran' ou alias
+- Source N : même source filtrée sur mois de l'année N jusqu'au mois échu
+
 ## Identité visuelle
 Thème rétro-terminal sombre : fond `#04060f`, cyan `#00e5ff`, amber `#ffab00`, vert `#00ff88`, rouge `#ff3366`. Police Orbitron pour les titres.
 
