@@ -989,20 +989,15 @@ def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filenam
         with urllib.request.urlopen(req, timeout=30):
             pass
 
-    refs_data = [
-        {"cip13": cip, "labo": labo, "year": year,
-         "libelle": normaliser_libelle(lib, cip), "puht": pfht, "rsf_pct": rsf}
-        for cip, (pfht, rsf, rdp, lib) in rows.items()
-    ]
-    for i in range(0, len(refs_data), chunk):
-        body = json.dumps(refs_data[i:i+chunk]).encode()
-        req  = urllib.request.Request(
-            f"{SUPA_URL}/rest/v1/references_pharmacie?on_conflict=cip13",
-            data=body, method="POST",
-            headers={**HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"},
-        )
-        with urllib.request.urlopen(req, timeout=30):
-            pass
+    rpc_req = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/rpc/refresh_references_from_rsf_history",
+        data=json.dumps({"p_labo": labo}).encode(),
+        method="POST",
+        headers={"apikey": tok, "Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(rpc_req, timeout=30) as resp:
+        n_refs = json.loads(resp.read())
+    print(f"  → references_pharmacie: {n_refs} lignes mises à jour depuis rsf_history", flush=True)
 
     try:
         from supabase_client import upload_file_sync
@@ -1182,21 +1177,16 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
         with urllib.request.urlopen(req, timeout=30):
             pass
 
-    # 3. Upsert references_pharmacie avec libellé normalisé et year
-    refs_data = [
-        {"cip13": cip, "labo": labo, "year": year,
-         "libelle": normaliser_libelle(lib, cip), "puht": pfht, "rsf_pct": rsf}
-        for cip, (pfht, rsf, rdp, rsf_first, lib) in rows.items()
-    ]
-    for i in range(0, len(refs_data), chunk):
-        body = json.dumps(refs_data[i:i+chunk]).encode()
-        req  = urllib.request.Request(
-            f"{SUPA_URL}/rest/v1/references_pharmacie?on_conflict=cip13",
-            data=body, method="POST",
-            headers={**HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"},
-        )
-        with urllib.request.urlopen(req, timeout=30):
-            pass
+    # 3. Rafraîchir references_pharmacie depuis rsf_history (millésime le plus récent par CIP13)
+    rpc_req = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/rpc/refresh_references_from_rsf_history",
+        data=json.dumps({"p_labo": labo}).encode(),
+        method="POST",
+        headers={"apikey": tok, "Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(rpc_req, timeout=30) as resp:
+        n_refs = json.loads(resp.read())
+    print(f"  → references_pharmacie: {n_refs} lignes mises à jour depuis rsf_history", flush=True)
 
     # 4. Upload PDF dans MinIO pour archive
     try:
