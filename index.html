@@ -7508,6 +7508,12 @@ async function launchSimulation() {
     const n1Year = new Date().getFullYear() - 1;
     const actuel = calcN1FromPurchases(n1Year);
     const totalCA = actuel.totalCA || csvData.reduce((s, r) => s + r.qty * (r.puht || 0), 0);
+    // CA annuel N-1 depuis month_stats (source de vérité — couvre les 12 mois même si job.rows est partiel)
+    const totalCAn1MonthStats = Object.entries(state._monthStats || {})
+      .filter(([k]) => k.startsWith(String(n1Year) + '-'))
+      .reduce((sum, [, arr]) => sum + arr
+        .filter(l => ourLabs.has(l.labo))
+        .reduce((s, l) => s + (l.ca_brut || 0), 0), 0);
 
     // 6c. Optimisé 2 : réalisation des marchés (seuils les plus serrés en priorité)
     // Calcul du CA potentiel par labo avec seuil
@@ -8340,7 +8346,7 @@ async function launchSimulation() {
         </div>
       </div>
       <div class="sim-kpi-row">
-        <div class="sim-kpi"><div class="sim-kpi-label">CA VENTES N-1 (OSPHARM)</div><div class="sim-kpi-value amber">${fmtE(naturalScenario.totalCA)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">CA VENTES N-1 (OSPHARM)</div><div class="sim-kpi-value amber">${fmtE(totalCAn1MonthStats || naturalScenario.totalCA)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET NATUREL</div><div class="sim-kpi-value">${fmtE(naturalScenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">SCÉNARIOS ÉVALUÉS</div><div class="sim-kpi-value amber">${totalScenarios}</div></div>
