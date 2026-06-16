@@ -6908,6 +6908,7 @@ async function launchSimulation() {
     // Also build libelle -> list of refs map (all labs, for optimization)
     const libelleMap = new Map();
     refRows.forEach(r => {
+      if (r.libelle == null) return;
       if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
       libelleMap.get(r.libelle).push(r);
     });
@@ -6988,6 +6989,7 @@ async function launchSimulation() {
     // 3b. Form-agnostic libelle map : "AMLODIPINE 5MG 30CP" ≡ "AMLODIPINE 5MG 30GELULE"
     //     Sert à trouver les équivalents d'un autre labo quand seule la forme galénique diffère.
     function formNormKey(lib) {
+      if (!lib) return '';
       // Strip qualificatifs de distribution/formulation (PDR=poudre, PDA=distribution, SOL BUV, FLACON)
       lib = lib.replace(/\bP(?:DR|DA)\b/gi, '').replace(/\bSOL\s+BUV\b/gi, '').replace(/\bFLACON\b/gi, '');
       // Strip codes labo résiduels (Actavis, Ratiopharm, Sandoz MCV, Zentiva ZTK/ZTV/GLE, Winthrop WIN, Sun SUN)
