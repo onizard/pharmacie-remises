@@ -1937,6 +1937,11 @@ async function saveCloudState(data) {
   // Garde cloud-first : si la session n'existait pas au démarrage (page incognito pré-login),
   // l'état est vide. Bloquer pour ne jamais écraser le cloud avec labPages:[].
   if (!_sessionExistedAtInit) return false;
+  // Guard : ne jamais sauvegarder si labPages est vide mais _lastGoodLabPages est connu
+  const _localConfigured = (data.labPages || []).filter(lp => lp.selectedLab).length;
+  if (_localConfigured === 0 && _lastGoodLabPages?.filter(lp => lp.selectedLab).length > 0) {
+    return false;
+  }
   _cloudSavePending = true;
   _showSaveBadge(false, true); // spinner amber
   try {
@@ -1944,50 +1949,14 @@ async function saveCloudState(data) {
     if (!sb) { _cloudSavePending = false; return false; }
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { _cloudSavePending = false; return false; }
-    // Mettre en cache la session pour le flush keepalive au pagehide
     _cachedFlushSession = { user_id: session.user.id, token: session.access_token };
-    const payload = Object.assign({}, data);
-    try {
-      const { data: cur } = await sb.from('user_state').select('state_json').eq('user_id', session.user.id).maybeSingle();
-      for (const k of ['ospharm_job', 'verif_job', 'conn_test']) {
-        if (cur?.state_json?.[k] && payload[k] === undefined) payload[k] = cur.state_json[k];
-      }
-      // Ne jamais écraser labPages cloud si le local n'a aucun lab configuré (selectedLab).
-      // Un tableau de 9 items avec selectedLab:null (restore incomplet) est traité comme vide.
-      const _guardPages = cur?.state_json?.labPages?.length ? cur.state_json.labPages : _lastGoodLabPages;
-      const _localConfigured  = (payload.labPages || []).filter(lp => lp.selectedLab).length;
-      const _guardConfigured  = (_guardPages  || []).filter(lp => lp.selectedLab).length;
-      // Alias de commodité pour la logique de fusion (par nb total d'items)
-      const _localLen  = payload.labPages?.length ?? 0;
-      const _guardLen  = _guardPages?.length ?? 0;
-      if (_localConfigured === 0 && _guardConfigured > 0) {
-        payload.labPages = _guardPages;
-      } else if (_localLen > 0 && _guardLen > _localLen + 1) {
-        // Local a moins de labs que le cloud : fusionner — valeurs locales prioritaires
-        // pour les labs ouverts, cloud pour les labs absents localement
-        const localByUid = Object.fromEntries(payload.labPages.map(lp => [lp.uid, lp]));
-        payload.labPages = _guardPages.map(gp => localByUid[gp.uid] ?? gp);
-        _lastGoodLabPages = payload.labPages;
-      } else if (_localLen > 0) {
-        _lastGoodLabPages = payload.labPages;
-      }
-      // Préserver les stats cloud si le local est vide (keepalive slim ne les inclut pas)
-      const _hasItems = v => v && (Array.isArray(v) ? v.length > 0 : typeof v === 'object' && Object.keys(v).length > 0);
-      for (const sk of ['monthStats', 'monthMeta', 'digiMonthStats', 'grossisteMonthStats', 'fseMonthStats', 'escompteStats', 'mdlStats', 'grossisteUploads', 'digiUploads', 'fseUploads', 'grossisteGmailFiles']) {
-        if (!_hasItems(payload[sk]) && _hasItems(cur?.state_json?.[sk])) {
-          payload[sk] = cur.state_json[sk];
-        }
-      }
-    } catch(_) {
-      // Si la lecture DB échoue, utiliser le cache mémoire comme garde
-      if (!payload.labPages?.length && _lastGoodLabPages?.length) {
-        payload.labPages = _lastGoodLabPages;
-      }
-    }
-    const { error } = await sb.from('user_state').upsert(
-      { user_id: session.user.id, state_json: payload },
-      { onConflict: 'user_id' }
-    );
+    if (_localConfigured > 0) _lastGoodLabPages = data.labPages;
+    // Utilise merge_user_state (JSONB merge côté DB) — préserve ospharm_job/verif_job/conn_test
+    // sans lire les 2+ MB du cloud. Atomique et fiable même si le JSON est volumineux.
+    const { error } = await sb.rpc('merge_user_state', {
+      p_user_id: session.user.id,
+      p_state:   data,
+    });
     if (error) throw error;
     _cloudSavePending = false;
     _showSaveBadge();
@@ -2086,9 +2055,15 @@ async function _checkCloudSync() {
       uid: lp.uid, lab: lp.selectedLab,
       c: lp.conditions, c25: lp.conditions2025,
     })));
-    if (_slim(cloud.state_json.labPages) !== _slim(state.labPages)) {
+    const _cloudConf = (cloud.state_json.labPages || []).filter(lp => lp.selectedLab).length;
+    const _localConf = (state.labPages || []).filter(lp => lp.selectedLab).length;
+    if (_cloudConf > _localConf) {
+      // Cloud a plus de labs que local → reload pour récupérer les labs manquants
       showToast('↺ Synchronisation automatique…');
       setTimeout(() => location.reload(), 1500);
+    } else if (_cloudConf < _localConf) {
+      // Local a plus de labs → pousser vers le cloud (sans reload)
+      saveState();
     }
   } catch(_) {}
 }
@@ -8874,7 +8849,23 @@ async function saveProfile() {
             const _cloudTs = cs.savedAt || 0;
             if (_cloudTs >= _localTs) {
               // Cloud identique ou plus récent → mettre à jour le cache local
-              try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
+              // SAUF si le local a plus de labs configurés que le cloud : protège contre
+              // l'écrasement accidentel par un cloud dégradé (ex. GH Actions a écrit depuis un état partiel).
+              const _lrLocal = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch(_) { return {}; } })();
+              const _localLabsCnt = (_lrLocal.labPages || []).filter(lp => lp.selectedLab).length;
+              const _cloudLabsCnt = (cs.labPages || []).filter(lp => lp.selectedLab).length;
+              if (_localLabsCnt > _cloudLabsCnt) {
+                // Local a plus de labs → fusionner : prendre cloud sauf labPages (on garde les labs locaux)
+                console.log('[BP] Cloud plus récent mais local a plus de labs (' + _localLabsCnt + ' vs ' + _cloudLabsCnt + ') → labs locaux préservés, sync cloud au démarrage');
+                try {
+                  const _merged = Object.assign({}, cs, { labPages: _lrLocal.labPages });
+                  localStorage.setItem(LS_KEY, JSON.stringify(_merged));
+                } catch(_) {}
+                // Forcer un re-push vers le cloud pour corriger le décalage
+                setTimeout(() => { if (_initDone) saveState(); }, 4000);
+              } else {
+                try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
+              }
             } else {
               // Local plus récent (crash recovery) → conserver localStorage, fusionner les connectors
               console.log('[BP] Local plus récent (localTs=' + _localTs + ' > cloudTs=' + _cloudTs + ') — sync cloud forcée au démarrage');
