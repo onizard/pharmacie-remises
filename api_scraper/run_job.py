@@ -275,6 +275,34 @@ def _get_creds() -> dict:
     )
 
 
+def _set_connected():
+    """Marque le connecteur digipharmacie comme connected=True après un scrape réussi."""
+    try:
+        conns = _get_connectors_col()
+        cred  = conns.get("digipharmacie", {})
+        if not cred.get("user"):
+            state = _supa_get_state()
+            cred  = state.get("connectors", {}).get("digipharmacie", {})
+        url  = f"{SUPA_URL}/rest/v1/rpc/upsert_connector"
+        body = json.dumps({
+            "p_user_id":   USER_ID,
+            "p_connector": "digipharmacie",
+            "p_login":     cred.get("user", ""),
+            "p_pass":      cred.get("pass", ""),
+            "p_connected": True,
+        }).encode()
+        req = urllib.request.Request(url, data=body, method="POST", headers={
+            "apikey":        SERVICE_KEY,
+            "Authorization": f"Bearer {SERVICE_KEY}",
+            "Content-Type":  "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=15):
+            pass
+        print("  ✅  Connecteur digipharmacie marqué connected=True")
+    except Exception as e:
+        print(f"  [warn] _set_connected failed : {e}")
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def _save_results(lines: list, cache: dict, existing_stats: dict,
@@ -383,6 +411,7 @@ def main():
                                               on_partial=_on_partial)
         _save_results(invoices, updated_cache, existing_stats,
                       existing_escompte=existing_escompte, existing_mdl=existing_mdl)
+        _set_connected()
         n_cache = sum(1 for v in updated_cache.values() if v is True)
         print(f"\n✅  {len(invoices)} nouvelles lignes ({n_cache} en cache).")
     except Exception as e:
