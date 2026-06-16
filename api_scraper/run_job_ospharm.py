@@ -70,13 +70,11 @@ def _update_job(status: str, message: str = "", rows=None, error: str = "",
     def _do():
         try:
             state = _supa_get_state()
-            # Stocker uniquement les 12 derniers mois de rows (comparateur en a besoin)
+            # Stocker uniquement les rows de l'année N-1 (Jan-Déc)
             import datetime as _dt
-            _cutoff_year  = (_dt.date.today().replace(day=1) - _dt.timedelta(days=335)).year
-            _cutoff_month = (_dt.date.today().replace(day=1) - _dt.timedelta(days=335)).month
+            _n1 = _dt.date.today().year - 1
             rows_12m = [r for r in (rows or [])
-                        if (r.get("year", 0), r.get("month", 0)) >=
-                           (_cutoff_year, _cutoff_month)] if rows else []
+                        if r.get("year", 0) == _n1] if rows else []
             import time as _time
             _existing_job = state.get("ospharm_job", {})
             job = {
@@ -1324,12 +1322,14 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
             print(f"  [{lbl}] {len(raw_rows)} lignes brutes, {ps} → {pe}")
             return raw_rows, ps, pe, _file_url
 
-        # ── Boucle mensuelle : Jan N-1 → mois courant ────────────────────────
+        # ── Boucle mensuelle : Jan N-1 → Déc N-1 (année complète précédente) ──
+        # Les ventes OSPHARM sont utilisées uniquement par le comparateur pour N-1.
+        # Les achats (grossiste XLSX) alimentent le récap achats et la vérif.
         today       = datetime.date.today()
         start_year  = today.year - 1
         start_month = 1
-        end_year    = today.year
-        end_month   = today.month
+        end_year    = today.year - 1
+        end_month   = 12
 
         all_compact_rows: list[dict] = []
         month_meta: list[dict]       = []
