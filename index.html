@@ -7161,7 +7161,13 @@ async function launchSimulation() {
           return baseRSF + (parseFloat(exc.remise2) || 0) + excR3 * (bioCoeff?.r3Mult ?? 1);
         }
       }
-      return baseRSF + (parseFloat(rsfRow.remise2) || 0) + (parseFloat(rsfRow.remise3) || 0) * (bioCoeff?.r3Mult ?? 1);
+      const _r2Raw = rsfRow.remise2;
+      const _r2 = (_r2Raw !== '' && _r2Raw != null)
+        ? (parseFloat(_r2Raw) || 0)
+        : (!rsfRow.excluded && cond.remiseGlobale != null
+            ? Math.max(0, (parseFloat(cond.remiseGlobale) || 0) - baseRSF)
+            : 0);
+      return baseRSF + _r2 + (parseFloat(rsfRow.remise3) || 0) * (bioCoeff?.r3Mult ?? 1);
     }
 
     function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true, bioCoeff = null) {
@@ -7451,12 +7457,12 @@ async function launchSimulation() {
           if (bestCond) {
             const r2_pct = parseFloat(bestCond.remiseGlobale) || 0;
             const r3_pct = (parseFloat(bestCond.coopR3) || 0) * _bioN1R3Mult;
-            const r2r3_earned = cumulCA * r2_pct / 100 + cumulCA * r3_pct / 100 * 1.20;
+            const r2r3_earned = cumulCA * r2_pct / 100 + cumulCA * r3_pct / 100;
             r2r3_paid += Math.max(0, r2r3_earned - r2r3_paid);
           }
         });
 
-        const totalRemise = rsf_total + r2r3_paid;
+        const totalRemise = r2r3_paid > 0 ? r2r3_paid : rsf_total;
         const lastConds   = getEffectiveCondsForMonth(lp, n1Year, 12);
         const annFinal    = monthsElapsed > 0 ? (cumulCA / monthsElapsed) * 12 : 0;
         const finalCond   = getBestCondFromArray(lastConds, annFinal);
