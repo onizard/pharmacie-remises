@@ -955,6 +955,8 @@ def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filenam
     if not rows:
         raise HTTPException(status_code=422, detail="Aucun CIP13 valide trouvé dans le fichier")
 
+    from normaliser import normaliser_libelle
+
     tok = _supa_key()
     HEADERS = {
         "apikey": tok, "Authorization": f"Bearer {tok}",
@@ -972,7 +974,8 @@ def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filenam
 
     rsf_data = [
         {"cip13": cip, "labo": labo, "year": year,
-         "rsf_pct": rsf, "rdp_pct": rdp, "pfht": pfht, "libelle": lib}
+         "rsf_pct": rsf, "rdp_pct": rdp, "pfht": pfht,
+         "libelle": normaliser_libelle(lib, cip)}
         for cip, (pfht, rsf, rdp, lib) in rows.items()
     ]
     chunk = 500
@@ -987,7 +990,8 @@ def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filenam
             pass
 
     refs_data = [
-        {"cip13": cip, "labo": labo, "libelle": lib, "puht": pfht, "rsf_pct": rsf}
+        {"cip13": cip, "labo": labo, "year": year,
+         "libelle": normaliser_libelle(lib, cip), "puht": pfht, "rsf_pct": rsf}
         for cip, (pfht, rsf, rdp, lib) in rows.items()
     ]
     for i in range(0, len(refs_data), chunk):
@@ -1008,7 +1012,7 @@ def _import_rsf_history_csv_sync(csv_bytes: bytes, labo: str, year: int, filenam
 
     from collections import Counter
     rsf_dist = dict(Counter(round(rsf, 4) for _, (_, rsf, _, _) in rows.items()).most_common(10))
-    print(f"[import_rsf_history_csv] {labo} {year} → {len(rows)} CIP13, rsf dist={rsf_dist}", flush=True)
+    print(f"[import_rsf_history_csv] {labo} {year} → {len(rows)} CIP13 (libellés normalisés), rsf dist={rsf_dist}", flush=True)
     return {"count": len(rows), "labo": labo, "year": year, "rsf_dist": rsf_dist}
 
 
@@ -1141,6 +1145,8 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
     if not rows:
         raise HTTPException(status_code=422, detail="Aucun CIP13 trouvé dans le PDF")
 
+    from normaliser import normaliser_libelle
+
     HEADERS = {
         "apikey":        tok,
         "Authorization": f"Bearer {tok}",
@@ -1158,10 +1164,11 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
     with urllib.request.urlopen(del_req, timeout=30):
         pass
 
-    # 2. Insérer toutes les nouvelles lignes avec libellé
+    # 2. Insérer toutes les nouvelles lignes avec libellé normalisé
     rsf_data = [
         {"cip13": cip, "labo": labo, "year": year,
-         "rsf_pct": rsf, "rdp_pct": rdp, "rsf_first_pct": rsf_first, "pfht": pfht, "libelle": lib}
+         "rsf_pct": rsf, "rdp_pct": rdp, "rsf_first_pct": rsf_first, "pfht": pfht,
+         "libelle": normaliser_libelle(lib, cip)}
         for cip, (pfht, rsf, rdp, rsf_first, lib) in rows.items()
     ]
     chunk = 500
@@ -1175,9 +1182,10 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
         with urllib.request.urlopen(req, timeout=30):
             pass
 
-    # 3. Synchroniser references_pharmacie (upsert — pas de suppression pour préserver l'historique)
+    # 3. Upsert references_pharmacie avec libellé normalisé et year
     refs_data = [
-        {"cip13": cip, "labo": labo, "libelle": lib, "puht": pfht, "rsf_pct": rsf}
+        {"cip13": cip, "labo": labo, "year": year,
+         "libelle": normaliser_libelle(lib, cip), "puht": pfht, "rsf_pct": rsf}
         for cip, (pfht, rsf, rdp, rsf_first, lib) in rows.items()
     ]
     for i in range(0, len(refs_data), chunk):
@@ -1198,7 +1206,7 @@ def _import_rsf_history_sync(pdf_bytes: bytes, labo: str, year: int, filename: s
     except Exception as e:
         print(f"[warn] MinIO upload failed: {e}", flush=True)
 
-    print(f"[import_rsf_history] {labo} {year} → {len(rows)} CIP13", flush=True)
+    print(f"[import_rsf_history] {labo} {year} → {len(rows)} CIP13 (libellés normalisés)", flush=True)
     return {"count": len(rows), "labo": labo, "year": year}
 
 
