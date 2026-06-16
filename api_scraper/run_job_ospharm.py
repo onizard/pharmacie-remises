@@ -140,7 +140,7 @@ def _get_creds() -> dict:
 # ── Supabase références & defaults ────────────────────────────────────────────
 
 def _query_refs(cip_list: list) -> dict:
-    """Retourne {cip13: {labo, rsf_pct, puht}} pour chaque CIP."""
+    """Retourne {cip13: {labo, libelle, rsf_pct, puht}} pour chaque CIP."""
     if not cip_list:
         return {}
     result = {}
@@ -149,7 +149,7 @@ def _query_refs(cip_list: list) -> dict:
         batch = cip_list[i:i + batch_size]
         cips_param = "(" + ",".join(batch) + ")"
         url = (f"{SUPA_URL}/rest/v1/references_pharmacie"
-               f"?cip13=in.{cips_param}&select=cip13,labo,rsf_pct,puht&limit=10000")
+               f"?cip13=in.{cips_param}&select=cip13,labo,libelle,rsf_pct,puht&limit=10000")
         req = urllib.request.Request(url, headers={
             "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
         })
@@ -158,6 +158,7 @@ def _query_refs(cip_list: list) -> dict:
                 for row in json.loads(r.read()):
                     result[row["cip13"]] = {
                         "labo":    row["labo"],
+                        "libelle": row.get("libelle") or "",
                         "rsf_pct": row.get("rsf_pct"),
                         "puht":    row.get("puht"),
                     }
@@ -191,8 +192,26 @@ def _query_rsf_defaults() -> dict:
 
 _LABOS_NON_GENERIQUES = {"WEGOVY", "WEGOVI"}
 
+# Marqueurs de libellé → lab interne (pour CIPs avec labo=NULL non présents dans notre catalogue CERP)
+_GENERIQUE_LIBELLE_MAP = [
+    ("BIOGARAN",  "Biogaran"),
+    ("TEVA",      "Teva"),
+    ("ARROW",     "Arrow"),
+    ("VIATRIS",   "Viatris"),
+    ("MYLAN",     "Viatris"),
+    ("SANDOZ",    "Sandoz"),
+    ("ZENTIVA",   "Zentiva"),
+    ("CRISTERS",  "Cristers"),
+    ("ZYDUS",     "Zydus"),
+    (" EG ",      "EG"),
+]
+
 def _build_month_stats(all_rows: list, refs_by_cip: dict, rsf_defs: dict) -> dict:
-    """Agrège par (year, month, labo) → month_stats dict pour le frontend."""
+    """Agrège par (year, month, labo) → month_stats dict pour le frontend.
+
+    Seuls les génériques sont inclus : CIPs avec labo connu OU dont le libellé
+    contient le nom du laboratoire générique (ou son abréviation).
+    """
     by_key: dict = {}
     for row in all_rows:
         cip = row.get("cip13")
@@ -200,6 +219,15 @@ def _build_month_stats(all_rows: list, refs_by_cip: dict, rsf_defs: dict) -> dic
         if not ref:
             continue
         labo = ref["labo"] or ""
+        if not labo:
+            # CIP absent du catalogue CERP : détection via libellé
+            libelle_up = (" " + (ref.get("libelle") or "").upper() + " ")
+            for marker, lab_name in _GENERIQUE_LIBELLE_MAP:
+                if marker in libelle_up:
+                    labo = lab_name
+                    break
+        if not labo:
+            continue  # non-générique → ignoré
         if labo.upper() in _LABOS_NON_GENERIQUES:
             continue
         try:
@@ -280,39 +308,54 @@ def _compact_month_rows(rows: list[dict]) -> list[dict]:
             s = s.replace(a, b)
         return _re.sub(r"[^a-z0-9]", "", s)
 
+    def _parse_float(v) -> float:
+        """Parse un float depuis les formats OSPHARM : '7 233 €', '7 233', 7232.5, etc."""
+        if v is None: return 0.0
+        if isinstance(v, (int, float)): return float(v)
+        s = str(v)
+        s = _re.sub(r"<[^>]+>", "", s)          # strip HTML
+        s = s.replace(" ", "").replace("\xa0", "").replace(" ", "")
+        s = s.replace("€", "").replace("%", "").replace(" ", "")
+        s = s.replace(",", ".")
+        try:
+            return float(s.strip())
+        except (ValueError, TypeError):
+            return 0.0
+
     keys = list(rows[0].keys())
-    cip_k = next((k for k in keys if _n(k) == "codeean"), None) or \
+
+    # CIP : nom API "product_ean13" ou affichage "Code EAN"
+    cip_k = next((k for k in keys if _n(k) in ("codeean", "productean13")), None) or \
             next((k for k in keys if any(p in _n(k) for p in ("cip", "ean", "acl"))), None)
-    qty_k = next((k for k in keys if _n(k) == "quantite"), None) or \
-            next((k for k in keys if any(p in _n(k) for p in ("qte", "qty"))
-                  and "n1" not in _n(k) and "evo" not in _n(k)), None)
+
+    # Quantité : nom API "quantity" ou affichage "Quantité"
+    qty_k = next((k for k in keys if _n(k) in ("quantite", "quantity")), None) or \
+            next((k for k in keys if any(p in _n(k) for p in ("qte", "qty", "quantit"))
+                  and "n1" not in _n(k) and "m1" not in _n(k) and "evo" not in _n(k)), None)
+
+    # Prix catalogue HT total : nom API "sum_buying_manufacturer" ou affichage "Prix catalogue HT"
     _cat_candidates = [
-        next((k for k in keys if _n(k) in ("montantcatalogue", "catotalht", "montantpfht")), None),
-        next((k for k in keys if "catalogue" in _n(k) and any(x in _n(k) for x in ("montant","ca","total","ht"))), None),
-        next((k for k in keys if _n(k) in ("montantht", "caht")), None),
+        next((k for k in keys if _n(k) in ("sumbuyingmanufacturer", "montantcatalogue",
+                                            "catotalht", "montantpfht")), None),
+        next((k for k in keys if "catalogue" in _n(k) and any(x in _n(k) for x in ("montant","ca","total","ht","sum","prix"))), None),
+        next((k for k in keys if _n(k) in ("montantht", "caht", "turnoverht")), None),
         next((k for k in keys if "montant" in _n(k) and "ht" in _n(k)
-              and "n1" not in _n(k) and "evo" not in _n(k)), None),
+              and "n1" not in _n(k) and "m1" not in _n(k) and "evo" not in _n(k)), None),
     ]
     cat_k = next((c for c in _cat_candidates if c), None)
-    print(f"  [compact] cip={cip_k!r} qty={qty_k!r} cat={cat_k!r}")
+    print(f"  [compact] cip={cip_k!r} qty={qty_k!r} cat={cat_k!r} (keys[:5]={keys[:5]})")
 
     if not cip_k or not qty_k:
         return rows
 
     compact: dict = {}
     for r in rows:
-        raw = _re.sub(r"\D", "", str(r.get(cip_k) or ""))
+        raw = _re.sub(r"\D", "", _re.sub(r"<[^>]+>", "", str(r.get(cip_k) or "")))
         cip13 = raw if len(raw) == 13 else ("340000" + raw if len(raw) == 7 else None)
-        try:
-            qty = float(str(r.get(qty_k) or 0).replace(",", "."))
-        except (ValueError, TypeError):
-            qty = 0.0
+        qty = _parse_float(r.get(qty_k))
         if not cip13 or qty <= 0:
             continue
-        try:
-            cat_val = float(str(r.get(cat_k) or 0).replace(",", ".")) if cat_k else 0.0
-        except (ValueError, TypeError):
-            cat_val = 0.0
+        cat_val = _parse_float(r.get(cat_k)) if cat_k else 0.0
         if cip13 not in compact:
             compact[cip13] = {"cip13": cip13, "qty": 0.0, "_cat_total": 0.0}
         compact[cip13]["qty"]        += qty
