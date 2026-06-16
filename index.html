@@ -6910,7 +6910,7 @@ async function launchSimulation() {
 
     // 2. Fetch reference data from Supabase (batch by 200)
     const allCips = [...new Set(csvData.map(r => r.cip13))];
-    _sp(8, `// ${allCips.length} produits identifiés`, 'Chargement des références pharmacie…');
+    _sp(4, `// ${allCips.length} produits identifiés`, 'Chargement des références pharmacie…');
     const CHUNK = 200;
     const refRows = [];
     for (let i = 0; i < allCips.length; i += CHUNK) {
@@ -6918,9 +6918,9 @@ async function launchSimulation() {
       const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&cip13=in.(${chunk.join(',')})&limit=1000`;
       const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
       if (res.ok) refRows.push(...await res.json());
-      _sp(8 + Math.round((i + chunk.length) / allCips.length * 37));
+      _sp(4 + Math.round((i + chunk.length) / allCips.length * 18));
     }
-    _sp(45, '// Références chargées', 'Analyse des équivalences moléculaires…');
+    _sp(22, '// Références chargées', 'Analyse des équivalences moléculaires…');
 
     // refMap: cip13 -> ref (keep first match per cip, prefer refs from our labs)
     const refMap = new Map();
@@ -6955,7 +6955,7 @@ async function launchSimulation() {
       let _done = 0;
       const results = await Promise.all(tasks.map(t => t.then(r => {
         _done++;
-        _sp(45 + Math.round(_done / Math.max(tasks.length, 1) * 23));
+        _sp(22 + Math.round(_done / Math.max(tasks.length, 1) * 11));
         return r;
       })));
       results.forEach(rows => rows.forEach(r => {
@@ -6964,7 +6964,7 @@ async function launchSimulation() {
           libelleMap.get(r.libelle).push(r);
       }));
     }
-    _sp(70, '// Équivalences identifiées', 'Calcul des scénarios d\'optimisation…');
+    _sp(33, '// Équivalences identifiées', 'Calcul des scénarios d\'optimisation…');
 
     // 3a. Overlay PUHT depuis OSPHARM (plus fiable que Supabase pour les refs présentes)
     //     Priorité à l'année 2026 (plus récente) ; fallback 2025.
@@ -7089,7 +7089,7 @@ async function launchSimulation() {
       return result;
     }
 
-    await _yield(); _sp(75, '// Équivalences indexées', 'Construction des scénarios…');
+    await _yield(); _sp(36, '// Équivalences indexées', 'Construction des scénarios…');
     // 3. Natural ref map (no lab preference) + current lab CA breakdown
     const naturalRefMap = new Map();
     refRows.forEach(r => { if (!naturalRefMap.has(r.cip13)) naturalRefMap.set(r.cip13, r); });
@@ -7500,7 +7500,7 @@ async function launchSimulation() {
       return { labResults: results, totalRemise: totR, totalCA: totC, totalPaNet: totC - totR };
     }
 
-    await _yield(); _sp(82, '// Scénario N-1 calculé', 'Optimisation des affectations…');
+    await _yield(); _sp(42, '// Scénario N-1 calculé', 'Optimisation des affectations…');
     // 6a. Scénario N-1 : achats (digi + grossiste) avec prorata mensuel cumulé
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
@@ -7608,7 +7608,7 @@ async function launchSimulation() {
 
       labScenarios.push({ name: labName, scenario: calcScenario(labAssignment), assignment: labAssignment });
     });
-    await _yield(); _sp(90, '// Scénarios par labo', 'Calcul des combinaisons…');
+    await _yield(); _sp(46, '// Scénarios par labo', 'Calcul des paliers…');
 
     // 6e. Helper : assignment "focus labo principal + meilleur RSF pour le reste"
     function buildFocusAssignment(primaryLab) {
@@ -7634,6 +7634,7 @@ async function launchSimulation() {
     }
 
     // 6f. Scénarios par palier : un scénario par labo × condition (labs avec ≥2 paliers)
+    await _yield(); _sp(48, '// Analyse des paliers', 'Calcul des scénarios par condition…');
     const _labScenarioPaNet = new Map(labScenarios.map(ls => [ls.name, ls.scenario.totalPaNet]));
     const condScenarios = [];
     state.labPages.forEach(lp => {
@@ -7668,7 +7669,9 @@ async function launchSimulation() {
     const multiCondScenarios = [];
     {
       const lpWithConds = state.labPages.filter(lp => lp.selectedLab && (lp.conditions||[]).length >= 1);
+      const _mcN = Math.max(lpWithConds.length - 1, 1);
       for (let _i = 0; _i < lpWithConds.length - 1; _i++) {
+        await _yield(); _sp(50 + Math.round(_i / _mcN * 28), '// Analyse combinatoire', `Paire ${_i + 1} / ${_mcN}…`);
         for (let _j = _i + 1; _j < lpWithConds.length; _j++) {
           const lpA = lpWithConds[_i], lpB = lpWithConds[_j];
           const nameA = lpA.selectedLab, nameB = lpB.selectedLab;
@@ -7910,7 +7913,7 @@ async function launchSimulation() {
     allOptScenarios.length = 0;
     allOptScenarios.push(..._deduped);
     allOptScenarios.sort((a, b) => a.scenario.totalPaNet - b.scenario.totalPaNet);
-    await _yield(); _sp(96, '// Classement final', 'Recherche du meilleur scénario…');
+    await _yield(); _sp(82, '// Classement final', 'Recherche du meilleur scénario…');
     let winnerEntry = allOptScenarios[0];
     const otherScenarios = allOptScenarios.slice(1);
     let totalScenarios = 1 + allOptScenarios.length;
@@ -8228,7 +8231,7 @@ async function launchSimulation() {
         const _targetLabs = [...ourLabs];
         if (_targetLabs.length < 2) return;
 
-        _sp(97, '// Optimisation combinatoire', `Analyse de ${_targetLabs.length} génériqueurs…`);
+        _sp(88, '// Optimisation combinatoire', `Analyse de ${_targetLabs.length} génériqueurs…`);
         const _toFetch = _targetLabs.filter(ln => !_fullFetchedLabs.has(ln));
         if (_toFetch.length) {
           const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
@@ -8270,7 +8273,7 @@ async function launchSimulation() {
           try {
             const { scenario, assignment: asgn } = calcCustomScenario(perm);
             _permCount++;
-            _sp(97 + Math.floor(_permCount / _totalPerms * 2), '// Optimisation combinatoire', `${_permCount} / ${_totalPerms} combinaisons analysées…`);
+            _sp(88 + Math.floor(_permCount / _totalPerms * 10), '// Optimisation combinatoire', `${_permCount} / ${_totalPerms} combinaisons analysées…`);
             if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
               const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
               scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
