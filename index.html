@@ -2644,6 +2644,7 @@ function _compFingerprint() {
             + ':' + c26.map(c => [c.caCondition, c.remiseGlobale, c.coopR3].join('|')).join(',');
     }).join('~');
     return JSON.stringify({
+        v: 3,
         osp: ospKeys + '/' + ospCnt,
         digi: state._digiSavedAt || 0,
         gros: grosKeys + '/' + Math.round(grosTot),
