@@ -6892,7 +6892,7 @@ async function launchSimulation() {
     for (let i = 0; i < allCips.length; i += CHUNK) {
       const chunk = allCips.slice(i, i + CHUNK);
       const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&cip13=in.(${chunk.join(',')})&limit=1000`;
-      const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
+      const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }).catch(e => { throw new Error(`Fetch refs: ${e.message}`); });
       if (res.ok) refRows.push(...await res.json());
       _sp(4 + Math.round((i + chunk.length) / allCips.length * 18));
     }
@@ -8612,10 +8612,10 @@ async function launchSimulation() {
 
   } catch(err) {
     console.error(err);
-    const isNetwork = err.message === 'Failed to fetch' || err.name === 'TypeError';
+    const isNetwork = err.message === 'Failed to fetch';
     const msg = isNetwork
       ? '⚠ Connexion interrompue — vérifiez votre réseau et réessayez.'
-      : `⚠ Erreur lors de l'analyse : ${err.message}`;
+      : `⚠ Erreur : ${err.message || err.name || 'inconnue'}`;
     container.innerHTML = `<div class="sim-warn" style="display:flex;flex-direction:column;align-items:center;gap:14px">
       <span>${msg}</span>
       <button id="simRetryBtn" style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:2px;padding:10px 24px;cursor:pointer;background:transparent;border:1px solid var(--amber);color:var(--amber);transition:all .2s" onmouseover="this.style.background='var(--amber)';this.style.color='var(--bg)'" onmouseout="this.style.background='transparent';this.style.color='var(--amber)'">↺ RÉESSAYER</button>
