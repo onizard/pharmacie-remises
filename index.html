@@ -7499,6 +7499,7 @@ async function launchSimulation() {
     // 6a. Scénario N-1 : achats (digi + grossiste) avec prorata mensuel cumulé
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
+    const naturalScenario = calcScenario(naturalAssignment);
     const n1Year = new Date().getFullYear() - 1;
     const actuel = calcN1FromPurchases(n1Year);
     const totalCA = actuel.totalCA || csvData.reduce((s, r) => s + r.qty * (r.puht || 0), 0);
@@ -8289,7 +8290,7 @@ async function launchSimulation() {
         console.warn('[exhaustive] recherche abandonnée :', e);
       }
     })();
-    const winnerSaving = actuel.totalPaNet - winnerEntry.scenario.totalPaNet;
+    const winnerSaving = naturalScenario.totalPaNet - winnerEntry.scenario.totalPaNet;
 
     // ── Récap par CIP ─────────────────────────────────────────────────────────
     function buildRecapRows(assignment) {
@@ -8331,8 +8332,8 @@ async function launchSimulation() {
         </div>
       </div>
       <div class="sim-kpi-row">
-        <div class="sim-kpi"><div class="sim-kpi-label">CA ACHATS N-1 (DIGI+GROS)</div><div class="sim-kpi-value amber">${fmtE(totalCA)}</div></div>
-        <div class="sim-kpi"><div class="sim-kpi-label">PA NET ANNÉE N-1</div><div class="sim-kpi-value">${fmtE(actuel.totalPaNet)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">CA VENTES 12M (OSPHARM)</div><div class="sim-kpi-value amber">${fmtE(naturalScenario.totalCA)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">PA NET NATUREL</div><div class="sim-kpi-value">${fmtE(naturalScenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">SCÉNARIOS ÉVALUÉS</div><div class="sim-kpi-value amber">${totalScenarios}</div></div>
       </div>
@@ -8474,14 +8475,14 @@ async function launchSimulation() {
           }
         });
       }
-      const gain = actuel.totalPaNet - scenario.totalPaNet;
+      const gain = naturalScenario.totalPaNet - scenario.totalPaNet;
       const key  = 'custom';
       scenarioStore.set(key, { assignment, labResults: scenario.labResults });
       const dlInline = mkScenarioDlBtns(key, scenario, assignment);
 
       resDiv.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-          <span style="font-family:'Orbitron',monospace;font-size:12px;color:var(--amber);letter-spacing:2px">RÉSULTAT — PA NET : ${fmtE(scenario.totalPaNet)} &nbsp;·&nbsp; GAIN vs N-1 : <span style="color:${gain>=0?'var(--green)':'var(--red)'}">${gain>=0?'+':''}${fmtE(gain)}</span></span>
+          <span style="font-family:'Orbitron',monospace;font-size:12px;color:var(--amber);letter-spacing:2px">RÉSULTAT — PA NET : ${fmtE(scenario.totalPaNet)} &nbsp;·&nbsp; GAIN vs NATUREL : <span style="color:${gain>=0?'var(--green)':'var(--red)'}">${gain>=0?'+':''}${fmtE(gain)}</span></span>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${dlInline}</div>
         </div>
         ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}`;
