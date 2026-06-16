@@ -8302,7 +8302,7 @@ async function launchSimulation() {
         const paNet = row.qty * puht * (1 - net / 100);
         rows.push({ labo: ref.labo, cip13: row.cip13, libelle: row.libelle || ref.libelle || '', qty: row.qty, puht, rsf_pct: ref.rsf_pct, remise2, remise3, paNet });
       }
-      rows.sort((a, b) => a.labo.localeCompare(b.labo) || b.qty - a.qty);
+      rows.sort((a, b) => (a.labo || '').localeCompare(b.labo || '') || b.qty - a.qty);
       return rows;
     }
     state._recapVentes = buildRecapRows(naturalAssignment);
