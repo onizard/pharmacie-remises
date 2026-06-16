@@ -8352,6 +8352,22 @@ async function launchSimulation() {
       ${mkScenarioTable(actuel.labResults, true, null)}
     </div>`;
 
+    // ── Autres scénarios ───────────────────────────────────────────────────────
+    otherScenarios.forEach(s => {
+      const _gain = actuel.totalPaNet - s.scenario.totalPaNet;
+      const _vsWinner = s.scenario.totalPaNet - winnerEntry.scenario.totalPaNet;
+      html += `<div class="sim-section">
+        <div class="sim-scenario-header">
+          <span>▸ ${s.label}</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${s.dlBtns}</div>
+        </div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--amber);margin-bottom:8px">
+          GAIN vs N-1 : <span style="color:${_gain>=0?'var(--green)':'var(--red)'}">${_gain>=0?'+':''}${fmtE(_gain)}</span>
+        </div>
+        ${mkScenarioTable(s.scenario.labResults, true, _vsWinner)}
+      </div>`;
+    });
+
     // ── Simulateur personnalisé ─────────────────────────────────────────────────
     const _labOpts = `<option value="">— Aucun —</option>` +
       LABS_SORTED.map(l => `<option value="${l.replace(/"/g,'&quot;')}">${l}</option>`).join('');
