@@ -7307,7 +7307,7 @@ async function launchSimulation() {
         }
       });
       const labResults = [...labMap.entries()]
-        .filter(([name]) => !LABS_BRAND_EXCL.has(name))
+        .filter(([name]) => name != null && !LABS_BRAND_EXCL.has(name))
         .map(([name, e]) => ({
           name, ca: e.ca, remise: e.remise, qty: e.qty,
           pondere:      e.ca > 0 ? e.remiseSansR3 / e.ca * 100 : 0,
