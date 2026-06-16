@@ -2412,6 +2412,11 @@ function filterLast12Months(rows) {
   });
 }
 
+function filterN1Year(rows) {
+  const n1 = new Date().getFullYear() - 1;
+  return rows.filter(r => !r.year || r.year === n1);
+}
+
 function ospharmRowsToCsvData(rows) {
   if (!rows || !rows.length) return [];
   const keys = Object.keys(rows[0]);
@@ -2740,7 +2745,7 @@ async function launchComparateur() {
       return;
     }
 
-    const csvData = ospharmRowsToCsvData(filterLast12Months(job.rows));
+    const csvData = ospharmRowsToCsvData(filterN1Year(job.rows));
     if (!csvData.length) {
       showCompError('Colonnes OSPHARM non reconnues — vérifiez le format des données.');
       return false;
@@ -7836,8 +7841,8 @@ async function launchSimulation() {
     opt2.labResults.filter(l => l.isSelected).forEach(l =>
       scenarioStore.set(`opt2_${l.name}`, { assignment: opt2Assignment, labResults: opt2.labResults, filterLab: l.name }));
     scenarioStore.set('opt2_all', { assignment: opt2Assignment, labResults: opt2.labResults });
-    // N-1 = achats agrégés par labo (pas de CIP assignment) → CSV labo-niveau
-    scenarioStore.set('actuel',   { labResults: actuel.labResults, _n1Purchases: true });
+    // N-1 naturel = ventes OSPHARM N-1 avec distribution labo actuelle (sans optimisation)
+    scenarioStore.set('actuel',   { assignment: naturalAssignment, labResults: naturalScenario.labResults });
     labScenarios.forEach(({ name, scenario, assignment }) => {
       scenarioStore.set(`lab_${name}`, { assignment, labResults: scenario.labResults });
       scenario.labResults.filter(l => l.isSelected).forEach(l =>
@@ -8332,7 +8337,7 @@ async function launchSimulation() {
         </div>
       </div>
       <div class="sim-kpi-row">
-        <div class="sim-kpi"><div class="sim-kpi-label">CA VENTES 12M (OSPHARM)</div><div class="sim-kpi-value amber">${fmtE(naturalScenario.totalCA)}</div></div>
+        <div class="sim-kpi"><div class="sim-kpi-label">CA VENTES N-1 (OSPHARM)</div><div class="sim-kpi-value amber">${fmtE(naturalScenario.totalCA)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET NATUREL</div><div class="sim-kpi-value">${fmtE(naturalScenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">PA NET OPTIMAL</div><div class="sim-kpi-value ${winnerSaving>0?'green':'red'}">${fmtE(winnerEntry.scenario.totalPaNet)}</div></div>
         <div class="sim-kpi"><div class="sim-kpi-label">SCÉNARIOS ÉVALUÉS</div><div class="sim-kpi-value amber">${totalScenarios}</div></div>
@@ -8350,13 +8355,13 @@ async function launchSimulation() {
       ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
     </div>`;
 
-    // ── Scénario N-1 ───────────────────────────────────────────────────────────
+    // ── Scénario N-1 naturel (OSPHARM, sans optimisation) ─────────────────────
     html += `<div class="sim-section">
       <div class="sim-scenario-header">
-        <span>▸ SCÉNARIO N-1</span>
+        <span>▸ SCÉNARIO N-1 — SANS OPTIMISATION</span>
         ${dlBtn('actuel')}
       </div>
-      ${mkScenarioTable(actuel.labResults, true, null)}
+      ${mkScenarioTable(naturalScenario.labResults, true, null)}
     </div>`;
 
 
