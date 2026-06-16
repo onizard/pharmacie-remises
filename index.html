@@ -6916,7 +6916,7 @@ async function launchSimulation() {
     // Query by libellé + selected lab to find all their equivalents.
     // All lab×chunk combinations are fetched in parallel.
     if (ourLabs.size > 0) {
-      const allLibelles = [...new Set(refRows.map(r => r.libelle))];
+      const allLibelles = [...new Set(refRows.map(r => r.libelle).filter(l => l != null))];
       const LIB_CHUNK = 30;
       const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
       const tasks = [];
