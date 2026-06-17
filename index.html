@@ -6973,71 +6973,112 @@ async function launchSimulation() {
     //     Sert à trouver les équivalents d'un autre labo quand seule la forme galénique diffère.
     function formNormKey(lib) {
       if (!lib) return '';
-      // Strip qualificatifs de distribution/formulation (PDR=poudre, PDA=distribution, SOL BUV, FLACON)
-      lib = lib.replace(/\bP(?:DR|DA)\b/gi, '').replace(/\bSOL\s+BUV\b/gi, '').replace(/\bFLACON\b/gi, '');
-      // Strip codes labo résiduels + marques Biogaran (BIOGARAN, BGR) + Teva (SANTE) + autres
-      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE)\b/gi, '');
+
+      // ── 1. Accent normalization (NFD) ───────────────────────────────────
+      // Corrige tous les accents Biogaran en une passe : ÉSOMÉPRAZOLE→ESOMEPRAZOLE,
+      // CANDÉSARTAN→CANDESARTAN, LÉVÉTIRACÉTAM→LEVETIRACETAM, etc.
+      lib = lib.normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+      // ── 2. Cas spéciaux pré-normalisation ───────────────────────────────
+      // Greek/Latin mu dans les dosages μg : FENTANYL ΜG → FENTANYL MCG
+      lib = lib.replace(/[μΜ]G\b/g, 'MCG');
+      // MICROGRAMMES / MILLIGRAMMES épelés (Biogaran)
+      lib = lib.replace(/\bMICROGRAMMES?\b/gi, 'MCG').replace(/\bMILLIGRAMMES?\b/gi, 'MG');
+      lib = lib.replace(/\bMILLILITRES?\b/gi, 'ML');
+      // Mots splittés par l'extraction PDF (même pattern que COMP RIMÉS)
+      lib = lib.replace(/(\d+)\s*COMP\s+RIM[EE]S?\s*\d*/gi, '$1');
+      lib = lib.replace(/(\d*)\s*SACH\s+ET\b/gi, '$1');
+      lib = lib.replace(/(\d*)\s*AMP\s+OULES?\b/gi, '$1');
+      lib = lib.replace(/\bFENOFI\s+BRATE\b/gi, 'FENOFIBRATE');
+      lib = lib.replace(/\bAMOROLFI\s+NE\b/gi, 'AMOROLFINE');
+      lib = lib.replace(/\bPROSTAGLANDI\s+NE\b/gi, 'PROSTAGLANDINE');
+
+      // ── 3. Marques et codes labo ────────────────────────────────────────
       lib = lib.replace(/\bBIOGARAN\b®?/gi, '').replace(/\bBGR\b®?/gi, '');
-      // MACROGOL : strip poids moléculaire (3350, 4000…)
+      lib = lib.replace(/\bNOR\b®?/gi, '').replace(/\bREF\b®?/gi, '');
+      lib = lib.replace(/\bMYLAN\b/gi, '').replace(/\bBUD\b/gi, '');
+      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE|SWITCH|NOUVEAUTE|QSEC)\b/gi, '');
+      lib = lib.replace(/[®°×]/g, '').replace(/\([^)]*\)/g, '');
+      lib = lib.replace(/\s*-\s*/g, ' ');
+      lib = lib.replace(/\bB\/\d+\b/gi, '').replace(/\bBTE\s+DE\b/gi, '');
       lib = lib.replace(/\bMACROGOL\s+(?:3350|4000|6000)\b/gi, 'MACROGOL');
-      // Strip "BTE DE" / "QSEC" / "B/" (qualificatifs boîte/sécable Teva/Zydus)
-      lib = lib.replace(/\bBTE\s+DE\b/gi, '').replace(/\bQSEC\b/gi, '').replace(/\bB\/\d+\b/gi, '');
-      // Normalise séparateur décimal (virgule → point) et espace entre chiffre et unité (4 MG → 4MG)
+
+      // ── 4. Normalisation numérique ──────────────────────────────────────
       lib = lib.replace(/(\d),(\d)/g, '$1.$2');
       lib = lib.replace(/(\d)\s+(MG|MCG|ML|UI|PC|%)\b/gi, '$1$2');
-      // G en fin de chaîne précédé d'un nombre = gélules/grammes : strip (évite 30G → 30000MG)
+      lib = lib.replace(/(\d+(?:\.\d+)?)\s*%/g, '$1PC');
+
+      // ── 5. G en fin = quantité gélules ; G médian = gramme → MG ─────────
       lib = lib.replace(/(\d+)\s*G\s*$/gi, '$1');
-      // G en milieu de libellé = dosage en grammes → convertit en MG (ex: 2G → 2000MG)
-      lib = lib.replace(/(\d+(?:[.,]\d+)?)\s*G\b/gi, (_, n) =>
-        Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'MG'
-      );
-      // Normalise slash entre mots (AMOX/CLAV → AMOX CLAV) sans toucher les ratios numériques (500/62.5MG)
+      lib = lib.replace(/(\d+(?:[.,]\d+)?)\s*G\b/gi,
+        (_, n) => Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'MG');
+
+      // ── 6a. Slash entre dosages avec unités : 5MG/160MG → 5MG 160MG (Viatris) ──
+      lib = lib.replace(/(\d+(?:MG|MCG|ML|UI|PC))\s*\/\s*(\d)/gi, '$1 $2');
+      // ── 6b. Dosage combiné Arrow sans unités : 5/160 → 5MG 160MG ────────
+      lib = lib.replace(/\b(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)\b/g, '$1MG $2MG');
+
+      // ── 7. Slash DCI : AMOX/CLAV → AMOX CLAV ────────────────────────────
       lib = lib.replace(/([A-Za-z])\/([A-Za-z])/g, '$1 $2');
-      // COMP RIMÉS = COMPRIMÉS splitté en DB + numéro boîte Biogaran (ex: 90COMP RIMÉS 1 → 90)
-      lib = lib.replace(/(\d+)\s*COMP\s+RIM[EÉ]S?\s*\d*/gi, '$1');
-      // SACH ET = SACHETS splitté (ex: 12SACH ET → 12)
-      lib = lib.replace(/(\d*)\s*SACH\s+ET\b/gi, '$1');
-      // Strip qualificatifs galéniques partout (forme de présentation, enrobage, sécabilité) — sauf LP/LM/LA (libération)
-      // ÉLULES? = fragment de GÉLULES (G coupé dans certains libellés DB) ; ÉL seul idem
-      // PEL = résidu PELLICULÉS ; RIM[EÉ]S = résidu COMPRIMÉS ; GASTRORÉSISTANTS = coating implicite
-      lib = lib.replace(/\b(?:G[EÉ]LULES?|[EÉ]LULES?|COMPRIMES?|COMPRIM[EÉ]S?|CPR?|CAPSULES?|CACHETS?|GELCAPS?|GELU|CAPS|COMP|PELLICUL[EÉ]S?|PEL|S[EÉ]CABLES?|ENROB[EÉ]S?|ORODISPERSIBLES?|EFFERVESCENTS?|BUCCALES?|SUBLINGUALES?|GASTROR[EÉ]SISTANTS?|RIM[EÉ]S?|CRÈME|CONSEIL|TUBE)\b/gi, '');
-      // ÉL seul (résidu GÉLULE tronqué) et doublons LP/LM répétés
-      lib = lib.replace(/\b(?:ÉL|EL)\b/gi, '');
-      lib = lib.replace(/\b(LP|LM|LA)\s+\1\b/gi, '$1');
-      // Marques → DCI + noms tronqués → forme complète
+
+      // ── 8. Synonymes : abréviations Arrow ↔ noms complets Biogaran/Viatris
       [
-        [/\bDOXYLIS\b/gi,       'DOXYCYCLINE'],
-        [/\bESLICARB\b/gi,      'ESLICARBAZEPINE'],
-        [/\bATORVASTAT\b/gi,    'ATORVASTATINE'],
-        [/\bLEVETIRAC\b/gi,     'LEVETIRACETAM'],
-        [/\bMETHYLPHEN\b/gi,    'METHYLPHENIDATE'],
-        [/\bVENLAFAX(?:IN?)?\b/gi, 'VENLAFAXINE'],
-        [/\bVENLASOV\b/gi,       'VENLAFAXINE'],
-        [/\bTAMSULOS\b/gi,      'TAMSULOSINE'],
-        [/\bESCITALOP\b/gi,     'ESCITALOPRAM'],
-        [/\bDESLORATADIN\b/gi,  'DESLORATADINE'],
-        [/\bESOMEPRAZ\b/gi,     'ESOMEPRAZOLE'],
-        [/\bOMEPRAZOL\b/gi,     'OMEPRAZOLE'],
-        [/\bRABEPRAZOL\b/gi,    'RABEPRAZOLE'],
-        [/\bPANTOPRAZ\b/gi,     'PANTOPRAZOLE'],
-        [/\bLANSOPRAZOL\b/gi,   'LANSOPRAZOLE'],
-        [/\bAMLODIP\b/gi,       'AMLODIPINE'],
-        [/\bSPIRONOLACT\b/gi,   'SPIRONOLACTONE'],
-        [/\bPARACET\b/gi,       'PARACETAMOL'],
-        [/\bCELIPR\b/gi,        'CELIPROLOL'],
-        [/\bROSUVASTAT\b/gi,    'ROSUVASTATINE'],
-        [/\bZOPICL\b/gi,        'ZOPICLONE'],
-        [/\bAMITRIPT\b/gi,      'AMITRIPTYLINE'],
-        [/\bMYFENAX\b/gi,       'MYCOPHENOLATE'],
-        [/\bASPIRINE\b/gi,      'ACIDE ACETYL'],
-        [/\bACIDE FOLIQ\b/gi,   'ACIDE FOLIQUE'],
+        [/\bDOXYLIS\b/gi,                  'DOXYCYCLINE'],
+        [/\bESLICARB\b/gi,                  'ESLICARBAZEPINE'],
+        [/\bATORVASTAT\b/gi,                'ATORVASTATINE'],
+        [/\bROSUVASTAT\b/gi,                'ROSUVASTATINE'],
+        [/\bSIMVASTAT\b/gi,                 'SIMVASTATINE'],
+        [/\bPRAVASTAT\b/gi,                 'PRAVASTATINE'],
+        [/\bLEVETIRAC\b/gi,                 'LEVETIRACETAM'],
+        [/\bMETHYLPHEN\b/gi,                'METHYLPHENIDATE'],
+        [/\bVENLAFAX(?:IN?)?\b/gi,          'VENLAFAXINE'],
+        [/\bVENLASOV\b/gi,                  'VENLAFAXINE'],
+        [/\bTAMSULOS\b/gi,                  'TAMSULOSINE'],
+        [/\bESCITALOP\b/gi,                 'ESCITALOPRAM'],
+        [/\bDESLORATADIN\b/gi,              'DESLORATADINE'],
+        [/\bESOMEPRAZ\b/gi,                 'ESOMEPRAZOLE'],
+        [/\bOMEPRAZOL\b/gi,                 'OMEPRAZOLE'],
+        [/\bRABEPRAZOL\b/gi,                'RABEPRAZOLE'],
+        [/\bPANTOPRAZ\b/gi,                 'PANTOPRAZOLE'],
+        [/\bLANSOPRAZOL\b/gi,               'LANSOPRAZOLE'],
+        [/\bAMLODIP\b/gi,                   'AMLODIPINE'],
+        [/\bSPIRONOLACT\b/gi,               'SPIRONOLACTONE'],
+        [/\bPARACET\b/gi,                   'PARACETAMOL'],
+        [/\bCELIPR\b/gi,                    'CELIPROLOL'],
+        [/\bZOPICL\b/gi,                    'ZOPICLONE'],
+        [/\bAMITRIPT\b/gi,                  'AMITRIPTYLINE'],
+        [/\bMYFENAX\b/gi,                   'MYCOPHENOLATE'],
+        [/\bASPIRINE\b/gi,                  'ACIDE ACETYL'],
+        [/\bACIDE FOLIQ\b/gi,               'ACIDE FOLIQUE'],
+        // Noms longs Biogaran/Viatris → formes Arrow (normalisation vers forme courte)
+        [/\bVALSARTAN\b/gi,                 'VALS'],
+        [/\bHYDROCHLOROTHIAZIDE\b/gi,      'HYD'],
+        [/\b(?:HYD|HYDR)\b/gi,             'HYD'],
+        [/\bALENDRONIQUE\b/gi,              'ALENDR'],
+        [/\bURSODESOXYCHOLIQUE\b/gi,       'URSOD'],
+        [/\bACETYLSALICYLIQUE\b/gi,        'ACETYL'],
+        [/\bACIDE ACETYL SALICYLIQUE\b/gi,  'ACIDE ACETYL'],
+        // Combinaison amox/clav : Arrow utilise AMOX + CLAV, Biogaran/Viatris le nom complet
+        [/\bAMOXICILLINE\b/gi,             'AMOX'],
+        [/\bACIDE CLAVULANIQUE\b/gi,        'CLAV'],
+        [/\bCLAVULANIQUE\b/gi,             'CLAV'],
       ].forEach(([re, full]) => { lib = lib.replace(re, full); });
-      // Strip résidus non-alphanumériques (®, °, +, -, ×) hors chiffres/lettres/espaces
-      lib = lib.replace(/[®°×]/g, '').replace(/\s*[+\-]\s*/g, ' ');
-      // Strip "de X" / "par X" / "x X" résiduels en fin de libellé (ex: "BTE DE X", "PAR X")
-      lib = lib.replace(/\b(?:DE|PAR|X)\s+\d+\s*$/gi, '').replace(/\b(?:DE|PAR|X)\b/gi, '');
-      // Normalise boîte 1 mois (28≡30) et boîte 3 mois (84≡90) en quantité finale
-      lib = lib.replace(/\b28$/, '30').replace(/\b84$/, '90');
+
+      // ── 9. Sépare QUANTITE+FORME fusionnés (Arrow) : 30GELU→"30 GELU", 16CPR→"16 CPR"
+      // Nécessaire car \b ne matche pas entre chiffre et lettre dans "30GELU"
+      lib = lib.replace(/(\d+)(GELULES?|GELU|ELULES?|COMPRIMES?|CPR?|COMP|CAPSULES?|CAPS|CACHETS?|SACHETS?|SACH|AMPOULES?|AMP|FLACONS?|FL|VERNIS|VERN|FILMS?|OVULES?|SUPPS?)S?\b/gi, '$1 $2');
+
+      // ── 10. Strip galénique + qualificatifs (token-level) ────────────────
+      lib = lib.replace(/\b(?:GELULES?|ELULES?|EL|COMPRIMES?|CPR?|COMP|GELCAPS?|GELU|CAPSULES?|CAPS|CACHETS?|SACHETS?|SACH|AMPOULES?|AMP|FLACONS?|FL|TUBES?|PATCHS?|IMPLANT|VIAL|STYLO|FILM|OVULES?|SUPPOSITOIRES?|SUPP|UNIDOSES?|SERINGUES?|SERING|PREREMPLIES?|PELLICULES?|PEL|SECABLES?|ORODISPERSIBLES?|ODT|SUBLINGUAUX?|SUBLINGUALES?|BUCCAUX?|BUCCALES?|EFFERVESCENTS?|GASTROREZISTANTS?|GASTRO|DISPERSIBLES?|ENROBES?|RIMES?|SOLUTIONS?|SOL|SUSPENSIONS?|SUSP|POUDRES?|PDR|EMULSIONS?|CREMES?|CRE|GELS?|VERNIS|VERN|POMMADES?|COLLYRES?|COLLY|SPRAYS?|NEBUL|SIROPS?|SIR|BUVABLES?|BUV|INJECTABLES?|INJ|INH|INHALATIONS?|INHALATEURS?|PERFUSIONS?|PERF|OPHTALMIQUES?|OPH|AURICULAIRES?|NASALES?|CUTANEES?|TRANSDERMIQUES?|PDA|CONSEIL|MEDIC|ADULTE[S]?|ENFANT[S]?|NOURRISSON[S]?|PEDIATRIQUE[S]?|DE|DU|LE|LES|DES|PAR|POUR|EN|ET|AU|AUX|AVEC|SANS|OU|X)\b/gi, '');
+
+      // ── 10. LP dupliqué → LP (Biogaran écrit parfois LP … LP) ───────────
+      lib = lib.replace(/\b(LP|LM|LA)\s+\1\b/gi, '$1');
+
+      // ── 11. Résidus ─────────────────────────────────────────────────────
+      lib = lib.replace(/\s*[+]\s*/g, ' ');
+      lib = lib.replace(/\b(?:DE|PAR|X)\s+\d+\s*$/gi, '');
+      // Normalise boîte 1 mois (28≡30) et 3 mois (84≡90)
+      lib = lib.replace(/\b28(\s|$)/, '30$1').replace(/\b84(\s|$)/, '90$1');
       return lib.replace(/\s+/g, ' ').trim();
     }
     const formNormMap = new Map();
