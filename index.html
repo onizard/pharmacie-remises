@@ -6992,6 +6992,14 @@ async function launchSimulation() {
       lib = lib.replace(/\bFENOFI\s+BRATE\b/gi, 'FENOFIBRATE');
       lib = lib.replace(/\bAMOROLFI\s+NE\b/gi, 'AMOROLFINE');
       lib = lib.replace(/\bPROSTAGLANDI\s+NE\b/gi, 'PROSTAGLANDINE');
+      lib = lib.replace(/\bCEFI\s+XIME\b/gi, 'CEFIXIME');
+      lib = lib.replace(/\bCIPROFL\s+OXACINE\b/gi, 'CIPROFLOXACINE');
+      lib = lib.replace(/\bLEVOFL\s+OXACINE\b/gi, 'LEVOFLOXACINE');
+      lib = lib.replace(/\bOFL\s+OXACINE\b/gi, 'OFLOXACINE');
+      lib = lib.replace(/\bGEFI\s+TINIB\b/gi, 'GEFITINIB');
+      lib = lib.replace(/\bTERBINAFI\s+NE\b/gi, 'TERBINAFINE');
+      lib = lib.replace(/\bLEFL\s+UNOMIDE\b/gi, 'LEFLUNOMIDE');
+      lib = lib.replace(/\bTERIFL\s+UNOMIDE\b/gi, 'TERIFLUNOMIDE');
 
       // ── 3. Marques et codes labo ────────────────────────────────────────
       lib = lib.replace(/\bBIOGARAN\b®?/gi, '').replace(/\bBGR\b®?/gi, '');
@@ -7053,6 +7061,7 @@ async function launchSimulation() {
         // Noms longs Biogaran/Viatris → formes Arrow (normalisation vers forme courte)
         [/\bVALSARTAN\b/gi,                 'VALS'],
         [/\bHYDROCHLOROTHIAZIDE\b/gi,      'HYD'],
+        [/\bHCTZ\b/gi,                     'HYD'],
         [/\b(?:HYD|HYDR)\b/gi,             'HYD'],
         [/\bALENDRONIQUE\b/gi,              'ALENDR'],
         [/\bURSODESOXYCHOLIQUE\b/gi,       'URSOD'],
