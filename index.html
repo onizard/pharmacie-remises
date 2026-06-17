@@ -6975,21 +6975,30 @@ async function launchSimulation() {
       if (!lib) return '';
       // Strip qualificatifs de distribution/formulation (PDR=poudre, PDA=distribution, SOL BUV, FLACON)
       lib = lib.replace(/\bP(?:DR|DA)\b/gi, '').replace(/\bSOL\s+BUV\b/gi, '').replace(/\bFLACON\b/gi, '');
-      // Strip codes labo résiduels (Actavis, Ratiopharm, Sandoz MCV, Zentiva ZTK/ZTV/GLE, Winthrop WIN, Sun SUN)
-      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE)\b/gi, '');
+      // Strip codes labo résiduels + marques Biogaran (BIOGARAN, BGR) + Teva (SANTE) + autres
+      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE)\b/gi, '');
+      lib = lib.replace(/\bBIOGARAN\b®?/gi, '').replace(/\bBGR\b®?/gi, '');
       // MACROGOL : strip poids moléculaire (3350, 4000…)
       lib = lib.replace(/\bMACROGOL\s+(?:3350|4000|6000)\b/gi, 'MACROGOL');
+      // Strip "BTE DE" / "QSEC" / "B/" (qualificatifs boîte/sécable Teva/Zydus)
+      lib = lib.replace(/\bBTE\s+DE\b/gi, '').replace(/\bQSEC\b/gi, '').replace(/\bB\/\d+\b/gi, '');
       // Normalise séparateur décimal (virgule → point) et espace entre chiffre et unité (4 MG → 4MG)
       lib = lib.replace(/(\d),(\d)/g, '$1.$2');
-      lib = lib.replace(/(\d)\s+(MG|MCG|ML|G|UI|PC|%)\b/gi, '$1$2');
-      // Normalise dosages : 1G → 1000MG (G seul, pas GELULE) — avec ou sans espace avant G
+      lib = lib.replace(/(\d)\s+(MG|MCG|ML|UI|PC|%)\b/gi, '$1$2');
+      // G en fin de chaîne précédé d'un nombre = gélules/grammes : strip (évite 30G → 30000MG)
+      lib = lib.replace(/(\d+)\s*G\s*$/gi, '$1');
+      // G en milieu de libellé = dosage en grammes → convertit en MG (ex: 2G → 2000MG)
       lib = lib.replace(/(\d+(?:[.,]\d+)?)\s*G\b/gi, (_, n) =>
         Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'MG'
       );
       // Normalise slash entre mots (AMOX/CLAV → AMOX CLAV) sans toucher les ratios numériques (500/62.5MG)
       lib = lib.replace(/([A-Za-z])\/([A-Za-z])/g, '$1 $2');
-      // Strip forme galénique placée AVANT le dosage (ex: DOXYLIS CPR 100MG → DOXYLIS 100MG)
-      lib = lib.replace(/\b(?:GELULES?|COMPRIMES?|CPR?|CAPSULES?|CACHETS?|GELCAPS?|GELU|CAPS|COMP)\b(?=\s*\d)/gi, '');
+      // Strip qualificatifs galéniques partout (forme de présentation, enrobage, sécabilité) — sauf LP/LM/LA (libération)
+      // ÉLULES? = fragment de GÉLULES (G coupé dans certains libellés DB) ; ÉL seul idem
+      lib = lib.replace(/\b(?:G[EÉ]LULES?|[EÉ]LULES?|COMPRIMES?|COMPRIM[EÉ]S?|CPR?|CAPSULES?|CACHETS?|GELCAPS?|GELU|CAPS|COMP|PELLICUL[EÉ]S?|S[EÉ]CABLES?|ENROB[EÉ]S?|ORODISPERSIBLES?|EFFERVESCENTS?|BUCCALES?|SUBLINGUALES?)\b/gi, '');
+      // ÉL seul (résidu GÉLULE tronqué) et doublons LP/LM répétés
+      lib = lib.replace(/\b(?:ÉL|EL)\b/gi, '');
+      lib = lib.replace(/\b(LP|LM|LA)\s+\1\b/gi, '$1');
       // Marques → DCI + noms tronqués → forme complète
       [
         [/\bDOXYLIS\b/gi,       'DOXYCYCLINE'],
@@ -7018,8 +7027,10 @@ async function launchSimulation() {
         [/\bASPIRINE\b/gi,      'ACIDE ACETYL'],
         [/\bACIDE FOLIQ\b/gi,   'ACIDE FOLIQUE'],
       ].forEach(([re, full]) => { lib = lib.replace(re, full); });
-      // Strip forme galénique en fin de libellé (après quantité) — \s*$ tolère espace traîlant
-      lib = lib.replace(/(\d+)\s*(SACHETS?|SACHS?|GELULES?|GELU|COMPRIMES?|COMP|CPR?|CAPSULES?|CAPS|CACHETS?|GELCAPS?)(\s+\S+)*\s*$/i, '$1');
+      // Strip résidus non-alphanumériques (®, °, +, -, ×) hors chiffres/lettres/espaces
+      lib = lib.replace(/[®°×]/g, '').replace(/\s*[+\-]\s*/g, ' ');
+      // Strip "de X" / "par X" / "x X" résiduels en fin de libellé (ex: "BTE DE X", "PAR X")
+      lib = lib.replace(/\b(?:DE|PAR|X)\s+\d+\s*$/gi, '').replace(/\b(?:DE|PAR|X)\b/gi, '');
       // Normalise boîte 1 mois (28≡30) et boîte 3 mois (84≡90) en quantité finale
       lib = lib.replace(/\b28$/, '30').replace(/\b84$/, '90');
       return lib.replace(/\s+/g, ' ').trim();
