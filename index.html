@@ -7757,6 +7757,9 @@ async function launchSimulation() {
     // 9. Render results
     const fmtE = n => n.toLocaleString('fr', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
     const fmtP = n => n.toFixed(2) + ' %';
+    // Pour les tables de scénarios : n'affiche que les labos sélectionnés (ceux configurés).
+    // Fallback vers tous si aucun n'est sélectionné (cas du scénario N-1 naturel).
+    const selOnly = r => { const s = r.filter(l => l.isSelected); return s.length ? s : r; };
 
     const hdrsBase   = ['Laboratoire', 'QTÉ', 'PA BRUT', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
     const hdrsMarket = ['Laboratoire', 'QTÉ', 'PA BRUT', 'CA CIBLE', 'SEUIL', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
@@ -8322,8 +8325,39 @@ async function launchSimulation() {
       <div class="sim-winner-title">${winnerEntry.label}</div>
       <div class="sim-winner-sub">GAIN LE PLUS ÉLEVÉ — PA NET LE PLUS BAS${winnerEntry.sub ? ' — ' + winnerEntry.sub : ''}</div>
       <div class="sim-winner-gain">GAIN ${winnerSaving>=0?'+':''}${fmtE(winnerSaving)}</div>
-      ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
+      ${mkScenarioTable(selOnly(winnerEntry.scenario.labResults), true, null)}
     </div>`;
+
+    // ── Scénarios classés (gagnant exclu — déjà affiché) ─────────────────────
+    {
+      const _top = allOptScenarios.slice(1, 3);
+      const _rest = allOptScenarios.slice(3);
+      _top.forEach(({ label, scenario, dlBtns }) => {
+        html += `<div class="sim-section">
+          <div class="sim-scenario-header">
+            <span>▸ ${label}</span>
+            ${dlBtns}
+          </div>
+          ${mkScenarioTable(selOnly(scenario.labResults), true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}
+        </div>`;
+      });
+      if (_rest.length) {
+        html += `<div id="otherScenariosWrap" style="display:none">`;
+        _rest.forEach(({ label, scenario, dlBtns }) => {
+          html += `<div class="sim-section">
+            <div class="sim-scenario-header">
+              <span>▸ ${label}</span>
+              ${dlBtns}
+            </div>
+            ${mkScenarioTable(selOnly(scenario.labResults), true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}
+          </div>`;
+        });
+        html += `</div>
+        <div class="sim-section" style="text-align:center">
+          <button id="showOtherScenariosBtn" class="btn btn-secondary" style="font-size:11px;letter-spacing:2px">▼ AFFICHER LES ${_rest.length} AUTRES SCÉNARIOS</button>
+        </div>`;
+      }
+    }
 
     // ── Scénario N-1 naturel (OSPHARM, sans optimisation) ─────────────────────
     html += `<div class="sim-section">
@@ -8551,6 +8585,11 @@ async function launchSimulation() {
       _precomputedWireAndRender = null;
       _precomputedMeta = null;
       launchSimulation();
+    });
+
+    document.getElementById('showOtherScenariosBtn')?.addEventListener('click', function() {
+      const wrap = document.getElementById('otherScenariosWrap');
+      if (wrap) { wrap.style.display = ''; this.closest('.sim-section').style.display = 'none'; }
     });
 
     _simResultsReady = true;
