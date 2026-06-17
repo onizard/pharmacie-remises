@@ -7775,8 +7775,8 @@ async function launchSimulation() {
     const fmtE = n => n.toLocaleString('fr', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
     const fmtP = n => n.toFixed(2) + ' %';
 
-    const hdrsBase   = ['Laboratoire', 'QTÉ', 'CA BRUT', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
-    const hdrsMarket = ['Laboratoire', 'QTÉ', 'CA BRUT', 'CA CIBLE', 'SEUIL', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
+    const hdrsBase   = ['Laboratoire', 'QTÉ', 'PA BRUT', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
+    const hdrsMarket = ['Laboratoire', 'QTÉ', 'PA BRUT', 'CA CIBLE', 'SEUIL', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
 
     // One row of a scenario table
     const mkLabRow = (l, withMarket = false, withGainCol = false) => {

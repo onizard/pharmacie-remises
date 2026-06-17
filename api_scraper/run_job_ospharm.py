@@ -70,21 +70,35 @@ def _update_job(status: str, message: str = "", rows=None, error: str = "",
     def _do():
         try:
             state = _supa_get_state()
-            # Stocker uniquement les rows de l'année N-1 (Jan-Déc)
             import datetime as _dt
-            _n1 = _dt.date.today().year - 1
-            rows_12m = [r for r in (rows or [])
-                        if r.get("year", 0) == _n1] if rows else []
             import time as _time
+            _n1 = _dt.date.today().year - 1
             _existing_job = state.get("ospharm_job", {})
+            _existing_rows = _existing_job.get("rows") or []
+
+            if rows is not None:
+                # Merger les nouvelles rows avec les rows existantes :
+                # - supprimer les mois couverts par les nouvelles rows (évite les doublons)
+                # - garder les mois existants non re-scrappés
+                # - filtrer à l'année N-1 uniquement
+                new_months = {(r.get("year"), r.get("month")) for r in rows}
+                kept = [r for r in _existing_rows
+                        if (r.get("year"), r.get("month")) not in new_months
+                        and r.get("year", 0) == _n1]
+                fresh = [r for r in rows if r.get("year", 0) == _n1]
+                rows_12m = kept + fresh
+            else:
+                # rows=None → préserver les rows existantes (appels "running" intermédiaires)
+                rows_12m = [r for r in _existing_rows if r.get("year", 0) == _n1]
+
             job = {
                 "status":      status,
                 "message":     message,
                 "rows":        rows_12m,
-                "total":       len(rows) if rows else 0,
+                "total":       len(rows_12m),
                 "error":       error,
-                "month_meta":  month_meta or [],
-                "month_stats": month_stats or {},
+                "month_meta":  month_meta or _existing_job.get("month_meta") or [],
+                "month_stats": month_stats or _existing_job.get("month_stats") or {},
             }
             if status == "running" and not _existing_job.get("started_at"):
                 job["started_at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
