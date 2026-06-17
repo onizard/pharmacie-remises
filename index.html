@@ -6874,7 +6874,7 @@ async function launchSimulation() {
     const refRows = [];
     for (let i = 0; i < allCips.length; i += CHUNK) {
       const chunk = allCips.slice(i, i + CHUNK);
-      const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&cip13=in.(${chunk.join(',')})&limit=1000`;
+      const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&cip13=in.(${chunk.join(',')})&is_generic=eq.true&limit=1000`;
       const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }).catch(e => { throw new Error(`Fetch refs: ${e.message}`); });
       if (res.ok) refRows.push(...await res.json());
       _sp(4 + Math.round((i + chunk.length) / allCips.length * 18));
@@ -6908,7 +6908,7 @@ async function launchSimulation() {
         for (let i = 0; i < allLibelles.length; i += LIB_CHUNK) {
           const chunk = allLibelles.slice(i, i + LIB_CHUNK);
           const libStr = chunk.map(l => `"${l.replace(/%/g, '%25').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
-          const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&libelle=in.(${libStr})&limit=2000`;
+          const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&libelle=in.(${libStr})&is_generic=eq.true&limit=2000`;
           tasks.push(fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []));
         }
       }
@@ -6993,9 +6993,14 @@ async function launchSimulation() {
       );
       // Normalise slash entre mots (AMOX/CLAV → AMOX CLAV) sans toucher les ratios numériques (500/62.5MG)
       lib = lib.replace(/([A-Za-z])\/([A-Za-z])/g, '$1 $2');
+      // COMP RIMÉS = COMPRIMÉS splitté en DB + numéro boîte Biogaran (ex: 90COMP RIMÉS 1 → 90)
+      lib = lib.replace(/(\d+)\s*COMP\s+RIM[EÉ]S?\s*\d*/gi, '$1');
+      // SACH ET = SACHETS splitté (ex: 12SACH ET → 12)
+      lib = lib.replace(/(\d*)\s*SACH\s+ET\b/gi, '$1');
       // Strip qualificatifs galéniques partout (forme de présentation, enrobage, sécabilité) — sauf LP/LM/LA (libération)
       // ÉLULES? = fragment de GÉLULES (G coupé dans certains libellés DB) ; ÉL seul idem
-      lib = lib.replace(/\b(?:G[EÉ]LULES?|[EÉ]LULES?|COMPRIMES?|COMPRIM[EÉ]S?|CPR?|CAPSULES?|CACHETS?|GELCAPS?|GELU|CAPS|COMP|PELLICUL[EÉ]S?|S[EÉ]CABLES?|ENROB[EÉ]S?|ORODISPERSIBLES?|EFFERVESCENTS?|BUCCALES?|SUBLINGUALES?)\b/gi, '');
+      // PEL = résidu PELLICULÉS ; RIM[EÉ]S = résidu COMPRIMÉS ; GASTRORÉSISTANTS = coating implicite
+      lib = lib.replace(/\b(?:G[EÉ]LULES?|[EÉ]LULES?|COMPRIMES?|COMPRIM[EÉ]S?|CPR?|CAPSULES?|CACHETS?|GELCAPS?|GELU|CAPS|COMP|PELLICUL[EÉ]S?|PEL|S[EÉ]CABLES?|ENROB[EÉ]S?|ORODISPERSIBLES?|EFFERVESCENTS?|BUCCALES?|SUBLINGUALES?|GASTROR[EÉ]SISTANTS?|RIM[EÉ]S?|CRÈME|CONSEIL|TUBE)\b/gi, '');
       // ÉL seul (résidu GÉLULE tronqué) et doublons LP/LM répétés
       lib = lib.replace(/\b(?:ÉL|EL)\b/gi, '');
       lib = lib.replace(/\b(LP|LM|LA)\s+\1\b/gi, '$1');
@@ -8227,7 +8232,7 @@ async function launchSimulation() {
         if (_toFetch.length) {
           const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
           await Promise.all(_toFetch.map(async labName => {
-            const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&limit=10000`;
+            const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&is_generic=eq.true&limit=10000`;
             const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
             rows.forEach(r => {
               if (!r.libelle) return;
@@ -8412,7 +8417,7 @@ async function launchSimulation() {
         resDiv.innerHTML = `<span style="color:var(--cyan);font-size:11px">Chargement refs ${_restNeeded.join(', ')}…</span>`;
         const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
         await Promise.all(_restNeeded.map(async labName => {
-          const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&limit=10000`;
+          const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(labName)}&is_generic=eq.true&limit=10000`;
           const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
           rows.forEach(r => {
             const h = rsfHistMap.get(r.cip13); if (h) r.rsf_pct_by_year = h;
