@@ -6974,6 +6974,9 @@ async function launchSimulation() {
     function formNormKey(lib) {
       if (!lib) return '';
 
+      // ── 0. Normalisation casse ───────────────────────────────────────────
+      lib = lib.toUpperCase();
+
       // ── 1. Accent normalization (NFD) ───────────────────────────────────
       // Corrige tous les accents Biogaran en une passe : ÉSOMÉPRAZOLE→ESOMEPRAZOLE,
       // CANDÉSARTAN→CANDESARTAN, LÉVÉTIRACÉTAM→LEVETIRACETAM, etc.
@@ -7005,7 +7008,7 @@ async function launchSimulation() {
       // ── 3. Marques et codes labo ────────────────────────────────────────
       lib = lib.replace(/\bBIOGARAN\b®?/gi, '').replace(/\bBGR\b®?/gi, '');
       lib = lib.replace(/\bNOR\b®?/gi, '').replace(/\bREF\b®?/gi, '');
-      lib = lib.replace(/\bMYLAN\b/gi, '').replace(/\bBUD\b/gi, '');
+      lib = lib.replace(/\bMYLAN\b/gi, '').replace(/\bBUD\b/gi, '').replace(/\bVIATRIS\b/gi, '').replace(/\bTEVA\b/gi, '');
       lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE|SWITCH|NOUVEAUTE|QSEC|ZYDUS|ARROW|SANDOZ|CRISTERS|ZENTIVA|CORREVIO|GENERIQUES?|LABO|LAB|QUIVER|EG|FRANCE|SUBSTIPHARM|ADULTES?|NOURRISSONS?|ENFANTS?|PHARMA|EUROGENERICS?|MENTHE|CITRON|FRUITS?|RATIOPHARM)\b/gi, '');
       // Abréviations avec points : L.P. → LP, M.U.I. → MUI
       lib = lib.replace(/\bL\.\s*P\.\b/gi, 'LP').replace(/\bM\.\s*U\.\s*I\.?\b/gi, 'MUI');
