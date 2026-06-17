@@ -7060,6 +7060,10 @@ async function launchSimulation() {
         [/\bASPIRINE\b/gi,                  'ACIDE ACETYL'],
         [/\bACIDE FOLIQ\b/gi,               'ACIDE FOLIQUE'],
         // Noms longs Biogaran/Viatris → formes Arrow (normalisation vers forme courte)
+        // Libellés normalisés 4-lettres (CIP13 spécifiques corrigés manuellement)
+        [/\bMIDA\b/gi,                       'MIDAZOLAM'],
+        [/\bFOSF\b/gi,                       'FOSFOMYCINE'],
+        [/\bPALI\b/gi,                       'PALIPERIDONE'],
         // Abréviations Zydus — DCI raccourcies
         [/\bACEBUTOL\b/gi,                  'ACEBUTOLOL'],
         [/\bALFUZO\b/gi,                    'ALFUZOSINE'],
