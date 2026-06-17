@@ -7757,9 +7757,6 @@ async function launchSimulation() {
     // 9. Render results
     const fmtE = n => n.toLocaleString('fr', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
     const fmtP = n => n.toFixed(2) + ' %';
-    // Pour les tables de scénarios : n'affiche que les labos sélectionnés (ceux configurés).
-    // Fallback vers tous si aucun n'est sélectionné (cas du scénario N-1 naturel).
-    const selOnly = r => { const s = r.filter(l => l.isSelected); return s.length ? s : r; };
 
     const hdrsBase   = ['Laboratoire', 'QTÉ', 'PA BRUT', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
     const hdrsMarket = ['Laboratoire', 'QTÉ', 'PA BRUT', 'CA CIBLE', 'SEUIL', 'REMISE €', 'PA NET', 'POND. %', 'REMISE TOT. %'];
@@ -8325,7 +8322,7 @@ async function launchSimulation() {
       <div class="sim-winner-title">${winnerEntry.label}</div>
       <div class="sim-winner-sub">GAIN LE PLUS ÉLEVÉ — PA NET LE PLUS BAS${winnerEntry.sub ? ' — ' + winnerEntry.sub : ''}</div>
       <div class="sim-winner-gain">GAIN ${winnerSaving>=0?'+':''}${fmtE(winnerSaving)}</div>
-      ${mkScenarioTable(selOnly(winnerEntry.scenario.labResults), true, null)}
+      ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
     </div>`;
 
     // ── Scénarios classés (gagnant exclu — déjà affiché) ─────────────────────
@@ -8338,7 +8335,7 @@ async function launchSimulation() {
             <span>▸ ${label}</span>
             ${dlBtns}
           </div>
-          ${mkScenarioTable(selOnly(scenario.labResults), true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}
+          ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}
         </div>`;
       });
       if (_rest.length) {
@@ -8349,7 +8346,7 @@ async function launchSimulation() {
               <span>▸ ${label}</span>
               ${dlBtns}
             </div>
-            ${mkScenarioTable(selOnly(scenario.labResults), true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}
+            ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}
           </div>`;
         });
         html += `</div>
