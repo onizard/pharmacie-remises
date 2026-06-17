@@ -7006,7 +7006,7 @@ async function launchSimulation() {
       lib = lib.replace(/\bBIOGARAN\b®?/gi, '').replace(/\bBGR\b®?/gi, '');
       lib = lib.replace(/\bNOR\b®?/gi, '').replace(/\bREF\b®?/gi, '');
       lib = lib.replace(/\bMYLAN\b/gi, '').replace(/\bBUD\b/gi, '');
-      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE|SWITCH|NOUVEAUTE|QSEC|ZYDUS|ARROW|SANDOZ|CRISTERS|ZENTIVA|CORREVIO|GENERIQUES?|LABO)\b/gi, '');
+      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE|SWITCH|NOUVEAUTE|QSEC|ZYDUS|ARROW|SANDOZ|CRISTERS|ZENTIVA|CORREVIO|GENERIQUES?|LABO|LAB|QUIVER|EG)\b/gi, '');
       lib = lib.replace(/[®°×]/g, '').replace(/\([^)]*\)/g, '');
       lib = lib.replace(/\s*-\s*/g, ' ');
       lib = lib.replace(/\bB\/\d+\b/gi, '').replace(/\bBTE(?:\s+DE)?\b/gi, '');
