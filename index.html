@@ -6843,23 +6843,6 @@ async function launchSimulation() {
     </div>
     <div id="simLoadActivity" class="osp-activity-line" style="text-align:center">Chargement des références produits…</div>
   </div>`;
-    // Phrases ironiques tournantes toutes les 5s
-    const _SIM_PHRASES = [
-      'Pendant ce temps, aucun représentant ne sonne à votre porte.',
-      'Toujours plus vite qu\'une commande CERP de 14h.',
-      'Quelques secondes — le temps de ne pas répondre à ce mail.',
-      'Moins longtemps qu\'une validation Ameli en semaine.',
-      'Optimisation en cours — comme vous avec votre planning du samedi.',
-      'Calcul des économies potentielles sur votre stock actuel…',
-      'Plus rapide que de retrouver le bon BL dans le classeur.',
-    ];
-    let _simPhraseIdx = 0;
-    const _simPhraseTimer = setInterval(() => {
-      _simPhraseIdx = (_simPhraseIdx + 1) % _SIM_PHRASES.length;
-      const act = document.getElementById('simLoadActivity');
-      if (!act) { clearInterval(_simPhraseTimer); return; }
-      act.textContent = _SIM_PHRASES[_simPhraseIdx];
-    }, 5_000);
   }
 
   const _CIRC = 175.9;
