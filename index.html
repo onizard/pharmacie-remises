@@ -7233,7 +7233,13 @@ async function launchSimulation() {
           } else if (e.isSelected) {
             const _fbAllC = [...(e.lp?.conditions || []), ...(e.lp?.conditions2025 || [])];
             const _fbTs = _fbAllC.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
-            e.caThreshold = _fbTs.length ? Math.min(..._fbTs) : 0;
+            if (_fbTs.length) {
+              e.caThreshold = Math.min(..._fbTs);
+            } else if (e.lp?.contratRepartiteur) {
+              e.caThreshold = 350 * 12;
+            } else {
+              e.caThreshold = 0;
+            }
           } else {
             e.caThreshold = 0;
           }
@@ -7271,7 +7277,14 @@ async function launchSimulation() {
           } else if (e.isSelected) {
             const _allC = [...(e.lp?.conditions || []), ...(e.lp?.conditions2025 || [])];
             const _tiers = _allC.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
-            e.caThreshold = _tiers.length ? pr * Math.min(..._tiers) : 0;
+            if (_tiers.length) {
+              e.caThreshold = pr * Math.min(..._tiers);
+            } else if (e.lp?.contratRepartiteur) {
+              // RSF via grossiste uniquement, pas de contrat labo direct → seuil RSF standard 350 €/mois
+              e.caThreshold = 350 * 12;
+            } else {
+              e.caThreshold = 0;
+            }
           } else {
             e.caThreshold = 0;
           }
@@ -8325,37 +8338,6 @@ async function launchSimulation() {
       ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
     </div>`;
 
-    // ── Scénarios classés (gagnant exclu — déjà affiché) ─────────────────────
-    {
-      const _top = allOptScenarios.slice(1, 3);
-      const _rest = allOptScenarios.slice(3);
-      _top.forEach(({ label, scenario, dlBtns }) => {
-        html += `<div class="sim-section">
-          <div class="sim-scenario-header">
-            <span>▸ ${label}</span>
-            ${dlBtns}
-          </div>
-          ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}
-        </div>`;
-      });
-      if (_rest.length) {
-        html += `<div id="otherScenariosWrap" style="display:none">`;
-        _rest.forEach(({ label, scenario, dlBtns }) => {
-          html += `<div class="sim-section">
-            <div class="sim-scenario-header">
-              <span>▸ ${label}</span>
-              ${dlBtns}
-            </div>
-            ${mkScenarioTable(scenario.labResults, true, scenario.totalPaNet - winnerEntry.scenario.totalPaNet)}
-          </div>`;
-        });
-        html += `</div>
-        <div class="sim-section" style="text-align:center">
-          <button id="showOtherScenariosBtn" class="btn btn-secondary" style="font-size:11px;letter-spacing:2px">▼ AFFICHER LES ${_rest.length} AUTRES SCÉNARIOS</button>
-        </div>`;
-      }
-    }
-
     // ── Scénario N-1 naturel (OSPHARM, sans optimisation) ─────────────────────
     html += `<div class="sim-section">
       <div class="sim-scenario-header">
@@ -8582,11 +8564,6 @@ async function launchSimulation() {
       _precomputedWireAndRender = null;
       _precomputedMeta = null;
       launchSimulation();
-    });
-
-    document.getElementById('showOtherScenariosBtn')?.addEventListener('click', function() {
-      const wrap = document.getElementById('otherScenariosWrap');
-      if (wrap) { wrap.style.display = ''; this.closest('.sim-section').style.display = 'none'; }
     });
 
     _simResultsReady = true;
