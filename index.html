@@ -7000,12 +7000,13 @@ async function launchSimulation() {
       lib = lib.replace(/\bTERBINAFI\s+NE\b/gi, 'TERBINAFINE');
       lib = lib.replace(/\bLEFL\s+UNOMIDE\b/gi, 'LEFLUNOMIDE');
       lib = lib.replace(/\bTERIFL\s+UNOMIDE\b/gi, 'TERIFLUNOMIDE');
+      lib = lib.replace(/\bSERING\s+UE\b/gi, 'SERINGUE');
 
       // ── 3. Marques et codes labo ────────────────────────────────────────
       lib = lib.replace(/\bBIOGARAN\b®?/gi, '').replace(/\bBGR\b®?/gi, '');
       lib = lib.replace(/\bNOR\b®?/gi, '').replace(/\bREF\b®?/gi, '');
       lib = lib.replace(/\bMYLAN\b/gi, '').replace(/\bBUD\b/gi, '');
-      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE|SWITCH|NOUVEAUTE|QSEC)\b/gi, '');
+      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE|SWITCH|NOUVEAUTE|QSEC|ZYDUS|ARROW|SANDOZ|CRISTERS|ZENTIVA|CORREVIO)\b/gi, '');
       lib = lib.replace(/[®°×]/g, '').replace(/\([^)]*\)/g, '');
       lib = lib.replace(/\s*-\s*/g, ' ');
       lib = lib.replace(/\bB\/\d+\b/gi, '').replace(/\bBTE(?:\s+DE)?\b/gi, '');
@@ -7059,6 +7060,79 @@ async function launchSimulation() {
         [/\bASPIRINE\b/gi,                  'ACIDE ACETYL'],
         [/\bACIDE FOLIQ\b/gi,               'ACIDE FOLIQUE'],
         // Noms longs Biogaran/Viatris → formes Arrow (normalisation vers forme courte)
+        // Abréviations Zydus — DCI raccourcies
+        [/\bACEBUTOL\b/gi,                  'ACEBUTOLOL'],
+        [/\bALFUZO\b/gi,                    'ALFUZOSINE'],
+        [/\bAMLO\b/gi,                      'AMLODIPINE'],
+        [/\bAMOROL\b/gi,                    'AMOROLFINE'],
+        [/\bANASTROZ\b/gi,                  'ANASTROZOLE'],
+        [/\bARIPIPRAZ\b/gi,                 'ARIPIPRAZOLE'],
+        [/\bATORVAST\b/gi,                  'ATORVASTATINE'],
+        [/\bAZITHRO\b/gi,                   'AZITHROMYCINE'],
+        [/\bBICALU\b/gi,                    'BICALUTAMIDE'],
+        [/\bBISOPROL\b/gi,                  'BISOPROLOL'],
+        [/\bCANDES\b/gi,                    'CANDESARTAN'],
+        [/\bCEFPODOX\b/gi,                  'CEFPODOXIME'],
+        [/\bCEFTRIAX\b/gi,                  'CEFTRIAXONE'],
+        [/\bCELECOX\b/gi,                   'CELECOXIB'],
+        [/\bCELIPROL\b/gi,                  'CELIPROLOL'],
+        [/\bCIPROFLOX\b/gi,                 'CIPROFLOXACINE'],
+        [/\bCITALO\b/gi,                    'CITALOPRAM'],
+        [/\bCLARITHRO\b/gi,                 'CLARITHROMYCINE'],
+        [/\bCLOPIDO\b/gi,                   'CLOPIDOGREL'],
+        [/\bDESLORAT\b/gi,                  'DESLORATADINE'],
+        [/\bDOMPERID\b/gi,                  'DOMPERIDONE'],
+        [/\bDULOXET\b/gi,                   'DULOXETINE'],
+        [/\bECONAZ\b/gi,                    'ECONAZOLE'],
+        [/\bESCITAL\b/gi,                   'ESCITALOPRAM'],
+        [/\bETORICOX\b/gi,                  'ETORICOXIB'],
+        [/\bEZETIM\b/gi,                    'EZETIMIBE'],
+        [/\bFENOFIB\b/gi,                   'FENOFIBRATE'],
+        [/\bFINASTER\b/gi,                  'FINASTERIDE'],
+        [/\bFLUCONAZ\b/gi,                  'FLUCONAZOLE'],
+        [/\bFOSFOMYC\b/gi,                  'FOSFOMYCINE'],
+        [/\bFUROSEMID\b/gi,                 'FUROSEMIDE'],
+        [/\bGABA\b/gi,                      'GABAPENTINE'],
+        [/\bGLICLAZ\b/gi,                   'GLICLAZIDE'],
+        [/\bGLIMEP\b/gi,                    'GLIMEPIRIDE'],
+        [/\bIBUPROF\b/gi,                   'IBUPROFENE'],
+        [/\bIRBESAR\b/gi,                   'IRBESARTAN'],
+        [/\bIVABRAD\b/gi,                   'IVABRADINE'],
+        [/\bLAMOT\b/gi,                     'LAMOTRIGINE'],
+        [/\bLANSOPRAZ\b/gi,                 'LANSOPRAZOLE'],
+        [/\bLERCANID\b/gi,                  'LERCANIDIPINE'],
+        [/\bLETROZ\b/gi,                    'LETROZOLE'],
+        [/\bLEVOCETIR\b/gi,                 'LEVOCITIRIZINE'],
+        [/\bLEVOFLOX\b/gi,                  'LEVOFLOXACINE'],
+        [/\bLOPERAM\b/gi,                   'LOPERAMIDE'],
+        [/\bLOSART\b/gi,                    'LOSARTAN'],
+        [/\bMETFORM\b/gi,                   'METFORMINE'],
+        [/\bMIRTAZ\b/gi,                    'MIRTAZAPINE'],
+        [/\bMONTELUK\b/gi,                  'MONTELUKAST'],
+        [/\bOLANZAP\b/gi,                   'OLANZAPINE'],
+        [/\bOMEPRAZ\b/gi,                   'OMEPRAZOLE'],
+        [/\bONDANSET\b/gi,                  'ONDANSETRON'],
+        [/\bPAROXET\b/gi,                   'PAROXETINE'],
+        [/\bPERIN\b/gi,                     'PERINDOPRIL'],
+        [/\bPREGABAL\b/gi,                  'PREGABALINE'],
+        [/\bRABEPRAZ\b/gi,                  'RABEPRAZOLE'],
+        [/\bREPAGLIN\b/gi,                  'REPAGLINIDE'],
+        [/\bRILMENID\b/gi,                  'RILMENIDINE'],
+        [/\bRISEDRON\b/gi,                  'RISEDRONATE'],
+        [/\bRIVAROX\b/gi,                   'RIVAROXABAN'],
+        [/\bROSUVAS\b/gi,                   'ROSUVASTATINE'],
+        [/\bROXITHROMYC\b/gi,               'ROXITHROMYCINE'],
+        [/\bSERTRAL\b/gi,                   'SERTRALINE'],
+        [/\bSOLIFENAC\b/gi,                 'SOLIFENACINE'],
+        [/\bSPIRA\b/gi,                     'SPIRAMYCINE'],
+        [/\bSPIRON\b/gi,                    'SPIRONOLACTONE'],
+        [/\bTELMIS\b/gi,                    'TELMISARTAN'],
+        [/\bTENOFOV\b/gi,                   'TENOFOVIR'],
+        [/\bTERIFLUNOM\b/gi,                'TERIFLUNOMIDE'],
+        [/\bTRAMA\b/gi,                     'TRAMADOL'],
+        [/\bVALACICLO\b/gi,                 'VALACICLOVIR'],
+        [/\bVALSART\b/gi,                   'VALS'],
+        [/\bZOLMITRIP\b/gi,                 'ZOLMITRIPTAN'],
         [/\bVALSARTAN\b/gi,                 'VALS'],
         [/\bHYDROCHLOROTHIAZIDE\b/gi,      'HYD'],
         [/\bHCTZ\b/gi,                     'HYD'],
@@ -7078,7 +7152,11 @@ async function launchSimulation() {
       lib = lib.replace(/(\d+)(GELULES?|GELU|ELULES?|COMPRIMES?|CPR?|COMP|CAPSULES?|CAPS|CACHETS?|SACHETS?|SACH|AMPOULES?|AMP|FLACONS?|FL|VERNIS|VERN|FILMS?|OVULES?|SUPPS?)S?\b/gi, '$1 $2');
 
       // ── 10. Strip galénique + qualificatifs (token-level) ────────────────
-      lib = lib.replace(/\b(?:GELULES?|ELULES?|EL|COMPRIMES?|CPR?|COMP|GELCAPS?|GELU|CAPSULES?|CAPS|CACHETS?|SACHETS?|SACH|AMPOULES?|AMP|FLACONS?|FL|TUBES?|PATCHS?|IMPLANT|VIAL|STYLO|FILM|OVULES?|SUPPOSITOIRES?|SUPP|UNIDOSES?|SERINGUES?|SERING|PREREMPLIES?|PELLICULES?|PEL|SECABLES?|ORODISPERSIBLES?|ODT|SUBLINGUAUX?|SUBLINGUALES?|BUCCAUX?|BUCCALES?|EFFERVESCENTS?|GASTROREZISTANTS?|GASTRO|DISPERSIBLES?|ENROBES?|RIMES?|SOLUTIONS?|SOL|SUSPENSIONS?|SUSP|POUDRES?|PDR|EMULSIONS?|CREMES?|CRE|GELS?|VERNIS|VERN|POMMADES?|COLLYRES?|COLLY|SPRAYS?|NEBUL|SIROPS?|SIR|BUVABLES?|BUV|INJECTABLES?|INJ|INH|INHALATIONS?|INHALATEURS?|PERFUSIONS?|PERF|OPHTALMIQUES?|OPH|AURICULAIRES?|NASALES?|CUTANEES?|TRANSDERMIQUES?|PDA|CONSEIL|MEDIC|ADULTE[S]?|ENFANT[S]?|NOURRISSON[S]?|PEDIATRIQUE[S]?|DE|DU|LE|LES|DES|PAR|POUR|EN|ET|AU|AUX|AVEC|SANS|OU|X)\b/gi, '');
+      // Codes conditionnement Zydus (matériaux emballage) — avant le strip général
+      lib = lib.replace(/\b(?:PVC|ACLA?R?|ALU|OPA|PELP|GAST|ZF)\b/gi, '');
+      lib = lib.replace(/\b(?:GELULES?|ELULES?|EL|COMPRIMES?|CPR?|COMP|GELCAPS?|GELU|CAPSULES?|CAPS|CACHETS?|SACHETS?|SACH|AMPOULES?|AMP|FLACONS?|FL|TUBES?|PATCHS?|IMPLANT|VIAL|STYLO|FILM|OVULES?|SUPPOSITOIRES?|SUPP|UNIDOSES?|SERINGUES?|SERING|PREREMPLIES?|PELLICULES?|PEL|SECABLES?|ORODISPERSIBLES?|ODT|SUBLINGUAUX?|SUBLINGUALES?|BUCCAUX?|BUCCALES?|EFFERVESCENTS?|GASTROREZISTANTS?|GASTRO|DISPERSIBLES?|DISP|ENROBES?|RIMES?|SOLUTIONS?|SOL|SUSPENSIONS?|SUSP|POUDRES?|PDR|EMULSIONS?|CREMES?|CRE|GELS?|VERNIS|VERN|POMMADES?|COLLYRES?|COLLY|SPRAYS?|NEBUL|SIROPS?|SIR|BUVABLES?|BUV|INJECTABLES?|INJ|INH|INHALATIONS?|INHALATEURS?|PERFUSIONS?|PERF|OPHTALMIQUES?|OPH|AURICULAIRES?|NASALES?|CUTANEES?|TRANSDERMIQUES?|PDA|CONSEIL|MEDIC|ADULTE[S]?|ENFANT[S]?|NOURRISSON[S]?|PEDIATRIQUE[S]?|DE|DU|LE|LES|DES|PAR|POUR|EN|ET|AU|AUX|AVEC|SANS|OU|X)\b/gi, '');
+      // Résidu /N après stripping des codes conditionnement (ex: "AL/30" → "30" après strip AL)
+      lib = lib.replace(/\/(\d+)(\s|$)/g, ' $1$2');
 
       // ── 10. LP dupliqué → LP (Biogaran écrit parfois LP … LP) ───────────
       lib = lib.replace(/\b(LP|LM|LA)\s+\1\b/gi, '$1');
