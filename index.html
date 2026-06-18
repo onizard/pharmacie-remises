@@ -6985,6 +6985,8 @@ async function launchSimulation() {
       // ── 2. Cas spéciaux pré-normalisation ───────────────────────────────
       // Greek/Latin mu dans les dosages μg : FENTANYL ΜG → FENTANYL MCG
       lib = lib.replace(/[μΜ]G\b/g, 'MCG');
+      // U.I. (unités internationales avec points) → UI
+      lib = lib.replace(/\bU\.\s*I\./gi, 'UI');
       // MICROGRAMMES / MILLIGRAMMES épelés (Biogaran)
       lib = lib.replace(/\bMICROGRAMMES?\b/gi, 'MCG').replace(/\bMILLIGRAMMES?\b/gi, 'MG');
       lib = lib.replace(/\bMILLILITRES?\b/gi, 'ML');
@@ -7009,9 +7011,10 @@ async function launchSimulation() {
       lib = lib.replace(/\bBIOGARAN\b®?/gi, '').replace(/\bBGR\b®?/gi, '');
       lib = lib.replace(/\bNOR\b®?/gi, '').replace(/\bREF\b®?/gi, '');
       lib = lib.replace(/\bMYLAN\b/gi, '').replace(/\bBUD\b/gi, '').replace(/\bVIATRIS\b/gi, '').replace(/\bTEVA\b/gi, '');
-      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE|SWITCH|NOUVEAUTE|QSEC|ZYDUS|ARROW|SANDOZ|CRISTERS|ZENTIVA|CORREVIO|GENERIQUES?|LABO|LAB|QUIVER|EG|FRANCE|SUBSTIPHARM|ADULTES?|NOURRISSONS?|ENFANTS?|PHARMA|EUROGENERICS?|MENTHE|CITRON|FRUITS?|RATIOPHARM)\b/gi, '');
+      lib = lib.replace(/\b(?:ACT|RAT|MCV|EN|WIN|SUN|ZTK|ZTV|GLE|SANTE|SWITCH|NOUVEAUTE|QSEC|ZYDUS|ARROW|SANDOZ|CRISTERS|ZENTIVA|CORREVIO|GENERIQUES?|LABO|LAB|QUIVER|EG|FRANCE|SUBSTIPHARM|ADULTES?|NOURRISSONS?|ENFANTS?|PHARMA|EUROGENERICS?|MENTHE|CITRON|FRUITS?|RATIOPHARM|ACNETRAIT|CONTINU)\b/gi, '');
       // Abréviations avec points : L.P. → LP, M.U.I. → MUI
-      lib = lib.replace(/\bL\.\s*P\.\b/gi, 'LP').replace(/\bM\.\s*U\.\s*I\.?\b/gi, 'MUI');
+      // Note: pas de \b final après un '.' car \b ne matche pas entre deux non-word chars
+      lib = lib.replace(/\bL\.\s*P\./gi, 'LP').replace(/\bM\.\s*U\.\s*I\.?/gi, 'MUI');
       lib = lib.replace(/[®°×]/g, '').replace(/\([^)]*\)/g, '');
       lib = lib.replace(/\s*-\s*/g, ' ');
       lib = lib.replace(/\bB\/\d+\b/gi, '').replace(/\bBTE(?:\s+DE)?\b/gi, '');
@@ -7020,6 +7023,8 @@ async function launchSimulation() {
       // ── 4. Normalisation numérique ──────────────────────────────────────
       lib = lib.replace(/(\d),(\d)/g, '$1.$2');
       lib = lib.replace(/(\d)\s+(MG|MCG|ML|UI|PC|%)\b/gi, '$1$2');
+      // Zéros superflus en fin de décimale : 0.70MG → 0.7MG, 1.250MG → 1.25MG
+      lib = lib.replace(/(\d+\.\d*[1-9])0+(MG|MCG|ML|UI|PC)/gi, '$1$2');
       lib = lib.replace(/(\d+(?:\.\d+)?)\s*%/g, '$1PC');
 
       // ── 5. G en fin = quantité gélules ; G médian = gramme → MG ─────────
@@ -7140,6 +7145,7 @@ async function launchSimulation() {
         [/\bTENOFOV\b/gi,                   'TENOFOVIR'],
         [/\bTERIFLUNOM\b/gi,                'TERIFLUNOMIDE'],
         [/\bTRAMA\b/gi,                     'TRAMADOL'],
+        [/\bOROZAMUDOL\b/gi,               'TRAMADOL'],
         [/\bVALACICLO\b/gi,                 'VALACICLOVIR'],
         [/\bVALSART\b/gi,                   'VALS'],
         [/\bZOLMITRIP\b/gi,                 'ZOLMITRIPTAN'],
@@ -7148,6 +7154,7 @@ async function launchSimulation() {
         [/\bHCTZ\b/gi,                     'HYD'],
         [/\b(?:HYD|HYDR)\b/gi,             'HYD'],
         [/\bALENDRONIQUE\b/gi,              'ALENDR'],
+        [/\b(?:ARG|ARGINI?NE?)\b/gi,       'ARGININE'],
         [/\bURSODESOXYCHOLIQUE\b/gi,       'URSOD'],
         [/\bACETYLSALICYLIQUE\b/gi,        'ACETYL'],
         [/\bACIDE ACETYL SALICYLIQUE\b/gi,  'ACIDE ACETYL'],
@@ -7164,6 +7171,7 @@ async function launchSimulation() {
       // ── 10. Strip galénique + qualificatifs (token-level) ────────────────
       // Codes conditionnement Zydus (matériaux emballage) — avant le strip général
       lib = lib.replace(/\b(?:PVC|ACLA?R?|ALU|OPA|PELP|GAST|ZF)\b/gi, '');
+      lib = lib.replace(/\bCHLORHYDRATE\b/gi, '');
       lib = lib.replace(/\b(?:GELULES?|ELULES?|EL|COMPRIMES?|CPR?|COMP|GELCAPS?|GELU|CAPSULES?|CAPS|CACHETS?|SACHETS?|SACH|AMPOULES?|AMP|FLACONS?|FL|TUBES?|PATCHS?|IMPLANT|VIAL|STYLO|FILM|OVULES?|SUPPOSITOIRES?|SUPP|UNIDOSES?|SERINGUES?|SERING|PREREMPLIES?|PELLICULES?|PELL|PEL|SECABLES?|ORODISPERSIBLES?|ODT|SUBLINGUAUX?|SUBLINGUALES?|BUCCAUX?|BUCCALES?|EFFERVESCENTS?|GASTROREZISTANTS?|GASTRO|DISPERSIBLES?|DISP|ENROBES?|RIMES?|SOLUTIONS?|SOL|SUSPENSIONS?|SUSP|POUDRES?|PDR|EMULSIONS?|CREMES?|CRE|GELS?|VERNIS|VERN|POMMADES?|COLLYRES?|COLLY|SPRAYS?|NEBUL|SIROPS?|SIR|BUVABLES?|BUV|INJECTABLES?|INJ|INH|INHALATIONS?|INHALATEURS?|PERFUSIONS?|PERF|OPHTALMIQUES?|OPH|AURICULAIRES?|NASALES?|CUTANEES?|TRANSDERMIQUES?|PDA|CONSEIL|MEDIC|ADULTE[S]?|ENFANT[S]?|NOURRISSON[S]?|PEDIATRIQUE[S]?|DE|DU|LE|LES|DES|PAR|POUR|EN|ET|AU|AUX|AVEC|SANS|OU|X)\b/gi, '');
       // Résidu /N après stripping des codes conditionnement (ex: "AL/30" → "30" après strip AL)
       lib = lib.replace(/\/(\d+)(\s|$)/g, ' $1$2');
