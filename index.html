@@ -6811,6 +6811,7 @@ async function launchSimulation() {
       <div class="sim-start-hint">// ${_cipCount2} produits · ${_labCount2} labos analysés</div>
       <button class="sim-start-btn" id="simStartBtn">START</button>
       <div class="sim-start-sub">// cliquez pour visualiser les résultats</div>
+      <button id="simResetBtn" style="font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:3px;padding:8px 28px;cursor:pointer;background:transparent;border:1px solid var(--amber);color:var(--amber);margin-top:10px;transition:all .2s" onmouseover="this.style.background='var(--amber)';this.style.color='var(--bg)'" onmouseout="this.style.background='transparent';this.style.color='var(--amber)'">↺ RESET</button>
     </div>`;
     document.getElementById('simStartBtn')?.addEventListener('click', () => {
       let _skipped = false;
@@ -6829,6 +6830,13 @@ async function launchSimulation() {
         <div class="brick-status">◈ ANALYSE EN COURS ◈ &nbsp;·&nbsp; <span style="opacity:.5;font-size:.85em">S pour passer</span></div>
       </div>`;
       startBrickGame();
+    });
+    document.getElementById('simResetBtn')?.addEventListener('click', () => {
+      _precomputedWireAndRender = null;
+      _precomputedMeta = null;
+      _simRunning = false;
+      _simBgRunning = false;
+      launchSimulation();
     });
     _simRunning = false;
     return;
@@ -8759,6 +8767,7 @@ async function launchSimulation() {
       <div class="sim-start-hint">// ${allCips.length} produits · ${_labCount} labos analysés</div>
       <button class="sim-start-btn" id="simStartBtn">START</button>
       <div class="sim-start-sub">// cliquez pour visualiser les résultats</div>
+      <button id="simResetBtn" style="font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:3px;padding:8px 28px;cursor:pointer;background:transparent;border:1px solid var(--amber);color:var(--amber);margin-top:10px;transition:all .2s" onmouseover="this.style.background='var(--amber)';this.style.color='var(--bg)'" onmouseout="this.style.background='transparent';this.style.color='var(--amber)'">↺ RESET</button>
     </div>`;
     document.getElementById('simStartBtn')?.addEventListener('click', () => {
       let _skipped = false;
@@ -8777,6 +8786,13 @@ async function launchSimulation() {
         <div class="brick-status">◈ ANALYSE EN COURS ◈ &nbsp;·&nbsp; <span style="opacity:.5;font-size:.85em">S pour passer</span></div>
       </div>`;
       startBrickGame();
+    });
+    document.getElementById('simResetBtn')?.addEventListener('click', () => {
+      _precomputedWireAndRender = null;
+      _precomputedMeta = null;
+      _simRunning = false;
+      _simBgRunning = false;
+      launchSimulation();
     });
     } // fin bloc START / brick
 
