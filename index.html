@@ -7182,6 +7182,8 @@ async function launchSimulation() {
       // ── 11. Résidus ─────────────────────────────────────────────────────
       lib = lib.replace(/\s*[+]\s*/g, ' ');
       lib = lib.replace(/\b(?:DE|PAR|X)\s+\d+\s*$/gi, '');
+      // Normalise concentrations "par mL" : retire ML quand il suit une unité (MCG/MG/PC)
+      lib = lib.replace(/(MCG|MG|PC)\s+ML\b/g, '$1');
       // Normalise packs 4/8/12 semaines ≡ boîtes 1/2/3 mois (28≡30, 56≡60, 84≡90)
       lib = lib.replace(/\b28(\s|$)/, '30$1').replace(/\b56(\s|$)/, '60$1').replace(/\b84(\s|$)/, '90$1');
       return lib.replace(/\s+/g, ' ').trim();
