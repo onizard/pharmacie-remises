@@ -3458,7 +3458,10 @@ async function applyCgvYear(lp, year) {
   }
 
   saveState();
-  showToast(`✓ Conditions ${year} ${lab} chargées depuis la DB — clique SAVE pour diffuser`);
+  const _defSaved = await saveRsfDefaults();
+  showToast(_defSaved
+    ? `✓ Conditions ${year} ${lab} chargées et sauvegardées dans le cloud`
+    : `✓ Conditions ${year} ${lab} chargées — ⚠ erreur sauvegarde defaults`);
 }
 
 // ── Create lab condition container ────────────────────────────────────────────
