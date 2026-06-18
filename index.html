@@ -7184,6 +7184,14 @@ async function launchSimulation() {
       lib = lib.replace(/\b(?:DE|PAR|X)\s+\d+\s*$/gi, '');
       // Normalise concentrations "par mL" : retire ML quand il suit une unité (MCG/MG/PC)
       lib = lib.replace(/(MCG|MG|PC)\s+(?:1\s*)?ML\b/g, '$1');
+      // Normalise sels de PERINDOPRIL (ARGININE ≡ TOSILATE ≡ TERT-BUTYLAMINE per ANSM)
+      lib = lib.replace(/\bPERINDOPRIL\s+(?:TERT[-\s]*BUTYLAMINE|ARGININE|TOSILATE|ERBUMINE)\b/gi, 'PERINDOPRIL');
+      // Conversion dosage sel erbumine→arginine : 2→2.5, 4→5, 8→10 mg
+      if (/^PERINDOPRIL\b/.test(lib)) {
+        lib = lib.replace(/^(PERINDOPRIL\b[^0-9]*)\b2MG\b/, '$12.5MG');
+        lib = lib.replace(/^(PERINDOPRIL\b[^0-9]*)\b4MG\b/, '$15MG');
+        lib = lib.replace(/^(PERINDOPRIL\b[^0-9]*)\b8MG\b/, '$110MG');
+      }
       // Normalise packs 4/8/12 semaines ≡ boîtes 1/2/3 mois (28≡30, 56≡60, 84≡90)
       lib = lib.replace(/\b28(\s|$)/, '30$1').replace(/\b56(\s|$)/, '60$1').replace(/\b84(\s|$)/, '90$1');
       return lib.replace(/\s+/g, ' ').trim();
