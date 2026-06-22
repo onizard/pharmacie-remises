@@ -9468,10 +9468,14 @@ async function saveProfile() {
       });
 
       // ── Exceptions : références avec conditions particulières ──────────────────
-      // On prend les exceptions du premier palier où hasExcept est activé (case cochée)
-      const refCond = conds.find(c => (c.rsfValues || []).some(r => r.hasExcept));
-      const excEntries = Object.entries(refCond?.remise2Except || {})
-        .filter(([, exc]) => exc?.libelles?.length);
+      // Scanne TOUTES les conditions (remise2Except) pour les entrées avec libellés.
+      // Ne dépend pas du flag hasExcept (non posé sur les exceptions diffusées aux
+      // non-admin) : sinon les références exception n'apparaissaient pas dans le pop-up.
+      const _excMap = {};
+      conds.forEach(c => Object.entries(c.remise2Except || {}).forEach(([rsf_pct, exc]) => {
+        if (exc?.libelles?.length && !_excMap[rsf_pct]) _excMap[rsf_pct] = exc;
+      }));
+      const excEntries = Object.entries(_excMap);
       if (excEntries.length) {
         html += `<div class="labs-info-palier" style="border-color:rgba(255,171,0,.3)">
           <div class="labs-info-palier-title" style="color:var(--amber)">* Références avec conditions particulières</div>`;
@@ -9514,8 +9518,9 @@ async function saveProfile() {
         [['conds26', 'conditions', '_baseConds2026'],
          ['conds25', 'conditions2025', '_baseConds2025']].forEach(([tkey, ckey, bkey]) => {
           const tmpl = window._labConditions?.[lp.selectedLab]?.[tkey] || [];
-          if (tmpl.length < 2) return;
           const base = lp[bkey] || lp[ckey] || [];
+          if (!base.length) return;
+          // Paliers 2+ : créer/mettre à jour depuis le template diffusé (palier 1 = perso).
           const _pal = base[0]?.rsfValues?.map(r => r.rsf_pct) || (lp.rsfPaliers || []);
           for (let i = 1; i < tmpl.length; i++) {
             const tc = tmpl[i];
@@ -9528,6 +9533,14 @@ async function saveProfile() {
             if (tc.remiseGlobale != null) cond.remiseGlobale = tc.remiseGlobale;
             if (tc.caCondition   != null) cond.caCondition   = tc.caCondition;
           }
+          // Ré-appliquer les exceptions diffusées (références à conditions particulières)
+          // à toutes les conditions, pour qu'elles s'affichent en note dans le pop-up —
+          // même si le labo n'a qu'un seul palier.
+          const exc = getLabExc(lp.selectedLab, tkey === 'conds26' ? '2026' : '2025');
+          if (exc) base.forEach(cond => {
+            cond.exceptions    = Object.assign(cond.exceptions    || {}, exc.exceptions    || {});
+            cond.remise2Except = Object.assign(cond.remise2Except || {}, exc.remise2Except || {});
+          });
         });
       }
       const conds = [...(lp._baseConds2026 || lp.conditions || []), ...(lp._baseConds2025 || lp.conditions2025 || [])];
