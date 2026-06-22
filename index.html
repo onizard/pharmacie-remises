@@ -1807,6 +1807,10 @@ _initDone = false;
 _sessionExistedAtInit = false;
 // Cache mémoire du cloud state chargé au démarrage — fallback si localStorage indisponible
 let _startupCloudState = null;
+// Horodatage (savedAt) de la vérité actuellement représentée en mémoire. Sert au
+// last-write-wins : si le cloud porte un savedAt supérieur, un autre appareil a écrit
+// plus récemment → le cloud fait foi et on recharge.
+let _truthSavedAt = 0;
 // Derniers labPages valides connus — garde contre l'écrasement accidentel au cloud
 let _lastGoodLabPages = null;
 // Session mise en cache pour le flush keepalive au pagehide (évite async getSession() qui ne complete pas)
@@ -1953,11 +1957,32 @@ async function saveCloudState(data) {
     if (_localConfigured > 0) _lastGoodLabPages = data.labPages;
     // Utilise merge_user_state (JSONB merge côté DB) — préserve ospharm_job/verif_job/conn_test
     // sans lire les 2+ MB du cloud. Atomique et fiable même si le JSON est volumineux.
-    const { error } = await sb.rpc('merge_user_state', {
+    let { error } = await sb.rpc('merge_user_state', {
       p_user_id: session.user.id,
       p_state:   data,
     });
+    if (error) {
+      // Retry avec un payload allégé. Les gros agrégats (OSPHARM/grossiste/digi/FSE)
+      // peuvent faire dépasser la limite de taille de la requête → le merge échoue et le
+      // cloud gèle, perdant les petites données critiques propres à l'user (conditions
+      // labo : remiseGlobale / caCondition / coopR3, qui n'ont AUCUN fallback partagé).
+      // On retire ces blobs (récupérables via leurs job records côté DB) pour garantir que
+      // les conditions labo atteignent toujours le cloud. Le merge JSONB préserve les clés
+      // absentes du payload → les stats déjà en base ne sont pas effacées.
+      console.warn('[BP] merge_user_state full échec → retry payload allégé :', error.message || error);
+      const _slim = { ...data };
+      delete _slim.monthStats;          delete _slim.monthMeta;     delete _slim.monthSavedAt;
+      delete _slim.digiMonthStats;      delete _slim.grossisteMonthStats;
+      delete _slim.fseMonthStats;       delete _slim.escompteStats; delete _slim.mdlStats;
+      ({ error } = await sb.rpc('merge_user_state', {
+        p_user_id: session.user.id,
+        p_state:   _slim,
+      }));
+      if (!error) console.log('[BP] merge_user_state retry allégé OK — conditions labo sauvegardées');
+    }
     if (error) throw error;
+    // Cette écriture devient la vérité partagée : mémoriser son horodatage.
+    if (data.savedAt) _truthSavedAt = data.savedAt;
     _cloudSavePending = false;
     _showSaveBadge();
     return true;
@@ -2046,23 +2071,24 @@ async function _checkCloudSync() {
   try {
     const sb = window._sbClient;
     if (!sb) return;
+    // Ne pas interférer avec une sauvegarde locale en attente (édition non encore poussée).
+    if (_cloudSavePending) return;
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return;
     const { data: cloud } = await sb.from('user_state')
       .select('state_json').eq('user_id', session.user.id).maybeSingle();
-    if (!cloud?.state_json?.labPages?.length) return;
-    const _slim = lps => JSON.stringify(lps.map(lp => ({
-      uid: lp.uid, lab: lp.selectedLab,
-      c: lp.conditions, c25: lp.conditions2025,
-    })));
-    const _cloudConf = (cloud.state_json.labPages || []).filter(lp => lp.selectedLab).length;
-    const _localConf = (state.labPages || []).filter(lp => lp.selectedLab).length;
-    if (_cloudConf > _localConf) {
-      // Cloud a plus de labs que local → reload pour récupérer les labs manquants
-      showToast('↺ Synchronisation automatique…');
-      setTimeout(() => location.reload(), 1500);
-    } else if (_cloudConf < _localConf) {
-      // Local a plus de labs → pousser vers le cloud (sans reload)
+    const cs = cloud?.state_json;
+    if (!cs) return;
+    const _cloudTs   = cs.savedAt || 0;
+    const _cloudLabs = (cs.labPages || []).filter(lp => lp.selectedLab).length;
+    // Last-write-wins : si un autre appareil a écrit plus récemment, le cloud fait foi.
+    // On recharge pour adopter intégralement la dernière vérité (valeurs + suppressions).
+    // Garde-fou : ignorer un cloud vide (0 labo) — ne jamais se faire écraser par du vide.
+    if (_cloudTs > _truthSavedAt && _cloudLabs > 0) {
+      showToast('↺ Synchronisation depuis le cloud…');
+      setTimeout(() => location.reload(), 1200);
+    } else if (_truthSavedAt > _cloudTs) {
+      // Notre état local est plus récent → le pousser pour qu'il devienne la vérité partagée.
       saveState();
     }
   } catch(_) {}
@@ -2102,21 +2128,26 @@ async function saveRsfDefaults() {
     Object.entries(seen).forEach(([rsf_pct, vals]) => {
       rows.push({ lab: lp.selectedLab, rsf_pct, ...vals });
     });
-    // Sentinel : flags comportement des conditions (rsfOnly, showR3, forceFirst)
-    // NE contient PAS remiseGlobale/caCondition — valeurs propres à chaque user
-    if (base26.length) {
-      const compact26 = base26.map(c => ({
+    // Sentinel : structure des conditions/paliers diffusée à tous les users.
+    // Contient les flags (rsfOnly/showR3/forceFirst) ET, pour les paliers 2+, le CA cible
+    // et la remise globale cible STANDARD. Les conditions sont triées CA décroissant →
+    // index 0 = palier 1 = contrat n°1 négocié : son CA cible et sa remise globale sont
+    // PERSONNELS (laissés à null), jamais diffusés. Le potentiel générique (state.gers)
+    // n'est lui non plus jamais diffusé (absent de rsf_defaults).
+    const _compactConds = base => {
+      const sorted = [...base].sort((a, b) => (parseFloat(b.caCondition) || 0) - (parseFloat(a.caCondition) || 0));
+      return sorted.map((c, i) => ({
         rsfOnly: c.rsfOnly || { enabled: false, libelles: [] },
         showR3: c.showR3 || false, forceFirst: c.forceFirst || false,
+        remiseGlobale: i === 0 ? null : (c.remiseGlobale ?? null),
+        caCondition:   i === 0 ? null : (c.caCondition   ?? null),
       }));
-      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds26', remise2: JSON.stringify(compact26), remise3: '' });
+    };
+    if (base26.length) {
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds26', remise2: JSON.stringify(_compactConds(base26)), remise3: '' });
     }
     if (base25.length) {
-      const compact25 = base25.map(c => ({
-        rsfOnly: c.rsfOnly || { enabled: false, libelles: [] },
-        showR3: c.showR3 || false, forceFirst: c.forceFirst || false,
-      }));
-      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds25', remise2: JSON.stringify(compact25), remise3: '' });
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds25', remise2: JSON.stringify(_compactConds(base25)), remise3: '' });
     }
     if (Object.keys(excs25).length || Object.keys(excs26).length || Object.keys(r2excs25).length || Object.keys(r2excs26).length) {
       excRows.push({
@@ -4729,6 +4760,31 @@ function initLabPage(conf) {
       document.getElementById(`rgSec-${uid}-${s[condKey][0].uid}`)?.classList.add('visible');
       renderCondTable(s[condKey][0]);
 
+      // Non-admin : hériter des paliers 2+ standard diffusés par l'admin (palier 1 = perso).
+      if (!isAdmin) {
+        const _tmpl = window._labConditions?.[lab]?.[year === '2025' ? 'conds25' : 'conds26'] || [];
+        const defs  = window._rsfDefaults?.[lab];
+        const exc   = getLabExc(lab, year);
+        for (let i = 1; i < _tmpl.length; i++) {
+          const tc = _tmpl[i];
+          const c = mkCondState('cT' + i);
+          c.rsfOnly    = { ...(tc.rsfOnly || { enabled: false, libelles: [] }) };
+          c.showR3     = tc.showR3 || false;
+          c.forceFirst = tc.forceFirst || false;
+          if (tc.remiseGlobale != null) c.remiseGlobale = tc.remiseGlobale;
+          if (tc.caCondition   != null) c.caCondition   = tc.caCondition;
+          c.rsfValues = mkRsfValues(lab, paliers);
+          if (defs) c.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+          if (exc) { Object.assign(c.exceptions, exc.exceptions || {}); Object.assign(c.remise2Except, exc.remise2Except || {}); }
+          s[condKey].push(c);
+          const p = buildCondPanel(c);
+          el.condPanels.appendChild(p);
+          wireCondition(c);
+          document.getElementById(`rgSec-${uid}-${c.uid}`)?.classList.add('visible');
+          renderCondTable(c);
+        }
+      }
+
       el.condTabs.classList.add('visible');
       renderCondTabs();
     } catch(err) { console.error(err); }
@@ -4824,12 +4880,22 @@ function initLabPage(conf) {
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
       s.rsfCountMap = countMap || new Map();
-      // Template admin : flags comportement uniquement (rsfOnly, showR3, forceFirst)
-      // NE touche PAS caCondition/remiseGlobale/coopR3 — valeurs propres à l'user
+      // Template admin diffusé : flags (rsfOnly/showR3/forceFirst) + CA cible & remise
+      // globale STANDARD des paliers 2+. Le palier 1 (idx 0) et le potentiel générique
+      // restent personnels (jamais dans le template).
       const _templateKey = year === '2025' ? 'conds25' : 'conds26';
       const _condTemplate = !isAdmin ? (window._labConditions?.[lab]?.[_templateKey] || null) : null;
 
-      (savedLabData[savedCondKey] || []).forEach((sc, idx) => {
+      // Non-admin : la STRUCTURE des paliers est diffusée par l'admin via le template.
+      // On garantit autant de conditions que le template (palier 1 perso + paliers 2+
+      // standard), même pour un nouvel user qui n'a encore rien saisi. Pour l'admin, on
+      // itère uniquement sur ses propres conditions sauvegardées (template ignoré).
+      const _savedConds = savedLabData[savedCondKey] || [];
+      const _condList = (!isAdmin && (_condTemplate?.length || 0) > _savedConds.length)
+        ? Array.from({ length: _condTemplate.length }, (_, i) => _savedConds[i] || { uid: 'cT' + i, rsfValues: [] })
+        : _savedConds;
+
+      _condList.forEach((sc, idx) => {
         const cond = mkCondState(sc.uid);
         // Valeurs user — intouchables par l'admin
         cond.remiseGlobale = sc.remiseGlobale;
@@ -4842,6 +4908,12 @@ function initLabPage(conf) {
         cond.rsfOnly    = tc ? { ...(tc.rsfOnly    || { enabled: false, libelles: [] }) } : (sc.rsfOnly    || { enabled: false, libelles: [] });
         cond.showR3     = tc ? (tc.showR3     || false) : (sc.showR3     || false);
         cond.forceFirst = tc ? (tc.forceFirst || false) : (sc.forceFirst || false);
+        // Non-admin, paliers 2+ : CA cible & remise globale STANDARD diffusés par l'admin.
+        // Le palier 1 (idx 0 = contrat n°1) reste personnel : valeurs de l'user ci-dessus.
+        if (!isAdmin && idx >= 1 && tc) {
+          if (tc.remiseGlobale != null) cond.remiseGlobale = tc.remiseGlobale;
+          if (tc.caCondition   != null) cond.caCondition   = tc.caCondition;
+        }
         cond.rsfValues = paliers.map(v => {
           const sv = sc.rsfValues.find(r => String(r.rsf_pct) === String(v));
           return sv
@@ -9029,35 +9101,26 @@ async function saveProfile() {
             if (cloud.connectors && Object.keys(cloud.connectors).length) {
               cs.connectors = cloud.connectors;
             }
-            // Architecture cloud-first : le cloud est la source de vérité.
-            // localStorage est un cache de chargement rapide — toujours mis à jour depuis le cloud.
-            // Exception : si localStorage est PLUS RÉCENT que le cloud (crash pendant l'écriture
-            // async, fenêtre de ~1s entre saveState et saveCloudState), on conserve les données
-            // locales et on force une synchro immédiate vers le cloud au démarrage.
+            // Cloud = SOURCE DE VÉRITÉ (last-write-wins par horodatage `savedAt`).
+            // La dernière modification, quel que soit l'appareil, fait foi partout :
+            // dès que le cloud est aussi récent ou plus récent que le cache local, on
+            // adopte le cloud intégralement (valeurs ET liste des labos → les suppressions
+            // faites sur un autre appareil se propagent aussi).
+            // Unique garde-fou : ne jamais laisser un cloud VIDE (0 labo configuré) écraser
+            // un local non vide — protège d'une écriture partielle/buggée (ex. GH Actions).
             const _localTs = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}').savedAt || 0; } catch(_) { return 0; } })();
             const _cloudTs = cs.savedAt || 0;
-            if (_cloudTs >= _localTs) {
-              // Cloud identique ou plus récent → mettre à jour le cache local
-              // SAUF si le local a plus de labs configurés que le cloud : protège contre
-              // l'écrasement accidentel par un cloud dégradé (ex. GH Actions a écrit depuis un état partiel).
-              const _lrLocal = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch(_) { return {}; } })();
-              const _localLabsCnt = (_lrLocal.labPages || []).filter(lp => lp.selectedLab).length;
-              const _cloudLabsCnt = (cs.labPages || []).filter(lp => lp.selectedLab).length;
-              if (_localLabsCnt > _cloudLabsCnt) {
-                // Local a plus de labs → fusionner : prendre cloud sauf labPages (on garde les labs locaux)
-                console.log('[BP] Cloud plus récent mais local a plus de labs (' + _localLabsCnt + ' vs ' + _cloudLabsCnt + ') → labs locaux préservés, sync cloud au démarrage');
-                try {
-                  const _merged = Object.assign({}, cs, { labPages: _lrLocal.labPages });
-                  localStorage.setItem(LS_KEY, JSON.stringify(_merged));
-                } catch(_) {}
-                // Forcer un re-push vers le cloud pour corriger le décalage
-                setTimeout(() => { if (_initDone) saveState(); }, 4000);
-              } else {
-                try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
-              }
+            const _localLabsCnt = (() => { try { return (JSON.parse(localStorage.getItem(LS_KEY) || '{}').labPages || []).filter(lp => lp.selectedLab).length; } catch(_) { return 0; } })();
+            const _cloudLabsCnt = (cs.labPages || []).filter(lp => lp.selectedLab).length;
+            if (_cloudTs >= _localTs && !(_cloudLabsCnt === 0 && _localLabsCnt > 0)) {
+              // Cloud plus récent (ou égal) et non vide → il fait foi, on écrase le cache local.
+              console.log('[BP] Cloud fait foi (cloudTs=' + _cloudTs + ' >= localTs=' + _localTs + ', labos ' + _cloudLabsCnt + ') → cache local remplacé');
+              try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
             } else {
-              // Local plus récent (crash recovery) → conserver localStorage, fusionner les connectors
-              console.log('[BP] Local plus récent (localTs=' + _localTs + ' > cloudTs=' + _cloudTs + ') — sync cloud forcée au démarrage');
+              // Local strictement plus récent (édition hors-ligne non encore synchronisée)
+              // OU cloud vide → on conserve le local et on force une remontée vers le cloud
+              // pour qu'il redevienne la vérité partagée.
+              console.log('[BP] Local conservé (localTs=' + _localTs + ' > cloudTs=' + _cloudTs + ' ou cloud vide) — remontée cloud forcée');
               if (cloud.connectors && Object.keys(cloud.connectors).length) {
                 try {
                   const _localRaw = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
@@ -9065,6 +9128,7 @@ async function saveProfile() {
                   localStorage.setItem(LS_KEY, JSON.stringify(_localRaw));
                 } catch(_) {}
               }
+              setTimeout(() => { if (_initDone) saveState(); }, 4000);
             }
           } else if (!isAdmin) {
             try { const ls = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); ls.csvData = null; ls.csvRows = 0; ls.prorataRatios = null; localStorage.setItem(LS_KEY, JSON.stringify(ls)); } catch(_) {}
@@ -9093,7 +9157,9 @@ async function saveProfile() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(_startupCloudState)); } catch(_) {}
     console.log('[BP] Local vide / Cloud configuré → cloud prioritaire, localStorage mis à jour');
   }
-  console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| cache local =', !!_lsRaw, '| cloud =', !!_startupCloudState, '| fromCloud =', _loadedFromCloud);
+  // Horodatage de la vérité chargée — référence pour le last-write-wins live (_checkCloudSync).
+  _truthSavedAt = saved?.savedAt || 0;
+  console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| cache local =', !!_lsRaw, '| cloud =', !!_startupCloudState, '| fromCloud =', _loadedFromCloud, '| truthSavedAt =', _truthSavedAt);
   if (saved) {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
@@ -9441,6 +9507,29 @@ async function saveProfile() {
     state.labPages.forEach(lp => {
       if (!lp.selectedLab) return;
       const defs = window._rsfDefaults?.[lp.selectedLab];
+      // Non-admin : re-synchroniser la STRUCTURE des paliers depuis le template admin
+      // pour que le pop-up reflète la dernière diffusion (paliers 2+, CA cible & remise
+      // globale standard) sans recharger la page. Le palier 1 (idx 0) reste personnel.
+      if (!isAdmin) {
+        [['conds26', 'conditions', '_baseConds2026'],
+         ['conds25', 'conditions2025', '_baseConds2025']].forEach(([tkey, ckey, bkey]) => {
+          const tmpl = window._labConditions?.[lp.selectedLab]?.[tkey] || [];
+          if (tmpl.length < 2) return;
+          const base = lp[bkey] || lp[ckey] || [];
+          const _pal = base[0]?.rsfValues?.map(r => r.rsf_pct) || (lp.rsfPaliers || []);
+          for (let i = 1; i < tmpl.length; i++) {
+            const tc = tmpl[i];
+            let cond = base[i];
+            if (!cond) {
+              cond = mkCondState('cT' + i);
+              cond.rsfValues = _pal.map(v => ({ rsf_pct: v, remise2: '', remise3: '', excluded: false, hasExcept: false }));
+              base.push(cond);
+            }
+            if (tc.remiseGlobale != null) cond.remiseGlobale = tc.remiseGlobale;
+            if (tc.caCondition   != null) cond.caCondition   = tc.caCondition;
+          }
+        });
+      }
       const conds = [...(lp._baseConds2026 || lp.conditions || []), ...(lp._baseConds2025 || lp.conditions2025 || [])];
       conds.forEach(cond => {
         if (defs) cond.rsfValues.forEach(r => {
