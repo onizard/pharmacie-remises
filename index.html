@@ -1807,6 +1807,10 @@ _initDone = false;
 _sessionExistedAtInit = false;
 // Cache mémoire du cloud state chargé au démarrage — fallback si localStorage indisponible
 let _startupCloudState = null;
+// Horodatage (savedAt) de la vérité actuellement représentée en mémoire. Sert au
+// last-write-wins : si le cloud porte un savedAt supérieur, un autre appareil a écrit
+// plus récemment → le cloud fait foi et on recharge.
+let _truthSavedAt = 0;
 // Derniers labPages valides connus — garde contre l'écrasement accidentel au cloud
 let _lastGoodLabPages = null;
 // Session mise en cache pour le flush keepalive au pagehide (évite async getSession() qui ne complete pas)
@@ -1977,6 +1981,8 @@ async function saveCloudState(data) {
       if (!error) console.log('[BP] merge_user_state retry allégé OK — conditions labo sauvegardées');
     }
     if (error) throw error;
+    // Cette écriture devient la vérité partagée : mémoriser son horodatage.
+    if (data.savedAt) _truthSavedAt = data.savedAt;
     _cloudSavePending = false;
     _showSaveBadge();
     return true;
@@ -2065,23 +2071,24 @@ async function _checkCloudSync() {
   try {
     const sb = window._sbClient;
     if (!sb) return;
+    // Ne pas interférer avec une sauvegarde locale en attente (édition non encore poussée).
+    if (_cloudSavePending) return;
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return;
     const { data: cloud } = await sb.from('user_state')
       .select('state_json').eq('user_id', session.user.id).maybeSingle();
-    if (!cloud?.state_json?.labPages?.length) return;
-    const _slim = lps => JSON.stringify(lps.map(lp => ({
-      uid: lp.uid, lab: lp.selectedLab,
-      c: lp.conditions, c25: lp.conditions2025,
-    })));
-    const _cloudConf = (cloud.state_json.labPages || []).filter(lp => lp.selectedLab).length;
-    const _localConf = (state.labPages || []).filter(lp => lp.selectedLab).length;
-    if (_cloudConf > _localConf) {
-      // Cloud a plus de labs que local → reload pour récupérer les labs manquants
-      showToast('↺ Synchronisation automatique…');
-      setTimeout(() => location.reload(), 1500);
-    } else if (_cloudConf < _localConf) {
-      // Local a plus de labs → pousser vers le cloud (sans reload)
+    const cs = cloud?.state_json;
+    if (!cs) return;
+    const _cloudTs   = cs.savedAt || 0;
+    const _cloudLabs = (cs.labPages || []).filter(lp => lp.selectedLab).length;
+    // Last-write-wins : si un autre appareil a écrit plus récemment, le cloud fait foi.
+    // On recharge pour adopter intégralement la dernière vérité (valeurs + suppressions).
+    // Garde-fou : ignorer un cloud vide (0 labo) — ne jamais se faire écraser par du vide.
+    if (_cloudTs > _truthSavedAt && _cloudLabs > 0) {
+      showToast('↺ Synchronisation depuis le cloud…');
+      setTimeout(() => location.reload(), 1200);
+    } else if (_truthSavedAt > _cloudTs) {
+      // Notre état local est plus récent → le pousser pour qu'il devienne la vérité partagée.
       saveState();
     }
   } catch(_) {}
@@ -9048,35 +9055,26 @@ async function saveProfile() {
             if (cloud.connectors && Object.keys(cloud.connectors).length) {
               cs.connectors = cloud.connectors;
             }
-            // Architecture cloud-first : le cloud est la source de vérité.
-            // localStorage est un cache de chargement rapide — toujours mis à jour depuis le cloud.
-            // Exception : si localStorage est PLUS RÉCENT que le cloud (crash pendant l'écriture
-            // async, fenêtre de ~1s entre saveState et saveCloudState), on conserve les données
-            // locales et on force une synchro immédiate vers le cloud au démarrage.
+            // Cloud = SOURCE DE VÉRITÉ (last-write-wins par horodatage `savedAt`).
+            // La dernière modification, quel que soit l'appareil, fait foi partout :
+            // dès que le cloud est aussi récent ou plus récent que le cache local, on
+            // adopte le cloud intégralement (valeurs ET liste des labos → les suppressions
+            // faites sur un autre appareil se propagent aussi).
+            // Unique garde-fou : ne jamais laisser un cloud VIDE (0 labo configuré) écraser
+            // un local non vide — protège d'une écriture partielle/buggée (ex. GH Actions).
             const _localTs = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}').savedAt || 0; } catch(_) { return 0; } })();
             const _cloudTs = cs.savedAt || 0;
-            if (_cloudTs >= _localTs) {
-              // Cloud identique ou plus récent → mettre à jour le cache local
-              // SAUF si le local a plus de labs configurés que le cloud : protège contre
-              // l'écrasement accidentel par un cloud dégradé (ex. GH Actions a écrit depuis un état partiel).
-              const _lrLocal = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch(_) { return {}; } })();
-              const _localLabsCnt = (_lrLocal.labPages || []).filter(lp => lp.selectedLab).length;
-              const _cloudLabsCnt = (cs.labPages || []).filter(lp => lp.selectedLab).length;
-              if (_localLabsCnt > _cloudLabsCnt) {
-                // Local a plus de labs → fusionner : prendre cloud sauf labPages (on garde les labs locaux)
-                console.log('[BP] Cloud plus récent mais local a plus de labs (' + _localLabsCnt + ' vs ' + _cloudLabsCnt + ') → labs locaux préservés, sync cloud au démarrage');
-                try {
-                  const _merged = Object.assign({}, cs, { labPages: _lrLocal.labPages });
-                  localStorage.setItem(LS_KEY, JSON.stringify(_merged));
-                } catch(_) {}
-                // Forcer un re-push vers le cloud pour corriger le décalage
-                setTimeout(() => { if (_initDone) saveState(); }, 4000);
-              } else {
-                try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
-              }
+            const _localLabsCnt = (() => { try { return (JSON.parse(localStorage.getItem(LS_KEY) || '{}').labPages || []).filter(lp => lp.selectedLab).length; } catch(_) { return 0; } })();
+            const _cloudLabsCnt = (cs.labPages || []).filter(lp => lp.selectedLab).length;
+            if (_cloudTs >= _localTs && !(_cloudLabsCnt === 0 && _localLabsCnt > 0)) {
+              // Cloud plus récent (ou égal) et non vide → il fait foi, on écrase le cache local.
+              console.log('[BP] Cloud fait foi (cloudTs=' + _cloudTs + ' >= localTs=' + _localTs + ', labos ' + _cloudLabsCnt + ') → cache local remplacé');
+              try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
             } else {
-              // Local plus récent (crash recovery) → conserver localStorage, fusionner les connectors
-              console.log('[BP] Local plus récent (localTs=' + _localTs + ' > cloudTs=' + _cloudTs + ') — sync cloud forcée au démarrage');
+              // Local strictement plus récent (édition hors-ligne non encore synchronisée)
+              // OU cloud vide → on conserve le local et on force une remontée vers le cloud
+              // pour qu'il redevienne la vérité partagée.
+              console.log('[BP] Local conservé (localTs=' + _localTs + ' > cloudTs=' + _cloudTs + ' ou cloud vide) — remontée cloud forcée');
               if (cloud.connectors && Object.keys(cloud.connectors).length) {
                 try {
                   const _localRaw = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
@@ -9084,6 +9082,7 @@ async function saveProfile() {
                   localStorage.setItem(LS_KEY, JSON.stringify(_localRaw));
                 } catch(_) {}
               }
+              setTimeout(() => { if (_initDone) saveState(); }, 4000);
             }
           } else if (!isAdmin) {
             try { const ls = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); ls.csvData = null; ls.csvRows = 0; ls.prorataRatios = null; localStorage.setItem(LS_KEY, JSON.stringify(ls)); } catch(_) {}
@@ -9112,7 +9111,9 @@ async function saveProfile() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(_startupCloudState)); } catch(_) {}
     console.log('[BP] Local vide / Cloud configuré → cloud prioritaire, localStorage mis à jour');
   }
-  console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| cache local =', !!_lsRaw, '| cloud =', !!_startupCloudState, '| fromCloud =', _loadedFromCloud);
+  // Horodatage de la vérité chargée — référence pour le last-write-wins live (_checkCloudSync).
+  _truthSavedAt = saved?.savedAt || 0;
+  console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| cache local =', !!_lsRaw, '| cloud =', !!_startupCloudState, '| fromCloud =', _loadedFromCloud, '| truthSavedAt =', _truthSavedAt);
   if (saved) {
     state.gers = saved.gers ?? null;
     if (saved.userProfile) state.userProfile = saved.userProfile;
