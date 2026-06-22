@@ -202,6 +202,45 @@ def _query_rsf_defaults() -> dict:
         return {}
 
 
+def _query_lab_exceptions() -> dict:
+    """Retourne {lab: {year_str: {rsf_pct_str: {"texts": set, "remise2": float|None}}}}.
+
+    Source : lab_config.remise2except_json (références à conditions particulières).
+    Permet d'appliquer la remise2 spécifique des références en exception au lieu de la
+    remise2 par défaut → r2_pond_pct / pond_pct (utilisés par le vérificateur) exacts.
+    """
+    url = f"{SUPA_URL}/rest/v1/lab_config?select=lab,remise2except_json&limit=10000"
+    req = urllib.request.Request(url, headers={
+        "apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}",
+    })
+    out: dict = {}
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            rows = json.loads(r.read())
+    except Exception as e:
+        print(f"  [lab-exceptions-query] err: {e}")
+        return out
+    for row in rows:
+        lab = row.get("lab")
+        rj = row.get("remise2except_json") or {}
+        # Format année-keyé {'2025': {...}, '2026': {...}} ou plat (legacy) → clé '*'
+        years = rj if any(k in rj for k in ("2025", "2026")) else {"*": rj}
+        lab_map = out.setdefault(lab, {})
+        for yr, by_rsf in years.items():
+            ymap = lab_map.setdefault(str(yr), {})
+            for rsf_key, exc in (by_rsf or {}).items():
+                texts = {l.get("text") for l in (exc.get("libelles") or []) if l.get("text")}
+                if not texts:
+                    continue
+                raw = exc.get("remise2")
+                try:
+                    r2f = float(str(raw).replace(",", ".")) if raw not in (None, "") else None
+                except (TypeError, ValueError):
+                    r2f = None
+                ymap[str(rsf_key)] = {"texts": texts, "remise2": r2f}
+    return out
+
+
 _LABOS_NON_GENERIQUES = {"WEGOVY", "WEGOVI"}
 
 # Marqueurs de libellé → lab interne (pour CIPs avec labo=NULL non présents dans notre catalogue CERP)
@@ -218,7 +257,7 @@ _GENERIQUE_LIBELLE_MAP = [
     (" EG ",      "EG"),
 ]
 
-def _build_month_stats(all_rows: list, refs_by_cip: dict, rsf_defs: dict) -> dict:
+def _build_month_stats(all_rows: list, refs_by_cip: dict, rsf_defs: dict, lab_exc: dict = None) -> dict:
     """Agrège par (year, month, labo) → month_stats dict pour le frontend.
 
     Seuls les génériques sont inclus : CIPs avec labo connu OU dont le libellé
@@ -255,6 +294,20 @@ def _build_month_stats(all_rows: list, refs_by_cip: dict, rsf_defs: dict) -> dic
                 remise2 = float(d["remise2"])
             except (TypeError, ValueError):
                 pass
+
+        # Exception : si le libellé du CIP est listé en exception pour ce palier RSF,
+        # utiliser sa remise2 spécifique (rend r2_pond_pct / pond_pct exacts).
+        exc_lab = (lab_exc or {}).get(labo, {})
+        if exc_lab:
+            libelle = ref.get("libelle") or ""
+            for yk in (str(row.get("year", "")), "*"):
+                ymap = exc_lab.get(yk)
+                if not ymap:
+                    continue
+                e = ymap.get(str(int(rsf_f))) or ymap.get(str(rsf_f))
+                if e and e.get("remise2") is not None and libelle in e["texts"]:
+                    remise2 = e["remise2"]
+                    break
 
         qty  = float(row.get("qty") or 0)
         puht = float(row.get("puht") or 0) or float(ref.get("puht") or 0)
@@ -1494,7 +1547,8 @@ def main():
             cip_list    = list({r["cip13"] for r in all_rows})
             refs_by_cip = _query_refs(cip_list)
             rsf_defs    = _query_rsf_defaults()
-            new_stats   = _build_month_stats(all_rows, refs_by_cip, rsf_defs)
+            lab_exc     = _query_lab_exceptions()
+            new_stats   = _build_month_stats(all_rows, refs_by_cip, rsf_defs, lab_exc)
             # Les nouveaux mois écrasent les anciens, les anciens réutilisés sont conservés
             month_stats = {**ex_month_stats, **new_stats}
         else:
