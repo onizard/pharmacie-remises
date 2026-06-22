@@ -2141,6 +2141,11 @@ async function saveRsfDefaults() {
         showR3: c.showR3 || false, forceFirst: c.forceFirst || false,
         remiseGlobale: i === 0 ? null : (c.remiseGlobale ?? null),
         caCondition:   i === 0 ? null : (c.caCondition   ?? null),
+        // Exceptions (références à conditions particulières) PAR palier — diffusées pour
+        // tous (ce ne sont pas des données perso). Permet l'astérisque sur le bon palier
+        // et la prise en compte par référence dans les calculs (getRemise).
+        r2except: c.remise2Except || {},
+        exc:      c.exceptions    || {},
       }));
     };
     if (base26.length) {
@@ -2231,6 +2236,28 @@ function getLabExc(lab, year) {
   return all[year] || null;
 }
 
+// Applique à une condition les exceptions diffusées (références à conditions particulières)
+// et (RE)POSE hasExcept sur les rsfValues. Critique : getRemise/getRemiseSansR3 (comparateur)
+// ignorent toute exception si rsfRow.hasExcept est faux — or il ne l'était jamais chez les
+// non-admin. Source : le template par palier (tc.r2except) si dispo, sinon le blob fusionné
+// lab_config (fallbackExc) en repli pour les labos non encore re-sauvegardés par l'admin.
+function applyCondExceptions(cond, tc, fallbackExc) {
+  cond.remise2Except = cond.remise2Except || {};
+  cond.exceptions    = cond.exceptions    || {};
+  if (tc && tc.r2except && Object.keys(tc.r2except).length) {
+    Object.entries(tc.r2except).forEach(([k, v]) => {
+      cond.remise2Except[k] = { libelles: (v.libelles || []).map(l => ({ ...l })), remise2: v.remise2 || '', remise3: v.remise3 || '' };
+    });
+    if (tc.exc) Object.assign(cond.exceptions, tc.exc);
+  } else if (fallbackExc) {
+    Object.assign(cond.exceptions,    fallbackExc.exceptions    || {});
+    Object.assign(cond.remise2Except, fallbackExc.remise2Except || {});
+  }
+  (cond.rsfValues || []).forEach(r => {
+    r.hasExcept = !!(cond.remise2Except[String(r.rsf_pct)]?.libelles?.length);
+  });
+}
+
 function applyRsfDefaults() {
   if (isAdmin) return;
   state.labPages.forEach(lp => {
@@ -2238,14 +2265,16 @@ function applyRsfDefaults() {
     const defs   = window._rsfDefaults?.[lp.selectedLab];
     const exc26  = getLabExc(lp.selectedLab, '2026');
     const exc25  = getLabExc(lp.selectedLab, '2025');
+    const tpl26  = window._labConditions?.[lp.selectedLab]?.conds26 || [];
+    const tpl25  = window._labConditions?.[lp.selectedLab]?.conds25 || [];
     if (!defs && !exc26 && !exc25) return;
-    (lp.conditions || []).forEach(cond => {
+    (lp.conditions || []).forEach((cond, i) => {
       if (defs) (cond.rsfValues || []).forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
-      if (exc26) { Object.assign(cond.exceptions, exc26.exceptions || {}); Object.assign(cond.remise2Except, exc26.remise2Except || {}); }
+      applyCondExceptions(cond, tpl26[i], exc26);
     });
-    (lp.conditions2025 || []).forEach(cond => {
+    (lp.conditions2025 || []).forEach((cond, i) => {
       if (defs) (cond.rsfValues || []).forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
-      if (exc25) { Object.assign(cond.exceptions, exc25.exceptions || {}); Object.assign(cond.remise2Except, exc25.remise2Except || {}); }
+      applyCondExceptions(cond, tpl25[i], exc25);
     });
     if (lp._reRenderCondTables) lp._reRenderCondTables();
     if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();
@@ -4749,7 +4778,7 @@ function initLabPage(conf) {
         }
         if (defs) s[condKey][0].rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; if (s[condKey][0].coopR3 == null) r.remise3 = d.remise3 || ''; } });
         if (s[condKey][0].coopR3 != null) s[condKey][0].rsfValues.forEach(r => { r.remise3 = String(s[condKey][0].coopR3); });
-        if (exc) { Object.assign(s[condKey][0].exceptions, exc.exceptions || {}); Object.assign(s[condKey][0].remise2Except, exc.remise2Except || {}); }
+        applyCondExceptions(s[condKey][0], tmpl0, exc);
       }
       applyDefaultExcepts(s[condKey][0], lab);
 
@@ -4775,7 +4804,7 @@ function initLabPage(conf) {
           if (tc.caCondition   != null) c.caCondition   = tc.caCondition;
           c.rsfValues = mkRsfValues(lab, paliers);
           if (defs) c.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
-          if (exc) { Object.assign(c.exceptions, exc.exceptions || {}); Object.assign(c.remise2Except, exc.remise2Except || {}); }
+          applyCondExceptions(c, tc, exc);
           s[condKey].push(c);
           const p = buildCondPanel(c);
           el.condPanels.appendChild(p);
@@ -4948,8 +4977,7 @@ function initLabPage(conf) {
             // initialisé depuis _rsfDefaults via la fonction elle-même (ligne 1681)
             console.warn('[BP] pas de defaults pour', lab, '— _rsfDefaults:', window._rsfDefaults ? Object.keys(window._rsfDefaults).join(', ') : 'undefined');
           }
-          const exc = getLabExc(lab, year);
-          if (exc) { Object.assign(cond.exceptions, exc.exceptions || {}); Object.assign(cond.remise2Except, exc.remise2Except || {}); }
+          applyCondExceptions(cond, tc, getLabExc(lab, year));
         }
         if (idx === 0) applyDefaultExcepts(cond, lab);
         s[condKey].push(cond);
@@ -4975,7 +5003,7 @@ function initLabPage(conf) {
             cond.forceFirst = tmpl0.forceFirst || false;
           }
           if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; if (cond.coopR3 == null) r.remise3 = d.remise3 || ''; } });
-          if (exc) { Object.assign(cond.exceptions, exc.exceptions || {}); Object.assign(cond.remise2Except, exc.remise2Except || {}); }
+          applyCondExceptions(cond, tmpl0, exc);
         }
         applyDefaultExcepts(cond, lab);
         s[condKey].push(cond);
@@ -9533,14 +9561,11 @@ async function saveProfile() {
             if (tc.remiseGlobale != null) cond.remiseGlobale = tc.remiseGlobale;
             if (tc.caCondition   != null) cond.caCondition   = tc.caCondition;
           }
-          // Ré-appliquer les exceptions diffusées (références à conditions particulières)
-          // à toutes les conditions, pour qu'elles s'affichent en note dans le pop-up —
-          // même si le labo n'a qu'un seul palier.
+          // Ré-appliquer les exceptions diffusées PAR PALIER (template) — pose hasExcept,
+          // donc l'astérisque apparaît sur le bon palier et le footnote liste les bonnes
+          // références. Fallback : blob fusionné lab_config si le template n'a pas d'exc.
           const exc = getLabExc(lp.selectedLab, tkey === 'conds26' ? '2026' : '2025');
-          if (exc) base.forEach(cond => {
-            cond.exceptions    = Object.assign(cond.exceptions    || {}, exc.exceptions    || {});
-            cond.remise2Except = Object.assign(cond.remise2Except || {}, exc.remise2Except || {});
-          });
+          base.forEach((cond, i) => applyCondExceptions(cond, tmpl[i], exc));
         });
       }
       const conds = [...(lp._baseConds2026 || lp.conditions || []), ...(lp._baseConds2025 || lp.conditions2025 || [])];
