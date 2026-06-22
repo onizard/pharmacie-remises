@@ -9507,6 +9507,29 @@ async function saveProfile() {
     state.labPages.forEach(lp => {
       if (!lp.selectedLab) return;
       const defs = window._rsfDefaults?.[lp.selectedLab];
+      // Non-admin : re-synchroniser la STRUCTURE des paliers depuis le template admin
+      // pour que le pop-up reflète la dernière diffusion (paliers 2+, CA cible & remise
+      // globale standard) sans recharger la page. Le palier 1 (idx 0) reste personnel.
+      if (!isAdmin) {
+        [['conds26', 'conditions', '_baseConds2026'],
+         ['conds25', 'conditions2025', '_baseConds2025']].forEach(([tkey, ckey, bkey]) => {
+          const tmpl = window._labConditions?.[lp.selectedLab]?.[tkey] || [];
+          if (tmpl.length < 2) return;
+          const base = lp[bkey] || lp[ckey] || [];
+          const _pal = base[0]?.rsfValues?.map(r => r.rsf_pct) || (lp.rsfPaliers || []);
+          for (let i = 1; i < tmpl.length; i++) {
+            const tc = tmpl[i];
+            let cond = base[i];
+            if (!cond) {
+              cond = mkCondState('cT' + i);
+              cond.rsfValues = _pal.map(v => ({ rsf_pct: v, remise2: '', remise3: '', excluded: false, hasExcept: false }));
+              base.push(cond);
+            }
+            if (tc.remiseGlobale != null) cond.remiseGlobale = tc.remiseGlobale;
+            if (tc.caCondition   != null) cond.caCondition   = tc.caCondition;
+          }
+        });
+      }
       const conds = [...(lp._baseConds2026 || lp.conditions || []), ...(lp._baseConds2025 || lp.conditions2025 || [])];
       conds.forEach(cond => {
         if (defs) cond.rsfValues.forEach(r => {
