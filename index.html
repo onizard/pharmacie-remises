@@ -2128,21 +2128,26 @@ async function saveRsfDefaults() {
     Object.entries(seen).forEach(([rsf_pct, vals]) => {
       rows.push({ lab: lp.selectedLab, rsf_pct, ...vals });
     });
-    // Sentinel : flags comportement des conditions (rsfOnly, showR3, forceFirst)
-    // NE contient PAS remiseGlobale/caCondition — valeurs propres à chaque user
-    if (base26.length) {
-      const compact26 = base26.map(c => ({
+    // Sentinel : structure des conditions/paliers diffusée à tous les users.
+    // Contient les flags (rsfOnly/showR3/forceFirst) ET, pour les paliers 2+, le CA cible
+    // et la remise globale cible STANDARD. Les conditions sont triées CA décroissant →
+    // index 0 = palier 1 = contrat n°1 négocié : son CA cible et sa remise globale sont
+    // PERSONNELS (laissés à null), jamais diffusés. Le potentiel générique (state.gers)
+    // n'est lui non plus jamais diffusé (absent de rsf_defaults).
+    const _compactConds = base => {
+      const sorted = [...base].sort((a, b) => (parseFloat(b.caCondition) || 0) - (parseFloat(a.caCondition) || 0));
+      return sorted.map((c, i) => ({
         rsfOnly: c.rsfOnly || { enabled: false, libelles: [] },
         showR3: c.showR3 || false, forceFirst: c.forceFirst || false,
+        remiseGlobale: i === 0 ? null : (c.remiseGlobale ?? null),
+        caCondition:   i === 0 ? null : (c.caCondition   ?? null),
       }));
-      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds26', remise2: JSON.stringify(compact26), remise3: '' });
+    };
+    if (base26.length) {
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds26', remise2: JSON.stringify(_compactConds(base26)), remise3: '' });
     }
     if (base25.length) {
-      const compact25 = base25.map(c => ({
-        rsfOnly: c.rsfOnly || { enabled: false, libelles: [] },
-        showR3: c.showR3 || false, forceFirst: c.forceFirst || false,
-      }));
-      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds25', remise2: JSON.stringify(compact25), remise3: '' });
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds25', remise2: JSON.stringify(_compactConds(base25)), remise3: '' });
     }
     if (Object.keys(excs25).length || Object.keys(excs26).length || Object.keys(r2excs25).length || Object.keys(r2excs26).length) {
       excRows.push({
@@ -4755,6 +4760,31 @@ function initLabPage(conf) {
       document.getElementById(`rgSec-${uid}-${s[condKey][0].uid}`)?.classList.add('visible');
       renderCondTable(s[condKey][0]);
 
+      // Non-admin : hériter des paliers 2+ standard diffusés par l'admin (palier 1 = perso).
+      if (!isAdmin) {
+        const _tmpl = window._labConditions?.[lab]?.[year === '2025' ? 'conds25' : 'conds26'] || [];
+        const defs  = window._rsfDefaults?.[lab];
+        const exc   = getLabExc(lab, year);
+        for (let i = 1; i < _tmpl.length; i++) {
+          const tc = _tmpl[i];
+          const c = mkCondState('cT' + i);
+          c.rsfOnly    = { ...(tc.rsfOnly || { enabled: false, libelles: [] }) };
+          c.showR3     = tc.showR3 || false;
+          c.forceFirst = tc.forceFirst || false;
+          if (tc.remiseGlobale != null) c.remiseGlobale = tc.remiseGlobale;
+          if (tc.caCondition   != null) c.caCondition   = tc.caCondition;
+          c.rsfValues = mkRsfValues(lab, paliers);
+          if (defs) c.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
+          if (exc) { Object.assign(c.exceptions, exc.exceptions || {}); Object.assign(c.remise2Except, exc.remise2Except || {}); }
+          s[condKey].push(c);
+          const p = buildCondPanel(c);
+          el.condPanels.appendChild(p);
+          wireCondition(c);
+          document.getElementById(`rgSec-${uid}-${c.uid}`)?.classList.add('visible');
+          renderCondTable(c);
+        }
+      }
+
       el.condTabs.classList.add('visible');
       renderCondTabs();
     } catch(err) { console.error(err); }
@@ -4850,12 +4880,22 @@ function initLabPage(conf) {
       s.rsfPaliers = paliers;
       s.rsfFirstMap = firstMap;
       s.rsfCountMap = countMap || new Map();
-      // Template admin : flags comportement uniquement (rsfOnly, showR3, forceFirst)
-      // NE touche PAS caCondition/remiseGlobale/coopR3 — valeurs propres à l'user
+      // Template admin diffusé : flags (rsfOnly/showR3/forceFirst) + CA cible & remise
+      // globale STANDARD des paliers 2+. Le palier 1 (idx 0) et le potentiel générique
+      // restent personnels (jamais dans le template).
       const _templateKey = year === '2025' ? 'conds25' : 'conds26';
       const _condTemplate = !isAdmin ? (window._labConditions?.[lab]?.[_templateKey] || null) : null;
 
-      (savedLabData[savedCondKey] || []).forEach((sc, idx) => {
+      // Non-admin : la STRUCTURE des paliers est diffusée par l'admin via le template.
+      // On garantit autant de conditions que le template (palier 1 perso + paliers 2+
+      // standard), même pour un nouvel user qui n'a encore rien saisi. Pour l'admin, on
+      // itère uniquement sur ses propres conditions sauvegardées (template ignoré).
+      const _savedConds = savedLabData[savedCondKey] || [];
+      const _condList = (!isAdmin && (_condTemplate?.length || 0) > _savedConds.length)
+        ? Array.from({ length: _condTemplate.length }, (_, i) => _savedConds[i] || { uid: 'cT' + i, rsfValues: [] })
+        : _savedConds;
+
+      _condList.forEach((sc, idx) => {
         const cond = mkCondState(sc.uid);
         // Valeurs user — intouchables par l'admin
         cond.remiseGlobale = sc.remiseGlobale;
@@ -4868,6 +4908,12 @@ function initLabPage(conf) {
         cond.rsfOnly    = tc ? { ...(tc.rsfOnly    || { enabled: false, libelles: [] }) } : (sc.rsfOnly    || { enabled: false, libelles: [] });
         cond.showR3     = tc ? (tc.showR3     || false) : (sc.showR3     || false);
         cond.forceFirst = tc ? (tc.forceFirst || false) : (sc.forceFirst || false);
+        // Non-admin, paliers 2+ : CA cible & remise globale STANDARD diffusés par l'admin.
+        // Le palier 1 (idx 0 = contrat n°1) reste personnel : valeurs de l'user ci-dessus.
+        if (!isAdmin && idx >= 1 && tc) {
+          if (tc.remiseGlobale != null) cond.remiseGlobale = tc.remiseGlobale;
+          if (tc.caCondition   != null) cond.caCondition   = tc.caCondition;
+        }
         cond.rsfValues = paliers.map(v => {
           const sv = sc.rsfValues.find(r => String(r.rsf_pct) === String(v));
           return sv
