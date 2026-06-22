@@ -129,6 +129,26 @@ def main():
             """)
         conn.commit()
 
+        # Exclure les non-génériques (pansements / LPP) : ils ne doivent pas faire partie
+        # des groupes RSF ni de la liste des références normalisées. On s'appuie sur
+        # references_pharmacie.is_generic (les pansements y sont déjà marqués False).
+        cur.execute(
+            "SELECT cip13 FROM public.references_pharmacie "
+            "WHERE labo = %s AND is_generic IS FALSE", (args.labo,))
+        non_generic = {r[0] for r in cur.fetchall()}
+        if non_generic:
+            before = len(rows)
+            rows = {c: v for c, v in rows.items() if c not in non_generic}
+            print(f"  → {before - len(rows)} non-génériques (pansements/LPP) exclus du RSF")
+
+        # Purge des lignes non-génériques déjà présentes dans rsf_history (nettoyage rétroactif)
+        if non_generic:
+            cur.execute(
+                "DELETE FROM public.rsf_history WHERE labo = %s AND year = %s "
+                "AND cip13 = ANY(%s)", (args.labo, args.year, list(non_generic)))
+            print(f"  → {cur.rowcount} lignes pansements purgées de rsf_history")
+            conn.commit()
+
         data = [(cip, args.labo, args.year, rsf, rdp, pfht)
                 for cip, (pfht, rsf, rdp) in rows.items()]
         execute_values(cur, """

@@ -5113,6 +5113,27 @@ async function fetchRSF(lab, yr = 2026) {
     return { paliers, firstMap, countMap };
   };
 
+  // Comptes de références GÉNÉRIQUES par palier (is_generic=true) — exclut les pansements
+  // et autres non-génériques (LPP) qui ne doivent pas faire partie des groupes RSF.
+  // Sert à recompter les paliers et à écarter les paliers sans aucune référence générique.
+  const _genCounts = async () => {
+    try {
+      const r = await fetch(
+        `${SUPA_URL}/rest/v1/references_pharmacie?select=rsf_pct&labo=eq.${encodeURIComponent(lab)}&is_generic=eq.true&rsf_pct=not.is.null&limit=5000`,
+        { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
+      if (!r.ok) return null;
+      const m = new Map();
+      (await r.json()).forEach(x => { const k = parseFloat(x.rsf_pct); m.set(k, (m.get(k) || 0) + 1); });
+      return m.size ? m : null;
+    } catch(_) { return null; }
+  };
+  // Filtre une liste de paliers + countMap sur les seuls paliers ayant ≥1 référence générique.
+  const _filterGeneric = (paliers, firstMap, fallbackCount, gen) => {
+    if (!gen) return { paliers, firstMap, countMap: fallbackCount };
+    const kept = paliers.filter(p => (gen.get(p) || 0) > 0);
+    return { paliers: kept.length ? kept : paliers, firstMap, countMap: gen };
+  };
+
   try {
     const rpcRes = await fetch(`${SUPA_URL}/rest/v1/rpc/get_rsf_paliers`, {
       method: 'POST',
@@ -5123,7 +5144,10 @@ async function fetchRSF(lab, yr = 2026) {
       const rpcData = await rpcRes.json();
       if (rpcData.length) {
         const { paliers, firstMap } = _buildMaps(rpcData, true);
-        // countMap depuis rsf_history year=2026 (nombre de réfs par palier)
+        // Compter/valider les paliers sur les références génériques (exclut les pansements).
+        const gen = await _genCounts();
+        if (gen) return _filterGeneric(paliers, firstMap, null, gen);
+        // Fallback (pas de données is_generic) : countMap depuis rsf_history year=yr.
         const cntRes = await fetch(
           `${SUPA_URL}/rest/v1/rsf_history?select=rsf_pct&labo=eq.${encodeURIComponent(lab)}&year=eq.${yr}&rsf_pct=not.is.null&limit=2000`,
           { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
@@ -5140,8 +5164,9 @@ async function fetchRSF(lab, yr = 2026) {
   } catch (_) {}
 
   // Fallback : references_pharmacie (multi-années, utilisé si aucun import rsf_history 2026)
+  // Filtre is_generic=true : exclut pansements/LPP des groupes RSF.
   const url = `${SUPA_URL}/rest/v1/references_pharmacie`
-    + `?select=rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&rsf_pct=not.is.null&order=rsf_pct.asc&limit=2000`;
+    + `?select=rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&is_generic=eq.true&rsf_pct=not.is.null&order=rsf_pct.asc&limit=2000`;
   const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return _buildMaps(await res.json(), false);
