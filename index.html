@@ -1953,10 +1953,29 @@ async function saveCloudState(data) {
     if (_localConfigured > 0) _lastGoodLabPages = data.labPages;
     // Utilise merge_user_state (JSONB merge côté DB) — préserve ospharm_job/verif_job/conn_test
     // sans lire les 2+ MB du cloud. Atomique et fiable même si le JSON est volumineux.
-    const { error } = await sb.rpc('merge_user_state', {
+    let { error } = await sb.rpc('merge_user_state', {
       p_user_id: session.user.id,
       p_state:   data,
     });
+    if (error) {
+      // Retry avec un payload allégé. Les gros agrégats (OSPHARM/grossiste/digi/FSE)
+      // peuvent faire dépasser la limite de taille de la requête → le merge échoue et le
+      // cloud gèle, perdant les petites données critiques propres à l'user (conditions
+      // labo : remiseGlobale / caCondition / coopR3, qui n'ont AUCUN fallback partagé).
+      // On retire ces blobs (récupérables via leurs job records côté DB) pour garantir que
+      // les conditions labo atteignent toujours le cloud. Le merge JSONB préserve les clés
+      // absentes du payload → les stats déjà en base ne sont pas effacées.
+      console.warn('[BP] merge_user_state full échec → retry payload allégé :', error.message || error);
+      const _slim = { ...data };
+      delete _slim.monthStats;          delete _slim.monthMeta;     delete _slim.monthSavedAt;
+      delete _slim.digiMonthStats;      delete _slim.grossisteMonthStats;
+      delete _slim.fseMonthStats;       delete _slim.escompteStats; delete _slim.mdlStats;
+      ({ error } = await sb.rpc('merge_user_state', {
+        p_user_id: session.user.id,
+        p_state:   _slim,
+      }));
+      if (!error) console.log('[BP] merge_user_state retry allégé OK — conditions labo sauvegardées');
+    }
     if (error) throw error;
     _cloudSavePending = false;
     _showSaveBadge();
