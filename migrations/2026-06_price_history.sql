@@ -23,10 +23,14 @@ CREATE TABLE IF NOT EXISTS price_history (
 CREATE INDEX IF NOT EXISTS idx_price_history_cip_date
     ON price_history (cip13, effective_date DESC);
 
--- Exposer la table à l'anon (lecture) pour PostgREST + le loader
-GRANT SELECT ON price_history TO anon;
-GRANT SELECT, INSERT, UPDATE ON price_history TO authenticated;
-GRANT USAGE, SELECT ON SEQUENCE price_history_id_seq TO authenticated;
+-- Pas de RLS (cohérent avec references_pharmacie/rsf_history, accès via clé anon)
+ALTER TABLE price_history DISABLE ROW LEVEL SECURITY;
+
+-- Accès PostgREST. L'app écrit avec la clé anon (comme references_pharmacie/rsf_history),
+-- donc on accorde le CRUD à anon ET authenticated pour cohérence.
+GRANT SELECT, INSERT, UPDATE, DELETE ON price_history TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON price_history TO authenticated;
+GRANT USAGE, SELECT ON SEQUENCE price_history_id_seq TO anon, authenticated;
 
 -- 2. Prix effectif d'un CIP à une date donnée -------------------------------
 CREATE OR REPLACE FUNCTION get_puht_at(p_cip text, p_date date)
