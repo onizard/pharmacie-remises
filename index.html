@@ -5036,6 +5036,31 @@ function initLabPage(conf) {
   s[conf.reRenderAs || '_reRenderCondTables'] = function() {
     s[condKey].forEach(cond => {
       if (!document.getElementById(`tbody-${uid}-${cond.uid}`)) return;
+      // Réconcilie rsfValues avec les paliers courants : un palier apparu depuis la
+      // dernière sauvegarde (ex. tier nouvellement générique) doit s'afficher, sans
+      // perdre les valeurs saisies (préservées via prev) ni les lignes custom.
+      if (s.rsfPaliers && s.rsfPaliers.length) {
+        const _lab = s.selectedLab;
+        const _defs = !isAdmin ? window._rsfDefaults?.[_lab] : null;
+        const prev = {};
+        (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
+        cond.rsfValues = s.rsfPaliers.map(v => {
+          const sv = prev[String(v)];
+          if (sv) return sv;
+          const excluded = _lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v));
+          const d = _defs?.[String(v)];
+          return {
+            rsf_pct: v,
+            remise2: d ? (d.remise2 || '') : ((excluded || parseFloat(v) === -2.5 || parseFloat(v) === 0) ? '0' : ''),
+            remise3: d ? (cond.coopR3 != null ? String(cond.coopR3) : (d.remise3 || '')) : '',
+            excluded, hasExcept: false
+          };
+        });
+        Object.values(prev).filter(r => r.custom).forEach(cr => {
+          if (!cond.rsfValues.some(r => String(r.rsf_pct) === String(cr.rsf_pct))) cond.rsfValues.push(cr);
+        });
+        cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
+      }
       if (cond.remiseGlobale !== null) autoFillCond(cond);
       renderCondTable(cond);
     });
