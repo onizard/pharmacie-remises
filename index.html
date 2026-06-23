@@ -1955,6 +1955,26 @@ async function saveCloudState(data) {
     if (!session) { _cloudSavePending = false; return false; }
     _cachedFlushSession = { user_id: session.user.id, token: session.access_token };
     if (_localConfigured > 0) _lastGoodLabPages = data.labPages;
+    // ── Garde anti-écrasement multi-appareils (read-before-write) ───────────────
+    // Si le cloud a été écrit par un AUTRE appareil depuis notre dernier chargement/save
+    // (_cloudTs > _truthSavedAt), notre état local est périmé : ne pas l'écraser. On adopte
+    // la dernière vérité en rechargeant. Empêche qu'un poste/onglet périmé clobber les édits
+    // faits depuis un autre poste (bug multi-IP). Garde-fou : ignorer un cloud vide.
+    try {
+      const { data: _cloudNow } = await sb.from('user_state')
+        .select('state_json').eq('user_id', session.user.id).maybeSingle();
+      const _cs = _cloudNow?.state_json;
+      const _cloudTs   = _cs?.savedAt || 0;
+      const _cloudLabs = (_cs?.labPages || []).filter(lp => lp.selectedLab).length;
+      if (_cloudTs > _truthSavedAt && _cloudLabs > 0) {
+        console.warn('[BP] saveCloudState : cloud plus récent (autre appareil) → rechargement au lieu d\'écraser (', _cloudTs, '>', _truthSavedAt, ')');
+        _cloudSavePending = false;
+        _showSaveBadge();
+        showToast('↺ Données plus récentes sur un autre appareil — rechargement…');
+        setTimeout(() => location.reload(), 1500);
+        return false;
+      }
+    } catch(_) { /* échec du read → on laisse la sauvegarde normale se faire */ }
     // Utilise merge_user_state (JSONB merge côté DB) — préserve ospharm_job/verif_job/conn_test
     // sans lire les 2+ MB du cloud. Atomique et fiable même si le JSON est volumineux.
     let { error } = await sb.rpc('merge_user_state', {
@@ -2054,7 +2074,7 @@ function _flushState() {
   saveCloudState(data);
 }
 let _lastHiddenAt = 0;
-const _SYNC_STALE_MS = 5 * 60 * 1000; // 5 minutes
+const _SYNC_STALE_MS = 15 * 1000; // 15 s — retour de focus : adopter vite une écriture d'un autre poste
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
@@ -2066,6 +2086,10 @@ document.addEventListener('visibilitychange', () => {
 });
 // pagehide plus fiable que visibilitychange lors de la fermeture du navigateur
 window.addEventListener('pagehide', _flushState);
+// Sync périodique : sur 2 ordis physiques, les 2 onglets restent "visibles" sur leur écran
+// (visibilitychange ne se déclenche pas). Un poll régulier détecte une écriture faite depuis
+// un AUTRE poste et recharge le cloud (cloud fait foi). Ne touche pas si une save est en attente.
+setInterval(() => { if (!document.hidden && _initDone && !_cloudSavePending) _checkCloudSync(); }, 25000);
 
 async function _checkCloudSync() {
   try {
