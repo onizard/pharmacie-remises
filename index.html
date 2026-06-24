@@ -5747,10 +5747,21 @@ const _verifNormLab = n => {
 function _verifGetCond(labDisplay, year, month) {
   const lp = (state.labPages || []).find(p => p.selectedLab === labDisplay);
   if (!lp) return null;
-  const startDate = lp.contractSigned ? (lp.contractDate || null) : null;
-  const condYear  = (startDate ? new Date(startDate).getFullYear() : null) || year;
-  const conds     = getEffectiveCondsForMonth(lp, condYear, month);
-  const idx       = _verifAutoCondIdx(labDisplay, condYear, conds);
+  // Contrat propre à l'année demandée (N : contractSigned/Date, N-1 : ...25)
+  const signed = year === 2025 ? lp.contractSigned25 : lp.contractSigned;
+  const dateS  = year === 2025 ? lp.contractDate25   : lp.contractDate;
+  // Le contrat n'active les conditions qu'À PARTIR de la date de signature :
+  // les mois antérieurs (même année) restent en "simple proposition" → aucune
+  // condition appliquée (return null). Ex. signé 01/06/2025 : jan-mai 25 = proposition,
+  // juin 25 → conditions actives.
+  if (signed && dateS) {
+    const d = new Date(dateS);
+    if (!isNaN(d) && (year < d.getFullYear() || (year === d.getFullYear() && month < d.getMonth() + 1))) {
+      return null;
+    }
+  }
+  const conds = getEffectiveCondsForMonth(lp, year, month);
+  const idx   = _verifAutoCondIdx(labDisplay, year, conds);
   return conds?.[idx] ?? conds?.[0] ?? null;
 }
 
