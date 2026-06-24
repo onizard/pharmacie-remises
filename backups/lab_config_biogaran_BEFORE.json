@@ -1,0 +1,184 @@
+{
+"remise2except_json": {
+"2025": {
+"-20": {
+"remise2": "20",
+"remise3": "",
+"libelles": [
+{
+"id": 15,
+"text": "ESOMEPRAZOLE 20MG 28GELU"
+},
+{
+"id": 16,
+"text": "ESOMEPRAZOLE 20MG 7GELU"
+},
+{
+"id": 17,
+"text": "ESOMEPRAZOLE 40MG 14GELU"
+},
+{
+"id": 18,
+"text": "ESOMEPRAZOLE 40MG 28GELU"
+},
+{
+"id": 19,
+"text": "KETOPROFENE LP 100MG 20CPR"
+}
+]
+},
+"-30": {
+"remise2": "10",
+"remise3": "",
+"libelles": [
+{
+"id": 1,
+"text": "ALFUZOSINE LP 10MG 30CPR"
+},
+{
+"id": 2,
+"text": "ATORVASTATINE 10MG 30CPR"
+},
+{
+"id": 3,
+"text": "ATORVASTATINE 10MG 90CPR"
+},
+{
+"id": 4,
+"text": "ATORVASTATINE 20MG 30CPR"
+},
+{
+"id": 5,
+"text": "ATORVASTATINE 20MG 90CPR"
+},
+{
+"id": 6,
+"text": "ATORVASTATINE 40MG 30CPR"
+},
+{
+"id": 7,
+"text": "ATORVASTATINE 40MG 90CPR"
+},
+{
+"id": 8,
+"text": "ATORVASTATINE 80MG 30CPR"
+},
+{
+"id": 9,
+"text": "ATORVASTATINE 80MG 90CPR"
+},
+{
+"id": 10,
+"text": "CLOPIDOGREL 75MG 30CPR"
+},
+{
+"id": 11,
+"text": "ESOMEPRAZOLE 20MG 14GELU"
+},
+{
+"id": 12,
+"text": "RIVAROXABAN 10MG 30CPR"
+},
+{
+"id": 13,
+"text": "RIVAROXABAN 15MG 28CPR"
+},
+{
+"id": 14,
+"text": "RIVAROXABAN 20MG 28CPR"
+}
+]
+}
+},
+"2026": {
+"-20": {
+"remise2": "20",
+"remise3": "",
+"libelles": [
+{
+"id": 15,
+"text": "ESOMEPRAZOLE 20MG 28GELU"
+},
+{
+"id": 16,
+"text": "ESOMEPRAZOLE 20MG 7GELU"
+},
+{
+"id": 17,
+"text": "ESOMEPRAZOLE 40MG 14GELU"
+},
+{
+"id": 18,
+"text": "ESOMEPRAZOLE 40MG 28GELU"
+},
+{
+"id": 19,
+"text": "KETOPROFENE LP 100MG 20CPR"
+}
+]
+},
+"-30": {
+"remise2": "10",
+"remise3": "",
+"libelles": [
+{
+"id": 1,
+"text": "ALFUZOSINE LP 10MG 30CPR"
+},
+{
+"id": 2,
+"text": "ATORVASTATINE 10MG 30CPR"
+},
+{
+"id": 3,
+"text": "ATORVASTATINE 10MG 90CPR"
+},
+{
+"id": 4,
+"text": "ATORVASTATINE 20MG 30CPR"
+},
+{
+"id": 5,
+"text": "ATORVASTATINE 20MG 90CPR"
+},
+{
+"id": 6,
+"text": "ATORVASTATINE 40MG 30CPR"
+},
+{
+"id": 7,
+"text": "ATORVASTATINE 40MG 90CPR"
+},
+{
+"id": 8,
+"text": "ATORVASTATINE 80MG 30CPR"
+},
+{
+"id": 9,
+"text": "ATORVASTATINE 80MG 90CPR"
+},
+{
+"id": 10,
+"text": "CLOPIDOGREL 75MG 30CPR"
+},
+{
+"id": 11,
+"text": "ESOMEPRAZOLE 20MG 14GELU"
+},
+{
+"id": 12,
+"text": "RIVAROXABAN 10MG 30CPR"
+},
+{
+"id": 13,
+"text": "RIVAROXABAN 15MG 28CPR"
+},
+{
+"id": 14,
+"text": "RIVAROXABAN 20MG 28CPR"
+}
+]
+}
+}
+}
+}
