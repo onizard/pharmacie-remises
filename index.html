@@ -1753,6 +1753,78 @@ function getEffectiveCondsForMonth(lp, year, month) {
     : (lp._baseConds2026 || lp.conditions || []);
 }
 
+// Correctif one-shot : régénère RDP (remise2) + exceptions Biogaran 2025 depuis rsf_history
+// (year=2025), qui est la vérité. Corrige un ancien clone des conditions 2026 vers 2025
+// (RDP et exceptions identiques entre les deux années). Idempotent via flag localStorage ;
+// re-sauvegarde local + cloud puis recharge pour réafficher. Concerne base + 12 mois.
+async function _fixBiogaran2025() {
+  const FLAG = 'bp_bio2025_fix_v2';
+  if (localStorage.getItem(FLAG)) return;
+  const lp = (state.labPages || []).find(p => p.selectedLab === 'Biogaran');
+  if (!lp) { localStorage.setItem(FLAG, '1'); return; }
+  const H = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+  const res = await fetch(`${SUPA_URL}/rest/v1/rsf_history?labo=eq.Biogaran&year=eq.2025&select=cip13,rsf_pct,rdp_pct&limit=5000`, { headers: H });
+  if (!res.ok) return;
+  const rows = await res.json();
+  if (!rows.length) return;
+  // Groupes → modal RDP (standard) + déviations (exceptions)
+  const groups = new Map();
+  rows.forEach(r => {
+    const key = String(parseFloat(r.rsf_pct));
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ cip13: r.cip13, rdp: Math.abs(parseFloat(r.rdp_pct || 0)) });
+  });
+  const groupModal = new Map(), groupExcs = new Map();
+  groups.forEach((items, key) => {
+    const cnt = new Map();
+    items.forEach(({ rdp }) => cnt.set(rdp, (cnt.get(rdp) || 0) + 1));
+    let modal = 0, best = -1;
+    cnt.forEach((n, rdp) => { if (n > best || (n === best && rdp > modal)) { modal = rdp; best = n; } });
+    groupModal.set(key, modal);
+    groupExcs.set(key, items.filter(({ rdp }) => rdp !== modal));
+  });
+  // Libellés normalisés des produits exception
+  const excCips = new Set();
+  groupExcs.forEach(items => items.forEach(({ cip13 }) => excCips.add(cip13)));
+  const cipToLib = new Map();
+  if (excCips.size) {
+    const r2 = await fetch(`${SUPA_URL}/rest/v1/references_pharmacie?cip13=in.(${[...excCips].join(',')})&select=cip13,libelle&limit=1000`, { headers: H });
+    if (r2.ok) (await r2.json()).forEach(r => cipToLib.set(r.cip13, r.libelle));
+  }
+  const buildExc = () => {
+    const out = {};
+    groupExcs.forEach((items, key) => {
+      const byRdp = new Map();
+      items.forEach(({ cip13, rdp }) => { const lib = cipToLib.get(cip13); if (!lib) return; if (!byRdp.has(rdp)) byRdp.set(rdp, []); byRdp.get(rdp).push(lib); });
+      byRdp.forEach((libelles, rdp) => {
+        if (!out[key]) out[key] = { libelles: libelles.map(text => ({ id: Date.now() + Math.random(), text })), remise2: rdp.toFixed(2), remise3: '' };
+      });
+    });
+    return out;
+  };
+  const applyTo = conds => (conds || []).forEach(cond => {
+    (cond.rsfValues || []).forEach(r => {
+      const key = String(parseFloat(r.rsf_pct));
+      if (groupModal.has(key) && !r.excluded) r.remise2 = groupModal.get(key).toFixed(2);
+    });
+    cond.exceptions = {};
+    cond.remise2Except = buildExc();
+    const keys = new Set(Object.keys(cond.remise2Except));
+    (cond.rsfValues || []).forEach(r => { r.hasExcept = keys.has(String(parseFloat(r.rsf_pct))); });
+  });
+  applyTo(lp.conditions2025);
+  applyTo(lp._baseConds2025);
+  const m2025 = lp.condsByMonth?.[2025] || lp.condsByMonth?.['2025'];
+  if (m2025) Object.values(m2025).forEach(applyTo);
+  localStorage.setItem(FLAG, '1');
+  const _d = serializeState();
+  _d.savedAt = Date.now();
+  try { localStorage.setItem(LS_KEY, JSON.stringify(_d)); } catch(_) {}
+  saveCloudState(_d).catch(() => {});
+  console.log('[BP] Biogaran 2025 RDP+exceptions régénérés depuis rsf_history → reload');
+  setTimeout(() => location.reload(), 1500);
+}
+
 function mkLabState(uid) {
   return {
     uid,
@@ -9937,6 +10009,12 @@ async function saveProfile() {
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
   _initDone = true;
+  // Correctif auto-réparateur (one-shot) : les conditions Biogaran 2025 avaient été clonées
+  // depuis 2026 (RDP + exceptions identiques). On régénère RDP (remise2) + exceptions 2025
+  // depuis rsf_history year=2025 (la vérité), sur les conditions de base ET les 12 mois.
+  // Idempotent via flag localStorage. Survit au clobber multi-onglet car il corrige la donnée
+  // chargée (locale ou cloud) puis re-sauvegarde.
+  _fixBiogaran2025().catch(e => console.warn('[BP] fix Biogaran 2025:', e));
   // Synchro cloud au démarrage seulement si des labs sont présents dans saved.
   // Évite d'écraser le cloud avec [] si l'état était vide (nouvel utilisateur, cloud indisponible…).
   // Le cas "local plus récent que cloud" est déjà couvert : saved = _lsRaw (labs présents).
