@@ -1837,23 +1837,14 @@ const RSF_MIDYEAR_CHANGES = {
   '3400930270592': { year: 2026, effMonth: 6, before: -10, after: -2.5 }, // MACROGOL 4000 4g Zydus (juin 2026)
   '3400930270608': { year: 2026, effMonth: 6, before: -10, after: -2.5 }, // MACROGOL 4000 10g Zydus (juin 2026)
 };
-// Renvoie { year, pct } : taux RSF effectif pondéré pour la réf, ou null si non concernée.
-function _midYearEffectiveRsf(cip13, csvData, refMap) {
-  const chg = RSF_MIDYEAR_CHANGES[cip13];
-  if (!chg) return null;
-  let caBefore = 0, caAfter = 0;
-  (csvData || []).forEach(row => {
-    if (row.cip13 !== cip13) return;
-    if (chg.year != null && row.year != null && parseInt(row.year) !== chg.year) return;
-    const puht = row.puht || refMap?.get(cip13)?.puht || 0;
-    const ca = (row.qty || 0) * puht;
-    const m = row.month != null ? parseInt(row.month) : null;
-    // Mois inconnu → rattaché à l'état courant (= après la date d'effet).
-    if (m != null && m < chg.effMonth) caBefore += ca; else caAfter += ca;
-  });
-  const tot = caBefore + caAfter;
-  if (tot <= 0) return null;
-  return { year: chg.year, pct: (caBefore * chg.before + caAfter * chg.after) / tot };
+// Pour une ligne d'achat donnée, renvoie le GROUPE RSF effectif (rsf_pct) de la réf selon
+// le mois de la ligne, ou null si non concernée. On bascule de groupe au mois d'effet, ce qui
+// permet à getRemise d'appliquer le bon RDP/exception du groupe (≠ simple moyenne du taux,
+// car le RDP peut différer entre les deux groupes — ex. Zydus 10% a RDP 20, 2,5% a RDP 0).
+function _rowRsfOverride(ref, cond, row) {
+  const chg = RSF_MIDYEAR_CHANGES[ref?.cip13];
+  if (!chg || !cond || cond._year !== chg.year || row?.month == null) return null;
+  return parseInt(row.month) < chg.effMonth ? chg.before : chg.after;
 }
 
 function mkLabState(uid) {
@@ -7360,15 +7351,9 @@ async function launchSimulation() {
     const _applyRsfHist = ref => { const h = rsfHistMap.get(ref.cip13); if (h) ref.rsf_pct_by_year = h; };
     refMap.forEach(_applyRsfHist);
     libelleMap.forEach(refs => refs.forEach(_applyRsfHist));
-
-    // Dates d'effet en cours d'année (ex. MACROGOL Zydus juin 2026) : remplace le taux RSF
-    // de l'année concernée par le taux effectif pondéré par le CA mensuel (jan→mai vs juin→déc).
-    const _applyMidYear = ref => {
-      const e = _midYearEffectiveRsf(ref.cip13, csvData, refMap);
-      if (e) { ref.rsf_pct_by_year = ref.rsf_pct_by_year || {}; ref.rsf_pct_by_year[e.year] = e.pct; }
-    };
-    refMap.forEach(_applyMidYear);
-    libelleMap.forEach(refs => refs.forEach(_applyMidYear));
+    // NB : les dates d'effet en cours d'année (RSF_MIDYEAR_CHANGES) sont appliquées par ligne
+    // d'achat via _rowRsfOverride dans le calcul de remise (groupe correct selon le mois), pour
+    // que le RDP du bon groupe soit pris en compte. rsf_pct_by_year reste l'état courant.
 
     // Marquer l'année sur chaque condition pour que getRemise choisisse le bon rsf_pct_by_year
     state.labPages.forEach(lp => {
@@ -7689,8 +7674,9 @@ async function launchSimulation() {
     // Passer cond=null signifie "aucun palier atteint" → RSF uniquement.
     // useRsf=false (contrat répartiteur non coché) → RSF = 0
     // bioCoeff={skipR2, r3Mult} → règle Biogaran (réalisation marché)
-    function getRemise(ref, cond, firstMet = false, useRsf = true, bioCoeff = null) {
-      const yearRsf = (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
+    function getRemise(ref, cond, firstMet = false, useRsf = true, bioCoeff = null, overrideRsf = null) {
+      const yearRsf = overrideRsf != null ? overrideRsf
+        : (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
         ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
       const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : yearRsf;
       const baseRSF = useRsf ? Math.abs(parseFloat(baseRSFPct) || 0) : 0;
@@ -7715,8 +7701,9 @@ async function launchSimulation() {
       return baseRSF + _r2 + (parseFloat(rsfRow.remise3) || 0) * (bioCoeff?.r3Mult ?? 1);
     }
 
-    function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true, bioCoeff = null) {
-      const yearRsf = (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
+    function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true, bioCoeff = null, overrideRsf = null) {
+      const yearRsf = overrideRsf != null ? overrideRsf
+        : (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
         ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
       const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : yearRsf;
       const baseRSF = useRsf ? Math.abs(parseFloat(baseRSFPct) || 0) : 0;
@@ -7790,11 +7777,13 @@ async function launchSimulation() {
           const _useRsf25 = e.lp?.contratRepartiteur25 ?? true;
           const _useRsf26 = e.lp?.contratRepartiteur    ?? true;
           e.rows.forEach(({ row, ref, price }) => {
-            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25) : 0;
-            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26) : 0;
+            const _ovr25 = _rowRsfOverride(ref, cond25, row);
+            const _ovr26 = _rowRsfOverride(ref, cond26, row);
+            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25, null, _ovr25) : 0;
+            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26, null, _ovr26) : 0;
             e.remise += row.qty * price * (r25 + r26) / 100;
-            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25) : 0;
-            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26) : 0;
+            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25, null, _ovr25) : 0;
+            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26, null, _ovr26) : 0;
             e.remiseSansR3 += row.qty * price * (s25 + s26) / 100;
           });
           e.bestCond    = cond26 || cond25;
@@ -7870,13 +7859,14 @@ async function launchSimulation() {
           e.firstMet    = firstMet;
           const _useRsf2 = e.lp?.contratRepartiteur ?? true;
           e.rows.forEach(({ row, ref, price }) => {
+            const _ovr = _rowRsfOverride(ref, effectiveCond, row);
             const remisePct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemise(ref, effectiveCond, firstMet, _useRsf2);
+              : getRemise(ref, effectiveCond, firstMet, _useRsf2, null, _ovr);
             e.remise += row.qty * price * remisePct / 100;
             const remiseSansR3Pct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2);
+              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2, null, _ovr);
             e.remiseSansR3 += row.qty * price * remiseSansR3Pct / 100;
           });
         }
@@ -8800,7 +8790,6 @@ async function launchSimulation() {
             rows.forEach(r => {
               if (!r.libelle) return;
               const h = rsfHistMap.get(r.cip13); if (h) r.rsf_pct_by_year = h;
-              const _my = _midYearEffectiveRsf(r.cip13, csvData, refMap); if (_my) { r.rsf_pct_by_year = r.rsf_pct_by_year || {}; r.rsf_pct_by_year[_my.year] = _my.pct; }
               if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
               if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
                 libelleMap.get(r.libelle).push(r);
@@ -8985,7 +8974,6 @@ async function launchSimulation() {
           const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
           rows.forEach(r => {
             const h = rsfHistMap.get(r.cip13); if (h) r.rsf_pct_by_year = h;
-            const _my = _midYearEffectiveRsf(r.cip13, csvData, refMap); if (_my) { r.rsf_pct_by_year = r.rsf_pct_by_year || {}; r.rsf_pct_by_year[_my.year] = _my.pct; }
             if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
             if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
               libelleMap.get(r.libelle).push(r);
