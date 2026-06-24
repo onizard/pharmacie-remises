@@ -7633,12 +7633,12 @@ async function launchSimulation() {
     // forceMarketMet=true → prend le palier avec le seuil le plus élevé sans vérifier le CA.
     function getProrata(_labName) { return 1; }
 
-    function getBestCondFromArray(conditions, ca, forceMarketMet = false) {
+    function getBestCondFromArray(conditions, ca, forceMarketMet = false, prorataFactor = 1) {
       if (!conditions?.length) return null;
       const tol = state.condTolerance ?? 1.0;
       const candidates = forceMarketMet
         ? conditions
-        : conditions.filter(c => !c.caCondition || ca >= tol * (parseFloat(c.caCondition) || 0));
+        : conditions.filter(c => !c.caCondition || ca >= tol * (parseFloat(c.caCondition) || 0) * prorataFactor);
       if (!candidates.length) return null;
       return candidates.reduce((best, c) =>
         (parseFloat(c.caCondition) || 0) > (parseFloat(best?.caCondition) || 0) ? c : best
@@ -7762,12 +7762,16 @@ async function launchSimulation() {
           const { ratio2025, ratio2026 } = prorataRatios;
           const ca2025 = e.ca * ratio2025;
           const ca2026 = e.ca * ratio2026;
-          const cond25 = ratio2025 > 0 ? getBestCondFromArray(e.lp?.conditions2025 || [], ca2025, forceMarketMet) : null;
+          // CA cible N-1 proraté à la date de signature du contrat (ex. signé juin 2025 → seuil ×7/12).
+          const _pf25 = (e.lp?.contractSigned25 && e.lp?.contractDate25)
+            ? _verifProrataMonths(e.lp.contractDate25, 2025) / 12 : 1;
+          const cond25 = ratio2025 > 0 ? getBestCondFromArray(e.lp?.conditions2025 || [], ca2025, forceMarketMet, _pf25) : null;
           const cond26 = ratio2026 > 0 ? getBestCond(e.lp, ca2026, forceMarketMet) : null;
-          const _ca25 = parseFloat(cond25?.caCondition) || 0;
+          const _ca25raw = parseFloat(cond25?.caCondition) || 0;
+          const _ca25 = _ca25raw * _pf25;          // seuil proraté (affichage + "atteint")
           const _ca26 = parseFloat(cond26?.caCondition) || 0;
           const fm25 = ratio2025 > 0 && e.isSelected && (
-            (state.gers != null && _ca25 > 0 && _ca25 >= 0.9 * state.gers)
+            (state.gers != null && _ca25raw > 0 && _ca25raw >= 0.9 * state.gers)   // RSF first : sur le seuil annuel brut
             || (cond25?.forceFirst ?? false)
           );
           const fm26 = ratio2026 > 0 && e.isSelected && (
