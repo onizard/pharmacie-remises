@@ -1759,6 +1759,11 @@ function mkLabState(uid) {
     selectedLab:  null,
     rsfPaliers:   [],
     rsfFirstMap:  new Map(),
+    // Paliers RSF dissociés par année (2025 ≠ 2026) — sinon les deux tableaux partageaient
+    // un seul store et affichaient les mêmes groupes.
+    rsfPaliers2026: [], rsfPaliers2025: [],
+    rsfFirstMap2026: new Map(), rsfFirstMap2025: new Map(),
+    rsfCountMap2026: new Map(), rsfCountMap2025: new Map(),
     conditions:   [mkCondState('c0')],
     activeCondIdx: 0,
     conditions2025: [mkCondState('c0_25')],
@@ -3912,6 +3917,10 @@ function initLabPage(conf) {
   const year         = conf.year         || '2026';
   const savedCondKey = conf.savedCondKey || condKey;
   const fetchFn      = lab => fetchRSF(lab, parseInt(year) || 2026);
+  // Stores de paliers PROPRES à l'année de cette instance (dissociation 2025 / 2026).
+  const paliersKey  = year === '2025' ? 'rsfPaliers2025'  : 'rsfPaliers2026';
+  const firstMapKey = year === '2025' ? 'rsfFirstMap2025' : 'rsfFirstMap2026';
+  const countMapKey = year === '2025' ? 'rsfCountMap2025' : 'rsfCountMap2026';
   const uid = euid;
   // Initialise base reference (overwritten later by _restoreFromSave if needed)
   if (year === '2025') s._baseConds2025 = s._baseConds2025 || s[condKey];
@@ -4028,12 +4037,12 @@ function initLabPage(conf) {
 
   function addCondition() {
     const cond = mkCondState('c' + Date.now());
-    cond.rsfValues = mkRsfValues(s.selectedLab, s.rsfPaliers);
+    cond.rsfValues = mkRsfValues(s.selectedLab, s[paliersKey]);
     s[condKey].push(cond);
     const panel = buildCondPanel(cond);
     el.condPanels.appendChild(panel);
     wireCondition(cond);
-    if (s.rsfPaliers.length > 0) {
+    if (s[paliersKey].length > 0) {
       renderCondTable(cond);
       document.getElementById(`rgSec-${uid}-${cond.uid}`).classList.add('visible');
     }
@@ -4066,7 +4075,7 @@ function initLabPage(conf) {
       if (i === s[aciKey]) p.classList.add('active');
       el.condPanels.appendChild(p);
       wireCondition(c);
-      if (s.rsfPaliers?.length) {
+      if (s[paliersKey]?.length) {
         document.getElementById(`rgSec-${uid}-${c.uid}`)?.classList.add('visible');
         renderCondTable(c);
       }
@@ -4546,7 +4555,7 @@ function initLabPage(conf) {
       const tr = tbody.querySelectorAll('tr')[idx];
       if (!tr) return;
       const i2 = tr.querySelector('.inp-r2'), i3 = tr.querySelector('.inp-r3');
-      const firstRsf = firstMet ? s.rsfFirstMap.get(row.rsf_pct) : undefined;
+      const firstRsf = firstMet ? s[firstMapKey].get(row.rsf_pct) : undefined;
       const abs = firstRsf != null ? Math.abs(firstRsf) : Math.abs(row.rsf_pct);
       if (!row.excluded && abs === 2.5) {
         if (lab !== 'Biogaran' && !row.remise2Manual) {
@@ -4695,7 +4704,7 @@ function initLabPage(conf) {
     const firstMetDisplay = condNaturallyMet || cond.forceFirst || viatrisFirstMet;
     const ffBtn = document.getElementById(`ffBtn-${uid}-${cond.uid}`);
     if (ffBtn) {
-      const hasFirst = s.rsfFirstMap.size > 0;
+      const hasFirst = s[firstMapKey].size > 0;
       ffBtn.style.display = (hasFirst && isAdmin) ? 'inline-block' : 'none';
       ffBtn.textContent = firstMetDisplay ? '★ RSF FIRST' : '☆ RSF FIRST';
       ffBtn.style.color  = firstMetDisplay ? 'var(--amber)' : '';
@@ -4717,11 +4726,11 @@ function initLabPage(conf) {
     cond.rsfValues.forEach((row, idx) => {
       const tr = document.createElement('tr');
       if (row.excluded) tr.classList.add('excluded');
-      const _refCount = s.rsfCountMap?.get(row.rsf_pct);
+      const _refCount = s[countMapKey]?.get(row.rsf_pct);
       if (_refCount != null) tr.title = `${_refCount} référence${_refCount > 1 ? 's' : ''}`;
 
       const tdRsf = document.createElement('td');
-      const firstRsf = firstMetDisplay ? s.rsfFirstMap.get(row.rsf_pct) : undefined;
+      const firstRsf = firstMetDisplay ? s[firstMapKey].get(row.rsf_pct) : undefined;
       if (firstRsf != null) {
         tdRsf.innerHTML = `<span style="color:var(--amber);font-weight:700">${Math.abs(firstRsf).toFixed(2)} %</span>`;
       } else {
@@ -4864,7 +4873,7 @@ function initLabPage(conf) {
   // ── Select lab ───────────────────────────────────────────────────────────────
   async function selectLab(lab) {
     s.selectedLab = lab;
-    s.rsfPaliers  = [];
+    s[paliersKey]  = [];
     s[condKey] = [mkCondState('c0')];
     s[aciKey] = 0;
     el.condPanels.innerHTML = '';
@@ -4873,9 +4882,9 @@ function initLabPage(conf) {
 
     try {
       const { paliers, firstMap, countMap } = await fetchFn(lab);
-      s.rsfPaliers = paliers;
-      s.rsfFirstMap = firstMap;
-      s.rsfCountMap = countMap || new Map();
+      s[paliersKey] = paliers;
+      s[firstMapKey] = firstMap;
+      s[countMapKey] = countMap || new Map();
       s[condKey][0].rsfValues = mkRsfValues(lab, paliers);
       if (!isAdmin) {
         const _tKey = year === '2025' ? 'conds25' : 'conds26';
@@ -4941,9 +4950,9 @@ function initLabPage(conf) {
     el.loading.classList.add('visible');
     try {
       const { paliers, firstMap, countMap } = await fetchFn(s.selectedLab);
-      s.rsfPaliers = paliers;
-      s.rsfFirstMap = firstMap;
-      s.rsfCountMap = countMap || new Map();
+      s[paliersKey] = paliers;
+      s[firstMapKey] = firstMap;
+      s[countMapKey] = countMap || new Map();
       s[condKey].forEach(cond => {
         const prev = {};
         (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
@@ -4997,7 +5006,7 @@ function initLabPage(conf) {
       s._syncContractUi25?.();
       s._reflectContractMonth25?.();
     }
-    s.rsfPaliers = [];
+    s[paliersKey] = [];
     s[condKey] = [];
     s[aciKey] = 0;
     el.condPanels.innerHTML = '';
@@ -5016,13 +5025,13 @@ function initLabPage(conf) {
         paliers  = [...new Set(_savedPcts)].sort((a, b) => a - b);
         firstMap = new Map();
         countMap = new Map();
-        fetchFn(lab).then(f => { s.rsfPaliers = f.paliers; s.rsfFirstMap = f.firstMap; s.rsfCountMap = f.countMap || new Map(); s._reRenderCondTables?.(); s._reRenderCondTables2025?.(); }).catch(() => {});
+        fetchFn(lab).then(f => { s[paliersKey] = f.paliers; s[firstMapKey] = f.firstMap; s[countMapKey] = f.countMap || new Map(); s._reRenderCondTables?.(); s._reRenderCondTables2025?.(); }).catch(() => {});
       } else {
         ({ paliers, firstMap, countMap } = await fetchFn(lab));
       }
-      s.rsfPaliers = paliers;
-      s.rsfFirstMap = firstMap;
-      s.rsfCountMap = countMap || new Map();
+      s[paliersKey] = paliers;
+      s[firstMapKey] = firstMap;
+      s[countMapKey] = countMap || new Map();
       // Template admin diffusé : flags (rsfOnly/showR3/forceFirst) + CA cible & remise
       // globale STANDARD des paliers 2+. Le palier 1 (idx 0) et le potentiel générique
       // restent personnels (jamais dans le template).
@@ -5153,12 +5162,12 @@ function initLabPage(conf) {
       // Réconcilie rsfValues avec les paliers courants : un palier apparu depuis la
       // dernière sauvegarde (ex. tier nouvellement générique) doit s'afficher, sans
       // perdre les valeurs saisies (préservées via prev) ni les lignes custom.
-      if (s.rsfPaliers && s.rsfPaliers.length) {
+      if (s[paliersKey] && s[paliersKey].length) {
         const _lab = s.selectedLab;
         const _defs = !isAdmin ? window._rsfDefaults?.[_lab] : null;
         const prev = {};
         (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
-        cond.rsfValues = s.rsfPaliers.map(v => {
+        cond.rsfValues = s[paliersKey].map(v => {
           const sv = prev[String(v)];
           if (sv) return sv;
           const excluded = _lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v));
@@ -5185,7 +5194,7 @@ function initLabPage(conf) {
   }
 
   function _switchConditionsToMonth() {
-    if (!s.rsfPaliers || !s.rsfPaliers.length) return;
+    if (!s[paliersKey] || !s[paliersKey].length) return;
     const yearNum  = year === '2025' ? 2025 : 2026;
     const monKey   = year === '2025' ? 'activeMon2025' : 'activeMon2026';
     const activeMon = s[monKey] ?? (new Date().getMonth() + 1);
@@ -5198,7 +5207,7 @@ function initLabPage(conf) {
     newConds.forEach(cond => {
       const prev = {};
       (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
-      cond.rsfValues = s.rsfPaliers.map(v => {
+      cond.rsfValues = s[paliersKey].map(v => {
         const sv = prev[String(v)];
         return sv
           ? { rsf_pct: v, remise2: sv.excluded && !sv.remise2 ? '0' : sv.remise2, remise3: sv.remise3, excluded: sv.excluded, hasExcept: sv.hasExcept || false }
@@ -9726,7 +9735,8 @@ async function saveProfile() {
           const base = lp[bkey] || lp[ckey] || [];
           if (!base.length) return;
           // Paliers 2+ : créer/mettre à jour depuis le template diffusé (palier 1 = perso).
-          const _pal = base[0]?.rsfValues?.map(r => r.rsf_pct) || (lp.rsfPaliers || []);
+          const _palStore = tkey === 'conds25' ? lp.rsfPaliers2025 : lp.rsfPaliers2026;
+          const _pal = base[0]?.rsfValues?.map(r => r.rsf_pct) || (_palStore || []);
           for (let i = 1; i < tmpl.length; i++) {
             const tc = tmpl[i];
             let cond = base[i];
