@@ -10043,12 +10043,11 @@ async function saveProfile() {
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
   _initDone = true;
-  // Correctif auto-réparateur (one-shot) : les conditions Biogaran 2025 avaient été clonées
-  // depuis 2026 (RDP + exceptions identiques). On régénère RDP (remise2) + exceptions 2025
-  // depuis rsf_history year=2025 (la vérité), sur les conditions de base ET les 12 mois.
-  // Idempotent via flag localStorage. Survit au clobber multi-onglet car il corrige la donnée
-  // chargée (locale ou cloud) puis re-sauvegarde.
-  _fixBiogaran2025().catch(e => console.warn('[BP] fix Biogaran 2025:', e));
+  // [DÉSACTIVÉ] Correctif auto-réparateur Biogaran 2025 : sa mission est faite (le cloud a déjà
+  // les bonnes données 2025). On le désactive car il forçait une sauvegarde COMPLÈTE de l'état +
+  // un reload à chaque nouvel appareil — ce qui pouvait propager/écraser avec un état périmé
+  // (perte du type de contrat, etc.). La fonction reste définie mais n'est plus appelée.
+  // _fixBiogaran2025().catch(e => console.warn('[BP] fix Biogaran 2025:', e));
   // Synchro cloud au démarrage seulement si des labs sont présents dans saved.
   // Évite d'écraser le cloud avec [] si l'état était vide (nouvel utilisateur, cloud indisponible…).
   // Le cas "local plus récent que cloud" est déjà couvert : saved = _lsRaw (labs présents).
