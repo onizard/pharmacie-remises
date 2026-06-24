@@ -1825,6 +1825,37 @@ async function _fixBiogaran2025() {
   setTimeout(() => location.reload(), 1500);
 }
 
+// ── Dates d'effet RSF en cours d'année ──────────────────────────────────────
+// rsf_history ne stocke qu'UN taux RSF par référence et par an. Quand un labo change
+// le groupe RSF d'une réf en cours d'année (ex. Zydus juin 2026 : MACROGOL 10%→2,5%),
+// on calcule un taux EFFECTIF = moyenne pondérée par le CA mensuel (avant/après la date
+// d'effet), pour que le total de remise de l'année soit exact.
+// NB exact si la réf a le même RDP (remise2) dans les deux groupes — c'est le cas de
+// MACROGOL (RDP 0 dans le groupe 10% comme dans le 2,5%). Pour une réf dont le RDP
+// diffère entre les deux groupes, il faudrait pondérer la remise et non le taux.
+const RSF_MIDYEAR_CHANGES = {
+  '3400930270592': { year: 2026, effMonth: 6, before: -10, after: -2.5 }, // MACROGOL 4000 4g Zydus (juin 2026)
+  '3400930270608': { year: 2026, effMonth: 6, before: -10, after: -2.5 }, // MACROGOL 4000 10g Zydus (juin 2026)
+};
+// Renvoie { year, pct } : taux RSF effectif pondéré pour la réf, ou null si non concernée.
+function _midYearEffectiveRsf(cip13, csvData, refMap) {
+  const chg = RSF_MIDYEAR_CHANGES[cip13];
+  if (!chg) return null;
+  let caBefore = 0, caAfter = 0;
+  (csvData || []).forEach(row => {
+    if (row.cip13 !== cip13) return;
+    if (chg.year != null && row.year != null && parseInt(row.year) !== chg.year) return;
+    const puht = row.puht || refMap?.get(cip13)?.puht || 0;
+    const ca = (row.qty || 0) * puht;
+    const m = row.month != null ? parseInt(row.month) : null;
+    // Mois inconnu → rattaché à l'état courant (= après la date d'effet).
+    if (m != null && m < chg.effMonth) caBefore += ca; else caAfter += ca;
+  });
+  const tot = caBefore + caAfter;
+  if (tot <= 0) return null;
+  return { year: chg.year, pct: (caBefore * chg.before + caAfter * chg.after) / tot };
+}
+
 function mkLabState(uid) {
   return {
     uid,
@@ -7330,6 +7361,15 @@ async function launchSimulation() {
     refMap.forEach(_applyRsfHist);
     libelleMap.forEach(refs => refs.forEach(_applyRsfHist));
 
+    // Dates d'effet en cours d'année (ex. MACROGOL Zydus juin 2026) : remplace le taux RSF
+    // de l'année concernée par le taux effectif pondéré par le CA mensuel (jan→mai vs juin→déc).
+    const _applyMidYear = ref => {
+      const e = _midYearEffectiveRsf(ref.cip13, csvData, refMap);
+      if (e) { ref.rsf_pct_by_year = ref.rsf_pct_by_year || {}; ref.rsf_pct_by_year[e.year] = e.pct; }
+    };
+    refMap.forEach(_applyMidYear);
+    libelleMap.forEach(refs => refs.forEach(_applyMidYear));
+
     // Marquer l'année sur chaque condition pour que getRemise choisisse le bon rsf_pct_by_year
     state.labPages.forEach(lp => {
       (lp.conditions     || []).forEach(c => { c._year = 2026; });
@@ -8760,6 +8800,7 @@ async function launchSimulation() {
             rows.forEach(r => {
               if (!r.libelle) return;
               const h = rsfHistMap.get(r.cip13); if (h) r.rsf_pct_by_year = h;
+              const _my = _midYearEffectiveRsf(r.cip13, csvData, refMap); if (_my) { r.rsf_pct_by_year = r.rsf_pct_by_year || {}; r.rsf_pct_by_year[_my.year] = _my.pct; }
               if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
               if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
                 libelleMap.get(r.libelle).push(r);
@@ -8944,6 +8985,7 @@ async function launchSimulation() {
           const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
           rows.forEach(r => {
             const h = rsfHistMap.get(r.cip13); if (h) r.rsf_pct_by_year = h;
+            const _my = _midYearEffectiveRsf(r.cip13, csvData, refMap); if (_my) { r.rsf_pct_by_year = r.rsf_pct_by_year || {}; r.rsf_pct_by_year[_my.year] = _my.pct; }
             if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
             if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
               libelleMap.get(r.libelle).push(r);
