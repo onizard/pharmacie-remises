@@ -1,0 +1,7828 @@
+[
+{
+"cip13": "3400933858681",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "AMOXICILLINE 125MG 60 PDR"
+},
+{
+"cip13": "3400935377692",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6.7,
+"libelle": "AMIODARONE 200MG 30 CPR"
+},
+{
+"cip13": "3400927607783",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9,
+"libelle": "ACAMPROSATE 333MG 60 CPR"
+},
+{
+"cip13": "3400935307446",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "ACEBUTOLOL 200MG 30 CPR"
+},
+{
+"cip13": "3400935284112",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 4,
+"libelle": "ACEBUTOLOL 400MG 30 CPR"
+},
+{
+"cip13": "3400930284797",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 120,
+"libelle": "ACIDE ZOLEDRONIQUE ACIDE ZOLEDRONIQUE 5MG 100 SOL"
+},
+{
+"cip13": "3400936429116",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.1143,
+"libelle": "ALPRAZOLAM 0.25MG 30 CPR"
+},
+{
+"cip13": "3400927939730",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8,
+"libelle": "AMOROLFINE 5G"
+},
+{
+"cip13": "3400927918858",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 12,
+"libelle": "L HYDROGENOMALATE ALMOTRIPTAN 12.5MG 12 CPR"
+},
+{
+"cip13": "3400930227152",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 85.25,
+"libelle": "ACIDE ZOLEDRONIQUE ACIDE ZOLEDRONIQUE 4MG 100 SOL"
+},
+{
+"cip13": "3400937977432",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10.5714,
+"libelle": "AMLODIPINE 10MG 90 GELU"
+},
+{
+"cip13": "3400936217027",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 33.5,
+"libelle": "AMISULPRIDE 200MG 60 CPR"
+},
+{
+"cip13": "3400939872254",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9,
+"libelle": "ACARBOSE 50MG 90 CPR"
+},
+{
+"cip13": "3400949656516",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.6667,
+"libelle": "ACIDE FUSIDIQUE 2% 15 CR"
+},
+{
+"cip13": "3400930076972",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 123,
+"libelle": "ABACAVIR/LAMIVUDINE 600MG/300MG 30 CPR"
+},
+{
+"cip13": "3400934861673",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 25.42,
+"libelle": "ACICLOVIR 800MG 35 CPR"
+},
+{
+"cip13": "3400936429055",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.5161,
+"libelle": "ALPRAZOLAM 0.50MG 30 CPR"
+},
+{
+"cip13": "3400936728172",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 12,
+"libelle": "AMISULPRIDE 400MG 30 CPR"
+},
+{
+"cip13": "3400930269176",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 2,
+"libelle": "ACIDE FOLIQUE 0.4MG 30 CPR"
+},
+{
+"cip13": "3400933858803",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.44,
+"libelle": "AMOXICILLINE 250MG 60 PDR"
+},
+{
+"cip13": "3400937087803",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 22,
+"libelle": "ALENDRONATE MONOSODIQUE 70MG 12 CPR"
+},
+{
+"cip13": "3400937087681",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 7,
+"libelle": "ALENDRONATE MONOSODIQUE 70MG 4 CPR"
+},
+{
+"cip13": "3400937813341",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9,
+"libelle": "ACEBUTOLOL 200MG 90 CPR"
+},
+{
+"cip13": "3400930289129",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.5,
+"libelle": "ACIDE ACÉTYLSALICYLIQUE BIOGARAN® CP GASTRORÉSISTANTS 100 MG"
+},
+{
+"cip13": "3400930289112",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.6,
+"libelle": "ACIDE ACÉTYLSALICYLIQUE BIOGARAN® CP GASTRORÉSISTANTS 75 MG"
+},
+{
+"cip13": "3400930289433",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "ACIDE ACÉTYLSALICYLIQUE BIOGARAN® CP GASTRORÉSISTANTS 75 MG"
+},
+{
+"cip13": "3400930134221",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.5,
+"libelle": "AMLODIPINE/VALSARTAN 5MG/160MG 30 CPR"
+},
+{
+"cip13": "3400930203750",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 34.92,
+"libelle": "ACIDE URSODESOXYCHOLIQUE 500MG 60 CPR"
+},
+{
+"cip13": "3400930134306",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.2857,
+"libelle": "AMLODIPINE/VALSARTAN 10MG/160MG 30 CPR"
+},
+{
+"cip13": "3400930134252",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 15.1667,
+"libelle": "AMLODIPINE/VALSARTAN 5MG/160MG 90 CPR"
+},
+{
+"cip13": "3400934861505",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7.5,
+"libelle": "ACICLOVIR 200MG 25 CPR"
+},
+{
+"cip13": "3400937977722",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.2857,
+"libelle": "AMLODIPINE 5MG 90 GELU"
+},
+{
+"cip13": "3400937977371",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.7,
+"libelle": "AMLODIPINE 10MG 30 GELU"
+},
+{
+"cip13": "3400937977661",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.3571,
+"libelle": "AMLODIPINE 5MG 30 GELU"
+},
+{
+"cip13": "3400936446953",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8.5,
+"libelle": "AMISULPRIDE 100MG 30 CPR"
+},
+{
+"cip13": "3400930157862",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 11.46,
+"libelle": "AGOMELATINE 25MG 28 CPR"
+},
+{
+"cip13": "3400930134337",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 15,
+"libelle": "AMLODIPINE/VALSARTAN 10MG/160MG 90 CPR"
+},
+{
+"cip13": "3400937321006",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 7.8571,
+"libelle": "ALFUZOSINE 10MG 30 CPR"
+},
+{
+"cip13": "3400930026946",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.8039,
+"libelle": "ALGINATE SODIUM/BICARBONATE SODIUM 0.5G/0.267G 10 SACH"
+},
+{
+"cip13": "3400934665325",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "ALLOPURINOL 300MG 28 CPR"
+},
+{
+"cip13": "3400936239777",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.0833,
+"libelle": "ALLOPURINOL 100MG 28 CPR"
+},
+{
+"cip13": "3400936240087",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.6667,
+"libelle": "ALLOPURINOL 200MG 28 CPR"
+},
+{
+"cip13": "3400927379864",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 13.3333,
+"libelle": "BETAXOLOL 20MG 90 CPR"
+},
+{
+"cip13": "3400930302613",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "BACLOFENE 10MG 30 CPR"
+},
+{
+"cip13": "3400930291207",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 201.54,
+"libelle": "AXITINIB 1MG 56 CPR"
+},
+{
+"cip13": "3400930291214",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 604.63,
+"libelle": "AXITINIB 3MG 56 CPR"
+},
+{
+"cip13": "3400930291238",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 1007.72,
+"libelle": "AXITINIB 5MG 56 CPR"
+},
+{
+"cip13": "3400930291245",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 1410.8,
+"libelle": "AXITINIB 7MG 56 CPR"
+},
+{
+"cip13": "3400933857042",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.3871,
+"libelle": "AMOXICILLINE 500MG 12 GELU"
+},
+{
+"cip13": "3400935335241",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.3333,
+"libelle": "AMOXICILLINE/CLAVULANATE POTASSIUM AMOXICILLINE/ACIDE CLAVULANIQUE 500MG/62.5MG 16 CPR"
+},
+{
+"cip13": "3400935644244",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 2,
+"libelle": "ATENOLOL 50MG 30 CPR"
+},
+{
+"cip13": "3400935355522",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.3333,
+"libelle": "AMOXICILLINE/CLAVULANATE POTASSIUM AMOXICILLINE/ACIDE CLAVULANIQUE 100MG/12.5MG PDR"
+},
+{
+"cip13": "3400930063828",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.6,
+"libelle": "ATENOLOL/NIFEDIPINE 50MG/20MG 30 GELU"
+},
+{
+"cip13": "3400930285558",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 15.5,
+"libelle": "ARIPIPRAZOLE 15MG 28 CPR"
+},
+{
+"cip13": "3400935901149",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 20.87,
+"libelle": "ANASTROZOLE 1MG 30 CPR"
+},
+{
+"cip13": "3400930063859",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 15.96,
+"libelle": "ATENOLOL/NIFEDIPINE 50MG/20MG 90 GELU"
+},
+{
+"cip13": "3400938340655",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4.96,
+"libelle": "BETAHISTINE 24MG 60 CPR"
+},
+{
+"cip13": "3400930183076",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 8.1304,
+"libelle": "ATORVASTATINE TRIHYDRATEE 20MG 90 CPR"
+},
+{
+"cip13": "3400935334879",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.2353,
+"libelle": "AMOXICILLINE/CLAVULANATE POTASSIUM AMOXICILLINE/ACIDE CLAVULANIQUE 1G/125MG SACH"
+},
+{
+"cip13": "3400937808200",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 9,
+"libelle": "ATENOLOL 100MG 90 CPR"
+},
+{
+"cip13": "3400938875416",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 2,
+"libelle": "BETAMETHASONE 2MG 20 CPR"
+},
+{
+"cip13": "3400938946994",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 2.7037,
+"libelle": "BETAMETHASONE 0.05% 30 SOL"
+},
+{
+"cip13": "3400930183175",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "ATORVASTATINE TRIHYDRATEE 80MG 30 CPR"
+},
+{
+"cip13": "3400930183137",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 2.8,
+"libelle": "ATORVASTATINE TRIHYDRATEE 40MG 30 CPR"
+},
+{
+"cip13": "3400930183090",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 3.08,
+"libelle": "ATORVASTATINE TRIHYDRATEE 10MG 30 CPR"
+},
+{
+"cip13": "3400930183113",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 8.16,
+"libelle": "ATORVASTATINE TRIHYDRATEE 10MG 90 CPR"
+},
+{
+"cip13": "3400930183151",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 8.1333,
+"libelle": "ATORVASTATINE TRIHYDRATEE 40MG 90 CPR"
+},
+{
+"cip13": "3400930282977",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8,
+"libelle": "AZÉLASTINE CHLORHYDRATE/FLUTICASONE PROPIONATE BIOGARAN® ΜG ΜG DOSES"
+},
+{
+"cip13": "3400937915168",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3.4,
+"libelle": "ATENOLOL 100MG 30 CPR"
+},
+{
+"cip13": "3400927379574",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.6667,
+"libelle": "BETAXOLOL 20MG 30 CPR"
+},
+{
+"cip13": "3400930008843",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.7083,
+"libelle": "AMOXICILLINE 1G 14 CPR"
+},
+{
+"cip13": "3400930008829",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.9497,
+"libelle": "AMOXICILLINE 1G 6 CPR"
+},
+{
+"cip13": "3400930165973",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 133.9,
+"libelle": "ATAZANAVIR 150MG 1 GELU"
+},
+{
+"cip13": "3400930173077",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 133.9,
+"libelle": "ATAZANAVIR 200MG 1 GELU"
+},
+{
+"cip13": "3400935335470",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.3016,
+"libelle": "AMOXICILLINE/CLAVULANATE POTASSIUM AMOXICILLINE/ACIDE CLAVULANIQUE 500MG/62.5MG 24 CPR"
+},
+{
+"cip13": "3400933859053",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.6825,
+"libelle": "AMOXICILLINE 500MG 60 PDR"
+},
+{
+"cip13": "3400930285473",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 15.5,
+"libelle": "ARIPIPRAZOLE 10MG 28 CPR"
+},
+{
+"cip13": "3400930169384",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 64,
+"libelle": "APOMORPHINE 5MG 10 SOL"
+},
+{
+"cip13": "3400930130001",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 131.86,
+"libelle": "ANAGRELIDE 0.5MG 100 GELU"
+},
+{
+"cip13": "3400930139622",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 12.05,
+"libelle": "APREPITANT 80MG 2 GELU"
+},
+{
+"cip13": "3400930166024",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 143,
+"libelle": "ATAZANAVIR 300MG 1 GELU"
+},
+{
+"cip13": "3400930285374",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 16,
+"libelle": "ARIPIPRAZOLE 5MG 28 CPR"
+},
+{
+"cip13": "3400930141601",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 19.3333,
+"libelle": "APREPITANT 125MG 80 GELU"
+},
+{
+"cip13": "3400937808439",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5.3333,
+"libelle": "ATENOLOL 50MG 90 CPR"
+},
+{
+"cip13": "3400935901897",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 79,
+"libelle": "ANASTROZOLE 1MG 90 CPR"
+},
+{
+"cip13": "3400930289204",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 193.17,
+"libelle": "BOSUTINIB EQUIVALENT A BOSUTINIB 100MG 28 CPR"
+},
+{
+"cip13": "3400930289235",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 965.84,
+"libelle": "BOSUTINIB EQUIVALENT A BOSUTINIB 500MG 28 CPR"
+},
+{
+"cip13": "3400930227312",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11.6667,
+"libelle": "BISOPROLOL 1.25MG 90 CPR"
+},
+{
+"cip13": "3400934857713",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "CAPTOPRIL 25MG 30 CPR"
+},
+{
+"cip13": "3400941601439",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.5,
+"libelle": "CANDESARTAN CILEXETIL/HYDROCHLOROTHIAZIDE 8MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400941567919",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.5,
+"libelle": "CANDESARTAN CILEXETIL 8MG 90 CPR"
+},
+{
+"cip13": "3400935646026",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.5,
+"libelle": "CALCIUM/VITAMINE D BIOGARAN® CP À SUCER 500 MG 400 UI"
+},
+{
+"cip13": "3400930043110",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.6667,
+"libelle": "BRINZOLAMIDE 10MG 5 COLLYRE"
+},
+{
+"cip13": "3400938870152",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.12,
+"libelle": "BUPRENORPHINE 0.4MG 7 CPR"
+},
+{
+"cip13": "3400938873573",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8.01,
+"libelle": "BUPRENORPHINE 8MG 7 CPR"
+},
+{
+"cip13": "3400941600838",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "CANDESARTAN CILEXETIL/HYDROCHLOROTHIAZIDE 8MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400941566448",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10,
+"libelle": "CANDESARTAN CILEXETIL 4MG 90 CPR"
+},
+{
+"cip13": "3400937851770",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 34,
+"libelle": "BICALUTAMIDE 50MG 30 CPR"
+},
+{
+"cip13": "3400938871272",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "BUPRENORPHINE 2MG 7 CPR"
+},
+{
+"cip13": "3400941564895",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.4,
+"libelle": "CANDESARTAN CILEXETIL 16MG 30 CPR"
+},
+{
+"cip13": "3400941585777",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.3333,
+"libelle": "CANDESARTAN CILEXETIL/HYDROCHLOROTHIAZIDE 16MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400941586378",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.6667,
+"libelle": "CANDESARTAN CILEXETIL/HYDROCHLOROTHIAZIDE 16MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400930118474",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "BIMATOPROST/TIMOLOL 0.3MG/5MG 3 COLLYRE"
+},
+{
+"cip13": "3400930242803",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "BIMATOPROST BIOGARAN® - COLLYRE 0,1 MG/ML 3 ML"
+},
+{
+"cip13": "3400930227305",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.7692,
+"libelle": "BISOPROLOL 1.25MG 30 CPR"
+},
+{
+"cip13": "3400930241219",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.6667,
+"libelle": "BILASTINE 20MG 1 CPR"
+},
+{
+"cip13": "3400930227459",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11,
+"libelle": "BISOPROLOL 10MG 90 CPR"
+},
+{
+"cip13": "3400930227428",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4,
+"libelle": "BISOPROLOL 7.5MG 30 CPR"
+},
+{
+"cip13": "3400930227442",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4,
+"libelle": "BISOPROLOL 10MG 30 CPR"
+},
+{
+"cip13": "3400930227336",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.7368,
+"libelle": "BISOPROLOL 2.5MG 30 CPR"
+},
+{
+"cip13": "3400930229255",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10.5,
+"libelle": "BISOPROLOL 10MG 90 CPR"
+},
+{
+"cip13": "3400930227367",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.8,
+"libelle": "BISOPROLOL 3.75MG 30 CPR"
+},
+{
+"cip13": "3400930227398",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2,
+"libelle": "BISOPROLOL 5MG 30 CPR"
+},
+{
+"cip13": "3400930229200",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.5,
+"libelle": "BISOPROLOL 10MG 30 CPR"
+},
+{
+"cip13": "3400930227404",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.25,
+"libelle": "BISOPROLOL 5MG 90 CPR"
+},
+{
+"cip13": "3400934772283",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.5,
+"libelle": "BROMAZEPAM 6MG 30 CPR"
+},
+{
+"cip13": "3400936722668",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 16,
+"libelle": "BUDESONIDE 0.50MG 2 SUSP"
+},
+{
+"cip13": "3400936723269",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 22.3333,
+"libelle": "BUDESONIDE 1MG 2 SUSP"
+},
+{
+"cip13": "3400938167368",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.75,
+"libelle": "BORAX/ACIDE BORIQUE 12MG/18MG 5 SOL"
+},
+{
+"cip13": "3400939224213",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.6667,
+"libelle": "BISOPROLOL/HYDROCHLOROTHIAZIDE 10MG/6.25MG 30 CPR"
+},
+{
+"cip13": "3400939223322",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 21,
+"libelle": "BISOPROLOL/HYDROCHLOROTHIAZIDE 2.5MG/6.25MG 90 CPR"
+},
+{
+"cip13": "3400939223612",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4,
+"libelle": "BISOPROLOL/HYDROCHLOROTHIAZIDE 5MG/6.25MG 30 CPR"
+},
+{
+"cip13": "3400939222950",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.6667,
+"libelle": "BISOPROLOL/HYDROCHLOROTHIAZIDE 2.5MG/6.25MG 30 CPR"
+},
+{
+"cip13": "3400939224503",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10.5,
+"libelle": "BISOPROLOL/HYDROCHLOROTHIAZIDE 10MG/6.25MG 90 CPR"
+},
+{
+"cip13": "3400939223902",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11,
+"libelle": "BISOPROLOL/HYDROCHLOROTHIAZIDE 5MG/6.25MG 90 CPR"
+},
+{
+"cip13": "3400921738681",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "CANDESARTAN CILEXETIL 32MG 30 CPR"
+},
+{
+"cip13": "3400934857881",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "CAPTOPRIL 50MG 30 CPR"
+},
+{
+"cip13": "3400922033167",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "CITALOPRAM 20MG 28 CPR"
+},
+{
+"cip13": "3400930239469",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "CICLOPIROX OLAMINE BIOGARAN® SHAMPOOING 1,5 % 100 ML"
+},
+{
+"cip13": "3400933121600",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.75,
+"libelle": "CEFUROXIME AXETIL CEFUROXIME 250MG 8 CPR"
+},
+{
+"cip13": "3400934366376",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 7,
+"libelle": "CEFUROXIME AXETIL CEFUROXIME 500MG 8 CPR"
+},
+{
+"cip13": "3400936057036",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.21,
+"libelle": "CEFTRIAXONE 1G 10 PDR"
+},
+{
+"cip13": "3400930164228",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8,
+"libelle": "CYAMEMAZINE 100MG 25 CPR"
+},
+{
+"cip13": "3400938498134",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.5,
+"libelle": "CLARITHROMYCINE 250MG 10 CPR"
+},
+{
+"cip13": "3400930001370",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "CELECOXIB 200MG 30 GELU"
+},
+{
+"cip13": "3400935770714",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.82,
+"libelle": "CLOZAPINE 25MG 28 CPR"
+},
+{
+"cip13": "3400935835970",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "CELIPROLOL 200MG 28 CPR"
+},
+{
+"cip13": "3400936564459",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "CETIRIZINE 10MG 15 SOL"
+},
+{
+"cip13": "3400936384248",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 6,
+"libelle": "CIPROFLOXACINE 250MG 12 CPR"
+},
+{
+"cip13": "3400938045789",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.75,
+"libelle": "CEFIXIME 200MG 8 CPR"
+},
+{
+"cip13": "3400938491500",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7,
+"libelle": "CLARITHROMYCINE 500MG 10 CPR"
+},
+{
+"cip13": "3400938732955",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "CEFPODOXIME PROXETIL 40MG 100 SUSP"
+},
+{
+"cip13": "3400938014273",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4.7143,
+"libelle": "CEFPODOXIME PROXETIL 100MG 10 CPR"
+},
+{
+"cip13": "3400937847520",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 13,
+"libelle": "CELIPROLOL 200MG 84 CPR"
+},
+{
+"cip13": "3400938491739",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "CLARITHROMYCINE 500MG 14 CPR"
+},
+{
+"cip13": "3400938732894",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "CEFPODOXIME PROXETIL 40MG 50 SUSP"
+},
+{
+"cip13": "3400930097557",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3.3333,
+"libelle": "CYAMEMAZINE 25MG 30 CPR"
+},
+{
+"cip13": "3400930242414",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.7,
+"libelle": "CHLORHEXIDINE BIOGARAN® - BAIN DE BOUCHE 1.2MG/ML"
+},
+{
+"cip13": "3400936384309",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 8.5263,
+"libelle": "CIPROFLOXACINE 500MG 12 CPR"
+},
+{
+"cip13": "3400927370120",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "CLOXACILLINE 500MG 16 GELU"
+},
+{
+"cip13": "3400930119525",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 65,
+"libelle": "CINACALCET 30MG 28 CPR"
+},
+{
+"cip13": "3400930267493",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "CHOLECALCIFEROL 000UI 2 SOL"
+},
+{
+"cip13": "3400930004562",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.0115,
+"libelle": "CHOLECALCIFEROL 000UI 2 SOL"
+},
+{
+"cip13": "3400930249659",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.2,
+"libelle": "CHOLECALCIFEROL 000UI 2 SOL"
+},
+{
+"cip13": "3400930249666",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "CHOLECALCIFEROL 000UI 2 SOL"
+},
+{
+"cip13": "3400930119624",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 167.97,
+"libelle": "CINACALCET 90MG 28 CPR"
+},
+{
+"cip13": "3400939409627",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.3333,
+"libelle": "CHLORHEXIDINE/CHLOROBUTANOL HEMIHYDRATE 0.05ML/0.05G 90 SOL"
+},
+{
+"cip13": "3400926615048",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.5,
+"libelle": "CICLOPIROX OLAMINE 1% 30 CR"
+},
+{
+"cip13": "3400949215768",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "CROMOGLICATE SODIUM 2G 5 COLLYRE"
+},
+{
+"cip13": "3400930119570",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 111.97,
+"libelle": "CINACALCET 60MG 28 CPR"
+},
+{
+"cip13": "3400930267486",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.6667,
+"libelle": "CHOLECALCIFEROL 000UI 2 SOL"
+},
+{
+"cip13": "3400930298824",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.1429,
+"libelle": "CLOPIDOGREL/ACIDE ACETYLSALICYLIQUE 75MG/75MG 30 CPR"
+},
+{
+"cip13": "3400935771025",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.8,
+"libelle": "CLOZAPINE 100MG 28 CPR"
+},
+{
+"cip13": "3400934860492",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.8,
+"libelle": "CEFADROXIL 500MG 12 GELU"
+},
+{
+"cip13": "3400949725854",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 19,
+"libelle": "CICLETANINE 50MG 90 GELU"
+},
+{
+"cip13": "3400949725625",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6.38,
+"libelle": "CICLETANINE 50MG 30 GELU"
+},
+{
+"cip13": "3400930277027",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 26,
+"libelle": "DESMOPRESSINE 240MCG 30"
+},
+{
+"cip13": "3400930188736",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9,
+"libelle": "DUTASTERIDE/TAMSULOSINE 0.5MG/0.4MG 30 GELU"
+},
+{
+"cip13": "3400941999499",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2.9437,
+"libelle": "DESLORATADINE 5MG 30 CPR"
+},
+{
+"cip13": "3400941999031",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 1.5556,
+"libelle": "DESLORATADINE 5MG 15 CPR"
+},
+{
+"cip13": "3400938268355",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "DICLOFENAC DIETHYLAMINE DICLOFENAC 1G 100 GEL"
+},
+{
+"cip13": "3400930117514",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 196.16,
+"libelle": "EFAVIRENZ/EMTRICITABINE/TENOFOVIR DISOPROXIL TENOFOVIR DISOPROXIL 600MG/200MG/245MG 30"
+},
+{
+"cip13": "3400930263822",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.34,
+"libelle": "DABIGATRAN ETEXILATE DABIGATRAN ETEXILATE 75MG 1 GELU"
+},
+{
+"cip13": "3400930276938",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6.17,
+"libelle": "DESMOPRESSINE 60MCG 30"
+},
+{
+"cip13": "3400930276945",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 20.56,
+"libelle": "DESMOPRESSINE 60MCG 100"
+},
+{
+"cip13": "3400930138380",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.6667,
+"libelle": "DEXTROMETHORPHANE 1.5MG 250 SOL"
+},
+{
+"cip13": "3400930138342",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.2,
+"libelle": "DEXTROMETHORPHANE 1.5MG 125 SOL"
+},
+{
+"cip13": "3400930276990",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 41.13,
+"libelle": "DESMOPRESSINE 120MCG 100"
+},
+{
+"cip13": "3400930276983",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 13,
+"libelle": "DESMOPRESSINE 120MCG 30"
+},
+{
+"cip13": "3400936726802",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.8824,
+"libelle": "ECONAZOLE 150MG 1 OVULE"
+},
+{
+"cip13": "3400935973696",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.5,
+"libelle": "DOXYCYCLINE 100MG 30 GELU"
+},
+{
+"cip13": "3400930263860",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 11,
+"libelle": "DABIGATRAN ETEXILATE DABIGATRAN ETEXILATE 110MG 1 GELU"
+},
+{
+"cip13": "3400930304112",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 71.19,
+"libelle": "DIMETHYLE 120MG 14 GELU"
+},
+{
+"cip13": "3400930304136",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 284.78,
+"libelle": "DIMETHYLE 240MG 56 GELU"
+},
+{
+"cip13": "3400935332639",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.33,
+"libelle": "DOXYCYCLINE 100MG 5 GELU"
+},
+{
+"cip13": "3400935332868",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "DOXYCYCLINE 100MG 15 GELU"
+},
+{
+"cip13": "3400938232226",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "DOMPERIDONE 10MG 20"
+},
+{
+"cip13": "3400938981193",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.3448,
+"libelle": "DICLOFENAC DIETHYLAMINE DICLOFENAC 1G 100 GEL"
+},
+{
+"cip13": "3400930088302",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 214.56,
+"libelle": "DARUNAVIR 600MG 60 CPR"
+},
+{
+"cip13": "3400930088326",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 143,
+"libelle": "DARUNAVIR 800MG 30 CPR"
+},
+{
+"cip13": "3400930119013",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4,
+"libelle": "DORZOLAMIDE 20MG 5 COLLYRE"
+},
+{
+"cip13": "3400930219737",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1268,
+"libelle": "DASATINIB 50MG 1 CPR"
+},
+{
+"cip13": "3400927813320",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3.6667,
+"libelle": "EBASTINE 10MG 30 CPR"
+},
+{
+"cip13": "3400930020647",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 4.25,
+"libelle": "DULOXETINE 60MG 28 GELU"
+},
+{
+"cip13": "3400930122693",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5,
+"libelle": "DORZOLAMIDE/TIMOLOL 20MG/5MG 5 COLLYRE"
+},
+{
+"cip13": "3400930020609",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 4.25,
+"libelle": "DULOXETINE 30MG 28 GELU"
+},
+{
+"cip13": "3400930060087",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.2222,
+"libelle": "DOMPERIDONE 10MG 20 CPR"
+},
+{
+"cip13": "3400926844516",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 14,
+"libelle": "DILTIAZEM 300MG 90 GELU"
+},
+{
+"cip13": "3400930219768",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 235.61,
+"libelle": "DASATINIB 70MG 1 CPR"
+},
+{
+"cip13": "3400930219799",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 235.61,
+"libelle": "DASATINIB 100MG 1 CPR"
+},
+{
+"cip13": "3400930219829",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 235.61,
+"libelle": "DASATINIB 140MG 1 CPR"
+},
+{
+"cip13": "3400941963940",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 1.8519,
+"libelle": "DESLORATADINE 0.5MG 150 SOL"
+},
+{
+"cip13": "3400934375361",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.5581,
+"libelle": "ECONAZOLE 1% 30 CR"
+},
+{
+"cip13": "3400934375590",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.1875,
+"libelle": "ECONAZOLE 1% 30 PDR"
+},
+{
+"cip13": "3400938069105",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "DICLOFENAC DIETHYLAMINE DICLOFENAC 1G 50 GEL"
+},
+{
+"cip13": "3400930287361",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 27,
+"libelle": "EZETIMIBE/ATORVASTATINE TRIHYDRATEE EQUIVALENT A ATORVASTATINE 10MG/20MG 90 CPR"
+},
+{
+"cip13": "3400930287347",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 27,
+"libelle": "EZETIMIBE/ATORVASTATINE TRIHYDRATEE EQUIVALENT A ATORVASTATINE 10MG/10MG 90 CPR"
+},
+{
+"cip13": "3400930287354",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 9,
+"libelle": "EZETIMIBE/ATORVASTATINE TRIHYDRATEE EQUIVALENT A ATORVASTATINE 10MG/20MG 30 CPR"
+},
+{
+"cip13": "3400930033661",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 33,
+"libelle": "EPLERENONE 50MG 90 CPR"
+},
+{
+"cip13": "3400930287392",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 27,
+"libelle": "EZETIMIBE/ATORVASTATINE TRIHYDRATEE EQUIVALENT A ATORVASTATINE 10MG/40MG 90 CPR"
+},
+{
+"cip13": "3400930287385",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 9,
+"libelle": "EZETIMIBE/ATORVASTATINE TRIHYDRATEE EQUIVALENT A ATORVASTATINE 10MG/40MG 30 CPR"
+},
+{
+"cip13": "3400930287408",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 9,
+"libelle": "EZETIMIBE/ATORVASTATINE TRIHYDRATEE EQUIVALENT A ATORVASTATINE 10MG/80MG 30 CPR"
+},
+{
+"cip13": "3400930033630",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 12,
+"libelle": "EPLERENONE 50MG 30 CPR"
+},
+{
+"cip13": "3400935499622",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "ENALAPRIL 20MG 28 CPR"
+},
+{
+"cip13": "3400926987374",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 3.5,
+"libelle": "ESCITALOPRAM 15MG 28 CPR"
+},
+{
+"cip13": "3400930095553",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 34,
+"libelle": "EZETIMIBE/SIMVASTATINE 10MG/40MG 90 CPR"
+},
+{
+"cip13": "3400949718412",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "ESOMEPRAZOLE MAGNESIUM EQUIVALENT A ESOMEPRAZOLE 20MG 14 CPR"
+},
+{
+"cip13": "3400930033371",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11.75,
+"libelle": "EPLERENONE 25MG 30 CPR"
+},
+{
+"cip13": "3400930314531",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 230.83,
+"libelle": "ELTROMBOPAG OLAMINE EQUIVALENT A ELTROMBOPAG 25MG 28 CPR"
+},
+{
+"cip13": "3400930314548",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 461.66,
+"libelle": "ELTROMBOPAG OLAMINE EQUIVALENT A ELTROMBOPAG 50MG 28 CPR"
+},
+{
+"cip13": "3400930314562",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 692.48,
+"libelle": "ELTROMBOPAG OLAMINE EQUIVALENT A ELTROMBOPAG 75MG 28 CPR"
+},
+{
+"cip13": "3400930287330",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 9,
+"libelle": "EZETIMIBE/ATORVASTATINE TRIHYDRATEE EQUIVALENT A ATORVASTATINE 10MG/10MG 30 CPR"
+},
+{
+"cip13": "3400930095539",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 12,
+"libelle": "EZETIMIBE/SIMVASTATINE 10MG/40MG 30 CPR"
+},
+{
+"cip13": "3400930095492",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 12,
+"libelle": "EZETIMIBE/SIMVASTATINE 10MG/20MG 30 CPR"
+},
+{
+"cip13": "3400930101070",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7.25,
+"libelle": "FEBUXOSTAT 80MG 28 CPR"
+},
+{
+"cip13": "3400930085431",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 30.5,
+"libelle": "EZETIMIBE 10MG 90 CPR"
+},
+{
+"cip13": "3400930095515",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 34,
+"libelle": "EZETIMIBE/SIMVASTATINE 10MG/20MG 90 CPR"
+},
+{
+"cip13": "3400930100585",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 134.86,
+"libelle": "ENTECAVIR 1MG 1 CPR"
+},
+{
+"cip13": "3400930111260",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 169.31,
+"libelle": "ERLOTINIB 25MG 30 CPR"
+},
+{
+"cip13": "3400930117248",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 42.4,
+"libelle": "EXEMESTANE 25MG 1 CPR"
+},
+{
+"cip13": "3400930152690",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 886,
+"libelle": "EVEROLIMUS 5MG 30 CPR"
+},
+{
+"cip13": "3400930152676",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 426.64,
+"libelle": "EVEROLIMUS 2.5MG 30 CPR"
+},
+{
+"cip13": "3400937655361",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9,
+"libelle": "ENALAPRIL/HYDROCHLOROTHIAZIDE 20MG/12.5MG 84 CPR"
+},
+{
+"cip13": "3400930128930",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.3333,
+"libelle": "ENALAPRIL/LERCANIDIPINE 20MG/10MG 30 CPR"
+},
+{
+"cip13": "3400930128947",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 14.47,
+"libelle": "ENALAPRIL/LERCANIDIPINE 20MG/10MG 90 CPR"
+},
+{
+"cip13": "3400949718870",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 3.6667,
+"libelle": "ESOMEPRAZOLE MAGNESIUM EQUIVALENT A ESOMEPRAZOLE 40MG 28 CPR"
+},
+{
+"cip13": "3400930069417",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 138,
+"libelle": "EMTRICITABINE/TENOFOVIR DISOPROXIL TENOFOVIR DISOPROXIL 200MG/245MG 30 CPR"
+},
+{
+"cip13": "3400949718580",
+"rsf_pct": -20,
+"rdp_pct": 20,
+"pfht": 3.7213,
+"libelle": "ESOMEPRAZOLE MAGNESIUM EQUIVALENT A ESOMEPRAZOLE 20MG 28 CPR"
+},
+{
+"cip13": "3400935500144",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.5,
+"libelle": "ENALAPRIL 5MG 28 CPR"
+},
+{
+"cip13": "3400926987435",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3.5,
+"libelle": "ESCITALOPRAM 20MG 28 CPR"
+},
+{
+"cip13": "3400949718351",
+"rsf_pct": -20,
+"rdp_pct": 20,
+"pfht": 1,
+"libelle": "ESOMEPRAZOLE MAGNESIUM EQUIVALENT A ESOMEPRAZOLE 20MG 7 CPR"
+},
+{
+"cip13": "3400949718702",
+"rsf_pct": -20,
+"rdp_pct": 20,
+"pfht": 2,
+"libelle": "ESOMEPRAZOLE MAGNESIUM EQUIVALENT A ESOMEPRAZOLE 40MG 14 CPR"
+},
+{
+"cip13": "3400927587290",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 8,
+"libelle": "FLECAINIDE 50MG 30 GELU"
+},
+{
+"cip13": "3400927587351",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 8,
+"libelle": "FLECAINIDE 100MG 30 GELU"
+},
+{
+"cip13": "3400927587580",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 8,
+"libelle": "FLECAINIDE 200MG 30 GELU"
+},
+{
+"cip13": "3400930227534",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 6,
+"libelle": "FESOTERODINE 4MG 30 CPR"
+},
+{
+"cip13": "3400936453357",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "FLUOXETINE 20MG 70 SOL"
+},
+{
+"cip13": "3400937788984",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 23.04,
+"libelle": "GABAPENTINE 800MG 90 CPR"
+},
+{
+"cip13": "3400937807319",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11,
+"libelle": "FLUCONAZOLE 10MG PDR"
+},
+{
+"cip13": "3400939618524",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.45,
+"libelle": "FLUVASTATINE 20MG 30 GELU"
+},
+{
+"cip13": "3400939618753",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 12,
+"libelle": "FLUVASTATINE 20MG 90 GELU"
+},
+{
+"cip13": "3400937561419",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7.75,
+"libelle": "FINASTERIDE 5MG 28 CPR"
+},
+{
+"cip13": "3400937280440",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.5,
+"libelle": "FENOFIBRATE 160MG 30 CPR"
+},
+{
+"cip13": "3400927587412",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 8,
+"libelle": "FLECAINIDE 150MG 30 GELU"
+},
+{
+"cip13": "3400938289985",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.1667,
+"libelle": "FEXOFENADINE 180MG 15 CPR"
+},
+{
+"cip13": "3400938289237",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.25,
+"libelle": "FEXOFENADINE 120MG 15 CPR"
+},
+{
+"cip13": "3400938573107",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "FOSINOPRIL/HYDROCHLOROTHIAZIDE 20MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400930101094",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7,
+"libelle": "FEBUXOSTAT 120MG 28 CPR"
+},
+{
+"cip13": "3400930132432",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.8333,
+"libelle": "SODIUM 250MG 10 CPR"
+},
+{
+"cip13": "3400930011096",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.77,
+"libelle": "FORMOTEROL 12MCG 30 GELU"
+},
+{
+"cip13": "3400930011102",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "FORMOTEROL 12MCG 60 GELU"
+},
+{
+"cip13": "3400930154861",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 671.88,
+"libelle": "GEFITINIB 250MG 30 CPR"
+},
+{
+"cip13": "3400930160640",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 11.22,
+"libelle": "FROVATRIPTAN 2.5MG 12 CPR"
+},
+{
+"cip13": "3400937443043",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7,
+"libelle": "GABAPENTINE 100MG 90 GELU"
+},
+{
+"cip13": "3400936699106",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 17,
+"libelle": "FLUCONAZOLE 100MG 7 GELU"
+},
+{
+"cip13": "3400937442442",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 16.75,
+"libelle": "GABAPENTINE 300MG 90 GELU"
+},
+{
+"cip13": "3400939423524",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 3.9286,
+"libelle": "FOSFOMYCINE TROMETAMOL FOSFOMYCINE 3G 8 SACH"
+},
+{
+"cip13": "3400930212226",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 508.3,
+"libelle": "FINGOLIMOD 0.5MG 28 GELU"
+},
+{
+"cip13": "3400930210338",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 85.5,
+"libelle": "FULVESTRANT 250MG 5 SOL"
+},
+{
+"cip13": "3400930227565",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 6,
+"libelle": "FESOTERODINE 8MG 30 CPR"
+},
+{
+"cip13": "3400934783869",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.68,
+"libelle": "FUROSEMIDE 40MG 30 CPR"
+},
+{
+"cip13": "3400935477330",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4.6667,
+"libelle": "FENOFIBRATE 200MG 30 GELU"
+},
+{
+"cip13": "3400935477279",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.5,
+"libelle": "FENOFIBRATE 67MG 60 GELU"
+},
+{
+"cip13": "3400935485724",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2,
+"libelle": "FLUOXETINE 20MG 14 GELU"
+},
+{
+"cip13": "3400936680463",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 20,
+"libelle": "GABAPENTINE 400MG 90 GELU"
+},
+{
+"cip13": "3400937788236",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 25,
+"libelle": "GABAPENTINE 600MG 90 CPR"
+},
+{
+"cip13": "3400932560134",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.125,
+"libelle": "FUROSEMIDE 20MG 30 CPR"
+},
+{
+"cip13": "3400938385540",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.6,
+"libelle": "FLUOXETINE 20MG 28 CPR"
+},
+{
+"cip13": "3400939267494",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.5,
+"libelle": "FENOFIBRATE 145MG 30 CPR"
+},
+{
+"cip13": "3400939267784",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 12.75,
+"libelle": "FENOFIBRATE 145MG 90 CPR"
+},
+{
+"cip13": "3400939578330",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "FOSINOPRIL 20MG 90 CPR"
+},
+{
+"cip13": "3400939574486",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "FOSINOPRIL 10MG 30 CPR"
+},
+{
+"cip13": "3400939574776",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "FOSINOPRIL 20MG 30 CPR"
+},
+{
+"cip13": "3400939586373",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 9,
+"libelle": "FOSINOPRIL 10MG 90 CPR"
+},
+{
+"cip13": "3400930315712",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10.58,
+"libelle": "GLYCOPYRRONIUM BIOGARAN® AXICA® MICROGRAMMES - POUDRE POUR INHALATION ÉLULES + INHALATEUR 30 G"
+},
+{
+"cip13": "3400922444277",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.3333,
+"libelle": "IRBESARTAN 150MG 30 CPR"
+},
+{
+"cip13": "3400934902987",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6.28,
+"libelle": "GLICLAZIDE 80MG 60 CPR"
+},
+{
+"cip13": "3400932838080",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "LACTULOSE 66.5% 200 SOL"
+},
+{
+"cip13": "3400934730061",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.7143,
+"libelle": "LACTULOSE 10G 15 SACH"
+},
+{
+"cip13": "3400932980468",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "INDAPAMIDE 2.5MG 30 CPR"
+},
+{
+"cip13": "3400934841682",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "IBUPROFENE 200MG 30 CPR"
+},
+{
+"cip13": "3400937321464",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.11,
+"libelle": "GLIBENCLAMIDE 5MG 20 CPR"
+},
+{
+"cip13": "3400937190978",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 12.6667,
+"libelle": "GLIMEPIRIDE 4MG 90 CPR"
+},
+{
+"cip13": "3400941899973",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 20,
+"libelle": "GLICLAZIDE 30MG 180 CPR"
+},
+{
+"cip13": "3400937407083",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "GLIBENCLAMIDE 5MG 90 CPR"
+},
+{
+"cip13": "3400937656313",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.4,
+"libelle": "IBUPROFENE 400MG 20 CPR"
+},
+{
+"cip13": "3400938415797",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.9231,
+"libelle": "KETOCONAZOLE 2% 6 SACH"
+},
+{
+"cip13": "3400939050034",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6.75,
+"libelle": "GLICLAZIDE 30MG 60 CPR"
+},
+{
+"cip13": "3400934902819",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.21,
+"libelle": "GLICLAZIDE 80MG 20 CPR"
+},
+{
+"cip13": "3400937092425",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.6667,
+"libelle": "GLIMEPIRIDE 2MG 30 CPR"
+},
+{
+"cip13": "3400939049892",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.5,
+"libelle": "GLICLAZIDE 30MG 30 CPR"
+},
+{
+"cip13": "3400927586231",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2.6667,
+"libelle": "GLICLAZIDE 60MG 30 CPR"
+},
+{
+"cip13": "3400930062890",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 268.3,
+"libelle": "IMATINIB 100MG 60 CPR"
+},
+{
+"cip13": "3400927586750",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7.5,
+"libelle": "GLICLAZIDE 60MG 90 CPR"
+},
+{
+"cip13": "3400922445229",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.75,
+"libelle": "IRBESARTAN 300MG 30 CPR"
+},
+{
+"cip13": "3400922444796",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.625,
+"libelle": "IRBESARTAN 150MG 90 CPR"
+},
+{
+"cip13": "3400930119365",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 13,
+"libelle": "IVABRADINE 5MG 56 CPR"
+},
+{
+"cip13": "3400926831097",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 9.6154,
+"libelle": "IRBESARTAN/HYDROCHLOROTHIAZIDE 150MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400922445809",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.6,
+"libelle": "IRBESARTAN 300MG 90 CPR"
+},
+{
+"cip13": "3400926830618",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3.3333,
+"libelle": "IRBESARTAN/HYDROCHLOROTHIAZIDE 150MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400930170922",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "KETOCONAZOLE 0.02G 15 CR"
+},
+{
+"cip13": "3400926782498",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.2963,
+"libelle": "GLYCEROL/VASELINE/PARAFFINE LIQUIDE 15%/8%/2% 250 CR"
+},
+{
+"cip13": "3400936581777",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.3939,
+"libelle": "IPRATROPIUM 0.5MG 2 SOL"
+},
+{
+"cip13": "3400922443966",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.625,
+"libelle": "IRBESARTAN 75MG 90 CPR"
+},
+{
+"cip13": "3400930303412",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "HYDROCHLOROTHIAZIDE 25MG 90 CPR"
+},
+{
+"cip13": "3400935781888",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11,
+"libelle": "INDAPAMIDE 1.5MG 90 CPR"
+},
+{
+"cip13": "3400927898655",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.5172,
+"libelle": "HYDROXYZINE 25MG 30 CPR"
+},
+{
+"cip13": "3400922443447",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.75,
+"libelle": "IRBESARTAN 75MG 30 CPR"
+},
+{
+"cip13": "3400930303405",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "HYDROCHLOROTHIAZIDE 25MG 30 CPR"
+},
+{
+"cip13": "3400937187268",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "GLIMEPIRIDE 1MG 90 CPR"
+},
+{
+"cip13": "3400937189620",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "GLIMEPIRIDE 2MG 90 CPR"
+},
+{
+"cip13": "3400937190398",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 13,
+"libelle": "GLIMEPIRIDE 3MG 90 CPR"
+},
+{
+"cip13": "3400938414448",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "KETOCONAZOLE 2% 20 GEL"
+},
+{
+"cip13": "3400926832797",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 9.619,
+"libelle": "IRBESARTAN/HYDROCHLOROTHIAZIDE 300MG/25MG 90 CPR"
+},
+{
+"cip13": "3400926832278",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3.25,
+"libelle": "IRBESARTAN/HYDROCHLOROTHIAZIDE 300MG/25MG 30 CPR"
+},
+{
+"cip13": "3400926831387",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3.2857,
+"libelle": "IRBESARTAN/HYDROCHLOROTHIAZIDE 300MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400926831738",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 9.6429,
+"libelle": "IRBESARTAN/HYDROCHLOROTHIAZIDE 300MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400922143378",
+"rsf_pct": -20,
+"rdp_pct": 20,
+"pfht": 2.5732,
+"libelle": "KETOPROFENE 100MG 20 CPR"
+},
+{
+"cip13": "3400930146972",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6.8,
+"libelle": "IVERMECTINE 3MG 4 CPR"
+},
+{
+"cip13": "3400928009050",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 38.5,
+"libelle": "LEVODOPA/CARBIDOPA/ENTACAPONE 75MG/18.75MG/200MG 100 CPR"
+},
+{
+"cip13": "3400928009579",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 42,
+"libelle": "LEVODOPA/CARBIDOPA/ENTACAPONE 100MG/25MG/200MG 100 CPR"
+},
+{
+"cip13": "3400928010179",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 40.25,
+"libelle": "LEVODOPA/CARBIDOPA/ENTACAPONE 125MG/31.25MG/200MG 100 CPR"
+},
+{
+"cip13": "3400928010759",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 44,
+"libelle": "LEVODOPA/CARBIDOPA/ENTACAPONE 150MG/37.5MG/200MG 100 CPR"
+},
+{
+"cip13": "3400949188123",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 37.25,
+"libelle": "LETROZOLE 2.5MG 30 CPR"
+},
+{
+"cip13": "3400939852782",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "LOSARTAN POTASSIUM/HYDROCHLOROTHIAZIDE 50MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400928011701",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 46,
+"libelle": "LEVODOPA/CARBIDOPA/ENTACAPONE 200MG/50MG/200MG 100 CPR"
+},
+{
+"cip13": "3400937713474",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.5,
+"libelle": "LIDOCAINE/PRILOCAINE 2.5%/2.5% 5 CR"
+},
+{
+"cip13": "3400938966985",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "LOSARTAN POTASSIUM 50MG 90 CPR"
+},
+{
+"cip13": "3400938968019",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "LOSARTAN POTASSIUM 100MG 30 CPR"
+},
+{
+"cip13": "3400939158006",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 4.2857,
+"libelle": "LERCANIDIPINE 10MG 30 CPR"
+},
+{
+"cip13": "3400941656958",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 12.6667,
+"libelle": "LEVETIRACETAM 250MG 60 CPR"
+},
+{
+"cip13": "3400939857817",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "LEVOCETIRIZINE 5MG 14 CPR"
+},
+{
+"cip13": "3400941681271",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 1.7273,
+"libelle": "LOPERAMIDE 2MG 20 GELU"
+},
+{
+"cip13": "3400937807487",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9,
+"libelle": "LISINOPRIL/HYDROCHLOROTHIAZIDE 20MG/12.5MG 84 CPR"
+},
+{
+"cip13": "3400938968477",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "LOSARTAN POTASSIUM 100MG 90 CPR"
+},
+{
+"cip13": "3400938966527",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "LOSARTAN POTASSIUM 50MG 30 CPR"
+},
+{
+"cip13": "3400939241180",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 13,
+"libelle": "LERCANIDIPINE 20MG 90 CPR"
+},
+{
+"cip13": "3400921977516",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "LOSARTAN POTASSIUM/HYDROCHLOROTHIAZIDE 100MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400921977806",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "LOSARTAN POTASSIUM/HYDROCHLOROTHIAZIDE 100MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400928008510",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 37.5,
+"libelle": "LEVODOPA/CARBIDOPA/ENTACAPONE 50MG/12.5MG/200MG 100 CPR"
+},
+{
+"cip13": "3400936682184",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "LISINOPRIL/HYDROCHLOROTHIAZIDE 20MG/12.5MG 28 CPR"
+},
+{
+"cip13": "3400938411775",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "LORATADINE 10MG 15 CPR"
+},
+{
+"cip13": "3400934410413",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2.1667,
+"libelle": "LANSOPRAZOLE 15MG 15 GELU"
+},
+{
+"cip13": "3400937627795",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 8,
+"libelle": "LAMOTRIGINE 100MG 30 CPR"
+},
+{
+"cip13": "3400937627276",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6.6667,
+"libelle": "LAMOTRIGINE 50MG 30 CPR"
+},
+{
+"cip13": "3400927871221",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2,
+"libelle": "LANSOPRAZOLE 30MG 14 CPR"
+},
+{
+"cip13": "3400939158464",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 13,
+"libelle": "LERCANIDIPINE 10MG 90 CPR"
+},
+{
+"cip13": "3400927610974",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.8356,
+"libelle": "LIDOCAINE/PRILOCAINE 2.5%/2.5% 1 PATCH"
+},
+{
+"cip13": "3400930126196",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 11,
+"libelle": "LACOSAMIDE 50MG 56 CPR"
+},
+{
+"cip13": "3400937628228",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 8,
+"libelle": "LAMOTRIGINE 200MG 30 CPR"
+},
+{
+"cip13": "3400937626217",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4,
+"libelle": "LAMOTRIGINE 25MG 30 CPR"
+},
+{
+"cip13": "3400939584133",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 8,
+"libelle": "LEVOFLOXACINE HEMIHYDRATEE LEVOFLOXACINE 500MG 5 CPR"
+},
+{
+"cip13": "3400939170701",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5,
+"libelle": "LERCANIDIPINE 20MG 30 CPR"
+},
+{
+"cip13": "3400934410642",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.8947,
+"libelle": "LANSOPRAZOLE 15MG 30 GELU"
+},
+{
+"cip13": "3400934415784",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.6471,
+"libelle": "LANSOPRAZOLE 30MG 28 GELU"
+},
+{
+"cip13": "3400934415555",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2,
+"libelle": "LANSOPRAZOLE 30MG 14 GELU"
+},
+{
+"cip13": "3400934415494",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 0.84,
+"libelle": "LANSOPRAZOLE 30MG 7 GELU"
+},
+{
+"cip13": "3400939858067",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.125,
+"libelle": "LEVOCETIRIZINE 5MG 28 CPR"
+},
+{
+"cip13": "3400939853154",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "LOSARTAN POTASSIUM/HYDROCHLOROTHIAZIDE 50MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400930168400",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2.5534,
+"libelle": "OMEPRAZOLE 20MG 28 GELU"
+},
+{
+"cip13": "3400930302750",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 0.8824,
+"libelle": "OXAZEPAM 10MG 30 CPR"
+},
+{
+"cip13": "3400941715372",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.22,
+"libelle": "NICORANDIL 20MG 30 CPR"
+},
+{
+"cip13": "3400927610226",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.75,
+"libelle": "MUPIROCINE 2% 15 POM"
+},
+{
+"cip13": "3400930063071",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "ONDANSETRON 8MG 2"
+},
+{
+"cip13": "3400937936620",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "MOXONIDINE 0.4MG 30 CPR"
+},
+{
+"cip13": "3400937950527",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.2667,
+"libelle": "MACROGOL 10G SACH"
+},
+{
+"cip13": "3400949392117",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 12,
+"libelle": "NARATRIPTAN 2.5MG 12 CPR"
+},
+{
+"cip13": "3400949398959",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 15.5,
+"libelle": "OLANZAPINE 5MG 28 CPR"
+},
+{
+"cip13": "3400930168370",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2.3333,
+"libelle": "OMEPRAZOLE 10MG 28 GELU"
+},
+{
+"cip13": "3400930302774",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.45,
+"libelle": "OXAZEPAM 50MG 20 CPR"
+},
+{
+"cip13": "3400936179882",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6.5,
+"libelle": "OFLOXACINE 200MG 10 CPR"
+},
+{
+"cip13": "3400935959560",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "OXYBUTYNINE 5MG 60 CPR"
+},
+{
+"cip13": "3400936668287",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 2.25,
+"libelle": "OMEPRAZOLE 10MG 28 GELU"
+},
+{
+"cip13": "3400936895454",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.8125,
+"libelle": "OXOMEMAZINE 0.33MG 150 SIROP"
+},
+{
+"cip13": "3400939932439",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "LOSARTAN POTASSIUM/HYDROCHLOROTHIAZIDE 100MG/25MG 90 CPR"
+},
+{
+"cip13": "3400930191408",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.6667,
+"libelle": "MACROGOL 4G 4 SACH"
+},
+{
+"cip13": "3400937635202",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8.6667,
+"libelle": "ONDANSETRON 8MG 4 CPR"
+},
+{
+"cip13": "3400930240892",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 30.08,
+"libelle": "PALIPERIDONE EQUIVALENT A PALIPERIDONE 25MG SUSP"
+},
+{
+"cip13": "3400930240908",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 60.16,
+"libelle": "PALIPERIDONE EQUIVALENT A PALIPERIDONE 50MG SUSP"
+},
+{
+"cip13": "3400930039540",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.1429,
+"libelle": "NEFOPAM 20MG 2 SOL"
+},
+{
+"cip13": "3400930195079",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 11,
+"libelle": "NEBIVOLOL/HYDROCHLOROTHIAZIDE 5MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400949191482",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.8966,
+"libelle": "OXOMEMAZINE 0.33MG 150 SOL"
+},
+{
+"cip13": "3400949179596",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 43.64,
+"libelle": "MYCOPHENOLATE MOFETIL 250MG 100 GELU"
+},
+{
+"cip13": "3400930195093",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "NEBIVOLOL/HYDROCHLOROTHIAZIDE 5MG/25MG 30 CPR"
+},
+{
+"cip13": "3400930195062",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "NEBIVOLOL/HYDROCHLOROTHIAZIDE 5MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400930195109",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 11,
+"libelle": "NEBIVOLOL/HYDROCHLOROTHIAZIDE 5MG/25MG 90 CPR"
+},
+{
+"cip13": "3400930240915",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 84,
+"libelle": "PALIPERIDONE EQUIVALENT A PALIPERIDONE 75MG SUSP"
+},
+{
+"cip13": "3400930240922",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 103,
+"libelle": "PALIPERIDONE EQUIVALENT A PALIPERIDONE 100MG SUSP"
+},
+{
+"cip13": "3400930299159",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 253.75,
+"libelle": "NILOTINIB EQUIVALENT A NILOTINIB 200MG 1 GELU"
+},
+{
+"cip13": "3400936286214",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 2.5,
+"libelle": "OMEPRAZOLE 20MG 28 GELU"
+},
+{
+"cip13": "3400930168394",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.5,
+"libelle": "OMEPRAZOLE 20MG 14 GELU"
+},
+{
+"cip13": "3400930168363",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.5,
+"libelle": "OMEPRAZOLE 10MG 14 GELU"
+},
+{
+"cip13": "3400930063088",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8.6667,
+"libelle": "ONDANSETRON 8MG 4"
+},
+{
+"cip13": "3400937935968",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "MOXONIDINE 0.2MG 30 CPR"
+},
+{
+"cip13": "3400939853505",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "LOSARTAN POTASSIUM/HYDROCHLOROTHIAZIDE 100MG/25MG 30 CPR"
+},
+{
+"cip13": "3400939740911",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4,
+"libelle": "NEBIVOLOL 5MG 30 CPR"
+},
+{
+"cip13": "3400939741451",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11.25,
+"libelle": "NEBIVOLOL 5MG 90 CPR"
+},
+{
+"cip13": "3400949297153",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 43.64,
+"libelle": "MYCOPHENOLATE MOFETIL 500MG 50 CPR"
+},
+{
+"cip13": "3400949399031",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 21,
+"libelle": "OLANZAPINE 7.5MG 28 CPR"
+},
+{
+"cip13": "3400949391974",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6,
+"libelle": "NARATRIPTAN 2.5MG 6 CPR"
+},
+{
+"cip13": "3400949642557",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.1429,
+"libelle": "OFLOXACINE 1.5MG SOL"
+},
+{
+"cip13": "3400930259351",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 402.22,
+"libelle": "PAZOPANIB 400MG 30 CPR"
+},
+{
+"cip13": "3400930259368",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 804.44,
+"libelle": "PAZOPANIB 400MG 60 CPR"
+},
+{
+"cip13": "3400933106690",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9.5,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 4MG 90 CPR"
+},
+{
+"cip13": "3400933106461",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 4MG 30 CPR"
+},
+{
+"cip13": "3400934301490",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "PIROXICAM 20MG 15 GELU"
+},
+{
+"cip13": "3400934508677",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE/INDAPAMIDE 2MG/0.625MG 30 CPR"
+},
+{
+"cip13": "3400934508967",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE/INDAPAMIDE 2MG/0.625MG 90 CPR"
+},
+{
+"cip13": "3400936293137",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 8MG 30 CPR"
+},
+{
+"cip13": "3400936293427",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9.5,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 8MG 90 CPR"
+},
+{
+"cip13": "3400927839863",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 2MG 90 CPR"
+},
+{
+"cip13": "3400934509339",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE/INDAPAMIDE 4MG/1.25MG 90 CPR"
+},
+{
+"cip13": "3400938200577",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "PARACÉTAMOL BIOGARAN® 500 MG 16COMP RIMÉS 12"
+},
+{
+"cip13": "3400936381865",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.0769,
+"libelle": "PARACÉTAMOL BIOGARAN® 1 G 8COMP RIMÉS 48"
+},
+{
+"cip13": "3400927840463",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.5,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 4MG 30 CPR"
+},
+{
+"cip13": "3400936133358",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 0.76,
+"libelle": "PARACÉTAMOL BIOGARAN® CP EFFERVESCENTS 500 MG"
+},
+{
+"cip13": "3400937939522",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 15,
+"libelle": "PRAMIPEXOLE 0.18MG 100 CPR"
+},
+{
+"cip13": "3400937939690",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 17.22,
+"libelle": "PRAMIPEXOLE 0.7MG 30 CPR"
+},
+{
+"cip13": "3400937939751",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 57.38,
+"libelle": "PRAMIPEXOLE 0.7MG 100 CPR"
+},
+{
+"cip13": "3400937604215",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 4,
+"libelle": "PINAVERIUM 100MG 30 CPR"
+},
+{
+"cip13": "3400939322018",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.5,
+"libelle": "PANTOPRAZOLE SESQUIHYDRATE PANTOPRAZOLE 20MG 14 CPR"
+},
+{
+"cip13": "3400934509100",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE/INDAPAMIDE 4MG/1.25MG 30 CPR"
+},
+{
+"cip13": "3400933105860",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 2MG 90 CPR"
+},
+{
+"cip13": "3400937939003",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "PRAMIPEXOLE 0.18MG 30 CPR"
+},
+{
+"cip13": "3400939213156",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1,
+"libelle": "PANTOPRAZOLE SESQUIHYDRATE PANTOPRAZOLE 40MG 7 CPR"
+},
+{
+"cip13": "3400939213217",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2.5,
+"libelle": "PANTOPRAZOLE SESQUIHYDRATE PANTOPRAZOLE 40MG 14 CPR"
+},
+{
+"cip13": "3400939213385",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "PANTOPRAZOLE SESQUIHYDRATE PANTOPRAZOLE 40MG 28 CPR"
+},
+{
+"cip13": "3400930168493",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.32,
+"libelle": "PHLOROGLUCINOL 160MG 5"
+},
+{
+"cip13": "3400932922277",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "PARACÉTAMOL BIOGARAN® ÉLULES 500 MG 16 G"
+},
+{
+"cip13": "3400935997531",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "PARACÉTAMOL BIOGARAN® CP EFFERVESCENTS SÉCABLES 1 G"
+},
+{
+"cip13": "3400926808907",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "PERINDOPRIL ARGININE 2.5MG 30 CPR"
+},
+{
+"cip13": "3400926809157",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "PERINDOPRIL ARGININE 2.5MG 30 CPR"
+},
+{
+"cip13": "3400926809737",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "PERINDOPRIL ARGININE/INDAPAMIDE 5MG/1.25MG 30 CPR"
+},
+{
+"cip13": "3400927841293",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 8MG 30 CPR"
+},
+{
+"cip13": "3400927840753",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 4MG 90 CPR"
+},
+{
+"cip13": "3400927839405",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.5,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 2MG 30 CPR"
+},
+{
+"cip13": "3400930179246",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.3524,
+"libelle": "PHLOROGLUCINOL 80MG 10"
+},
+{
+"cip13": "3400930262337",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.2632,
+"libelle": "PARACETAMOL/CODEINE HEMIHYDRATE 500MG/30MG 16 CPR"
+},
+{
+"cip13": "3400921920505",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.6667,
+"libelle": "PRAVASTATINE 40MG 28 CPR"
+},
+{
+"cip13": "3400930215623",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 15,
+"libelle": "PRASUGREL EQUIVALENT A PRASUGREL 10MG 30 CPR"
+},
+{
+"cip13": "3400930240939",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 144.37,
+"libelle": "PALIPERIDONE EQUIVALENT A PALIPERIDONE 150MG SUSP"
+},
+{
+"cip13": "3400930256749",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 605,
+"libelle": "PIRFENIDONE 801MG 84 CPR"
+},
+{
+"cip13": "3400933105570",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.3333,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 2MG 30 CPR"
+},
+{
+"cip13": "3400934301322",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "PIROXICAM 10MG 30 GELU"
+},
+{
+"cip13": "3400939322186",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "PANTOPRAZOLE SESQUIHYDRATE PANTOPRAZOLE 20MG 28 CPR"
+},
+{
+"cip13": "3400930231050",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 19.5,
+"libelle": "DOSES"
+},
+{
+"cip13": "3400935740557",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "PREDNISOLONE 20MG 20 CPR"
+},
+{
+"cip13": "3400936519275",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.8,
+"libelle": "PREDNISONE 5MG 30 CPR"
+},
+{
+"cip13": "3400937399586",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.5,
+"libelle": "RAMIPRIL 2.5MG 90 CPR"
+},
+{
+"cip13": "3400937164665",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "RAMIPRIL 2.5MG 30 CPR"
+},
+{
+"cip13": "3400941994937",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 28,
+"libelle": "RALOXIFENE 60MG 84 CPR"
+},
+{
+"cip13": "3400949939893",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.68,
+"libelle": "RABEPRAZOLE 10MG 14 CPR"
+},
+{
+"cip13": "3400930191552",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 18,
+"libelle": "FLUTICASONE/SALMETEROL EQUIVALENT A SALMETEROL 250MCG/25MCG 120 SUSP"
+},
+{
+"cip13": "3400937254885",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "RAMIPRIL 10MG 30 CPR"
+},
+{
+"cip13": "3400937399647",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7,
+"libelle": "RAMIPRIL 1.25MG 90 CPR"
+},
+{
+"cip13": "3400937253765",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.8889,
+"libelle": "RAMIPRIL 5MG 30 CPR"
+},
+{
+"cip13": "3400937807777",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 8.4,
+"libelle": "RAMIPRIL 10MG 90 CPR"
+},
+{
+"cip13": "3400935825056",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 4,
+"libelle": "PROGESTERONE 200MG 15 CAPS"
+},
+{
+"cip13": "3400937399708",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 8.375,
+"libelle": "RAMIPRIL 5MG 90 CPR"
+},
+{
+"cip13": "3400939107196",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.0959,
+"libelle": "PREDNISOLONE 20MG 20 CPR"
+},
+{
+"cip13": "3400930121818",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2,
+"libelle": "RABEPRAZOLE 20MG 14 CPR"
+},
+{
+"cip13": "3400930191545",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 16,
+"libelle": "FLUTICASONE/SALMETEROL EQUIVALENT A SALMETEROL 125MCG/25MCG 120 SUSP"
+},
+{
+"cip13": "3400930067833",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 35,
+"libelle": "RASAGILINE 1MG 30 CPR"
+},
+{
+"cip13": "3400930016930",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 3.9714,
+"libelle": "RACECADOTRIL 100MG 20 GELU"
+},
+{
+"cip13": "3400930045404",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2.38,
+"libelle": "QUETIAPINE 50MG 10 CPR"
+},
+{
+"cip13": "3400930045602",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 25.34,
+"libelle": "QUETIAPINE 300MG 60 CPR"
+},
+{
+"cip13": "3400930045640",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 37.64,
+"libelle": "QUETIAPINE 400MG 60 CPR"
+},
+{
+"cip13": "3400930045626",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 20,
+"libelle": "QUETIAPINE 400MG 30 CPR"
+},
+{
+"cip13": "3400926947743",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 14.5,
+"libelle": "RAMIPRIL/HYDROCHLOROTHIAZIDE 5MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400926947163",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.5,
+"libelle": "RAMIPRIL/HYDROCHLOROTHIAZIDE 5MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400921920734",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 8,
+"libelle": "PRAVASTATINE 40MG 84 CPR"
+},
+{
+"cip13": "3400937163484",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 2.6667,
+"libelle": "RAMIPRIL 1.25MG 30 CPR"
+},
+{
+"cip13": "3400935339492",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 1.7857,
+"libelle": "PRAZEPAM 10MG 40 CPR"
+},
+{
+"cip13": "3400935804983",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "PROGESTERONE 100MG 30 CAPS"
+},
+{
+"cip13": "3400930032749",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9,
+"libelle": "PREGABALINE 50MG 84 GELU"
+},
+{
+"cip13": "3400939793320",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "PROGESTERONE 200MG 45 CAPS"
+},
+{
+"cip13": "3400930045411",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7.5,
+"libelle": "QUETIAPINE 50MG 30 CPR"
+},
+{
+"cip13": "3400930045589",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 27,
+"libelle": "QUETIAPINE 300MG 30 CPR"
+},
+{
+"cip13": "3400949940264",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "RABEPRAZOLE 10MG 28 CPR"
+},
+{
+"cip13": "3400949954513",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 15.1,
+"libelle": "REPAGLINIDE 1MG 270 CPR"
+},
+{
+"cip13": "3400932947461",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6.25,
+"libelle": "RILMENIDINE 1MG 30 CPR"
+},
+{
+"cip13": "3400937808088",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 16.75,
+"libelle": "RILMENIDINE 1MG 90 CPR"
+},
+{
+"cip13": "3400949953851",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 15,
+"libelle": "REPAGLINIDE 2MG 270 CPR"
+},
+{
+"cip13": "3400949953622",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5.4286,
+"libelle": "REPAGLINIDE 2MG 90 CPR"
+},
+{
+"cip13": "3400936125605",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4.75,
+"libelle": "ROXITHROMYCINE 150MG 10 CPR"
+},
+{
+"cip13": "3400937770026",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2,
+"libelle": "SIMVASTATINE 10MG 28 CPR"
+},
+{
+"cip13": "3400935794376",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.5,
+"libelle": "SOTALOL 160MG 30 CPR"
+},
+{
+"cip13": "3400936705289",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "SPIRAMYCINE M UI/METRONIDAZOLE 125MG 20 CPR"
+},
+{
+"cip13": "3400938055665",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7,
+"libelle": "SIMVASTATINE 40MG 84 CPR"
+},
+{
+"cip13": "3400930293379",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "SAXAGLIPTINE 5MG 30 CPR"
+},
+{
+"cip13": "3400936125773",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 8,
+"libelle": "ROXITHROMYCINE 150MG 16 CPR"
+},
+{
+"cip13": "3400930239087",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 7.9375,
+"libelle": "SITAGLIPTINE 100MG 30 CPR"
+},
+{
+"cip13": "3400935794147",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "SOTALOL 80MG 30 CPR"
+},
+{
+"cip13": "3400937634601",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7.88,
+"libelle": "SPIRAMYCINE M U I 16 CPR"
+},
+{
+"cip13": "3400930161616",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11.75,
+"libelle": "ROSUVASTATINE 20MG 90 CPR"
+},
+{
+"cip13": "3400938159783",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7,
+"libelle": "RISPERIDONE 1MG 60 CPR"
+},
+{
+"cip13": "3400939404073",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2.4,
+"libelle": "SIMVASTATINE 20MG 28 CPR"
+},
+{
+"cip13": "3400939473901",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 7,
+"libelle": "SIMVASTATINE 20MG 84 CPR"
+},
+{
+"cip13": "3400937847230",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "SPIRONOLACTONE 75MG 90 CPR"
+},
+{
+"cip13": "3400949734610",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 7.55,
+"libelle": "RISEDRONATE MONOSODIQUE HEMIPENTAHYDRATE RISEDRONATE MONOSODIQUE 35MG 4 CPR"
+},
+{
+"cip13": "3400937634540",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.2222,
+"libelle": "SPIRAMYCINE M U I 10 CPR"
+},
+{
+"cip13": "3400938055375",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 2.5,
+"libelle": "SIMVASTATINE 40MG 28 CPR"
+},
+{
+"cip13": "3400930077214",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.5,
+"libelle": "RUPATADINE 10MG 30 CPR"
+},
+{
+"cip13": "3400930161555",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.9231,
+"libelle": "ROSUVASTATINE 5MG 30 CPR"
+},
+{
+"cip13": "3400930161579",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4,
+"libelle": "ROSUVASTATINE 10MG 30 CPR"
+},
+{
+"cip13": "3400930161562",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 10.65,
+"libelle": "ROSUVASTATINE 5MG 90 CPR"
+},
+{
+"cip13": "3400930161586",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11.8824,
+"libelle": "ROSUVASTATINE 10MG 90 CPR"
+},
+{
+"cip13": "3400930161593",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "ROSUVASTATINE 20MG 30 CPR"
+},
+{
+"cip13": "3400936945524",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4.0606,
+"libelle": "SERTRALINE 50MG 28 GELU"
+},
+{
+"cip13": "3400930190623",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.8333,
+"libelle": "SILODOSINE 8MG 30 GELU"
+},
+{
+"cip13": "3400930190609",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.6667,
+"libelle": "SILODOSINE 4MG 30 GELU"
+},
+{
+"cip13": "3400936713963",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.5455,
+"libelle": "SPIRAMYCINE M UI/METRONIDAZOLE 250MG 10 CPR"
+},
+{
+"cip13": "3400938160154",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 14.75,
+"libelle": "RISPERIDONE 2MG 60 CPR"
+},
+{
+"cip13": "3400930239001",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 7.5,
+"libelle": "SITAGLIPTINE 50MG 30 CPR"
+},
+{
+"cip13": "3400930206379",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 87.89,
+"libelle": "SEVELAMER 2.4G PDR"
+},
+{
+"cip13": "3400937456340",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.1875,
+"libelle": "SERTRALINE 25MG 7 GELU"
+},
+{
+"cip13": "3400937847469",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 7.5,
+"libelle": "SPIRONOLACTONE 50MG 90 CPR"
+},
+{
+"cip13": "3400938160383",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8,
+"libelle": "RISPERIDONE 4MG 30 CPR"
+},
+{
+"cip13": "3400934847486",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "SPIRONOLACTONE 75MG 30 CPR"
+},
+{
+"cip13": "3400934965913",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 2.75,
+"libelle": "SPIRONOLACTONE 50MG 30 CPR"
+},
+{
+"cip13": "3400930222867",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 123.62,
+"libelle": "SORAFENIB 200MG 112 CPR"
+},
+{
+"cip13": "3400934850738",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "SPIRONOLACTONE 25MG 30 CPR"
+},
+{
+"cip13": "3400939627748",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 8.2,
+"libelle": "SPIRONOLACTONE 25MG 90 CPR"
+},
+{
+"cip13": "3400930262375",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.48,
+"libelle": "TRAMADOL 200MG 10 CPR"
+},
+{
+"cip13": "3400936213692",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10.32,
+"libelle": "TERAZOSINE 5MG 28 CPR"
+},
+{
+"cip13": "3400935248442",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.2,
+"libelle": "TRAMADOL 50MG 30 GELU"
+},
+{
+"cip13": "3400930262238",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 237,
+"libelle": "TERIFLUNOMIDE 14MG 28 CPR"
+},
+{
+"cip13": "3400941976209",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "TELMISARTAN 40MG 90 CPR"
+},
+{
+"cip13": "3400941977039",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "TELMISARTAN 80MG 30 CPR"
+},
+{
+"cip13": "3400941976087",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.5,
+"libelle": "TELMISARTAN 40MG 30 CPR"
+},
+{
+"cip13": "3400937056984",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "TAMSULOSINE 0.4MG 30 GELU"
+},
+{
+"cip13": "3400941977329",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "TELMISARTAN 80MG 90 CPR"
+},
+{
+"cip13": "3400938675443",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 8,
+"libelle": "TRAMADOL 200MG 30 CPR"
+},
+{
+"cip13": "3400937848121",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7,
+"libelle": "SPIRONOLACTONE/ALTIZIDE 25MG/15MG 90 CPR"
+},
+{
+"cip13": "3400938747393",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6,
+"libelle": "TRAMADOL 150MG 30 CPR"
+},
+{
+"cip13": "3400938814552",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.43,
+"libelle": "TRANDOLAPRIL 0.5MG 28 GELU"
+},
+{
+"cip13": "3400937279789",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.8571,
+"libelle": "TRIMEBUTINE 100MG 30 CPR"
+},
+{
+"cip13": "3400937279550",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.25,
+"libelle": "TRIMEBUTINE 200MG 30 CPR"
+},
+{
+"cip13": "3400937498913",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 15,
+"libelle": "TERBINAFINE 250MG 28 CPR"
+},
+{
+"cip13": "3400938814781",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.08,
+"libelle": "TRANDOLAPRIL 0.5MG 84 GELU"
+},
+{
+"cip13": "3400938814903",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.8,
+"libelle": "TRANDOLAPRIL 2MG 28 GELU"
+},
+{
+"cip13": "3400938816105",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8.4,
+"libelle": "TRANDOLAPRIL 4MG 84 GELU"
+},
+{
+"cip13": "3400941987724",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9,
+"libelle": "TERBUTALINE 5MG 2 SOL"
+},
+{
+"cip13": "3400930281321",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.6667,
+"libelle": "URAPIDIL 30MG 30 GELU"
+},
+{
+"cip13": "3400938764482",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6.2857,
+"libelle": "VALACICLOVIR 500MG 10 CPR"
+},
+{
+"cip13": "3400938987638",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.3333,
+"libelle": "TERBINAFINE 1% 15 CR"
+},
+{
+"cip13": "3400930168561",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.6639,
+"libelle": "TIXOCORTOL 1% 10 SUSP"
+},
+{
+"cip13": "3400930242667",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 14,
+"libelle": "TIOTROPIUM BIOGARAN® EOLIP® MICROGRAMMES ÉLULES 30 G"
+},
+{
+"cip13": "3400941775925",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.0714,
+"libelle": "TAMSULOSINE 0.4MG 30 CPR"
+},
+{
+"cip13": "3400934639302",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "TAMOXIFENE 10MG 30 CPR"
+},
+{
+"cip13": "3400927463532",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "TELMISARTAN/HYDROCHLOROTHIAZIDE 80MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400930139738",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.73,
+"libelle": "TRAVOPROST 40MCG COLLYRE"
+},
+{
+"cip13": "3400930200001",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 417.08,
+"libelle": "SUNITINIB 12.5MG 28 GELU"
+},
+{
+"cip13": "3400930200049",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 834.16,
+"libelle": "SUNITINIB EQUIVALANT A SUNITINIB 25MG 28 GELU"
+},
+{
+"cip13": "3400930200070",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 251.24,
+"libelle": "SUNITINIB 37.5MG 28 GELU"
+},
+{
+"cip13": "3400930200100",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 668.31,
+"libelle": "SUNITINIB 50MG 28 GELU"
+},
+{
+"cip13": "3400934966163",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.6667,
+"libelle": "SPIRONOLACTONE/ALTIZIDE 25MG/15MG 30 CPR"
+},
+{
+"cip13": "3400930281376",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.3636,
+"libelle": "URAPIDIL 60MG 30 GELU"
+},
+{
+"cip13": "3400930262368",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "TRAMADOL 150MG 10 CPR"
+},
+{
+"cip13": "3400934639470",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.6667,
+"libelle": "TAMOXIFENE 20MG 30 CPR"
+},
+{
+"cip13": "3400930262344",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "TRAMADOL 50MG 10 GELU"
+},
+{
+"cip13": "3400927466205",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "TELMISARTAN/HYDROCHLOROTHIAZIDE 80MG/25MG 90 CPR"
+},
+{
+"cip13": "3400927465772",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "TELMISARTAN/HYDROCHLOROTHIAZIDE 80MG/25MG 30 CPR"
+},
+{
+"cip13": "3400930069325",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 119,
+"libelle": "TENOFOVIR DISOPROXIL TENOFOVIR DISOPROXIL 245MG 30 CPR"
+},
+{
+"cip13": "3400938675214",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4.5,
+"libelle": "TRAMADOL 100MG 30 CPR"
+},
+{
+"cip13": "3400938815153",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9,
+"libelle": "TRANDOLAPRIL 2MG 84 GELU"
+},
+{
+"cip13": "3400938815962",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "TRANDOLAPRIL 4MG 28 GELU"
+},
+{
+"cip13": "3400926736484",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "DESOGESTREL 0.075MG 28 CPR"
+},
+{
+"cip13": "3400930008386",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 7.8333,
+"libelle": "AMIODARONE 200MG 30 CPR"
+},
+{
+"cip13": "3400930235317",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7.1429,
+"libelle": "VILDAGLIPTINE/METFORMINE 50MG/1000MG 60 CPR"
+},
+{
+"cip13": "3400934263729",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.6667,
+"libelle": "VÉRAPAMIL BIOGARAN® LP ÉLULES LP 240 MG 30 G"
+},
+{
+"cip13": "3400926736545",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "DESOGESTREL 0.075MG 28 CPR"
+},
+{
+"cip13": "3400930017531",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.14,
+"libelle": "LEVONORGESTREL/ETHINYLESTRADIOL 0.1MG/0.02MG 21 CPR"
+},
+{
+"cip13": "3400949288809",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "VALSARTAN 80MG 30 CPR"
+},
+{
+"cip13": "3400949288977",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 12.6667,
+"libelle": "VALSARTAN 80MG 90 CPR"
+},
+{
+"cip13": "3400930056844",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 762.05,
+"libelle": "VORICONAZOLE 200MG 56 CPR"
+},
+{
+"cip13": "3400949247127",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6,
+"libelle": "ZOLMITRIPTAN 2.5MG 6 CPR"
+},
+{
+"cip13": "3400938765144",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 74,
+"libelle": "VALACICLOVIR 500MG 112 CPR"
+},
+{
+"cip13": "3400938721898",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4.5,
+"libelle": "VENLAFAXINE 37.5MG 30 GELU"
+},
+{
+"cip13": "3400939736600",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "VALSARTAN/HYDROCHLOROTHIAZIDE 80MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400939738031",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "VALSARTAN/HYDROCHLOROTHIAZIDE 160MG/25MG 30 CPR"
+},
+{
+"cip13": "3400939738550",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "VALSARTAN/HYDROCHLOROTHIAZIDE 160MG/25MG 90 CPR"
+},
+{
+"cip13": "3400930017548",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.6667,
+"libelle": "LEVONORGESTREL/ETHINYLESTRADIOL 0.1MG/0.02MG 21 CPR"
+},
+{
+"cip13": "3400949750818",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.61,
+"libelle": "ZOLMITRIPTAN 2.5MG 6 CPR"
+},
+{
+"cip13": "3400949750986",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 18,
+"libelle": "ZOLMITRIPTAN 2.5MG 12 CPR"
+},
+{
+"cip13": "3400941560125",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "VALSARTAN/HYDROCHLOROTHIAZIDE 160MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400949289578",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "VALSARTAN 160MG 30 CPR"
+},
+{
+"cip13": "3400941560583",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "VALSARTAN/HYDROCHLOROTHIAZIDE 160MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400930105665",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3.56,
+"libelle": "ESCITALOPRAM 5MG 28 CPR"
+},
+{
+"cip13": "3400930117163",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3.3333,
+"libelle": "AMLODIPINE 5MG 30 GELU"
+},
+{
+"cip13": "3400930105689",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3.5,
+"libelle": "ESCITALOPRAM 10MG 28 CPR"
+},
+{
+"cip13": "3400937307567",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "LEVONORGESTREL 1.5MG 1 CPR"
+},
+{
+"cip13": "3400949247295",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 12,
+"libelle": "ZOLMITRIPTAN 2.5MG 12 CPR"
+},
+{
+"cip13": "3400949288229",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10,
+"libelle": "VALSARTAN 40MG 90 CPR"
+},
+{
+"cip13": "3400949288168",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "VALSARTAN 40MG 30 CPR"
+},
+{
+"cip13": "3400930224632",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3,
+"libelle": "ATORVASTATINE TRIHYDRATEE 20MG 30 CPR"
+},
+{
+"cip13": "3400930224618",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3,
+"libelle": "ATORVASTATINE TRIHYDRATEE 10MG 30 CPR"
+},
+{
+"cip13": "3400930224649",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3,
+"libelle": "ATORVASTATINE TRIHYDRATEE 40MG 30 CPR"
+},
+{
+"cip13": "3400930235683",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7,
+"libelle": "VILDAGLIPTINE 50MG 60 CPR"
+},
+{
+"cip13": "3400936102712",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "ZOLPIDEM 10MG 7 CPR"
+},
+{
+"cip13": "3400936103023",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.5,
+"libelle": "ZOLPIDEM 10MG 14 CPR"
+},
+{
+"cip13": "3400930235669",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "VILDAGLIPTINE 50MG 30 CPR"
+},
+{
+"cip13": "3400930056707",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 103.82,
+"libelle": "VORICONAZOLE 50MG 28 CPR"
+},
+{
+"cip13": "3400930056783",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 190.51,
+"libelle": "VORICONAZOLE 200MG 14 CPR"
+},
+{
+"cip13": "3400930084199",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 551,
+"libelle": "VALGANCICLOVIR 450MG 60 CPR"
+},
+{
+"cip13": "3400935286352",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 1.64,
+"libelle": "ZOPICLONE 7.5MG 14 CPR"
+},
+{
+"cip13": "3400930072899",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "DULOXETINE 30MG 28 GELU"
+},
+{
+"cip13": "3400930072905",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.66,
+"libelle": "DULOXETINE 60MG 28 GELU"
+},
+{
+"cip13": "3400930050514",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3.4,
+"libelle": "AMLODIPINE 10MG 30 GELU"
+},
+{
+"cip13": "3400939737140",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "VALSARTAN/HYDROCHLOROTHIAZIDE 80MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400930038017",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 1.75,
+"libelle": "FUROSEMIDE 40MG 30 CPR"
+},
+{
+"cip13": "3400930044421",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 7.5,
+"libelle": "RISPERIDONE 1MG 60 CPR"
+},
+{
+"cip13": "3400930249925",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 4,
+"libelle": "ROSUVASTATINE 5MG 30 CPR"
+},
+{
+"cip13": "3400935794208",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "SOTALOL 80MG CPR"
+},
+{
+"cip13": "3400941902109",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 4,
+"libelle": "LANSOPRAZOLE 15MG 30 GELU"
+},
+{
+"cip13": "3400941902048",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3.6,
+"libelle": "LANSOPRAZOLE 30MG 30 GELU"
+},
+{
+"cip13": "3400930081822",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "HYDROXYZINE 25MG 30 CPR"
+},
+{
+"cip13": "3400930061077",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3.98,
+"libelle": "TRIMEBUTINE 200MG 30 CPR"
+},
+{
+"cip13": "3400930080078",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 19,
+"libelle": "LEVETIRACETAM 500MG 60 CPR"
+},
+{
+"cip13": "3400930022030",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3.81,
+"libelle": "VENLAFAXINE 37.5MG 30 GELU"
+},
+{
+"cip13": "3400930044452",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7.6667,
+"libelle": "RISPERIDONE 4MG 30 CPR"
+},
+{
+"cip13": "3400930072943",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "TAMSULOSINE 0.4MG 30 GELU"
+},
+{
+"cip13": "3400930080061",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 12.79,
+"libelle": "LEVETIRACETAM 250MG 60 CPR"
+},
+{
+"cip13": "3400939321936",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3,
+"libelle": "PANTOPRAZOLE SESQUIHYDRATE PANTOPRAZOLE 20MG 28 CPR"
+},
+{
+"cip13": "3400939213095",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3,
+"libelle": "PANTOPRAZOLE SESQUIHYDRATE PANTOPRAZOLE 40MG 28 CPR"
+},
+{
+"cip13": "3400930118788",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.5,
+"libelle": "METFORMINE 500MG 30 CPR"
+},
+{
+"cip13": "3400930118801",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "METFORMINE 1000MG 30 CPR"
+},
+{
+"cip13": "3400930118795",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "METFORMINE 850MG 30 CPR"
+},
+{
+"cip13": "3400930105702",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3,
+"libelle": "ESCITALOPRAM 20MG 28 CPR"
+},
+{
+"cip13": "3400930176412",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.8571,
+"libelle": "RILMENIDINE 1MG 30 CPR"
+},
+{
+"cip13": "3400930036228",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 0.76,
+"libelle": "PARACÉTAMOL BIOGARAN® PDA 1 G 8COMP RIMÉS 4"
+},
+{
+"cip13": "3400930043226",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 0.76,
+"libelle": "PARACÉTAMOL BIOGARAN® PDA 500 MG 16COMP RIMÉS 1"
+},
+{
+"cip13": "3400930127209",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "TRAMADOL 50MG 30 GELU"
+},
+{
+"cip13": "3400930192139",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.4,
+"libelle": "LERCANIDIPINE 10MG 30 CPR"
+},
+{
+"cip13": "3400930146866",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 1,
+"libelle": "TRAMADOL/PARACETAMOL 37.5MG/325MG 20 CPR"
+},
+{
+"cip13": "3400930018613",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 1.6667,
+"libelle": "ZOPICLONE 7.5MG 14 CPR"
+},
+{
+"cip13": "3400921945409",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 15.68,
+"libelle": "RIVASTIGMINE 6MG 56 GELU"
+},
+{
+"cip13": "3400926880644",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 20.94,
+"libelle": "SILDENAFIL 100MG 4 CPR"
+},
+{
+"cip13": "3400926880705",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 39.32,
+"libelle": "SILDENAFIL 100MG 8 CPR"
+},
+{
+"cip13": "3400926880873",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 50.07,
+"libelle": "SILDENAFIL 100MG 12 CPR"
+},
+{
+"cip13": "3400930224816",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 7,
+"libelle": "CLOPIDOGREL 75MG 30 CPR"
+},
+{
+"cip13": "3400930062968",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 536.62,
+"libelle": "IMATINIB 400MG 30 CPR"
+},
+{
+"cip13": "3400930227343",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10.5,
+"libelle": "BISOPROLOL 2.5MG 90 CPR"
+},
+{
+"cip13": "3400937635141",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "ONDANSETRON 8MG 2 CPR"
+},
+{
+"cip13": "3400933832377",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.75,
+"libelle": "INDAPAMIDE 1.5MG 30 CPR"
+},
+{
+"cip13": "3400926984182",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9,
+"libelle": "ACIDE RISEDRONIQUE RISEDRONATE MONOSODIQUE HEMIPENTAHYDRATE 75MG 2 CPR"
+},
+{
+"cip13": "3400930033395",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 33,
+"libelle": "EPLERENONE 25MG 90 CPR"
+},
+{
+"cip13": "3400936486294",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 1.8644,
+"libelle": "CETIRIZINE 10MG 15 CPR"
+},
+{
+"cip13": "3400927489907",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 10.6667,
+"libelle": "ATOVAQUONE/PROGUANIL 62.5MG/25MG 12 CPR"
+},
+{
+"cip13": "3400936772465",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.2603,
+"libelle": "PAROXETINE 20MG 14 CPR"
+},
+{
+"cip13": "3400927703287",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.5,
+"libelle": "EBASTINE 10MG 30"
+},
+{
+"cip13": "3400930007211",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 17,
+"libelle": "AMOROLFINE 5G"
+},
+{
+"cip13": "3400928002136",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 35,
+"libelle": "RIVASTIGMINE 4.6MG 1"
+},
+{
+"cip13": "3400926932664",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4.25,
+"libelle": "CHLORHEXIDINE/CHLOROBUTANOL HEMIHYDRATE 0.05ML/0.05G 200 SOL"
+},
+{
+"cip13": "3400930126233",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 30.58,
+"libelle": "LACOSAMIDE 150MG 56 CPR"
+},
+{
+"cip13": "3400930126264",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 40.77,
+"libelle": "LACOSAMIDE 200MG 56 CPR"
+},
+{
+"cip13": "3400936056664",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5.5,
+"libelle": "CEFTRIAXONE 1G PDR"
+},
+{
+"cip13": "3400928002426",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 35,
+"libelle": "RIVASTIGMINE 9.5MG 1"
+},
+{
+"cip13": "3400921674835",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 18,
+"libelle": "CYSTINE/VITAMINE B 500MG/50MG 120 CPR"
+},
+{
+"cip13": "3400921659986",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 15.68,
+"libelle": "DONEPEZIL 10MG 28 CPR"
+},
+{
+"cip13": "3400921919783",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "PRAVASTATINE 10MG 28 CPR"
+},
+{
+"cip13": "3400921920154",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "PRAVASTATINE 20MG 28 CPR"
+},
+{
+"cip13": "3400921659696",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 15.6667,
+"libelle": "DONEPEZIL 5MG 28 CPR"
+},
+{
+"cip13": "3400922036649",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 11,
+"libelle": "ESOMEPRAZOLE MAGNESIUM EQUIVALENT A ESOMEPRAZOLE 20MG 14 CPR"
+},
+{
+"cip13": "3400927626715",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 20,
+"libelle": "CAPECITABINE 150MG 60 CPR"
+},
+{
+"cip13": "3400927871399",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4,
+"libelle": "LANSOPRAZOLE 30MG 28 CPR"
+},
+{
+"cip13": "3400927870910",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.75,
+"libelle": "LANSOPRAZOLE 15MG 28 CPR"
+},
+{
+"cip13": "3400922036588",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "ESOMEPRAZOLE MAGNESIUM EQUIVALENT A ESOMEPRAZOLE 20MG 7 CPR"
+},
+{
+"cip13": "3400922334585",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5.82,
+"libelle": "ACIDE URSODESOXYCHOLIQUE 250MG 20 CPR"
+},
+{
+"cip13": "3400927870859",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.68,
+"libelle": "LANSOPRAZOLE 15MG 14 CPR"
+},
+{
+"cip13": "3400939872544",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 13,
+"libelle": "ACARBOSE 100MG 90 CPR"
+},
+{
+"cip13": "3400941656378",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 19,
+"libelle": "LEVETIRACETAM 500MG 60 CPR"
+},
+{
+"cip13": "3400930088784",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 0.76,
+"libelle": "PARACÉTAMOL BIOGARAN® ÉLULES PDA 500 MG 16 G"
+},
+{
+"cip13": "3400939898049",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9,
+"libelle": "OLANZAPINE 10MG 28 CPR"
+},
+{
+"cip13": "3400941567339",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "CANDESARTAN CILEXETIL 8MG 30 CPR"
+},
+{
+"cip13": "3400941565908",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "CANDESARTAN CILEXETIL 4MG 30 CPR"
+},
+{
+"cip13": "3400941656729",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 19,
+"libelle": "LEVETIRACETAM 1000MG 60 CPR"
+},
+{
+"cip13": "3400930099711",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 20.67,
+"libelle": "TADALAFIL 10MG 4 CPR"
+},
+{
+"cip13": "3400939897738",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 16,
+"libelle": "OLANZAPINE 5MG 28 CPR"
+},
+{
+"cip13": "3400926890988",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "DILTIAZEM 300MG 30 GELU"
+},
+{
+"cip13": "3400922331164",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "HEXETIDINE POUR CENT 200"
+},
+{
+"cip13": "3400926844165",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 14,
+"libelle": "DILTIAZEM 200MG 90 GELU"
+},
+{
+"cip13": "3400921920383",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 8.2,
+"libelle": "PRAVASTATINE 20MG 84 CPR"
+},
+{
+"cip13": "3400926689896",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "DOXYLAMINE 15MG 10 CPR"
+},
+{
+"cip13": "3400922013985",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 13.44,
+"libelle": "GALANTAMINE L P 8MG 28 GELU"
+},
+{
+"cip13": "3400930056738",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 207.65,
+"libelle": "VORICONAZOLE 50MG 56 CPR"
+},
+{
+"cip13": "3400922009964",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 15.68,
+"libelle": "GALANTAMINE L P 24MG 28 GELU"
+},
+{
+"cip13": "3400922011165",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 22.21,
+"libelle": "GALANTAMINE L P 16MG 28 GELU"
+},
+{
+"cip13": "3400922447179",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2.4,
+"libelle": "LOPERAMIDE 2MG 12 GELU"
+},
+{
+"cip13": "3400926891060",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "DILTIAZEM 200MG 30 GELU"
+},
+{
+"cip13": "3400926987145",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "ESCITALOPRAM 5MG 28 CPR"
+},
+{
+"cip13": "3400926905811",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 5.26,
+"libelle": "DESOGESTREL/ETHINYLESTRADIOL 150MCG/30MCG 21 CPR"
+},
+{
+"cip13": "3400926905989",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 14.9,
+"libelle": "DESOGESTREL/ETHINYLESTRADIOL 150MCG/30MCG 21 CPR"
+},
+{
+"cip13": "3400927458569",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5.53,
+"libelle": "ROPINIROLE 2MG 28 CPR"
+},
+{
+"cip13": "3400927459160",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 10.27,
+"libelle": "ROPINIROLE 4MG 28 CPR"
+},
+{
+"cip13": "3400930111536",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 760.84,
+"libelle": "ERLOTINIB 150MG 30 CPR"
+},
+{
+"cip13": "3400930119440",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 12.52,
+"libelle": "IVABRADINE 7.5MG 56 CPR"
+},
+{
+"cip13": "3400922411101",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 3.25,
+"libelle": "OXOMEMAZINE 0.33MG 150 SOL"
+},
+{
+"cip13": "3614770000596",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 19,
+"libelle": "SOIN ANTI POUX CONSEIL FLAC 200ML"
+},
+{
+"cip13": "3614770000572",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 12.6667,
+"libelle": "MULTIVITAMI ET MINÉRAUX CONSEIL CPEFF"
+},
+{
+"cip13": "3400926881184",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 15.68,
+"libelle": "MEMANTINE 10MG 56 CPR"
+},
+{
+"cip13": "3400926881245",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 15.68,
+"libelle": "MEMANTINE 20MG 28 CPR"
+},
+{
+"cip13": "3400949955114",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 15,
+"libelle": "REPAGLINIDE 0.5MG 270 CPR"
+},
+{
+"cip13": "3400949734788",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 24,
+"libelle": "RISEDRONATE MONOSODIQUE HEMIPENTAHYDRATE RISEDRONATE MONOSODIQUE 35MG 12 CPR"
+},
+{
+"cip13": "3614770000725",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 7.5,
+"libelle": "PASTILLES GORGES CONSEIL PASTILLES"
+},
+{
+"cip13": "3614770000800",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 7.75,
+"libelle": "MELATONINE FLAS H CONSEIL COMPRIMÉ 1,9 MG"
+},
+{
+"cip13": "3400926810047",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "PERINDOPRIL ARGININE/INDAPAMIDE 5MG/1.25MG 30 CPR"
+},
+{
+"cip13": "3400930029480",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3,
+"libelle": "ACECLOFENAC 100MG 30 CPR"
+},
+{
+"cip13": "3400928011299",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 42,
+"libelle": "LEVODOPA/CARBIDOPA/ENTACAPONE 175MG/43.75MG/200MG 100 CPR"
+},
+{
+"cip13": "3400930033111",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 19.38,
+"libelle": "PREGABALINE 200MG 84 GELU"
+},
+{
+"cip13": "3400930054796",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 13.5,
+"libelle": "ROSUVASTATINE CPPEL 20MG"
+},
+{
+"cip13": "3400926880125",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 20.75,
+"libelle": "SILDENAFIL 50MG 4 CPR"
+},
+{
+"cip13": "3400926987206",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3.5,
+"libelle": "ESCITALOPRAM 10MG 28 CPR"
+},
+{
+"cip13": "3400927607905",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 27,
+"libelle": "ACAMPROSATE 333MG 180 CPR"
+},
+{
+"cip13": "3400926880293",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 34.02,
+"libelle": "SILDENAFIL 50MG 8 CPR"
+},
+{
+"cip13": "3400926880354",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 44.02,
+"libelle": "SILDENAFIL 50MG 12 CPR"
+},
+{
+"cip13": "3400927424151",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.61,
+"libelle": "RIZATRIPTAN 10MG 6"
+},
+{
+"cip13": "3400927918797",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5.61,
+"libelle": "L HYDROGENOMALATE ALMOTRIPTAN 12.5MG 6 CPR"
+},
+{
+"cip13": "3400930056806",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 381.02,
+"libelle": "VORICONAZOLE 200MG 28 CPR"
+},
+{
+"cip13": "3400930066737",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.11,
+"libelle": "LEVONORGESTREL/ETHINYLESTRADIOL 0.1MG/0.02MG 7 CPR"
+},
+{
+"cip13": "3400930067390",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 5,
+"libelle": "ACEBUTOLOL 200MG 30 CPR"
+},
+{
+"cip13": "3400930152713",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 111.74,
+"libelle": "EVEROLIMUS 10MG 30 CPR"
+},
+{
+"cip13": "3400930154885",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 24.14,
+"libelle": "VARDENAFIL EQUIVALANT VARDENAFIL 20MG 4 CPR"
+},
+{
+"cip13": "3400930154892",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 46.85,
+"libelle": "VARDENAFIL EQUIVALANT VARDENAFIL 20MG 8 CPR"
+},
+{
+"cip13": "3400930154953",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 13.3,
+"libelle": "VARDENAFIL 5MG 4 CPR"
+},
+{
+"cip13": "3400930187371",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 5.76,
+"libelle": "ETHINYLESTRADIOL BETADEX CLATHRATE ETHINYLESTRADIOL/DROSPIRENONE 0.02MG/3MG 28 CPR"
+},
+{
+"cip13": "3400930187388",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 16.87,
+"libelle": "ETHINYLESTRADIOL BETADEX CLATHRATE ETHINYLESTRADIOL/DROSPIRENONE 0.02MG/3MG 28 CPR"
+},
+{
+"cip13": "3400930130124",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6.51,
+"libelle": "IBUPROFÈNE CONSEIL 400MG 10SACH"
+},
+{
+"cip13": "3400927321504",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 1.4545,
+"libelle": "TRAMADOL/PARACETAMOL 37.5MG/325MG 20 CPR"
+},
+{
+"cip13": "3400930252581",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "LOPERAMIDE 2MG 12 GELU"
+},
+{
+"cip13": "3400927460579",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "TELMISARTAN/HYDROCHLOROTHIAZIDE 40MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400930105214",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6,
+"libelle": "TRAVOPROST/TIMOLOL 40MCG/5MG 5 COLLYRE"
+},
+{
+"cip13": "3400930121849",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.5,
+"libelle": "RABEPRAZOLE 20MG 28 CPR"
+},
+{
+"cip13": "3400927463181",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "TELMISARTAN/HYDROCHLOROTHIAZIDE 80MG/12.5MG 30 CPR"
+},
+{
+"cip13": "3400927461002",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "TELMISARTAN/HYDROCHLOROTHIAZIDE 40MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400927424212",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 12,
+"libelle": "RIZATRIPTAN 10MG 12"
+},
+{
+"cip13": "3400927459689",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 20.17,
+"libelle": "ROPINIROLE 8MG 28 CPR"
+},
+{
+"cip13": "3400930111529",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 615.96,
+"libelle": "ERLOTINIB 100MG 30 CPR"
+},
+{
+"cip13": "3400930127377",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "BRIMONIDINE 0.2% 5 COLLYRE"
+},
+{
+"cip13": "3400930055953",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.875,
+"libelle": "BETAMETHASONE 0.050G 30 CR"
+},
+{
+"cip13": "3400930128169",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "TRIMEBUTINE 100MG 30 CPR"
+},
+{
+"cip13": "3400930126172",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.55,
+"libelle": "LACOSAMIDE 50MG 14 CPR"
+},
+{
+"cip13": "3400930126219",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 20.39,
+"libelle": "LACOSAMIDE 100MG 56 CPR"
+},
+{
+"cip13": "3400930128206",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.5,
+"libelle": "MIANSERINE 60MG 14 CPR"
+},
+{
+"cip13": "3400930188026",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 5.76,
+"libelle": "ETHINYLESTRADIOL BETADEX CLATHRATE ETHINYLESTRADIOL/DROSPIRENONE 0.02MG/3MG CPR"
+},
+{
+"cip13": "3400930065518",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6.2353,
+"libelle": "DUTASTERIDE 0.5MG 30 CAPS"
+},
+{
+"cip13": "3400930133415",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.0625,
+"libelle": "CHLORHEXIDINE/CHLORURE BENZALKONIUM/ALCOOL BENZYLIQUE 0.250G/0.025G/4ML 100 SOL"
+},
+{
+"cip13": "3400930064030",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 8,
+"libelle": "MONTELUKAST 10MG 28 CPR"
+},
+{
+"cip13": "3400930136492",
+"rsf_pct": -7,
+"rdp_pct": 0,
+"pfht": 2.69,
+"libelle": "SPIRONOLACTONE 25MG 30 CPR"
+},
+{
+"cip13": "3400930143988",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 6,
+"libelle": "ETORICOXIB 60MG 28 CPR"
+},
+{
+"cip13": "3400930143926",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 4,
+"libelle": "ETORICOXIB 30MG 28 CPR"
+},
+{
+"cip13": "3400930140383",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5.625,
+"libelle": "SOLIFENACINE 5MG 30 CPR"
+},
+{
+"cip13": "3400930140321",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.6,
+"libelle": "SOLIFENACINE 10MG 30 CPR"
+},
+{
+"cip13": "3400930147276",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.2,
+"libelle": "PROPRANOLOL 40MG 50 CPR"
+},
+{
+"cip13": "3400930215708",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 14.56,
+"libelle": "ARIPIPRAZOLE 15MG 28 CPR"
+},
+{
+"cip13": "3400930219690",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 617.96,
+"libelle": "DASATINIB 20MG 1 CPR"
+},
+{
+"cip13": "3400930220146",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 20.68,
+"libelle": "FENTANYL 200MCG 1 CPR"
+},
+{
+"cip13": "3400930131336",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.8235,
+"libelle": "DICLOFENAC 75MG 30 CPR"
+},
+{
+"cip13": "3400930168387",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 0.9333,
+"libelle": "OMEPRAZOLE 20MG 7 GELU"
+},
+{
+"cip13": "3400930044445",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 14.6667,
+"libelle": "RISPERIDONE 2MG 60 CPR"
+},
+{
+"cip13": "3400930162569",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4.75,
+"libelle": "AMYLMETACRESOL/ALCOOL DICHLORO BENZYLIQUE 0.6MG/1.2MG 24"
+},
+{
+"cip13": "3400930179284",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 3.4706,
+"libelle": "IBUPROFÈNE SET CPPEL 400MG"
+},
+{
+"cip13": "3400930032664",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 3.5,
+"libelle": "PREGABALINE 25MG 56 GELU"
+},
+{
+"cip13": "3400930032671",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5,
+"libelle": "PREGABALINE 25MG 84 GELU"
+},
+{
+"cip13": "3400930188484",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 5.25,
+"libelle": "PARA/CAFE/CODE ÉL 400/50/20MG 18 G"
+},
+{
+"cip13": "3400936522527",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.129,
+"libelle": "PREDNISONE 20MG 20 CPR"
+},
+{
+"cip13": "3400930038536",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 1.5,
+"libelle": "PROPRANOLOL 40MG 50 CPR"
+},
+{
+"cip13": "3400930016527",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 5.5,
+"libelle": "RACECADOTRIL 100MG 10 GELU"
+},
+{
+"cip13": "3400930241301",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 782,
+"libelle": "ABIRATERONE 500MG 60 CPR"
+},
+{
+"cip13": "3400930241349",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 6.697,
+"libelle": "AZITHROMYCINE 250MG 6 CPR"
+},
+{
+"cip13": "3400926984304",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 26,
+"libelle": "ACIDE RISEDRONIQUE RISEDRONATE MONOSODIQUE HEMIPENTAHYDRATE 75MG 6 CPR"
+},
+{
+"cip13": "3400930246528",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.5714,
+"libelle": "ULIPRISTAL 30MG 1 CPR"
+},
+{
+"cip13": "3400930247716",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 18,
+"libelle": "TICAGRELOR 90MG 60 CPR"
+},
+{
+"cip13": "3400930244753",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 23.3333,
+"libelle": "ENOXAPARINE UI SOL INJ UN 0,4ML"
+},
+{
+"cip13": "3400930215678",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 16,
+"libelle": "ARIPIPRAZOLE 10MG 28 CPR"
+},
+{
+"cip13": "3400930189153",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "ALGINATE SODIUM/BICARBONATE SODIUM 0.5G/0.267G 10 SACH"
+},
+{
+"cip13": "3400930179208",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "PHLOROGLUCINOL 80MG 10"
+},
+{
+"cip13": "3400930029954",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "ALFA AMYLASE CONSEIL UCEIP FLAC 200ML"
+},
+{
+"cip13": "3400930029985",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "ALFA AMYLASE CONSEIL UCEIP CPENR"
+},
+{
+"cip13": "3400927841583",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10,
+"libelle": "PERINDOPRIL TERT BUTYLAMINE 8MG 90 CPR"
+},
+{
+"cip13": "3400921944457",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 15.68,
+"libelle": "RIVASTIGMINE 1.5MG 56 GELU"
+},
+{
+"cip13": "3400930029541",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 6,
+"libelle": "ELETRIPTAN 20MG 6 CPR"
+},
+{
+"cip13": "3400921944747",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 15.68,
+"libelle": "RIVASTIGMINE 3MG 56 GELU"
+},
+{
+"cip13": "3400921945058",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 15.68,
+"libelle": "RIVASTIGMINE 4.5MG 56 GELU"
+},
+{
+"cip13": "3400927490095",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 28.94,
+"libelle": "ATOVAQUONE/PROGUANIL 250MG/100MG 12 CPR"
+},
+{
+"cip13": "3400927813030",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.67,
+"libelle": "EBASTINE 10MG 15 CPR"
+},
+{
+"cip13": "3400930029596",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 10,
+"libelle": "ELETRIPTAN 40MG 10 CPR"
+},
+{
+"cip13": "3400930250853",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7.6429,
+"libelle": "SITAGLIPTINE/METFORMINE 50MG/1000MG 60 CPR"
+},
+{
+"cip13": "3400930099650",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 38.11,
+"libelle": "TADALAFIL 2.5MG 28 CPR"
+},
+{
+"cip13": "3400930099681",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 38,
+"libelle": "TADALAFIL 5MG 28 CPR"
+},
+{
+"cip13": "3400930099698",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 110.33,
+"libelle": "TADALAFIL 5MG 84 CPR"
+},
+{
+"cip13": "3400930099742",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 20.67,
+"libelle": "TADALAFIL 20MG 4 CPR"
+},
+{
+"cip13": "3400930099759",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 35,
+"libelle": "TADALAFIL 20MG 8 CPR"
+},
+{
+"cip13": "3400930239865",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 52,
+"libelle": "TADALAFIL 20MG 12 CPR"
+},
+{
+"cip13": "3400930239889",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 102,
+"libelle": "TADALAFIL 20MG 24 CPR"
+},
+{
+"cip13": "3400930252482",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 22.25,
+"libelle": "LEFLUNOMIDE 10MG 30 CPR"
+},
+{
+"cip13": "3400930252499",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 22.25,
+"libelle": "LEFLUNOMIDE 20MG 30 CPR"
+},
+{
+"cip13": "3400930256756",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 615.39,
+"libelle": "PIRFENIDONE 267MG 252 CPR"
+},
+{
+"cip13": "3400930259245",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 201.11,
+"libelle": "PAZOPANIB 200MG 30 CPR"
+},
+{
+"cip13": "3400930029589",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "ELETRIPTAN 40MG 6 CPR"
+},
+{
+"cip13": "3400930181980",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 5.4286,
+"libelle": "CHLORHEXIDINE/CHLORURE BENZALKONIUM/ALCOOL BENZYLIQUE 0.250G/0.025G/4ML 50 SOL"
+},
+{
+"cip13": "3400930001332",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.3333,
+"libelle": "CELECOXIB 100MG 30 GELU"
+},
+{
+"cip13": "3400930155547",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "LIERRE GRIMPANT CONSEIL FLAC 100 ML"
+},
+{
+"cip13": "3400926752392",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.38,
+"libelle": "TIANEPTINE 12.5MG 28 CPR"
+},
+{
+"cip13": "3400930265611",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 10.6667,
+"libelle": "RIVAROXABAN 20MG 28 CPR"
+},
+{
+"cip13": "3400930265598",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 10.6667,
+"libelle": "RIVAROXABAN 15MG 28 CPR"
+},
+{
+"cip13": "3400930267479",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1,
+"libelle": "CHOLECALCIFEROL 000UI 2 SOL"
+},
+{
+"cip13": "3400930265581",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 11.5,
+"libelle": "RIVAROXABAN 10MG 30 CPR"
+},
+{
+"cip13": "3400930002377",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 63,
+"libelle": "SEVELAMER 800MG 180 CPR"
+},
+{
+"cip13": "3400930265109",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "AMITRIPTYLINE 40MG 20 SOL"
+},
+{
+"cip13": "3400930154908",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 56.58,
+"libelle": "VARDENAFIL EQUIVALANT VARDENAFIL 20MG 12 CPR"
+},
+{
+"cip13": "3400930154922",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 83.32,
+"libelle": "VARDENAFIL EQUIVALANT VARDENAFIL 20MG 20 CPR"
+},
+{
+"cip13": "3400930155042",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 14.54,
+"libelle": "VARDENAFIL 10MG 4 CPR"
+},
+{
+"cip13": "3400930155059",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 27.26,
+"libelle": "VARDENAFIL 10MG 8 CPR"
+},
+{
+"cip13": "3400930263853",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.34,
+"libelle": "DABIGATRAN ETEXILATE DABIGATRAN ETEXILATE 110MG 1 GELU"
+},
+{
+"cip13": "3400930263907",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 11,
+"libelle": "DABIGATRAN ETEXILATE DABIGATRAN ETEXILATE 150MG 1 GELU"
+},
+{
+"cip13": "3400930269183",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "ACIDE FOLIQUE 0.4MG 90 CPR"
+},
+{
+"cip13": "3400930231043",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 17.25,
+"libelle": "DOSES"
+},
+{
+"cip13": "3400930234303",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 59.99,
+"libelle": "DEFERASIROX 90MG 30 CPR"
+},
+{
+"cip13": "3400930234341",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 119.97,
+"libelle": "DEFERASIROX 180MG 30 CPR"
+},
+{
+"cip13": "3400930275986",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.5,
+"libelle": "MIRTAZAPINE 15MG 30 CPR"
+},
+{
+"cip13": "3400935554314",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.6667,
+"libelle": "MOLSIDOMINE 4MG 30 CPR"
+},
+{
+"cip13": "3400930150559",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "MIDODRINE 2.5MG 30 CPR"
+},
+{
+"cip13": "3400930150566",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 16,
+"libelle": "MIDODRINE 2.5MG 90 CPR"
+},
+{
+"cip13": "3400935863195",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.5,
+"libelle": "MIANSERINE 60MG 14 CPR"
+},
+{
+"cip13": "3400930147672",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.8182,
+"libelle": "METRONIDAZOLE 500MG 14 CPR"
+},
+{
+"cip13": "3400935554192",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "MOLSIDOMINE 2MG 30 CPR"
+},
+{
+"cip13": "3400930147665",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.8333,
+"libelle": "METRONIDAZOLE 500MG 4 CPR"
+},
+{
+"cip13": "3400941816420",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "MANIDIPINE 20MG 30 CPR"
+},
+{
+"cip13": "3400949267408",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 35.5,
+"libelle": "MODAFINIL 100MG 30 CPR"
+},
+{
+"cip13": "3400941816598",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 13.5,
+"libelle": "MANIDIPINE 20MG 90 CPR"
+},
+{
+"cip13": "3400939718620",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5.2703,
+"libelle": "METFORMINE 1000MG 90 CPR"
+},
+{
+"cip13": "3400939718101",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5,
+"libelle": "METFORMINE 850MG 90 CPR"
+},
+{
+"cip13": "3400939717449",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 4.0952,
+"libelle": "METFORMINE 500MG 90 CPR"
+},
+{
+"cip13": "3400939718330",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 2.0323,
+"libelle": "METFORMINE 1000MG 30 CPR"
+},
+{
+"cip13": "3400941816369",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 14,
+"libelle": "MANIDIPINE 10MG 90 CPR"
+},
+{
+"cip13": "3400930063910",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 8,
+"libelle": "MONTELUKAST 5MG 28 CPR"
+},
+{
+"cip13": "3400935554253",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "MOLSIDOMINE 2MG 90 CPR"
+},
+{
+"cip13": "3400930151440",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 4.0588,
+"libelle": "MOMETASONE 50MCG 16 SUSP"
+},
+{
+"cip13": "3400930234396",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 239.94,
+"libelle": "DEFERASIROX 360MG 30 CPR"
+},
+{
+"cip13": "3400930262351",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.75,
+"libelle": "TRAMADOL 100MG 10 CPR"
+},
+{
+"cip13": "3400935867049",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.875,
+"libelle": "MIANSERINE 30MG 30 CPR"
+},
+{
+"cip13": "3400939660974",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 1.78,
+"libelle": "MELOXICAM 7.5MG 14 CPR"
+},
+{
+"cip13": "3400941816130",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5,
+"libelle": "MANIDIPINE 10MG 30 CPR"
+},
+{
+"cip13": "3400939717210",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 1.5862,
+"libelle": "METFORMINE 500MG 30 CPR"
+},
+{
+"cip13": "3400939663586",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3,
+"libelle": "MELOXICAM 15MG 14 CPR"
+},
+{
+"cip13": "3400939717968",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 2,
+"libelle": "METFORMINE 850MG 30 CPR"
+},
+{
+"cip13": "3400930147658",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "METRONIDAZOLE 250MG 20 CPR"
+},
+{
+"cip13": "3400935866738",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "MIANSERINE 10MG 30 CPR"
+},
+{
+"cip13": "3400930021149",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.83,
+"libelle": "DESLORATADINE 5MG 30 CPR"
+},
+{
+"cip13": "3400930270516",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 1.65,
+"libelle": "PARACÉTAMOL M CP"
+},
+{
+"cip13": "3400936089204",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 3.5,
+"libelle": "FENOFIBRATE 300MG 30 GELU"
+},
+{
+"cip13": "3400936313798",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 2.8,
+"libelle": "CAPTOPRIL/HYDROCHLOROTHIAZIDE 50MG/25MG 28 CPR"
+},
+{
+"cip13": "3400934892141",
+"rsf_pct": -7,
+"rdp_pct": 0,
+"pfht": 1.5,
+"libelle": "DILTIAZEM 60MG 30 CPR"
+},
+{
+"cip13": "3400930281857",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.6,
+"libelle": "AMOXICILLINE 500MG PDR"
+},
+{
+"cip13": "3400930061107",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.36,
+"libelle": "OXYBUTYNINE 5MG 60 CPR"
+},
+{
+"cip13": "3400930271025",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 17,
+"libelle": "METHYLPHENIDATE 54MG 28 CPR"
+},
+{
+"cip13": "3400930270998",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 11,
+"libelle": "METHYLPHENIDATE 18MG 28 CPR"
+},
+{
+"cip13": "3400936730762",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 2.58,
+"libelle": "LISINOPRIL 5MG 28 CPR"
+},
+{
+"cip13": "3400936730991",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 2.8,
+"libelle": "LISINOPRIL 20MG 28 CPR"
+},
+{
+"cip13": "3400937052092",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 3.54,
+"libelle": "CARVEDILOL 25MG 28 CPR"
+},
+{
+"cip13": "3400937052153",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 3.54,
+"libelle": "CARVEDILOL 25MG 28 CPR"
+},
+{
+"cip13": "3400937800334",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.8,
+"libelle": "QUINAPRIL 20MG 28 CPR"
+},
+{
+"cip13": "3400937807838",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 8.4,
+"libelle": "CAPTOPRIL/HYDROCHLOROTHIAZIDE 50MG/25MG 84 CPR"
+},
+{
+"cip13": "3400930064641",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.42,
+"libelle": "SERTRALINE 50MG 28 GELU"
+},
+{
+"cip13": "3400930220238",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 62.04,
+"libelle": "FENTANYL 600MCG 1 CPR"
+},
+{
+"cip13": "3614770001005",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6.98,
+"libelle": "LEVURE CONSEIL ÉL 50MG 40 G"
+},
+{
+"cip13": "3400935295576",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 9.83,
+"libelle": "BISOPROLOL CPPEL 1,25MG"
+},
+{
+"cip13": "3400927947834",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "DEXPANTHENOL 5% 100 POM"
+},
+{
+"cip13": "3400930255537",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 25.77,
+"libelle": "BUDESONIDE LM 3MG 45 GELU"
+},
+{
+"cip13": "3400930326787",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 51.53,
+"libelle": "BUDESONIDE LM 3MG 90 GELU"
+},
+{
+"cip13": "3400930284278",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 162,
+"libelle": "APREMILAST 30MG 56 CPR"
+},
+{
+"cip13": "3400935866448",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 5.26,
+"libelle": "DESOGESTREL/ETHINYLESTRADIOL 150MCG/30MCG 21 CPR"
+},
+{
+"cip13": "3400935866509",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 14.9,
+"libelle": "DESOGESTREL/ETHINYLESTRADIOL 150MCG/30MCG 21 CPR"
+},
+{
+"cip13": "3400930313428",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 18,
+"libelle": "BECLOMET F SOL INH 100MCG"
+},
+{
+"cip13": "3400935295927",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 3.45,
+"libelle": "BISOPROLOL CPPELSÉC 3,75MG"
+},
+{
+"cip13": "3400927593154",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 17,
+"libelle": "LATANOPROST/TIMOLOL 50MCG/5MG COLLYRE"
+},
+{
+"cip13": "3400927593093",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "LATANOPROST/TIMOLOL 50MCG/5MG COLLYRE"
+},
+{
+"cip13": "3400930092903",
+"rsf_pct": -5,
+"rdp_pct": 0,
+"pfht": 2.21,
+"libelle": "ATENOLOL 50MG 30 CPR"
+},
+{
+"cip13": "3400930130100",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6.4,
+"libelle": "IBUPROFÈNE CONSEIL 200MG 20SACH"
+},
+{
+"cip13": "3400936774247",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4.5,
+"libelle": "ALFA AMYLASE UCEIP FLAC 200ML"
+},
+{
+"cip13": "3400949914821",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 23.18,
+"libelle": "FENTANYL 75MCG 1"
+},
+{
+"cip13": "3400949915590",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 28.45,
+"libelle": "FENTANYL 100MCG 1"
+},
+{
+"cip13": "3400949954971",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 11,
+"libelle": "REPAGLINIDE 0.5MG 90 CPR"
+},
+{
+"cip13": "3400949954391",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 5,
+"libelle": "REPAGLINIDE 1MG 90 CPR"
+},
+{
+"cip13": "3400930188033",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 16.87,
+"libelle": "ETHINYLESTRADIOL BETADEX CLATHRATE ETHINYLESTRADIOL/DROSPIRENONE 0.02MG/3MG 28 CPR"
+},
+{
+"cip13": "3400930191712",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.56,
+"libelle": "LATANOPROST 50MCG COLLYRE"
+},
+{
+"cip13": "3400930213520",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 115.15,
+"libelle": "TERIPARATIDE 20MCG SOL"
+},
+{
+"cip13": "3400930220245",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 62.04,
+"libelle": "FENTANYL 800MCG 1 CPR"
+},
+{
+"cip13": "3400934757846",
+"rsf_pct": -7,
+"rdp_pct": 0,
+"pfht": 2.1,
+"libelle": "DILTIAZEM 120MG 28 GELU"
+},
+{
+"cip13": "3400935286291",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 0.6,
+"libelle": "ZOPICLONE 7.5MG 5 CPR"
+},
+{
+"cip13": "3400934627583",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 128,
+"libelle": "RILUZOLE 50MG 56 CPR"
+},
+{
+"cip13": "3400937561877",
+"rsf_pct": -5,
+"rdp_pct": 0,
+"pfht": 9,
+"libelle": "FINASTERIDE 5MG 28 CPR"
+},
+{
+"cip13": "3400937321174",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "GLIBENCLAMIDE 2.5MG 60 CPR"
+},
+{
+"cip13": "3400937051903",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "CARVEDILOL 6.25MG 28 CPR"
+},
+{
+"cip13": "3400937280730",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 14,
+"libelle": "FENOFIBRATE 160MG 90 CPR"
+},
+{
+"cip13": "3400938609097",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9,
+"libelle": "FOSINOPRIL/HYDROCHLOROTHIAZIDE 20MG/12.5MG 90 CPR"
+},
+{
+"cip13": "3400938241501",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 6,
+"libelle": "FLECAINIDE 100MG 30 CPR"
+},
+{
+"cip13": "3400938728583",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 5,
+"libelle": "VENLAFAXINE 75MG 30 GELU"
+},
+{
+"cip13": "3400938823837",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "CICLOPIROX 8% 3 SOL"
+},
+{
+"cip13": "3400930085417",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 11,
+"libelle": "EZETIMIBE 10MG 30 CPR"
+},
+{
+"cip13": "3400939138015",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 4.68,
+"libelle": "TOPIRAMATE 50MG 28 CPR"
+},
+{
+"cip13": "3400939138473",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 8.96,
+"libelle": "TOPIRAMATE 100MG 28 CPR"
+},
+{
+"cip13": "3400939139135",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 8.96,
+"libelle": "TOPIRAMATE 200MG 28 CPR"
+},
+{
+"cip13": "3400930100561",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 144,
+"libelle": "ENTECAVIR 0.5MG 1 CPR"
+},
+{
+"cip13": "3400939988610",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.43,
+"libelle": "CLARITHROMYCINE 500MG 5 CPR"
+},
+{
+"cip13": "3400939989099",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6.61,
+"libelle": "CLARITHROMYCINE 500MG 10 CPR"
+},
+{
+"cip13": "3400941565328",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9.5,
+"libelle": "CANDESARTAN CILEXETIL 16MG 90 CPR"
+},
+{
+"cip13": "3400941715143",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "NICORANDIL 10MG 30 CPR"
+},
+{
+"cip13": "3400949289639",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9.5,
+"libelle": "VALSARTAN 160MG 90 CPR"
+},
+{
+"cip13": "3400939728155",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "FLUVASTATINE 40MG 30 GELU"
+},
+{
+"cip13": "3400939728384",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 11.5,
+"libelle": "FLUVASTATINE 40MG 90 GELU"
+},
+{
+"cip13": "3400936133419",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "NORFLOXACINE 400MG 10 CPR"
+},
+{
+"cip13": "3400930231036",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 15,
+"libelle": "DOSES"
+},
+{
+"cip13": "3400935817990",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "CARBOCISTEINE 2% 125 SIROP"
+},
+{
+"cip13": "3400935970916",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "THIOCOLCHICOSIDE 4MG 12 CPR"
+},
+{
+"cip13": "3400935866387",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 15,
+"libelle": "DESOGESTREL/ETHINYLESTRADIOL 150MCG/20MCG 21 CPR"
+},
+{
+"cip13": "3400941994708",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 10,
+"libelle": "RALOXIFENE 60MG 28 CPR"
+},
+{
+"cip13": "3400930289228",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 772.67,
+"libelle": "BOSUTINIB EQUIVALENT A BOSUTINIB 400MG 28 CPR"
+},
+{
+"cip13": "3400930299166",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 15.02,
+"libelle": "NILOTINIB EQUIVALENT A NILOTINIB 200MG 1 GELU"
+},
+{
+"cip13": "3400930299692",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 190.32,
+"libelle": "NILOTINIB EQUIVALENT A NILOTINIB 150MG 1 GELU"
+},
+{
+"cip13": "3400930299708",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 761.28,
+"libelle": "NILOTINIB EQUIVALENT A NILOTINIB 150MG 1 GELU"
+},
+{
+"cip13": "3400934757785",
+"rsf_pct": -7,
+"rdp_pct": 0,
+"pfht": 2.1,
+"libelle": "DILTIAZEM 90MG 28 GELU"
+},
+{
+"cip13": "3400930289938",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 27,
+"libelle": "EZETIMIBE/ATORVASTATINE TRIHYDRATEE EQUIVALENT A ATORVASTATINE 10MG/80MG 90 CPR"
+},
+{
+"cip13": "3400935770943",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.65,
+"libelle": "CLOZAPINE 100MG 14 CPR"
+},
+{
+"cip13": "3400936699625",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 32,
+"libelle": "FLUCONAZOLE 200MG 7 GELU"
+},
+{
+"cip13": "3400937189910",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.1429,
+"libelle": "GLIMEPIRIDE 3MG 30 CPR"
+},
+{
+"cip13": "3400936648876",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "ENALAPRIL/HYDROCHLOROTHIAZIDE 20MG/12.5MG 28 CPR"
+},
+{
+"cip13": "3400937190688",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.2,
+"libelle": "GLIMEPIRIDE 4MG 30 CPR"
+},
+{
+"cip13": "3400937178853",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 13.5,
+"libelle": "FENOFIBRATE 200MG 90 GELU"
+},
+{
+"cip13": "3400937186896",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "GLIMEPIRIDE 1MG 30 CPR"
+},
+{
+"cip13": "3400936698734",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9,
+"libelle": "FLUCONAZOLE 50MG 7 GELU"
+},
+{
+"cip13": "3614770000602",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 11.6,
+"libelle": "IMMUNITÉ CONSEIL ÉL 20 G"
+},
+{
+"cip13": "3400936699793",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 96.22,
+"libelle": "FLUCONAZOLE 200MG 30 GELU"
+},
+{
+"cip13": "3400926987084",
+"rsf_pct": -10,
+"rdp_pct": 20,
+"pfht": 1.77,
+"libelle": "ESCITALOPRAM 5MG 14 CPR"
+},
+{
+"cip13": "3400930027288",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3.36,
+"libelle": "ESOMEPRAZOLE MAGNESIUM EQUIVALENT A ESOMEPRAZOLE 20MG 28 CPR"
+},
+{
+"cip13": "3400937842846",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 18.89,
+"libelle": "GLICLAZIDE 80MG 180 CPR"
+},
+{
+"cip13": "3400937842907",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7.92,
+"libelle": "CIPROFIBRATE 100MG 90 GELU"
+},
+{
+"cip13": "3400930037997",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 1,
+"libelle": "FUROSEMIDE 20MG 30 CPR"
+},
+{
+"cip13": "3400930027301",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 3.75,
+"libelle": "ESOMEPRAZOLE MAGNESIUM EQUIVALENT A ESOMEPRAZOLE 40MG 28 CPR"
+},
+{
+"cip13": "3400938764604",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 26.25,
+"libelle": "VALACICLOVIR 500MG 42 CPR"
+},
+{
+"cip13": "3400949399260",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8.8,
+"libelle": "OLANZAPINE 10MG 28 CPR"
+},
+{
+"cip13": "3400930277751",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 418.09,
+"libelle": "TOLVAPTAN 30MG/60MG 7 CPR"
+},
+{
+"cip13": "3400930277799",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 418.09,
+"libelle": "TOLVAPTAN 30MG/90MG 56 CPR"
+},
+{
+"cip13": "3400930016237",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.75,
+"libelle": "CHLORHEXIDINE/CHLORURE BENZALKONIUM/ALCOOL BENZYLIQUE 0.250G/0.025G/4ML 250 SOL"
+},
+{
+"cip13": "3400930157442",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.2,
+"libelle": "CHLORHEXIDINE BIOGARAN® - BAIN DE BOUCHE 1.2MG/ML"
+},
+{
+"cip13": "3400936966925",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 5.8,
+"libelle": "VALPROATE SODIUM 500MG 30 CPR"
+},
+{
+"cip13": "3400930032954",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 13,
+"libelle": "PREGABALINE 100MG 84 GELU"
+},
+{
+"cip13": "3400930033074",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 13,
+"libelle": "PREGABALINE 150MG 56 GELU"
+},
+{
+"cip13": "3400930032916",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 9,
+"libelle": "PREGABALINE 75MG 56 GELU"
+},
+{
+"cip13": "3400930134153",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 4.5,
+"libelle": "AMLODIPINE/VALSARTAN 5MG/80MG 30 CPR"
+},
+{
+"cip13": "3400930134184",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 13.25,
+"libelle": "AMLODIPINE/VALSARTAN 5MG/80MG 90 CPR"
+},
+{
+"cip13": "3400930033234",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 17.875,
+"libelle": "PREGABALINE 300MG 56 GELU"
+},
+{
+"cip13": "3400930271018",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 15,
+"libelle": "METHYLPHENIDATE 36MG 28 CPR"
+},
+{
+"cip13": "3400935866219",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 5.26,
+"libelle": "DESOGESTREL/ETHINYLESTRADIOL 150MCG/20MCG 21 CPR"
+},
+{
+"cip13": "3400937913737",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 7.34,
+"libelle": "LISINOPRIL 5MG 84 CPR"
+},
+{
+"cip13": "3400937914277",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 8.4,
+"libelle": "LISINOPRIL 20MG 84 CPR"
+},
+{
+"cip13": "3400922198088",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 9.5,
+"libelle": "FENTANYL 12MCG 1"
+},
+{
+"cip13": "3400930126356",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 7,
+"libelle": "CETYLPYRIDINIUM LYSOZYME CP 1,5MG/20MG"
+},
+{
+"cip13": "3400930064665",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 6.46,
+"libelle": "GABAPENTINE 100MG 90 GELU"
+},
+{
+"cip13": "3400930064672",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 15.55,
+"libelle": "GABAPENTINE 300MG 90 GELU"
+},
+{
+"cip13": "3400930131459",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 17,
+"libelle": "ETHINYLESTRADIOL/DROSPIRENONE 0.03MG/3MG 21 CPR"
+},
+{
+"cip13": "3400930131480",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 5.76,
+"libelle": "ETHINYLESTRADIOL BETADEX CLATHRATE ETHINYLESTRADIOL/DROSPIRENONE 0.02MG/3MG 21 CPR"
+},
+{
+"cip13": "3400930131510",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 17,
+"libelle": "ETHINYLESTRADIOL BETADEX CLATHRATE ETHINYLESTRADIOL/DROSPIRENONE 0.02MG/3MG 21 CPR"
+},
+{
+"cip13": "3400930131428",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 5.6667,
+"libelle": "ETHINYLESTRADIOL/DROSPIRENONE 0.03MG/3MG 21 CPR"
+},
+{
+"cip13": "3400930131855",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "BISACODYL 5MG 30 CPR"
+},
+{
+"cip13": "3400930202029",
+"rsf_pct": 0,
+"rdp_pct": 0,
+"pfht": 363,
+"libelle": "CEGFILA SOLUTION INJECTABLE SC BOÎTE DE"
+},
+{
+"cip13": "3400930244746",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 7.7143,
+"libelle": "ENOXAPARINE UI SOL INJ UN 0,4ML"
+},
+{
+"cip13": "3400930236789",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6.5,
+"libelle": "AMYL/ALCOOL DICH/LIDO CONSEIL FLAC 20 ML"
+},
+{
+"cip13": "3400930244692",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.64,
+"libelle": "ENOXAPARINE UI SOL INJ UN 0,2ML"
+},
+{
+"cip13": "3400930244708",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 10.91,
+"libelle": "ENOXAPARINE UI SOL INJ UN 0,2ML"
+},
+{
+"cip13": "3400930244814",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 8.39,
+"libelle": "ENOXAPARINE UI SOL INJ UN 0,6ML"
+},
+{
+"cip13": "3400930244838",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 41.94,
+"libelle": "ENOXAPARINE UI SOL INJ UN 0,6ML"
+},
+{
+"cip13": "3400930244913",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 9.4,
+"libelle": "ENOXAPARINE UI SOL INJ UN 0,8ML"
+},
+{
+"cip13": "3400930244937",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 46.95,
+"libelle": "ENOXAPARINE UI SOL INJ UN 0,8ML"
+},
+{
+"cip13": "3400930245002",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 58.41,
+"libelle": "ENOXAPARINE UI SOL INJ UN 1ML"
+},
+{
+"cip13": "3400930203910",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.34,
+"libelle": "PHOLCODINE FLAC 6.55MG/5ML 200ML"
+},
+{
+"cip13": "3400930240106",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 36,
+"libelle": "MINOXIDIL 5% 60 SOL"
+},
+{
+"cip13": "3400930233825",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 3.8571,
+"libelle": "ACETYLCYSTEINE 200MG SACH"
+},
+{
+"cip13": "3400930243152",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 10.75,
+"libelle": "ETHINYLESTRADIOL/ETONOGESTREL 15MCG/120MCG 1"
+},
+{
+"cip13": "3400930240083",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 21,
+"libelle": "MINOXIDIL 2% 60 SOL"
+},
+{
+"cip13": "3400930217030",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 5.46,
+"libelle": "GESTODENE/ETHINYLESTRADIOL 0.06MG/0.015MG 4 CPR"
+},
+{
+"cip13": "3400930217047",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 16.04,
+"libelle": "GESTODENE/ETHINYLESTRADIOL 0.06MG/0.015MG 4 CPR"
+},
+{
+"cip13": "3400930243169",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 31,
+"libelle": "ETHINYLESTRADIOL/ETONOGESTREL 15MCG/120MCG 1"
+},
+{
+"cip13": "3400930276228",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 9,
+"libelle": "DICLOFÉNAC CONSEIL GEL TUBE DE 2% 30G"
+},
+{
+"cip13": "3400930255834",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.88,
+"libelle": "BRIMONIDINE/TIMOLOL BIOGARAN® + - COLLYRE 2 MG/ML 5MG/ML 5 ML"
+},
+{
+"cip13": "3400930270523",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "PARACÉTAMOL CONSEIL CP 1000MG"
+},
+{
+"cip13": "3400930283219",
+"rsf_pct": 0,
+"rdp_pct": 0,
+"pfht": 355,
+"libelle": "LIBMYRIS® SOLUTION INJECTABLE SERINGUE UN 40 MG"
+},
+{
+"cip13": "3400930283226",
+"rsf_pct": 0,
+"rdp_pct": 0,
+"pfht": 355,
+"libelle": "LIBMYRIS® SOLUTION INJECTABLE STYLO UN 40 MG"
+},
+{
+"cip13": "3400930283233",
+"rsf_pct": 0,
+"rdp_pct": 0,
+"pfht": 367.95,
+"libelle": "LIBMYRIS® SOLUTION INJECTABLE EN SERINGUE PR 80 MG"
+},
+{
+"cip13": "3400930283554",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.2,
+"libelle": "BRINZOLAMIDE/TIMOLOL BIOGARAN® + - COLLYRE EN SUSPENSION 10 MG/ML 5 MG/ML 5 ML"
+},
+{
+"cip13": "3400930267981",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "METOPIMAZINE 7.5MG 8"
+},
+{
+"cip13": "3400934111815",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 4.84,
+"libelle": "TRIMETAZIDINE 20MG 60 CPR"
+},
+{
+"cip13": "3400934506727",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 5.4,
+"libelle": "CYPROTERONE/ETHINYLESTRADIOL 2MG/0.035MG 21 CPR"
+},
+{
+"cip13": "3400934972775",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 5.1,
+"libelle": "PIRACETAM 400MG 90 GELU"
+},
+{
+"cip13": "3400934973208",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 4.72,
+"libelle": "PIRACETAM 800MG 45 CPR"
+},
+{
+"cip13": "3400934506895",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 16,
+"libelle": "CYPROTERONE/ETHINYLESTRADIOL 2MG/0.035MG 21 CPR"
+},
+{
+"cip13": "3400936290815",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "OMEPRAZOLE 20MG 14 GELU"
+},
+{
+"cip13": "3400935971166",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "THIOCOLCHICOSIDE 4MG 24 CPR"
+},
+{
+"cip13": "3400936290754",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 5.75,
+"libelle": "OMEPRAZOLE 20MG 7 GELU"
+},
+{
+"cip13": "3400935618160",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6.5,
+"libelle": "DIOSMINE 600MG 30 CPR"
+},
+{
+"cip13": "3400935302014",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "KETOPROFENE 2.5% 60 GEL"
+},
+{
+"cip13": "3400936358454",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "ACICLOVIR 5% 10 CR"
+},
+{
+"cip13": "3400935400628",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2.4,
+"libelle": "ACICLOVIR CONSEIL T CRÈME DE 5% 2G"
+},
+{
+"cip13": "3400937158114",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 5.26,
+"libelle": "GESTODENE / ETHINYLESTRADIOL 0.05MG 6 CPR"
+},
+{
+"cip13": "3400937158282",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 14.9,
+"libelle": "GESTODENE / ETHINYLESTRADIOL 0.05MG 6 CPR"
+},
+{
+"cip13": "3400930183205",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 8,
+"libelle": "ATORVASTATINE TRIHYDRATEE 80MG 90 CPR"
+},
+{
+"cip13": "3400930183052",
+"rsf_pct": -30,
+"rdp_pct": 10,
+"pfht": 2.875,
+"libelle": "ATORVASTATINE TRIHYDRATEE 20MG 30 CPR"
+},
+{
+"cip13": "3400936887589",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2.6667,
+"libelle": "CETIRIZINE 10MG 7 CPR"
+},
+{
+"cip13": "3400937693042",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "IBUPROFENE 200MG 20 CPR"
+},
+{
+"cip13": "3400937464673",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 11.82,
+"libelle": "GESTODENE/ETHINYLESTRADIOL 0.075MG/0.030MG 21 CPR"
+},
+{
+"cip13": "3400937464444",
+"rsf_pct": -45,
+"rdp_pct": 0,
+"pfht": 12,
+"libelle": "GESTODENE/ETHINYLESTRADIOL 0.075MG/0.020MG 21 CPR"
+},
+{
+"cip13": "3400937673860",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "MIRTAZAPINE 15MG 30 CPR"
+},
+{
+"cip13": "3400930139721",
+"rsf_pct": -5,
+"rdp_pct": 0,
+"pfht": 3.5,
+"libelle": "IRBESARTAN 300MG 30 CPR"
+},
+{
+"cip13": "3400921815894",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 13,
+"libelle": "LATANOPROST 50MCG COLLYRE"
+},
+{
+"cip13": "3400930139691",
+"rsf_pct": -5,
+"rdp_pct": 0,
+"pfht": 3,
+"libelle": "IRBESARTAN 150MG 30 CPR"
+},
+{
+"cip13": "3400930189948",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 212.5,
+"libelle": "ATOVAQUONE 750MG 226 SUSP"
+},
+{
+"cip13": "3400938134421",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "CARBOCISTEINE 5% 200 SIROP"
+},
+{
+"cip13": "3400938135480",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2,
+"libelle": "AMBROXOL 30MG 20 CPR"
+},
+{
+"cip13": "3400938659993",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 7.22,
+"libelle": "DIACEREINE 50MG 30 GELU"
+},
+{
+"cip13": "3400938533705",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "MAGNESIUM/PYRIDOXINE 470MG/5MG 50 CPR"
+},
+{
+"cip13": "3400937999205",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "TRIMETAZIDINE 35MG 60 CPR"
+},
+{
+"cip13": "3400938358926",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2.2857,
+"libelle": "IBUPROFENE 400MG 10 CPR"
+},
+{
+"cip13": "3400938141573",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "AMBROXOL 0.6% 100 SOL"
+},
+{
+"cip13": "3400930022047",
+"rsf_pct": -2.5,
+"rdp_pct": 27.5,
+"pfht": 5,
+"libelle": "VENLAFAXINE 75MG 30 GELU"
+},
+{
+"cip13": "3400930016732",
+"rsf_pct": -5,
+"rdp_pct": 0,
+"pfht": 15.6,
+"libelle": "OLANZAPINE 5MG 30 CPR"
+},
+{
+"cip13": "3400930016749",
+"rsf_pct": -5,
+"rdp_pct": 0,
+"pfht": 8.84,
+"libelle": "OLANZAPINE 10MG 30 CPR"
+},
+{
+"cip13": "3400935335012",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 5.5333,
+"libelle": "AMOXICILLINE/CLAVULANATE POTASSIUM AMOXICILLINE/ACIDE CLAVULANIQUE 1G/125MG SACH"
+},
+{
+"cip13": "3400935355690",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 4.3889,
+"libelle": "AMOXICILLINE/CLAVULANATE POTASSIUM AMOXICILLINE/ACIDE CLAVULANIQUE 100MG/12.5MG PDR"
+},
+{
+"cip13": "3400939460772",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 2.6667,
+"libelle": "LORATADINE 10MG 7 CPR"
+},
+{
+"cip13": "3400930220122",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 20.68,
+"libelle": "FENTANYL 100MCG 1 CPR"
+},
+{
+"cip13": "3400930220139",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 62.04,
+"libelle": "FENTANYL 100MCG 1 CPR"
+},
+{
+"cip13": "3400930220207",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 62.04,
+"libelle": "FENTANYL 400MCG 1 CPR"
+},
+{
+"cip13": "3400930220153",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 62.04,
+"libelle": "FENTANYL 200MCG 1 CPR"
+},
+{
+"cip13": "3400930220160",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 20.68,
+"libelle": "FENTANYL 300MCG 1 CPR"
+},
+{
+"cip13": "3400930220177",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 62.04,
+"libelle": "FENTANYL 300MCG 1 CPR"
+},
+{
+"cip13": "3400930220184",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 20.68,
+"libelle": "FENTANYL 400MCG 1 CPR"
+},
+{
+"cip13": "3400939981635",
+"rsf_pct": 0,
+"rdp_pct": 0,
+"pfht": 54.6667,
+"libelle": "RATIOGRAS TIM INJ SER 30 MUI 0.5 ML"
+},
+{
+"cip13": "3400939981864",
+"rsf_pct": 0,
+"rdp_pct": 0,
+"pfht": 252.41,
+"libelle": "RATIOGRAS TIM INJ ER 30 MUI 0.5 ML"
+},
+{
+"cip13": "3400939981925",
+"rsf_pct": 0,
+"rdp_pct": 0,
+"pfht": 82.14,
+"libelle": "RATIOGRAS TIM INJ SER 48 MUI 0.8 ML"
+},
+{
+"cip13": "3400939982007",
+"rsf_pct": 0,
+"rdp_pct": 0,
+"pfht": 410.7,
+"libelle": "RATIOGRAS TIM INJ SER 48 MUI 0.8 ML"
+},
+{
+"cip13": "3400939736020",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 3.6154,
+"libelle": "BORAX/ACIDE BORIQUE 12MG/18MG 5 SOL"
+},
+{
+"cip13": "3400939804996",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6,
+"libelle": "TROLAMINE 0.67% 93"
+},
+{
+"cip13": "3400941619359",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "TRIMEBUTINE 100MG 20 CPR"
+},
+{
+"cip13": "3400939811680",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 24.67,
+"libelle": "FINASTERIDE 1MG 28 CPR"
+},
+{
+"cip13": "3400939811802",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 74,
+"libelle": "FINASTERIDE 1MG 84 CPR"
+},
+{
+"cip13": "3400930128176",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.64,
+"libelle": "MIANSERINE 10MG 30 CPR"
+},
+{
+"cip13": "3400930128183",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 3.56,
+"libelle": "MIANSERINE 30MG 30 CPR"
+},
+{
+"cip13": "3400930060117",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 5.58,
+"libelle": "MOXIFLOXACINE 400MG 5 CPR"
+},
+{
+"cip13": "3400930060124",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 7.81,
+"libelle": "MOXIFLOXACINE 400MG 7 CPR"
+},
+{
+"cip13": "3400927786372",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 5.93,
+"libelle": "OXYCODONE 15MG 1 CPR"
+},
+{
+"cip13": "3400949644049",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 3.5,
+"libelle": "ALFA AMYLASE UCEIP CP ENR"
+},
+{
+"cip13": "3400927789045",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 11.88,
+"libelle": "OXYCODONE 30MG 1 CPR"
+},
+{
+"cip13": "3400927785023",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "OXYCODONE 10MG 1 CPR"
+},
+{
+"cip13": "3400927787782",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 8,
+"libelle": "OXYCODONE 20MG 1 CPR"
+},
+{
+"cip13": "3400927783760",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 2.15,
+"libelle": "OXYCODONE 5MG 1 CPR"
+},
+{
+"cip13": "3614770000251",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6.05,
+"libelle": "LEVURE CONSEIL ÉL 200MG 10 G"
+},
+{
+"cip13": "3614770000268",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 13.95,
+"libelle": "LEVURE CONSEIL ÉL 200MG 30 G"
+},
+{
+"cip13": "3614770000282",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 6.51,
+"libelle": "LEVURE CONSEIL 100MG 20SACH"
+},
+{
+"cip13": "3614770000299",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 10,
+"libelle": "ACÉROLA CONSEIL CP"
+},
+{
+"cip13": "3614770000312",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 29.06,
+"libelle": "INTRAIT DE MARRON D'INDE JAMBES LÉGÈRES ÉL 60 G"
+},
+{
+"cip13": "3614770000329",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 7.21,
+"libelle": "CHARBON LEVURE CONSEIL ÉL 109/108,5MG 30G"
+},
+{
+"cip13": "3614770000398",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 8,
+"libelle": "MAGNÉSIUM CONSEIL CP 300MG"
+},
+{
+"cip13": "3614770000411",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 7,
+"libelle": "SIROP PROPOLIS CONSEIL BOÎTE DE"
+},
+{
+"cip13": "3400949821358",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 3.74,
+"libelle": "GINGKO CPPEL 40MG"
+},
+{
+"cip13": "3400949821419",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 8.48,
+"libelle": "GINGKO CPPEL 40MG"
+},
+{
+"cip13": "3614770000053",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4,
+"libelle": "SERUM PHYSIOLOGIQUE CONSEIL X 0,9% 5ML"
+},
+{
+"cip13": "3614770000077",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 4.92,
+"libelle": "EAU DE MER HYPERTONIQUE CONSEIL FLAC 50ML"
+},
+{
+"cip13": "3614770000084",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 5.12,
+"libelle": "EAU DE MER ISOTONIQUE CONSEIL FLAC 100ML"
+},
+{
+"cip13": "3614770000138",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 20.06,
+"libelle": "INTRAIT DE MARRON D'INDE COMPLEXE H FLAC 90ML"
+},
+{
+"cip13": "3614770000145",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 13.8,
+"libelle": "INTRAIT DE MARRON D'INDE TRANSIT SOL BU FLAC 200ML"
+},
+{
+"cip13": "3614770000152",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 15,
+"libelle": "INTRAIT DE MARRON D'INDE JAMBES LÉGÈRES ÉL 30 G"
+},
+{
+"cip13": "3614770000169",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 20.06,
+"libelle": "MARRON D'INDE PHLEBOGEL T GEL 100G"
+},
+{
+"cip13": "3400927791635",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 22,
+"libelle": "OXYCODONE 60MG 1 CPR"
+},
+{
+"cip13": "3400927790454",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 15.77,
+"libelle": "OXYCODONE 40MG 1 CPR"
+},
+{
+"cip13": "3614770001050",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 8.3,
+"libelle": "SOIN LAVANT APAISANT CONSEIL FLAC 250 ML"
+},
+{
+"cip13": "3614770001067",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 16,
+"libelle": "STYLET MYCOSE ONGLE CONSEIL SÉRUM BOÎTE"
+},
+{
+"cip13": "3614770001098",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 5,
+"libelle": "MAGNÉSIUM/VITAMINE B CONSEIL ÉL 30 G"
+},
+{
+"cip13": "3614770001111",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 13.5,
+"libelle": "MÉLATONINE CONSEIL CP LP"
+},
+{
+"cip13": "3614770001128",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 9,
+"libelle": "MÉLATONINE CONSEIL CP LP"
+},
+{
+"cip13": "3614770001043",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 7,
+"libelle": "SOIN LAVANT QUOTIDIEN CONSEIL FLAC 250 ML"
+},
+{
+"cip13": "3400927793066",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 25.98,
+"libelle": "OXYCODONE 80MG 1 CPR"
+},
+{
+"cip13": "3770011742684",
+"rsf_pct": 0,
+"rdp_pct": 0,
+"pfht": 50,
+"libelle": "CYSTI'TEST KIT RAPIDE BOITE DE"
+},
+{
+"cip13": "4022679018182",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 36.42,
+"libelle": "NUCOLSAN 30SACH ETS"
+},
+{
+"cip13": "8721082482042",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 28.3,
+"libelle": "PROBAFLOR ÉL 30 G"
+},
+{
+"cip13": "3400930075210",
+"rsf_pct": -5,
+"rdp_pct": 0,
+"pfht": 2.5,
+"libelle": "SIMVASTATINE 20MG 28 CPR"
+},
+{
+"cip13": "3400930320082",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 167.8,
+"libelle": "EFAVIRENZ/EMTRICITABINE/TENOFOVIR DISOPROXIL TENOFOVIR DISOPROXIL 600MG/200MG/245MG 30"
+},
+{
+"cip13": "3400930026106",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 16,
+"libelle": "ARIPIPRAZOLE 10MG 28 CPR"
+},
+{
+"cip13": "3400930317730",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.49,
+"libelle": "BROMAZEPAM 6MG 30 CPR"
+},
+{
+"cip13": "3400930328699",
+"rsf_pct": -20,
+"rdp_pct": 0,
+"pfht": 331.57,
+"libelle": "EMTRICITABINE/TENOFOVIR DISOPROXIL TENOFOVIR DISOPROXIL 200MG/245MG 30 CPR"
+},
+{
+"cip13": "3400930191729",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 15,
+"libelle": "LATANOPROST 50MCG COLLYRE"
+},
+{
+"cip13": "3400930287491",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 373.69,
+"libelle": "NINTEDANIB EQUIVALENT A NINTEDANIB 100MG 1 CAPS"
+},
+{
+"cip13": "3400930322321",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 22,
+"libelle": "CABERGOLINE 0.5MG 8 CPR"
+},
+{
+"cip13": "3400930290408",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.9792,
+"libelle": "PAROXETINE 20MG 14 CPR"
+},
+{
+"cip13": "3400930287514",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 373.69,
+"libelle": "NINTEDANIB EQUIVALENT A NINTEDANIB 150MG 1 CAPS"
+},
+{
+"cip13": "3400930312384",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 5.71,
+"libelle": "OXYCODONE 15MG 1 CPR"
+},
+{
+"cip13": "3400930313046",
+"rsf_pct": -10,
+"rdp_pct": 0,
+"pfht": 25,
+"libelle": "OXYCODONE 80MG 1 CPR"
+},
+{
+"cip13": "3400930277720",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 418.09,
+"libelle": "TOLVAPTAN 15MG/45MG 56 CPR"
+},
+{
+"cip13": "3400930284254",
+"rsf_pct": -30,
+"rdp_pct": 0,
+"pfht": 78.5,
+"libelle": "APREMILAST 10MG 27 CPR"
+},
+{
+"cip13": "3400930241257",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 2.9091,
+"libelle": "BILASTINE 20MG 1 CPR"
+},
+{
+"cip13": "3400930202647",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 5.05,
+"libelle": "URAPIDIL 60MG 30 GELU"
+},
+{
+"cip13": "3400930230329",
+"rsf_pct": -40,
+"rdp_pct": 0,
+"pfht": 532.14,
+"libelle": "FINGOLIMOD 0.5MG 28 GELU"
+},
+{
+"cip13": "3400935652638",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 1.1,
+"libelle": "FENOFIBRATE 100MG 30 GELU"
+},
+{
+"cip13": "3400927626944",
+"rsf_pct": -20,
+"rdp_pct": 10,
+"pfht": 135,
+"libelle": "CAPECITABINE 500MG 120 CPR"
+},
+{
+"cip13": "3400941825583",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 2.6667,
+"libelle": "ACETYLLEUCINE 500MG 30 CPR"
+},
+{
+"cip13": "3400949914302",
+"rsf_pct": -15,
+"rdp_pct": 0,
+"pfht": 13.5,
+"libelle": "FENTANYL 25MCG 1"
+},
+{
+"cip13": "3400949668861",
+"rsf_pct": -50,
+"rdp_pct": 0,
+"pfht": 28.94,
+"libelle": "ATOVAQUONE/PROGUANIL 250MG/100MG 12 CPR"
+},
+{
+"cip13": "3400949914531",
+"rsf_pct": -2.5,
+"rdp_pct": 0,
+"pfht": 18,
+"libelle": "FENTANYL 50MCG 1"
+}
+]
