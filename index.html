@@ -1817,6 +1817,17 @@ let _lastGoodLabPages = null;
 let _cachedFlushSession = null;
 // Flag : cloud save en attente (badge spinner)
 let _cloudSavePending = false;
+// Flag : cet onglet a-t-il eu une VRAIE modif utilisateur depuis sa dernière synchro ?
+// Un onglet "propre" (juste ouvert, jamais touché) ne doit JAMAIS pousser vers le cloud —
+// sinon il écrase les édits faites depuis un autre onglet/poste. Seul l'onglet réellement
+// modifié en dernier devient la vérité. Mis à true sur événement utilisateur réel (isTrusted),
+// remis à false après une sauvegarde réussie ou au chargement initial.
+let _localDirty = false;
+// Événements utilisateur réels uniquement (isTrusted=false pour les .value=… programmatiques
+// d'un chargement cloud → pas de faux positif). En capture pour tout attraper, même si un
+// handler stoppe la propagation.
+['input', 'change'].forEach(evt =>
+  document.addEventListener(evt, e => { if (e.isTrusted) _localDirty = true; }, true));
 
 function serializeState() {
   return {
@@ -2003,6 +2014,8 @@ async function saveCloudState(data) {
     if (error) throw error;
     // Cette écriture devient la vérité partagée : mémoriser son horodatage.
     if (data.savedAt) _truthSavedAt = data.savedAt;
+    // Nos modifs locales sont maintenant dans le cloud → onglet propre à nouveau.
+    _localDirty = false;
     _cloudSavePending = false;
     _showSaveBadge();
     return true;
@@ -2023,6 +2036,15 @@ function _flushState() {
   clearTimeout(_cloudSaveTimer);
   const data = serializeState();
   try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
+
+  // Onglet propre : aucune modif utilisateur réelle depuis la dernière synchro → ne JAMAIS
+  // pousser au cloud sur perte de focus / fermeture. La persistance locale ci-dessus suffit.
+  // C'est ce qui empêche un onglet ouvert ailleurs (mais non modifié) d'écraser la vérité
+  // écrite par l'onglet réellement édité en dernier.
+  if (!_localDirty) {
+    console.log('[BP] flush ignoré : onglet propre (aucune modif locale) — cloud non touché');
+    return;
+  }
 
   // keepalive fetch : survit à la fermeture d'onglet contrairement à une Promise async normale.
   // Payload allégé (sans grosses stats OSPHARM/Digi qui sont récupérables) pour rester < 64 KB.
@@ -9272,6 +9294,8 @@ async function saveProfile() {
   }
   // Horodatage de la vérité chargée — référence pour le last-write-wins live (_checkCloudSync).
   _truthSavedAt = saved?.savedAt || 0;
+  // On vient de charger la vérité : aucune modif utilisateur locale en attente.
+  _localDirty = false;
   console.log('[BP] saved.labPages =', saved?.labPages?.length ?? 'null', '| cache local =', !!_lsRaw, '| cloud =', !!_startupCloudState, '| fromCloud =', _loadedFromCloud, '| truthSavedAt =', _truthSavedAt);
   if (saved) {
     state.gers = saved.gers ?? null;
