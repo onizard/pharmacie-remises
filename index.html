@@ -3669,6 +3669,7 @@ function createLabContDom(lp) {
         lp[monKey] = parseInt(btn.dataset.mon);
         _refreshActive();
         lp[`_switchCondMon${yearSuffix}`]?.();
+        lp[`_reflectContractMonth${yearSuffix}`]?.();
         saveState();
       });
     });
@@ -3742,14 +3743,48 @@ function createLabContDom(lp) {
     if (lp.contractDate) _dateInput.value = lp.contractDate;
     _syncContractUi();
     lp._syncContractUi = _syncContractUi;
+    // Badge d'état du contrat pour le MOIS sélectionné + reflet de la case selon la date de signature.
+    // Le contrat n'est "actif" qu'à partir de la date de signature ; les mois antérieurs restent
+    // une simple proposition. Affichage uniquement — n'écrit jamais lp.contractSigned (la vérité
+    // reste la case + la date). .checked programmatique ne déclenche pas 'change'.
+    const _contractRow = document.getElementById(`contractRow-${uid}`);
+    let _monBadge = null;
+    if (_contractRow) {
+      _monBadge = document.createElement('div');
+      _monBadge.style.cssText = "font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.5px;margin-top:8px";
+      _contractRow.appendChild(_monBadge);
+    }
+    function _reflectContractMonth26() {
+      const mon = lp.activeMon2026 ?? (new Date().getMonth() + 1);
+      if (lp.contractSigned && lp.contractDate) {
+        const d = new Date(lp.contractDate);
+        if (!isNaN(d)) {
+          const active = (2026 > d.getFullYear()) || (2026 === d.getFullYear() && mon >= d.getMonth() + 1);
+          _radioSigned.checked = active;
+          _radioProp.checked   = !active;
+          if (_monBadge) {
+            const ds = d.toLocaleDateString('fr-FR');
+            _monBadge.innerHTML = active
+              ? `<span style="color:var(--green)">● CONTRAT ACTIF ce mois — signé le ${ds}</span>`
+              : `<span style="color:var(--amber)">○ SIMPLE PROPOSITION ce mois — avant la signature du ${ds}</span>`;
+          }
+          return;
+        }
+      }
+      if (_monBadge) _monBadge.innerHTML = '';
+      _syncContractUi();
+    }
+    lp._reflectContractMonth26 = _reflectContractMonth26;
+    _reflectContractMonth26();
     _radioSigned.addEventListener('change', () => {
-      if (_radioSigned.checked) { lp.contractSigned = true; _syncContractUi(); saveState(); }
+      if (_radioSigned.checked) { lp.contractSigned = true; _syncContractUi(); _reflectContractMonth26(); saveState(); }
     });
     _radioProp.addEventListener('change', () => {
-      if (_radioProp.checked) { lp.contractSigned = false; _syncContractUi(); saveState(); }
+      if (_radioProp.checked) { lp.contractSigned = false; _syncContractUi(); _reflectContractMonth26(); saveState(); }
     });
     _dateInput.addEventListener('change', () => {
       lp.contractDate = _dateInput.value || null;
+      _reflectContractMonth26();
       saveState();
     });
   }
@@ -3781,13 +3816,44 @@ function createLabContDom(lp) {
     if (_crCb25) _crCb25.checked = lp.contratRepartiteur25 ?? true;
     _syncContractUi25();
     lp._syncContractUi25 = _syncContractUi25;
+    // Badge + reflet par mois selon la date de signature N-1 (même logique que 2026).
+    const _contractRow25 = document.getElementById(`contractRow25-${uid}`);
+    let _monBadge25 = null;
+    if (_contractRow25) {
+      _monBadge25 = document.createElement('div');
+      _monBadge25.style.cssText = "font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.5px;margin-top:8px";
+      _contractRow25.appendChild(_monBadge25);
+    }
+    function _reflectContractMonth25() {
+      const mon = lp.activeMon2025 ?? (new Date().getMonth() + 1);
+      if (lp.contractSigned25 && lp.contractDate25) {
+        const d = new Date(lp.contractDate25);
+        if (!isNaN(d)) {
+          const active = (2025 > d.getFullYear()) || (2025 === d.getFullYear() && mon >= d.getMonth() + 1);
+          if (_cbSigned25) _cbSigned25.checked = active;
+          if (_monBadge25) {
+            const ds = d.toLocaleDateString('fr-FR');
+            _monBadge25.innerHTML = active
+              ? `<span style="color:var(--green)">● CONTRAT ACTIF ce mois — signé le ${ds}</span>`
+              : `<span style="color:var(--amber)">○ SIMPLE PROPOSITION ce mois — avant la signature du ${ds}</span>`;
+          }
+          return;
+        }
+      }
+      if (_monBadge25) _monBadge25.innerHTML = '';
+      _syncContractUi25();
+    }
+    lp._reflectContractMonth25 = _reflectContractMonth25;
+    _reflectContractMonth25();
     _cbSigned25?.addEventListener('change', () => {
       lp.contractSigned25 = _cbSigned25.checked;
       _syncContractUi25();
+      _reflectContractMonth25();
       saveState();
     });
     _dateInput25?.addEventListener('change', () => {
       lp.contractDate25 = _dateInput25.value || null;
+      _reflectContractMonth25();
       saveState();
     });
     _crCb25?.addEventListener('change', () => {
@@ -4919,6 +4985,7 @@ function initLabPage(conf) {
       if (_di) _di.value   = s.contractDate || '';
       if (_cr) _cr.checked = s.contratRepartiteur;
       s._syncContractUi?.();
+      s._reflectContractMonth26?.();
       // Restore N-1 contract
       s.contractSigned25 = !!savedLabData.contractSigned25;
       s.contractDate25   = savedLabData.contractDate25 || null;
@@ -4928,6 +4995,7 @@ function initLabPage(conf) {
       if (_di25) _di25.value   = s.contractDate25 || '';
       if (_cr25) _cr25.checked = s.contratRepartiteur25;
       s._syncContractUi25?.();
+      s._reflectContractMonth25?.();
     }
     s.rsfPaliers = [];
     s[condKey] = [];
