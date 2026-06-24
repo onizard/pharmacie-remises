@@ -1922,11 +1922,28 @@ let _cloudSavePending = false;
 // modifié en dernier devient la vérité. Mis à true sur événement utilisateur réel (isTrusted),
 // remis à false après une sauvegarde réussie ou au chargement initial.
 let _localDirty = false;
+// Labos réellement modifiés par l'utilisateur depuis le dernier save réussi (par uid). Sert à la
+// FUSION PAR LABO au moment d'écrire dans le cloud : seuls ces labos écrasent le cloud, les
+// autres adoptent la version cloud. Empêche qu'une session périmée efface les édits d'une autre.
+const _dirtyLabUids = new Set();
 // Événements utilisateur réels uniquement (isTrusted=false pour les .value=… programmatiques
 // d'un chargement cloud → pas de faux positif). En capture pour tout attraper, même si un
-// handler stoppe la propagation.
+// handler stoppe la propagation. On note aussi le labo (conteneur labcont-<uid>) édité.
 ['input', 'change'].forEach(evt =>
-  document.addEventListener(evt, e => { if (e.isTrusted) _localDirty = true; }, true));
+  document.addEventListener(evt, e => {
+    if (!e.isTrusted) return;
+    _localDirty = true;
+    const cont = e.target?.closest?.('[id^="labcont-"]');
+    if (cont?.id) _dirtyLabUids.add(cont.id.replace('labcont-', ''));
+  }, true));
+// Clics utilisateur dans un labo (boutons toggle : RSF first ☆, Remise 3, PDA, exceptions…) :
+// marquer le labo comme modifié pour la fusion, SANS toucher _localDirty (un clic de navigation
+// ne doit pas rendre l'onglet "sale"). Les boutons appellent saveState() eux-mêmes pour pousser.
+document.addEventListener('click', e => {
+  if (!e.isTrusted) return;
+  const cont = e.target?.closest?.('[id^="labcont-"]');
+  if (cont?.id) _dirtyLabUids.add(cont.id.replace('labcont-', ''));
+}, true);
 
 function serializeState() {
   return {
@@ -2077,12 +2094,23 @@ async function saveCloudState(data) {
       const _cloudTs   = _cs?.savedAt || 0;
       const _cloudLabs = (_cs?.labPages || []).filter(lp => lp.selectedLab).length;
       if (_cloudTs > _truthSavedAt && _cloudLabs > 0) {
-        console.warn('[BP] saveCloudState : cloud plus récent (autre appareil) → rechargement au lieu d\'écraser (', _cloudTs, '>', _truthSavedAt, ')');
-        _cloudSavePending = false;
-        _showSaveBadge();
-        showToast('↺ Données plus récentes sur un autre appareil — rechargement…');
-        setTimeout(() => location.reload(), 1500);
-        return false;
+        // Cloud plus récent (écrit par une autre session). On ne JETTE PLUS notre édition (fini
+        // le reload qui perdait la saisie en cours) : on FUSIONNE par labo. Nos labos réellement
+        // modifiés (_dirtyLabUids) gagnent ; les autres adoptent la version cloud ; les labos
+        // présents seulement dans le cloud sont conservés. → le cloud reste la vérité et chaque
+        // session n'écrase que ce qu'elle a touché (persistance "type Facebook").
+        let _csObj = _cs;
+        if (typeof _csObj === 'string') { try { _csObj = JSON.parse(_csObj); } catch(_) { _csObj = null; } }
+        if (Array.isArray(_csObj)) _csObj = _csObj[0];
+        const _cloudLabPages = _csObj?.labPages || [];
+        const _cloudByUid = new Map(_cloudLabPages.map(lp => [lp.uid, lp]));
+        const _merged = (data.labPages || []).map(localLp =>
+          _dirtyLabUids.has(localLp.uid) ? localLp : (_cloudByUid.get(localLp.uid) || localLp));
+        _cloudLabPages.forEach(clp => { if (!_merged.some(m => m.uid === clp.uid)) _merged.push(clp); });
+        // Horodatage strictement > au cloud présent pour que cette fusion fasse foi au prochain load.
+        data = { ...data, labPages: _merged, savedAt: Math.max(Date.now(), _cloudTs + 1) };
+        console.log('[BP] saveCloudState : fusion par labo (cloud plus récent) — modifiés:', [..._dirtyLabUids], '| labos cloud:', _cloudLabPages.length);
+        // pas de return : on poursuit et on écrit la version fusionnée ci-dessous.
       }
     } catch(_) { /* échec du read → on laisse la sauvegarde normale se faire */ }
     // Utilise merge_user_state (JSONB merge côté DB) — préserve ospharm_job/verif_job/conn_test
@@ -2115,6 +2143,7 @@ async function saveCloudState(data) {
     if (data.savedAt) _truthSavedAt = data.savedAt;
     // Nos modifs locales sont maintenant dans le cloud → onglet propre à nouveau.
     _localDirty = false;
+    _dirtyLabUids.clear();
     _cloudSavePending = false;
     _showSaveBadge();
     return true;
