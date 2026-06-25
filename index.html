@@ -1367,7 +1367,6 @@
           <div id="grossisteUploadStatus" class="conn-job-status" style="text-align:center;margin-top:6px;min-height:16px"></div>
           <div style="text-align:center;margin-top:8px;display:flex;gap:16px;justify-content:center;align-items:center;flex-wrap:wrap">
             <button class="conn-test-btn" id="grossisteSendBtn" style="display:none">ENVOYER</button>
-            <button class="conn-test-btn" id="grossisteGmailBtn" title="Récupère automatiquement les fichiers justificatif_génériques depuis la boite mail">⟳ SYNCHRO GMAIL</button>
             <button class="conn-change-link" id="grossisteDetailsBtn">Détails (0 fichier)</button>
           </div>
           <div id="grossisteFileList" style="display:none;margin-top:10px"></div>
@@ -1446,35 +1445,6 @@
             <div class="conn-connected-name" id="concConnName">OSPHARM FSE</div>
             <div class="conn-job-status" id="concJobStatus"></div>
             <button class="conn-test-btn" id="concReconnectBtn">RECONNECTER</button>
-          </div>
-        </div>
-        <!-- GMAIL -->
-        <div class="conn-site">
-          <div id="gmailFormView">
-            <form action="javascript:void(0)" onsubmit="return false">
-            <div class="conn-site-title">GMAIL</div>
-            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-bottom:10px;line-height:1.5">Récupération auto des justificatifs.<br>Utilisez un <span style="color:var(--amber)">mot de passe d'application</span> Google.</div>
-            <div class="conn-field">
-              <div class="conn-label">Adresse Gmail</div>
-              <input class="conn-input" id="gmailUser" type="email" autocomplete="email" placeholder="exemple@gmail.com" />
-            </div>
-            <div class="conn-field">
-              <div class="conn-label"><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px">Mot de passe d'application</a></div>
-              <div class="conn-input-wrap">
-                <input class="conn-input" id="gmailPass" type="password" autocomplete="current-password" placeholder="xxxx xxxx xxxx xxxx" />
-                <button type="button" class="conn-eye" data-target="gmailPass" title="Afficher/masquer">👁</button>
-              </div>
-            </div>
-            <div class="conn-test-row">
-              <button class="conn-test-btn" id="gmailTest">CONNECTER</button>
-              <span class="conn-test-result" id="gmailTestResult"></span>
-            </div>
-            </form>
-          </div>
-          <div class="conn-connected-view" id="gmailConnView" style="display:none">
-            <div class="conn-check-big" id="gmailCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
-            <div class="conn-connected-name">GMAIL</div>
-            <button class="conn-test-btn" id="gmailReconnectBtn">RECONNECTER</button>
           </div>
         </div>
         <!-- OSPHARM -->
@@ -10316,11 +10286,8 @@ function initConnecteurModal() {
     document.getElementById('digiPass').value = '';
     document.getElementById('concUser').value  = c.concentrateur?.user || '';
     document.getElementById('concPass').value  = '';
-    document.getElementById('gmailUser').value = c.gmail?.user || '';
-    document.getElementById('gmailPass').value = '';
     document.getElementById('ospTestResult').textContent   = '';
     document.getElementById('digiTestResult').textContent  = '';
-    document.getElementById('gmailTestResult').textContent = '';
     document.getElementById('concTestResult').textContent = '';
     document.getElementById('ospReqStatus').textContent   = '';
     document.getElementById('digiReqStatus').textContent  = '';
@@ -10331,7 +10298,6 @@ function initConnecteurModal() {
     showView('osp',   c.ospharm.connected);
     showView('digi',  c.digipharmacie.connected);
     showView('conc',  c.concentrateur?.connected || false);
-    showView('gmail', c.gmail?.connected || false);
     modal.classList.add('open');
     refreshConnJobStatuses();
     // Vérifications asynchrones
@@ -10364,7 +10330,6 @@ function initConnecteurModal() {
   _connEnter('ospUser',   'ospPass',   'ospTest');
   _connEnter('digiUser',  'digiPass',  'digiTest');
   _connEnter('concUser',  'concPass',  'concTest');
-  _connEnter('gmailUser', 'gmailPass', 'gmailTest');
 
   function _showConnResult(el, html, cls) {
     el.className = `conn-test-result ${cls}`;
@@ -11089,7 +11054,6 @@ function initConnecteurModal() {
       if (path && token) _parseGrossiste(path, token);
     });
 
-    document.getElementById('grossisteGmailBtn')?.addEventListener('click', _syncGrossisteGmail);
 
     detailsBtn.addEventListener('click', () => {
       const open = listEl.style.display !== 'none';
@@ -11292,7 +11256,6 @@ function initConnecteurModal() {
 
   document.getElementById('ospTest').addEventListener('click',   () => connectConn('ospharm', 'osp'));
   document.getElementById('digiTest').addEventListener('click',  () => connectConn('digipharmacie', 'digi'));
-  document.getElementById('gmailTest').addEventListener('click', () => connectConn('gmail', 'gmail'));
   ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
   });
@@ -11307,7 +11270,6 @@ function initConnecteurModal() {
     setTimeout(() => passInp?.focus(), 80);
   }
   document.getElementById('ospReconnectBtn').addEventListener('click',   () => _showReconnectForm('osp',   'ospharm'));
-  document.getElementById('gmailReconnectBtn').addEventListener('click', () => _showReconnectForm('gmail', 'gmail'));
   document.getElementById('ospRelancerBtn').addEventListener('click', async () => {
     const btn = document.getElementById('ospRelancerBtn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
