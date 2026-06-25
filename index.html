@@ -9555,16 +9555,24 @@ async function saveProfile() {
     }
     if (saved.digiUploads?.length)  state._digiUploads = saved.digiUploads;
     if (saved.fseUploads?.length)   state._fseUploads  = saved.fseUploads;
-    if (saved.grossisteMonthStats && Object.keys(saved.grossisteMonthStats).length) {
-      state._grossisteMonthStats = saved.grossisteMonthStats;
+    // Les connecteurs backend (Gmail grossiste, DIGI, FSE) écrivent en snake_case
+    // (grossiste_month_stats…) ; le frontend lit/écrit en camelCase. On lit donc les DEUX
+    // au chargement (camelCase prioritaire, fallback snake_case) → la donnée synchronisée par
+    // le backend est toujours récupérée, même si le mapping au clic n'a pas eu lieu (réponse
+    // up_to_date) ou n'a pas persisté. serializeState ré-écrit en camelCase → auto-migration.
+    const _grossM = saved.grossisteMonthStats || saved.grossiste_month_stats;
+    if (_grossM && Object.keys(_grossM).length) {
+      state._grossisteMonthStats = _grossM;
     }
-    if (saved.digiMonthStats && Object.keys(saved.digiMonthStats).length) {
-      state._digiMonthStats = saved.digiMonthStats;
+    const _digiM = saved.digiMonthStats || saved.digi_month_stats;
+    if (_digiM && Object.keys(_digiM).length) {
+      state._digiMonthStats = _digiM;
     }
-    if (saved.fseMonthStats && Object.keys(saved.fseMonthStats).length) {
+    const _fseM = saved.fseMonthStats || saved.fse_month_stats;
+    if (_fseM && Object.keys(_fseM).length) {
       // Migration ancien format liste [{labo, montant_ttc}] → dict {LABO: {montant_ttc}}
       const migrated = {};
-      Object.entries(saved.fseMonthStats).forEach(([mk, labMap]) => {
+      Object.entries(_fseM).forEach(([mk, labMap]) => {
         if (Array.isArray(labMap)) {
           migrated[mk] = Object.fromEntries(labMap.map(r => [r.labo || '', r]));
         } else {
@@ -9660,8 +9668,18 @@ async function saveProfile() {
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           const sj = row?.state_json || {};
           // Toujours charger grossisteMonthStats depuis Supabase si absent localement
-          if (sj.grossisteMonthStats && Object.keys(sj.grossisteMonthStats).length) {
-            state._grossisteMonthStats = sj.grossisteMonthStats;
+          // (camelCase frontend OU snake_case écrit par le backend dropzone /parse/grossiste).
+          const _sjGross = sj.grossisteMonthStats || sj.grossiste_month_stats;
+          if (_sjGross && Object.keys(_sjGross).length) {
+            state._grossisteMonthStats = _sjGross;
+          }
+          const _sjDigi = sj.digiMonthStats || sj.digi_month_stats;
+          if (_sjDigi && Object.keys(_sjDigi).length && !(state._digiMonthStats && Object.keys(state._digiMonthStats).length)) {
+            state._digiMonthStats = _sjDigi;
+          }
+          const _sjFse = sj.fseMonthStats || sj.fse_month_stats;
+          if (_sjFse && Object.keys(_sjFse).length && !(state._fseMonthStats && Object.keys(state._fseMonthStats).length)) {
+            state._fseMonthStats = _sjFse;
           }
           if (sj.grossisteGmailFiles?.length && !state._grossisteGmailFiles?.length) {
             state._grossisteGmailFiles = sj.grossisteGmailFiles;
