@@ -155,7 +155,7 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
     username = creds["user"]
     password = creds["pass"]
 
-    async with AsyncCamoufox(headless=True, geoip=True) as browser:
+    async with AsyncCamoufox(headless=True) as browser:
         page = await browser.new_page()
         page.set_default_timeout(60_000)
         page.on("pageerror", lambda _: None)
