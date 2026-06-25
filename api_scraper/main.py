@@ -1288,7 +1288,33 @@ async def parse_fse_bank(
     return result
 
 
-def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
+@app.post("/parse/fse-bank-xlsx")
+async def parse_fse_bank_xlsx(
+    file: UploadFile = File(...),
+    authorization: str = Header(default=""),
+):
+    """Upload direct multipart du XLSX FSE Banque (sans MinIO, auth S3 inaccessible côté
+    navigateur) → fse_month_stats. Même approche que /parse/grossiste-xlsx et /parse/digi-pdf."""
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    name = (file.filename or "").lower()
+    if not (name.endswith(".xlsx") or name.endswith(".xls")):
+        raise HTTPException(status_code=422, detail="Fichier XLSX requis (.xlsx/.xls)")
+    xlsx_bytes = await file.read()
+    if len(xlsx_bytes) < 200:
+        raise HTTPException(status_code=422, detail="Fichier trop court ou vide")
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor, lambda: _parse_fse_bank_sync(user_id, xlsx_bytes=xlsx_bytes, user_token=token)
+    )
+
+
+def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes = None, user_token: str = "") -> dict:
     import io, re as _re, datetime as _dt
     import openpyxl
 
@@ -1359,11 +1385,13 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
         except ValueError:
             return None
 
-    # 1. Télécharger le XLSX depuis Storage (bucket 'fse-bank')
-    dl_url = f"{SUPA_URL}/storage/v1/object/fse-bank/{storage_path}"
-    req = urllib.request.Request(dl_url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        xlsx_bytes = r.read()
+    # 1. Obtenir les octets du XLSX : soit fournis en multipart (upload direct, sans MinIO),
+    #    soit téléchargés depuis Storage (ancien chemin via bucket 'fse-bank').
+    if xlsx_bytes is None:
+        dl_url = f"{SUPA_URL}/storage/v1/object/fse-bank/{storage_path}"
+        req = urllib.request.Request(dl_url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            xlsx_bytes = r.read()
 
     # 2. Parser le XLSX
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
@@ -1593,14 +1621,10 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str) -> dict:
                     merged[mk][labo] = dict(nd)
     state["fse_month_stats"] = merged
 
-    patch = json.dumps({"state_json": state}).encode()
-    preq  = urllib.request.Request(
-        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
-        data=patch, method="PATCH",
-        headers={**HEADERS, "Content-Type": "application/json", "Prefer": "return=minimal"},
-    )
-    with urllib.request.urlopen(preq, timeout=15):
-        pass
+    # Écriture avec le TOKEN UTILISATEUR (RLS : MAJ de sa propre ligne ; la clé anon
+    # est en lecture seule sur user_state → 401 en écriture).
+    from supabase_client import _patch_state_sync
+    _patch_state_sync(user_id, state, user_token=user_token)
 
     months = sorted(fse_stats)
     total_ttc = sum(d["montant_ttc"] for labos in fse_stats.values() for d in labos.values())

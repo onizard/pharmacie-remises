@@ -11191,43 +11191,37 @@ function initConnecteurModal() {
           entry.status = 'done'; entry.statusMsg = `${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}${escLabel}${mdlLabel}`;
 
         } else if (entry.type === 'grossiste') {
-          // XLSX grossiste → upload Storage → /parse/grossiste (existing flow)
-          const userId   = session.user.id;
-          const safeName = entry.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const path     = `${userId}/${Date.now()}_${safeName}`;
-          const { error: upErr } = await window._sbClient.storage.from('grossiste').upload(path, entry.file, { upsert: false });
-          if (upErr) throw upErr;
-          const resp = await fetch(`${API_URL}/parse/grossiste`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ storage_path: path }),
+          // XLSX grossiste → upload DIRECT multipart (sans MinIO, auth S3 inaccessible navigateur)
+          const form = new FormData(); form.append('file', entry.file);
+          const resp = await fetch(`${API_URL}/parse/grossiste-xlsx`, {
+            method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
           });
           if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
           const data = await resp.json();
-          if (data.grossiste_month_stats) { state._grossisteMonthStats = data.grossiste_month_stats; saveState(); if (state.currentPageId === 'recap') renderRecap(); }
+          if (data.grossiste_month_stats) {
+            state._grossisteMonthStats = data.grossiste_month_stats;
+            state._grossisteUploads = [{ name: entry.file.name, months: data.months || [], uploaded_at: Date.now() }, ...(state._grossisteUploads || []).slice(0, 19)];
+            saveState(); saveCloudState(serializeState());
+            if (state.currentPageId === 'recap') renderRecap();
+            else if (state.currentPageId === 'verificateur') renderVerificateur();
+          }
           entry.status = 'done'; entry.statusMsg = `${data.labos || 0} labo(s) · ${(data.months||[]).join(', ')}`;
 
         } else if (entry.type === 'fse') {
-          // XLSX FSE Banque → upload bucket 'fse-bank' → /parse/fse-bank
-          const userId   = session.user.id;
-          const safeName = entry.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const path     = `${userId}/${Date.now()}_${safeName}`;
-          const { error: upErr } = await window._sbClient.storage.from('fse-bank').upload(path, entry.file, { upsert: false });
-          if (upErr) throw upErr;
-          const resp = await fetch(`${API_URL}/parse/fse-bank`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ storage_path: path }),
+          // XLSX FSE Banque → upload DIRECT multipart (sans MinIO)
+          const form = new FormData(); form.append('file', entry.file);
+          const resp = await fetch(`${API_URL}/parse/fse-bank-xlsx`, {
+            method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
           });
           if (!resp.ok) { const err = await resp.json().catch(() => ({})); const msg = Array.isArray(err.detail) ? JSON.stringify(err.detail) : (err.detail || `HTTP ${resp.status}`); throw new Error(msg); }
           const data = await resp.json();
           if (data.fse_month_stats) {
             state._fseMonthStats = data.fse_month_stats;
             state._fseSavedAt    = Date.now();
-            saveState();
+            state._fseUploads = [{ name: entry.file.name, months: data.months || [], uploaded_at: Date.now() }, ...(state._fseUploads || []).slice(0, 9)];
+            saveState(); saveCloudState(serializeState());
             if (state.currentPageId === 'verificateur') renderVerificateur();
           }
-          // Indexer le fichier FSE pour les liens de téléchargement du vérificateur
-          state._fseUploads = [{ name: entry.file.name, path, months: data.months || [], uploaded_at: Date.now() }, ...(state._fseUploads || []).slice(0, 9)];
-          saveState();
           entry.status = 'done'; entry.statusMsg = `${(data.months||[]).length} mois · ${(data.total_ttc||0).toLocaleString('fr',{minimumFractionDigits:2})} € TTC`;
         } else if (entry.type === 'csv') {
           entry.status = 'error'; entry.statusMsg = '// CSV OSPHARM : parser en cours de développement';
