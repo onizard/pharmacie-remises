@@ -181,6 +181,13 @@ async def run_connector(
             raise HTTPException(status_code=500, detail=str(e))
         return result
 
+    # fse-export : déclenche le scraper FSE Banque via GitHub Actions. Doit être traité ICI car
+    # la route dédiée /run/fse-export est masquée par cette route générique /run/{connector}
+    # (FastAPI matche dans l'ordre de déclaration) → sinon "Connecteur inconnu : fse-export".
+    if connector == "fse-export":
+        background_tasks.add_task(_dispatch_gh_fse, user_id, token)
+        return {"status": "dispatched"}
+
     if connector not in SUPPORTED_CONNECTORS:
         raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
 
