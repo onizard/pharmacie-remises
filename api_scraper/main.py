@@ -480,8 +480,89 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
     }
 
 
-# ── Job grossiste Gmail — géré dans /run/{connector} ci-dessus ────────────────
+# ── Upload direct XLSX grossiste (multipart, sans MinIO) ───────────────────────
+# Le stockage self-hosted est du MinIO brut (auth S3) : supabase-js .upload() ne
+# peut pas s'y authentifier côté navigateur. On reçoit donc le fichier en multipart
+# direct (comme /parse/digi-pdf) et on parse en mémoire, sans passer par le bucket.
+@app.post("/parse/grossiste-xlsx")
+async def parse_grossiste_xlsx(
+    file: UploadFile = File(...),
+    authorization: str = Header(default=""),
+):
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
+    name = (file.filename or "").lower()
+    if not (name.endswith(".xlsx") or name.endswith(".xls")):
+        raise HTTPException(status_code=422, detail="Fichier XLSX requis (.xlsx/.xls)")
+    xlsx_bytes = await file.read()
+    if len(xlsx_bytes) < 200:
+        raise HTTPException(status_code=422, detail="Fichier trop court ou vide")
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor, lambda: _parse_grossiste_xlsx_sync(user_id, xlsx_bytes)
+    )
+
+
+def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes) -> dict:
+    from supabase_client import SUPA_URL, _supa_key
+    _tok = _supa_key()
+    HEADERS = {"apikey": _tok, "Authorization": f"Bearer {_tok}"}
+
+    grossiste_stats = _parse_grossiste_bytes(xlsx_bytes)
+    if not grossiste_stats:
+        raise HTTPException(
+            status_code=422,
+            detail="Aucune donnée extractible — feuille 'Récap par mois' attendue dans le justificatif.",
+        )
+
+    # Charger l'état courant (défensif vis-à-vis d'un state_json corrompu en str/list)
+    req = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1",
+        headers=HEADERS,
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        rows = json.loads(r.read())
+    sj = (rows[0]["state_json"] if rows else {})
+    if isinstance(sj, str):
+        try:
+            sj = json.loads(sj)
+        except Exception:
+            sj = {}
+    if isinstance(sj, list):
+        sj = sj[0] if sj else {}
+    state = sj or {}
+
+    state["grossiste_month_stats"] = _merge_grossiste_stats(
+        state.get("grossiste_month_stats") or {}, grossiste_stats
+    )
+
+    patch_body = json.dumps({"state_json": state}).encode()
+    patch_req = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
+        data=patch_body, method="PATCH",
+        headers={**HEADERS, "Content-Type": "application/json", "Prefer": "return=minimal"},
+    )
+    urllib.request.urlopen(patch_req, timeout=20)
+
+    months   = sorted(grossiste_stats)
+    total_q  = sum(r["qty"]      for rows in grossiste_stats.values() for r in rows)
+    total_ht = sum(r["total_ht"] for rows in grossiste_stats.values() for r in rows)
+    return {
+        "status":   "done",
+        "months":   months,
+        "labos":    len({r["labo"] for rows in grossiste_stats.values() for r in rows}),
+        "qty":      total_q,
+        "total_ht": round(total_ht, 2),
+        "grossiste_month_stats": grossiste_stats,
+    }
+
+
+# ── Job grossiste Gmail — géré dans /run/{connector} ci-dessus ────────────────
 
 def _run_grossiste_gmail_sync(user_id: str, user_token: str = "") -> dict:
     import imaplib

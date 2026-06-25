@@ -10900,28 +10900,33 @@ function initConnecteurModal() {
     const statusEl  = document.getElementById('grossisteUploadStatus');
     const dropZone  = document.getElementById('grossisteDropZone');
     const sendBtn   = document.getElementById('grossisteSendBtn');
-    if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Envoi de ${file.name}…`; }
+    if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Analyse de ${file.name}…`; }
     if (dropZone) dropZone.style.pointerEvents = 'none';
     if (sendBtn)  sendBtn.style.display = 'none';
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
       if (!session) throw new Error('Session expirée');
-      const userId   = session.user.id;
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const path     = `${userId}/${Date.now()}_${safeName}`;
-      const { error } = await window._sbClient.storage
-        .from(GROSSISTE_BUCKET)
-        .upload(path, file, { upsert: false });
-      if (error) throw error;
-      const entry = { name: file.name, path, size: file.size, uploaded_at: Date.now() };
-      state._grossisteUploads = [entry, ...(state._grossisteUploads || [])];
-      saveState();
-      saveCloudState(serializeState());
-      _updateGrossisteBtn();
-      const listEl = document.getElementById('grossisteFileList');
-      if (listEl && listEl.style.display !== 'none') _renderGrossisteList();
-      // Parser automatiquement sans attendre un clic ENVOYER
-      await _parseGrossiste(path, session.access_token);
+      // Upload DIRECT multipart vers l'API (comme DIGI) — le stockage self-hosted est du
+      // MinIO brut (auth S3) sur lequel supabase-js .upload() ne peut pas s'authentifier.
+      const form = new FormData(); form.append('file', file);
+      const resp = await fetch(`${API_URL}/parse/grossiste-xlsx`, {
+        method: 'POST', headers: { 'Authorization': `Bearer ${session.access_token}` }, body: form,
+      });
+      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
+      const parsed = await resp.json();
+      if (parsed.grossiste_month_stats) {
+        state._grossisteMonthStats = parsed.grossiste_month_stats;
+        state._grossisteUploads = [{ name: file.name, size: file.size, uploaded_at: Date.now() }, ...(state._grossisteUploads || [])];
+        saveState();
+        saveCloudState(serializeState());
+        _updateGrossisteBtn();
+        const listEl = document.getElementById('grossisteFileList');
+        if (listEl && listEl.style.display !== 'none') _renderGrossisteList();
+        if (state.currentPageId === 'recap') renderRecap();
+        else if (state.currentPageId === 'verificateur') renderVerificateur();
+      }
+      const months = (parsed.months || []).join(', ');
+      if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${parsed.labos} labos · ${(parsed.total_ht || 0).toLocaleString('fr', {minimumFractionDigits:2})} € HT (${months})`; }
     } catch(e) {
       const msg = e?.message || String(e);
       if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ ${msg}`; }
