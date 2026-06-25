@@ -504,14 +504,14 @@ async def parse_grossiste_xlsx(
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
-        _executor, lambda: _parse_grossiste_xlsx_sync(user_id, xlsx_bytes)
+        _executor, lambda: _parse_grossiste_xlsx_sync(user_id, xlsx_bytes, token)
     )
 
 
-def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes) -> dict:
-    from supabase_client import SUPA_URL, _supa_key
-    _tok = _supa_key()
-    HEADERS = {"apikey": _tok, "Authorization": f"Bearer {_tok}"}
+def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes, user_token: str = "") -> dict:
+    # Écriture de l'état via les helpers avec le TOKEN UTILISATEUR (RLS : l'user peut MAJ
+    # sa propre ligne). La clé anon est en lecture seule sur user_state → 401 en écriture.
+    from supabase_client import _get_state_sync, _patch_state_sync
 
     grossiste_stats = _parse_grossiste_bytes(xlsx_bytes)
     if not grossiste_stats:
@@ -520,34 +520,11 @@ def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes) -> dict:
             detail="Aucune donnée extractible — feuille 'Récap par mois' attendue dans le justificatif.",
         )
 
-    # Charger l'état courant (défensif vis-à-vis d'un state_json corrompu en str/list)
-    req = urllib.request.Request(
-        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1",
-        headers=HEADERS,
-    )
-    with urllib.request.urlopen(req, timeout=15) as r:
-        rows = json.loads(r.read())
-    sj = (rows[0]["state_json"] if rows else {})
-    if isinstance(sj, str):
-        try:
-            sj = json.loads(sj)
-        except Exception:
-            sj = {}
-    if isinstance(sj, list):
-        sj = sj[0] if sj else {}
-    state = sj or {}
-
+    state = _get_state_sync(user_id, user_token=user_token) or {}
     state["grossiste_month_stats"] = _merge_grossiste_stats(
         state.get("grossiste_month_stats") or {}, grossiste_stats
     )
-
-    patch_body = json.dumps({"state_json": state}).encode()
-    patch_req = urllib.request.Request(
-        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
-        data=patch_body, method="PATCH",
-        headers={**HEADERS, "Content-Type": "application/json", "Prefer": "return=minimal"},
-    )
-    urllib.request.urlopen(patch_req, timeout=20)
+    _patch_state_sync(user_id, state, user_token=user_token)
 
     months   = sorted(grossiste_stats)
     total_q  = sum(r["qty"]      for rows in grossiste_stats.values() for r in rows)
