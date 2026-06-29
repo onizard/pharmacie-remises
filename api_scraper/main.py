@@ -159,13 +159,29 @@ async def connect_connector(
     return {"status": "testing"}
 
 
+def _reset_digi_state(user_id: str, user_token: str = ""):
+    """Vide le cache de factures + les stats Digi (re-scrape complet / synchro)."""
+    from supabase_client import _get_state_sync, _patch_state_sync
+    state = _get_state_sync(user_id, user_token=user_token) or {}
+    state["digi_month_stats"] = {}
+    state["escompte_stats"]   = {}
+    state["mdl_stats"]        = {}
+    vj = dict(state.get("verif_job") or {})
+    vj["invoice_cache"] = {}
+    state["verif_job"] = vj
+    _patch_state_sync(user_id, state, user_token=user_token)
+
+
 @app.post("/run/{connector}")
 async def run_connector(
     background_tasks: BackgroundTasks,
     connector: str = Path(...),
+    resync: bool = False,
     authorization: str = Header(default=""),
 ):
-    """Lance le scraping. OSPHARM → GitHub Actions. DIGIPHARMACIE → local."""
+    """Lance le scraping. OSPHARM → GitHub Actions. DIGIPHARMACIE → local.
+    resync=true (Digi) : vide le cache + les stats avant de relancer → re-scrape
+    complet de l'historique (ré-applique les parsers à jour, ex : RDP par palier)."""
     token = _extract_token(authorization)
     try:
         user_id = await verify_token(token)
@@ -206,8 +222,13 @@ async def run_connector(
         return {"job_id": job_id, "mode": "github_actions"}
 
     # DIGIPHARMACIE : dispatch GitHub Actions (self-hosted, proxy résidentiel, camoufox)
+    if resync:
+        # Synchro complète : on vide cache + stats AVANT de dispatcher, pour que le
+        # scraper re-traite tout l'historique avec les parsers à jour.
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, lambda: _reset_digi_state(user_id, token))
     background_tasks.add_task(_dispatch_gh_digi, user_id, token)
-    return {"job_id": job_id, "mode": "github_actions"}
+    return {"job_id": job_id, "mode": "github_actions", "resync": resync}
 
 
 async def _dispatch_gh_digi(user_id: str, user_token: str = ""):
