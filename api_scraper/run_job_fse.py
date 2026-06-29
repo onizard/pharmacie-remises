@@ -126,9 +126,12 @@ def _upload_xlsx_to_storage(xlsx_bytes: bytes, filename: str) -> str:
     return path
 
 
-def _parse_and_save_fse(xlsx_bytes: bytes) -> dict:
-    """Parse le XLSX FSE Banque LOCALEMENT (sans Render, sans Storage) et
-    sauvegarde fse_month_stats dans user_state via la clé de service.
+def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
+    """Parse une LISTE de XLSX FSE Banque (une par fenêtre de dates) LOCALEMENT
+    et sauvegarde fse_month_stats dans user_state via la clé de service.
+
+    Les fenêtres se chevauchent (≤120 j) : on dédoublonne les virements par
+    (date, libellé, montant). L'agrégat remplace fse_month_stats (run complet).
 
     Port autonome de _parse_fse_bank_sync (main.py) : le runner GitHub Actions
     n'installe que camoufox+openpyxl (pas fastapi), donc on ne peut pas importer
@@ -191,48 +194,7 @@ def _parse_and_save_fse(xlsx_bytes: bytes) -> dict:
         except ValueError:
             return None
 
-    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
-    ws = wb.active
-    all_rows = list(ws.iter_rows(max_row=5000, values_only=True))
-
-    # ── Détection des colonnes ─────────────────────────────────────────────────
-    _DATE_KW = ('date',)
-    _LIB_KW  = ('libell', 'libellé', 'description', 'opération', 'operation', 'désignation')
-    _AMT_KW  = ('montant', 'crédit', 'credit', 'débit', 'debit', 'valeur', 'amount')
-    hdr_idx  = -1
-    col_date, col_lib, col_amt = 0, 1, 2
-
-    for ri, row in enumerate(all_rows[:15]):
-        cells = [str(c or '').lower().strip() for c in row]
-        has_date = any(any(k in c for k in _DATE_KW) for c in cells)
-        has_lib  = any(any(k in c for k in _LIB_KW)  for c in cells)
-        if has_date and has_lib:
-            hdr_idx = ri
-            for ci, c in enumerate(cells):
-                if any(k in c for k in _DATE_KW) and 'mise' not in c and 'update' not in c:
-                    col_date = ci
-                if any(k in c for k in _LIB_KW):
-                    col_lib = ci
-                if any(k in c for k in _AMT_KW):
-                    col_amt = ci
-            break
-
-    if hdr_idx < 0:
-        for ri, row in enumerate(all_rows[:30]):
-            for ci, c in enumerate(row):
-                s = str(c or '').upper().strip()
-                if s.startswith('VIR ') and len(s) > 6:
-                    hdr_idx  = max(0, ri - 1)
-                    col_lib  = ci
-                    col_date = max(0, ci - 1)
-                    col_amt  = ci + 1
-                    break
-            if hdr_idx >= 0:
-                break
-
-    data_start = hdr_idx + 2
-
-    # ── Lookup ref/montant → labo depuis digi_month_stats ──────────────────────
+    # ── Lookup ref/montant → labo depuis digi_month_stats (global) ─────────────
     state_pre   = _supa_get_state()
     _digi_stats = state_pre.get("digi_month_stats") or {}
     ref_to_labo, ref_to_type = {}, {}
@@ -251,78 +213,125 @@ def _parse_and_save_fse(xlsx_bytes: bytes) -> dict:
                     amount_to_candidates.setdefault(round(_amt * 100), []).append((_labo_d, _mk_d, _typ))
     print(f"  → Lookup factures : {len(ref_to_labo)} refs · {len(amount_to_candidates)} montants (digi)")
 
-    # ── Parcours des lignes ────────────────────────────────────────────────────
+    _DATE_KW = ('date',)
+    _LIB_KW  = ('libell', 'libellé', 'description', 'opération', 'operation', 'désignation')
+    _AMT_KW  = ('montant', 'crédit', 'credit', 'débit', 'debit', 'valeur', 'amount')
+
+    # ── Agrégation sur l'ensemble des fenêtres (dédoublonnage global) ──────────
     acc: dict = {}
-    row_num = n_ref_matched = n_amt_matched = 0
+    seen: set = set()
+    row_num = n_ref_matched = n_amt_matched = n_dup = 0
     skipped_lib: list = []
+    _last_sample: list = []
 
-    for row in all_rows[data_start:]:
-        if not any(c for c in row):
-            continue
-        n = len(row)
-        date_str = _parse_date(row[col_date] if col_date < n else None)
-        libelle  = str(row[col_lib] if col_lib < n else '') or ''
-        amount   = _parse_amount(row[col_amt] if col_amt < n else None)
-        if (amount is None or amount <= 0) and col_amt + 1 < n:
-            amount = _parse_amount(row[col_amt + 1])
-        if not date_str or not libelle:
-            continue
-        if amount is None or amount <= 0:
-            continue
-        if not libelle.upper().strip().startswith('VIR '):
-            continue
+    for _xlsx in xlsx_bytes_list:
+        wb = openpyxl.load_workbook(io.BytesIO(_xlsx), read_only=True, data_only=True)
+        ws = wb.active
+        all_rows = list(ws.iter_rows(max_row=5000, values_only=True))
 
-        mk    = date_str[:7]
-        labo  = _identify_labo(libelle)
-        refs  = _extract_all_refs(libelle)
-        vtype = _classify_transfer(libelle, refs[0] if refs else "")
+        # Détection des colonnes (par fichier).
+        hdr_idx = -1
+        col_date, col_lib, col_amt = 0, 1, 2
+        for ri, row in enumerate(all_rows[:15]):
+            cells = [str(c or '').lower().strip() for c in row]
+            has_date = any(any(k in c for k in _DATE_KW) for c in cells)
+            has_lib  = any(any(k in c for k in _LIB_KW)  for c in cells)
+            if has_date and has_lib:
+                hdr_idx = ri
+                for ci, c in enumerate(cells):
+                    if any(k in c for k in _DATE_KW) and 'mise' not in c and 'update' not in c:
+                        col_date = ci
+                    if any(k in c for k in _LIB_KW):
+                        col_lib = ci
+                    if any(k in c for k in _AMT_KW):
+                        col_amt = ci
+                break
+        if hdr_idx < 0:
+            for ri, row in enumerate(all_rows[:30]):
+                for ci, c in enumerate(row):
+                    s = str(c or '').upper().strip()
+                    if s.startswith('VIR ') and len(s) > 6:
+                        hdr_idx, col_lib = max(0, ri - 1), ci
+                        col_date, col_amt = max(0, ci - 1), ci + 1
+                        break
+                if hdr_idx >= 0:
+                    break
+        _last_sample = [[str(c)[:25] for c in r if c]
+                        for r in all_rows[max(0, hdr_idx):hdr_idx + 5] if any(c for c in r)]
 
-        if not labo and refs:
-            for _r in refs:
-                if _r in ref_to_labo:
-                    labo  = ref_to_labo[_r]
-                    vtype = ref_to_type.get(_r, vtype)
-                    n_ref_matched += 1
+        for row in all_rows[hdr_idx + 2:]:
+            if not any(c for c in row):
+                continue
+            n = len(row)
+            date_str = _parse_date(row[col_date] if col_date < n else None)
+            libelle  = str(row[col_lib] if col_lib < n else '') or ''
+            amount   = _parse_amount(row[col_amt] if col_amt < n else None)
+            if (amount is None or amount <= 0) and col_amt + 1 < n:
+                amount = _parse_amount(row[col_amt + 1])
+            if not date_str or not libelle:
+                continue
+            if amount is None or amount <= 0:
+                continue
+            if not libelle.upper().strip().startswith('VIR '):
+                continue
+
+            # Dédoublonnage inter-fenêtres.
+            _key = (date_str, libelle.strip()[:80], round(amount * 100))
+            if _key in seen:
+                n_dup += 1
+                continue
+            seen.add(_key)
+
+            mk    = date_str[:7]
+            labo  = _identify_labo(libelle)
+            refs  = _extract_all_refs(libelle)
+            vtype = _classify_transfer(libelle, refs[0] if refs else "")
+
+            if not labo and refs:
+                for _r in refs:
+                    if _r in ref_to_labo:
+                        labo  = ref_to_labo[_r]
+                        vtype = ref_to_type.get(_r, vtype)
+                        n_ref_matched += 1
+                        break
+
+            if not labo:
+                _cands = amount_to_candidates.get(round(amount * 100))
+                if _cands:
+                    _match = next((c for c in _cands if c[1] == mk), _cands[0])
+                    labo, vtype = _match[0], _match[2]
+                    n_amt_matched += 1
+
+            if not labo:
+                if len(skipped_lib) < 20:
+                    skipped_lib.append(libelle[:80])
+                continue
+
+            for key, canon in _LABO_KEYS:
+                if key in labo.upper():
+                    labo = canon
                     break
 
-        if not labo:
-            _cands = amount_to_candidates.get(round(amount * 100))
-            if _cands:
-                _match = next((c for c in _cands if c[1] == mk), _cands[0])
-                labo, vtype = _match[0], _match[2]
-                n_amt_matched += 1
+            acc.setdefault(mk, {}).setdefault(
+                labo, {"montant_ttc": 0.0, "r2_ttc": 0.0, "r3_ttc": 0.0, "count": 0, "refs": []})
+            acc[mk][labo]["montant_ttc"] += amount
+            acc[mk][labo]["r2_ttc"]      += amount if vtype == 'r2' else 0.0
+            acc[mk][labo]["r3_ttc"]      += amount if vtype == 'r3' else 0.0
+            acc[mk][labo]["count"]       += 1
+            for _r in refs[:3]:
+                if _r not in acc[mk][labo]["refs"]:
+                    acc[mk][labo]["refs"].append(_r)
+            row_num += 1
 
-        if not labo:
-            if len(skipped_lib) < 20:
-                skipped_lib.append(libelle[:80])
-            continue
-
-        for key, canon in _LABO_KEYS:
-            if key in labo.upper():
-                labo = canon
-                break
-
-        acc.setdefault(mk, {}).setdefault(
-            labo, {"montant_ttc": 0.0, "r2_ttc": 0.0, "r3_ttc": 0.0, "count": 0, "refs": []})
-        acc[mk][labo]["montant_ttc"] += amount
-        acc[mk][labo]["r2_ttc"]      += amount if vtype == 'r2' else 0.0
-        acc[mk][labo]["r3_ttc"]      += amount if vtype == 'r3' else 0.0
-        acc[mk][labo]["count"]       += 1
-        for _r in refs[:3]:
-            if _r not in acc[mk][labo]["refs"]:
-                acc[mk][labo]["refs"].append(_r)
-        row_num += 1
-
-    print(f"  → {row_num} virements parsés · {n_ref_matched} via ref · {n_amt_matched} via montant")
+    print(f"  → {row_num} virements parsés · {n_ref_matched} via ref · "
+          f"{n_amt_matched} via montant · {n_dup} doublons écartés")
     if skipped_lib:
         print(f"  → Libellés non reconnus : {skipped_lib[:5]}")
 
     if not acc:
-        sample = [[str(c)[:25] for c in r if c]
-                  for r in all_rows[max(0, hdr_idx):hdr_idx + 5] if any(c for c in r)]
         raise RuntimeError(
-            f"Aucun virement reconnu. Colonnes date={col_date} libellé={col_lib} "
-            f"montant={col_amt} header={hdr_idx}. Échantillon={sample[:3]}")
+            f"Aucun virement reconnu sur {len(xlsx_bytes_list)} fenêtre(s). "
+            f"Échantillon dernière fenêtre={_last_sample[:3]}")
 
     fse_stats = {
         mk: {labo: {
@@ -335,7 +344,10 @@ def _parse_and_save_fse(xlsx_bytes: bytes) -> dict:
         for mk, labos in sorted(acc.items())
     }
 
-    # ── Fusion avec l'état existant + sauvegarde (clé de service) ──────────────
+    # ── Sauvegarde (clé de service) ────────────────────────────────────────────
+    # Le run couvre toute la période demandée avec dédoublonnage → on REMPLACE
+    # les mois présents dans ce run (pas de fusion additive qui doublonnerait
+    # entre exécutions), tout en préservant d'éventuels mois hors période.
     state    = _supa_get_state()
     existing = state.get("fse_month_stats") or {}
     merged: dict = {}
@@ -343,19 +355,7 @@ def _parse_and_save_fse(xlsx_bytes: bytes) -> dict:
         merged[mk] = ({r["labo"]: dict(r) for r in lab_data}
                       if isinstance(lab_data, list) else dict(lab_data))
     for mk, new_labos in fse_stats.items():
-        if mk not in merged:
-            merged[mk] = new_labos
-        else:
-            for labo, nd in new_labos.items():
-                if labo in merged[mk]:
-                    ex = merged[mk][labo]
-                    ex["montant_ttc"] = round(ex.get("montant_ttc", 0) + nd["montant_ttc"], 2)
-                    ex["r2_ttc"]      = round(ex.get("r2_ttc", 0) + nd["r2_ttc"], 2)
-                    ex["r3_ttc"]      = round(ex.get("r3_ttc", 0) + nd["r3_ttc"], 2)
-                    ex["count"]      += nd["count"]
-                    ex["refs"]        = (ex.get("refs", []) + nd["refs"])[:20]
-                else:
-                    merged[mk][labo] = dict(nd)
+        merged[mk] = new_labos  # remplacement complet du mois
     state["fse_month_stats"] = merged
     _supa_patch_state(state)
 
@@ -363,9 +363,26 @@ def _parse_and_save_fse(xlsx_bytes: bytes) -> dict:
     return {"months": sorted(fse_stats), "rows_parsed": row_num, "total_ttc": round(total_ttc, 2)}
 
 
+def _date_windows(date_from: str, date_to: str, step_days: int = 110) -> list:
+    """Découpe [date_from, date_to] en fenêtres de ≤120 j (contrainte du
+    daterangepicker FSE). Retourne la liste des dates de fin (datefin) ; chaque
+    fenêtre couvre [datefin-120, datefin]. Pas de 110 j → chevauchement de 10 j
+    absorbé par le dédoublonnage du parseur."""
+    d_from = _dt_module.date.fromisoformat(date_from)
+    d_to   = _dt_module.date.fromisoformat(date_to)
+    wins: list = []
+    cur = d_to
+    while True:
+        wins.append(cur.isoformat())
+        if cur - _dt_module.timedelta(days=120) <= d_from:
+            break
+        cur = cur - _dt_module.timedelta(days=step_days)
+    return wins
+
+
 # ── Scraper Playwright/camoufox ────────────────────────────────────────────────
 
-async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
+async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> list:
     """
     Login sur OSPHARM FSE, navigue vers Banque > HTP+OI, sélectionne la plage de dates,
     exporte le XLSX et retourne les bytes du fichier.
@@ -436,114 +453,93 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
             raise RuntimeError(f"App FSE non chargée après login (URL: {page.url})")
         print(f"  ✓ App FSE rendue — {page.url[-40:]}")
 
-        # ── 2. Module Banque avec dates via params de route ───────────────────────
-        # datedebut/datefin (YYYY-MM-DD) → plage du daterangepicker (lue par config).
-        # L'origine est mise à HTP+OI ensuite via le richselect DOM (le param htp
-        # ne filtrait pas → run #10 exportait du tiers-payant : MGEN, CETIP…).
-        print(f"  → Module Banque ({date_from} → {date_to})…")
-        # Chargement FRAIS de la route Banque avec les params (cache-buster ?bp=1
-        # pour forcer un vrai reload → config() lit getParam('datedebut'/'datefin')
-        # au boot ; le hashchange seul ne ré-exécutait pas config() → dates par
-        # défaut au run #11). Le ?bp=1 n'est pas ?code= donc me() ré-authentifie
-        # via cookie sans re-login.
-        _url = (f"{FSE_URL}/?bp=1#!/top/manager.fse.bank"
-                f"?datedebut={date_from}&datefin={date_to}")
-        await page.goto(_url, wait_until="domcontentloaded", timeout=90_000)
-        try:
-            await page.wait_for_load_state("networkidle", timeout=30_000)
-        except Exception:
-            pass
-        try:
-            await page.wait_for_function(
-                "() => document.querySelector('[view_id=\"fse_bank_origin\"]') "
-                "&& document.querySelector('[view_id=\"fse_bank_datatable\"]')",
-                timeout=60_000)
-        except Exception:
-            await page.screenshot(path="fse_bank_debug.png")
-            _ids = await page.evaluate(
-                "() => [...document.querySelectorAll('[view_id]')]"
-                ".map(e => e.getAttribute('view_id')).slice(0, 40)")
-            raise RuntimeError(f"Module Banque non monté. view_ids={_ids}")
-        await page.wait_for_timeout(3_000)
-        _before = await page.evaluate("""() => ({
-            origin: (document.querySelector('[view_id="fse_bank_origin"]')||{}).innerText,
-            date:   (document.querySelector('[view_id="fse_bank_date"]')||{}).innerText
-        })""")
-        print(f"  ✓ Module monté — {_before}")
+        # ── 2. Export par fenêtres de ≤120 jours ──────────────────────────────────
+        # Le daterangepicker FSE plafonne la plage à ~120 jours (datefin appliquée,
+        # datedebut rogné à datefin-120). Pour couvrir toute la période demandée on
+        # exporte par fenêtres glissantes (datefin reculé de ~110 j) et on agrège
+        # avec dédoublonnage côté parseur.
+        windows = _date_windows(date_from, date_to, step_days=110)
+        print(f"  → {len(windows)} fenêtre(s) d'export : {windows}")
 
-        # ── 2b. Origine = HTP + OI via le richselect DOM ──────────────────────────
-        _open = await page.evaluate("""() => {
-            const el = document.querySelector('[view_id="fse_bank_origin"]');
-            if (!el) return 'no-origin';
-            (el.querySelector('.webix_inp_static') || el.querySelector('input') || el).click();
-            return 'opened';
-        }""")
-        await page.wait_for_timeout(1_000)
-        _pick = await page.evaluate("""() => {
-            const items = document.querySelectorAll('.webix_list_item');
-            const opts = [...items].map(i => (i.textContent||'').trim());
-            for (const it of items) {
-                const t = (it.textContent||'').trim();
-                if (t === 'HTP + OI' || t === 'HTP+OI') { it.click(); return 'picked:HTPOI'; }
-            }
-            for (const it of items) {
-                if ((it.textContent||'').trim() === 'Hors tiers-payant') {
-                    it.click(); return 'picked:HTP';
-                }
-            }
-            return 'not-found:' + opts.slice(0, 10).join('|');
-        }""")
-        print(f"  origin richselect: {_open}/{_pick}")
-        if str(_pick).startswith('not-found'):
-            # fermer un éventuel popup et continuer (origine par défaut = TP : on
-            # tentera quand même l'export, mais on signale le problème)
-            await page.keyboard.press("Escape")
+        async def _export_window(win_idx: int, win_end: str) -> bytes:
+            # Chargement FRAIS de la route Banque (cache-buster unique → config()
+            # relit datefin au boot ; le ?bp=… n'est pas ?code= donc me()
+            # ré-authentifie via cookie sans re-login).
+            url = (f"{FSE_URL}/?bp={win_idx}#!/top/manager.fse.bank"
+                   f"?datedebut={date_from}&datefin={win_end}")
+            await page.goto(url, wait_until="domcontentloaded", timeout=90_000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=30_000)
+            except Exception:
+                pass
+            try:
+                await page.wait_for_function(
+                    "() => document.querySelector('[view_id=\"fse_bank_origin\"]') "
+                    "&& document.querySelector('[view_id=\"fse_bank_datatable\"]')",
+                    timeout=60_000)
+            except Exception:
+                await page.screenshot(path=f"fse_bank_debug_{win_idx}.png")
+                raise RuntimeError(f"Module Banque non monté (fenêtre {win_end})")
+            await page.wait_for_timeout(3_000)
 
-        # Laisser le datatable recharger les virements côté serveur avant l'export.
-        print("  → Rechargement des virements…")
-        await page.wait_for_timeout(15_000)
-        _after = await page.evaluate("""() => ({
-            origin: (document.querySelector('[view_id="fse_bank_origin"]')||{}).innerText,
-            rows: document.querySelectorAll('[view_id="fse_bank_datatable"] .webix_cell').length
-        })""")
-        print(f"  → après filtre: {_after}")
-
-        # ── 3. Export → clic DOM sur "Exporter" → webix.toExcel → téléchargement ──
-        print("  → Export Excel…")
-        async with page.expect_download(timeout=120_000) as dl_info:
-            _exp = await page.evaluate("""() => {
-                // Bouton "Exporter" du module Banque (webix_button). Son onItemClick
-                // (code interne de l'app) construit un datatable d'export toutes-
-                // lignes puis appelle webix.toExcel() → déclenche le download.
-                const cands = document.querySelectorAll(
-                    'button, .webix_button, .webix_el_button, [role="button"]');
-                for (const b of cands) {
-                    const t = (b.textContent || b.value || '').trim();
-                    if (t === 'Exporter' || t === 'Exporter ') {
-                        (b.querySelector('button') || b).click();
-                        return 'clicked';
-                    }
-                }
-                // fallback : recherche plus large
-                for (const b of cands) {
-                    if ((b.textContent || '').trim().includes('Export')) {
-                        (b.querySelector('button') || b).click();
-                        return 'clicked-loose:' + b.textContent.trim();
-                    }
-                }
-                return 'no-export-btn';
+            # Origine = HTP + OI via le richselect DOM.
+            await page.evaluate("""() => {
+                const el = document.querySelector('[view_id="fse_bank_origin"]');
+                if (el) (el.querySelector('.webix_inp_static') || el.querySelector('input') || el).click();
             }""")
-            print(f"  export-btn: {_exp}")
-            if 'no-export-btn' in str(_exp):
-                await page.screenshot(path="fse_export_debug.png")
-                raise RuntimeError("Bouton Exporter introuvable (DOM)")
+            await page.wait_for_timeout(1_000)
+            _pick = await page.evaluate("""() => {
+                const items = document.querySelectorAll('.webix_list_item');
+                for (const it of items) {
+                    const t = (it.textContent||'').trim();
+                    if (t === 'HTP + OI' || t === 'HTP+OI') { it.click(); return 'HTPOI'; }
+                }
+                for (const it of items) {
+                    if ((it.textContent||'').trim() === 'Hors tiers-payant') { it.click(); return 'HTP'; }
+                }
+                return 'not-found';
+            }""")
+            if str(_pick) == 'not-found':
+                await page.keyboard.press("Escape")
+            await page.wait_for_timeout(15_000)
+            _diag = await page.evaluate("""() => ({
+                origin: (document.querySelector('[view_id="fse_bank_origin"]')||{}).innerText,
+                date:   (document.querySelector('[view_id="fse_bank_date"]')||{}).innerText,
+                rows: document.querySelectorAll('[view_id="fse_bank_datatable"] .webix_cell').length
+            })""")
+            print(f"  [fenêtre {win_idx}] origin={_pick} {_diag}")
 
-        download  = await dl_info.value
-        filename  = download.suggested_filename or f"fse_bank_{date_from}_{date_to}.xlsx"
-        tmp_path  = Path(f"/tmp/{filename}")
-        await download.save_as(tmp_path)
-        print(f"  ✓ Téléchargé : {filename} ({tmp_path.stat().st_size} bytes)")
-        return tmp_path.read_bytes(), filename
+            async with page.expect_download(timeout=120_000) as dl_info:
+                _exp = await page.evaluate("""() => {
+                    const cands = document.querySelectorAll(
+                        'button, .webix_button, .webix_el_button, [role="button"]');
+                    for (const b of cands) {
+                        const t = (b.textContent || b.value || '').trim();
+                        if (t === 'Exporter' || t === 'Exporter ') {
+                            (b.querySelector('button') || b).click(); return 'clicked';
+                        }
+                    }
+                    for (const b of cands) {
+                        if ((b.textContent || '').trim().includes('Export')) {
+                            (b.querySelector('button') || b).click(); return 'clicked-loose';
+                        }
+                    }
+                    return 'no-export-btn';
+                }""")
+                if 'no-export-btn' in str(_exp):
+                    await page.screenshot(path=f"fse_export_debug_{win_idx}.png")
+                    raise RuntimeError(f"Bouton Exporter introuvable (fenêtre {win_end})")
+            download = await dl_info.value
+            tmp_path = Path(f"/tmp/fse_bank_{win_idx}.xlsx")
+            await download.save_as(tmp_path)
+            data = tmp_path.read_bytes()
+            print(f"  [fenêtre {win_idx}] ✓ {win_end} — {len(data)} bytes")
+            return data
+
+        all_bytes: list = []
+        for _i, _we in enumerate(windows):
+            all_bytes.append(await _export_window(_i, _we))
+        return all_bytes
 
 
 def main():
@@ -562,8 +558,7 @@ def main():
 
     try:
         _update_job("running", f"Connexion à OSPHARM FSE…")
-        result = asyncio.run(_scrape_fse_async(creds, DATE_FROM, DATE_TO))
-        xlsx_bytes, filename = result
+        xlsx_list = asyncio.run(_scrape_fse_async(creds, DATE_FROM, DATE_TO))
     except Exception as e:
         _update_job("error", error=str(e))
         print(f"❌  Scraping échoué : {e}")
@@ -571,15 +566,16 @@ def main():
 
     # Archivage best-effort vers Storage (non bloquant — le tunnel MinIO peut
     # renvoyer 502 ; le parsing se fait de toute façon localement).
-    try:
-        _upload_xlsx_to_storage(xlsx_bytes, filename)
-    except Exception as e:
-        print(f"  [warn] Upload Storage ignoré ({e})")
+    for _i, _xb in enumerate(xlsx_list):
+        try:
+            _upload_xlsx_to_storage(_xb, f"BanqueOspharmFSE_{_i}.xlsx")
+        except Exception as e:
+            print(f"  [warn] Upload Storage ignoré ({e})")
 
-    # Parser le XLSX LOCALEMENT et sauvegarder fse_month_stats (clé de service).
-    _update_job("running", "Parsing du XLSX…")
+    # Parser les XLSX LOCALEMENT et sauvegarder fse_month_stats (clé de service).
+    _update_job("running", "Parsing des XLSX…")
     try:
-        result_data = _parse_and_save_fse(xlsx_bytes)
+        result_data = _parse_and_save_fse(xlsx_list)
         months = result_data.get("months", [])
         total  = result_data.get("total_ttc", 0)
         print(f"  ✓ {len(months)} mois · {total:,.2f} € TTC")
