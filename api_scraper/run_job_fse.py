@@ -126,21 +126,241 @@ def _upload_xlsx_to_storage(xlsx_bytes: bytes, filename: str) -> str:
     return path
 
 
-def _call_parse_api(storage_path: str) -> dict:
-    """Appelle /parse/fse-bank via l'API Render pour agréger et sauvegarder."""
-    import urllib.parse
-    RENDER_URL = os.environ.get("RENDER_API_URL", "https://pharmacie-remises.onrender.com")
-    url  = f"{RENDER_URL}/parse/fse-bank"
-    body = json.dumps({"storage_path": storage_path}).encode()
-    req  = urllib.request.Request(
-        url, data=body, method="POST",
-        headers={
-            "Authorization": f"Bearer {SERVICE_KEY}",  # service key comme Bearer token
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.loads(r.read())
+def _parse_and_save_fse(xlsx_bytes: bytes) -> dict:
+    """Parse le XLSX FSE Banque LOCALEMENT (sans Render, sans Storage) et
+    sauvegarde fse_month_stats dans user_state via la clé de service.
+
+    Port autonome de _parse_fse_bank_sync (main.py) : le runner GitHub Actions
+    n'installe que camoufox+openpyxl (pas fastapi), donc on ne peut pas importer
+    main.py ; et l'API Render rejette la clé de service (verify_token → 401).
+    """
+    import io, re as _re
+    import openpyxl
+
+    _LABO_KEYS = [
+        ("BIOGARAN", "BIOGARAN"), ("TEVA", "TEVA"), ("VIATRIS", "VIATRIS"),
+        ("MYLAN", "VIATRIS"), ("SANDOZ", "SANDOZ"), ("ZENTIVA", "ZENTIVA"),
+        ("ARROW", "ARROW"), ("CRISTERS", "CRISTERS"), ("ZYDUS", "ZYDUS"),
+        ("EG LABO", "EG LABO"), ("EG LABS", "EG LABO"), ("EVOLUPHARM", "EVOLUPHARM"),
+        ("RANBAXY", "RANBAXY"), ("AUROBINDO", "AUROBINDO"), ("INTAS", "INTAS"),
+        ("ALMUS", "ALMUS"), ("QUALIMED", "QUALIMED"),
+        ("MOVIANTO", "MOVIANTO"), ("ALLOGA", "ALLOGA"), ("CEGEDIM", "CEGEDIM"),
+        ("CERP", "CERP"), ("COOPERATION PHARMACEUTIQUE", "CERP"), ("CPF", "CERP"),
+    ]
+
+    def _identify_labo(libelle):
+        lib = libelle.upper().strip()
+        m = _re.match(r'VIR\s+(.+?)\s+-\s', lib)
+        if not m:
+            for key, canon in _LABO_KEYS:
+                if key in lib:
+                    return canon
+            return None
+        name_part = m.group(1)
+        for key, canon in _LABO_KEYS:
+            if name_part.startswith(key) or key in name_part:
+                return canon
+        return None
+
+    def _extract_all_refs(libelle):
+        return [s for s in _re.findall(r'\b(\d{8,14})\b', libelle) if len(s) <= 14]
+
+    def _classify_transfer(libelle, ref):
+        text = (libelle + ' ' + ref).upper()
+        r2_kw = ['RDP', ' R2 ', '-R2-', 'R2-', '-R2', 'REMISE FIN', 'AVOIR', 'REDUCTI', 'RED FIN']
+        r3_kw = ['PRESTA', 'COOP', ' R3 ', '-R3-', 'R3-', '-R3', 'PREST', 'COOPERAT', 'PRESTAT']
+        if any(kw in text for kw in r2_kw):
+            return 'r2'
+        if any(kw in text for kw in r3_kw):
+            return 'r3'
+        return 'r3'
+
+    def _parse_date(val):
+        if isinstance(val, (_dt_module.date, _dt_module.datetime)):
+            return val.strftime("%Y-%m-%d")
+        s = str(val or "").strip()
+        m = _re.match(r'(\d{2})/(\d{2})/(\d{4})', s)
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else None
+
+    def _parse_amount(val):
+        if isinstance(val, (int, float)):
+            return float(val)
+        s = str(val or "").replace('\xa0', '').replace(' ', '').replace('€', '').replace(',', '.').strip()
+        try:
+            return float(s) if s else None
+        except ValueError:
+            return None
+
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    all_rows = list(ws.iter_rows(max_row=5000, values_only=True))
+
+    # ── Détection des colonnes ─────────────────────────────────────────────────
+    _DATE_KW = ('date',)
+    _LIB_KW  = ('libell', 'libellé', 'description', 'opération', 'operation', 'désignation')
+    _AMT_KW  = ('montant', 'crédit', 'credit', 'débit', 'debit', 'valeur', 'amount')
+    hdr_idx  = -1
+    col_date, col_lib, col_amt = 0, 1, 2
+
+    for ri, row in enumerate(all_rows[:15]):
+        cells = [str(c or '').lower().strip() for c in row]
+        has_date = any(any(k in c for k in _DATE_KW) for c in cells)
+        has_lib  = any(any(k in c for k in _LIB_KW)  for c in cells)
+        if has_date and has_lib:
+            hdr_idx = ri
+            for ci, c in enumerate(cells):
+                if any(k in c for k in _DATE_KW) and 'mise' not in c and 'update' not in c:
+                    col_date = ci
+                if any(k in c for k in _LIB_KW):
+                    col_lib = ci
+                if any(k in c for k in _AMT_KW):
+                    col_amt = ci
+            break
+
+    if hdr_idx < 0:
+        for ri, row in enumerate(all_rows[:30]):
+            for ci, c in enumerate(row):
+                s = str(c or '').upper().strip()
+                if s.startswith('VIR ') and len(s) > 6:
+                    hdr_idx  = max(0, ri - 1)
+                    col_lib  = ci
+                    col_date = max(0, ci - 1)
+                    col_amt  = ci + 1
+                    break
+            if hdr_idx >= 0:
+                break
+
+    data_start = hdr_idx + 2
+
+    # ── Lookup ref/montant → labo depuis digi_month_stats ──────────────────────
+    state_pre   = _supa_get_state()
+    _digi_stats = state_pre.get("digi_month_stats") or {}
+    ref_to_labo, ref_to_type = {}, {}
+    amount_to_candidates: dict = {}
+    for _mk_d, _arr in _digi_stats.items():
+        for _row in (_arr or []):
+            _labo_d = _row.get("labo", "")
+            for _ref in (_row.get("facture_refs") or []):
+                _ref_s = str(_ref).strip()
+                if _ref_s and len(_ref_s) >= 6:
+                    ref_to_labo[_ref_s] = _labo_d
+                    ref_to_type[_ref_s] = 'r2' if (_row.get("rdp_total") or 0) > 0 else 'r3'
+            for _field, _typ in [("presta_total_ttc", "r3"), ("rdp_total", "r2")]:
+                _amt = _row.get(_field) or 0
+                if _amt > 0:
+                    amount_to_candidates.setdefault(round(_amt * 100), []).append((_labo_d, _mk_d, _typ))
+    print(f"  → Lookup factures : {len(ref_to_labo)} refs · {len(amount_to_candidates)} montants (digi)")
+
+    # ── Parcours des lignes ────────────────────────────────────────────────────
+    acc: dict = {}
+    row_num = n_ref_matched = n_amt_matched = 0
+    skipped_lib: list = []
+
+    for row in all_rows[data_start:]:
+        if not any(c for c in row):
+            continue
+        n = len(row)
+        date_str = _parse_date(row[col_date] if col_date < n else None)
+        libelle  = str(row[col_lib] if col_lib < n else '') or ''
+        amount   = _parse_amount(row[col_amt] if col_amt < n else None)
+        if (amount is None or amount <= 0) and col_amt + 1 < n:
+            amount = _parse_amount(row[col_amt + 1])
+        if not date_str or not libelle:
+            continue
+        if amount is None or amount <= 0:
+            continue
+        if not libelle.upper().strip().startswith('VIR '):
+            continue
+
+        mk    = date_str[:7]
+        labo  = _identify_labo(libelle)
+        refs  = _extract_all_refs(libelle)
+        vtype = _classify_transfer(libelle, refs[0] if refs else "")
+
+        if not labo and refs:
+            for _r in refs:
+                if _r in ref_to_labo:
+                    labo  = ref_to_labo[_r]
+                    vtype = ref_to_type.get(_r, vtype)
+                    n_ref_matched += 1
+                    break
+
+        if not labo:
+            _cands = amount_to_candidates.get(round(amount * 100))
+            if _cands:
+                _match = next((c for c in _cands if c[1] == mk), _cands[0])
+                labo, vtype = _match[0], _match[2]
+                n_amt_matched += 1
+
+        if not labo:
+            if len(skipped_lib) < 20:
+                skipped_lib.append(libelle[:80])
+            continue
+
+        for key, canon in _LABO_KEYS:
+            if key in labo.upper():
+                labo = canon
+                break
+
+        acc.setdefault(mk, {}).setdefault(
+            labo, {"montant_ttc": 0.0, "r2_ttc": 0.0, "r3_ttc": 0.0, "count": 0, "refs": []})
+        acc[mk][labo]["montant_ttc"] += amount
+        acc[mk][labo]["r2_ttc"]      += amount if vtype == 'r2' else 0.0
+        acc[mk][labo]["r3_ttc"]      += amount if vtype == 'r3' else 0.0
+        acc[mk][labo]["count"]       += 1
+        for _r in refs[:3]:
+            if _r not in acc[mk][labo]["refs"]:
+                acc[mk][labo]["refs"].append(_r)
+        row_num += 1
+
+    print(f"  → {row_num} virements parsés · {n_ref_matched} via ref · {n_amt_matched} via montant")
+    if skipped_lib:
+        print(f"  → Libellés non reconnus : {skipped_lib[:5]}")
+
+    if not acc:
+        sample = [[str(c)[:25] for c in r if c]
+                  for r in all_rows[max(0, hdr_idx):hdr_idx + 5] if any(c for c in r)]
+        raise RuntimeError(
+            f"Aucun virement reconnu. Colonnes date={col_date} libellé={col_lib} "
+            f"montant={col_amt} header={hdr_idx}. Échantillon={sample[:3]}")
+
+    fse_stats = {
+        mk: {labo: {
+            "montant_ttc": round(d["montant_ttc"], 2),
+            "r2_ttc":      round(d["r2_ttc"], 2),
+            "r3_ttc":      round(d["r3_ttc"], 2),
+            "count":       d["count"],
+            "refs":        d["refs"][:10],
+        } for labo, d in labos.items()}
+        for mk, labos in sorted(acc.items())
+    }
+
+    # ── Fusion avec l'état existant + sauvegarde (clé de service) ──────────────
+    state    = _supa_get_state()
+    existing = state.get("fse_month_stats") or {}
+    merged: dict = {}
+    for mk, lab_data in existing.items():
+        merged[mk] = ({r["labo"]: dict(r) for r in lab_data}
+                      if isinstance(lab_data, list) else dict(lab_data))
+    for mk, new_labos in fse_stats.items():
+        if mk not in merged:
+            merged[mk] = new_labos
+        else:
+            for labo, nd in new_labos.items():
+                if labo in merged[mk]:
+                    ex = merged[mk][labo]
+                    ex["montant_ttc"] = round(ex.get("montant_ttc", 0) + nd["montant_ttc"], 2)
+                    ex["r2_ttc"]      = round(ex.get("r2_ttc", 0) + nd["r2_ttc"], 2)
+                    ex["r3_ttc"]      = round(ex.get("r3_ttc", 0) + nd["r3_ttc"], 2)
+                    ex["count"]      += nd["count"]
+                    ex["refs"]        = (ex.get("refs", []) + nd["refs"])[:20]
+                else:
+                    merged[mk][labo] = dict(nd)
+    state["fse_month_stats"] = merged
+    _supa_patch_state(state)
+
+    total_ttc = sum(d["montant_ttc"] for labos in fse_stats.values() for d in labos.values())
+    return {"months": sorted(fse_stats), "rows_parsed": row_num, "total_ttc": round(total_ttc, 2)}
 
 
 # ── Scraper Playwright/camoufox ────────────────────────────────────────────────
@@ -303,26 +523,17 @@ def main():
         print(f"❌  Scraping échoué : {e}")
         sys.exit(1)
 
-    # Upload vers Storage
-    _update_job("running", "Upload vers Storage…")
+    # Archivage best-effort vers Storage (non bloquant — le tunnel MinIO peut
+    # renvoyer 502 ; le parsing se fait de toute façon localement).
     try:
-        storage_path = _upload_xlsx_to_storage(xlsx_bytes, filename)
+        _upload_xlsx_to_storage(xlsx_bytes, filename)
     except Exception as e:
-        print(f"  [warn] Upload échoué ({e}) — parsing local")
-        storage_path = None
+        print(f"  [warn] Upload Storage ignoré ({e})")
 
-    # Parser le XLSX et sauvegarder
+    # Parser le XLSX LOCALEMENT et sauvegarder fse_month_stats (clé de service).
     _update_job("running", "Parsing du XLSX…")
     try:
-        if storage_path:
-            result_data = _call_parse_api(storage_path)
-        else:
-            # Fallback : parser localement sans passer par l'API
-            import importlib.util, io as _io
-            spec = importlib.util.spec_from_file_location("main_api", __file__.replace("run_job_fse.py", "main.py"))
-            # Parsing local direct
-            from main import _parse_fse_bank_sync
-            result_data = _parse_fse_bank_sync(USER_ID, "")  # ne fonctionnera pas sans storage
+        result_data = _parse_and_save_fse(xlsx_bytes)
         months = result_data.get("months", [])
         total  = result_data.get("total_ttc", 0)
         print(f"  ✓ {len(months)} mois · {total:,.2f} € TTC")
