@@ -198,36 +198,46 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
 
         # ── 1b. Échange du code + montage de l'app SPA Webix ──────────────────────
         # L'app FSE détecte ?code=… au chargement, l'échange contre un token
-        # (getAccountToken → window.location = redirect_uri) puis monte l'UI Webix.
-        # On attend que Webix soit prêt ET que le menu authentifié 'manager.fse.bank'
-        # existe (preuve que l'utilisateur est connecté).
+        # (getAccountToken → window.location = redirect_uri) puis monte l'UI Webix
+        # et route vers un module authentifié (#!/top/manager.fse.home par défaut).
+        # On attend que Webix soit prêt ET que la route #!/top/ soit active (preuve
+        # que me() a validé la session). Les vues de modules (manager.fse.bank…)
+        # sont créées paresseusement à la navigation, donc on ne peut pas les
+        # attendre ici.
         print("  → Échange du code et initialisation de l'app FSE…")
         try:
             await page.wait_for_function(
                 "() => typeof webix !== 'undefined' && webix.$$ "
-                "&& webix.$$('manager.fse.bank')",
+                "&& /#!\\/top\\//.test(window.location.hash)",
                 timeout=120_000)
         except Exception:
             await page.screenshot(path="fse_app_debug.png")
             raise RuntimeError(f"App FSE non chargée après login (URL: {page.url})")
-        print("  ✓ App FSE chargée et authentifiée")
+        await page.wait_for_timeout(3_000)  # laisser le module home finir de monter
+        print(f"  ✓ App FSE chargée et authentifiée — {page.url[-40:]}")
 
         # ── 2. Navigation vers le module Banque ───────────────────────────────────
-        print("  → Navigation vers le module Banque…")
-        await page.evaluate("""() => {
-            if (window.location.hash !== '#!/top/manager.fse.bank')
-                window.location.hash = '#!/top/manager.fse.bank';
-            const m = webix.$$('manager.fse.bank');
-            if (m && m.show) { try { m.show(); } catch (e) {} }
-        }""")
         # Les contrôles de filtre (fse_bank_origin) ne sont montés qu'une fois dans
-        # le module Banque.
-        try:
-            await page.wait_for_function(
-                "() => webix.$$ && webix.$$('fse_bank_origin') "
-                "&& webix.$$('fse_bank_datatable')",
-                timeout=60_000)
-        except Exception:
+        # le module Banque ; on route par hash (webix-jet) et on retente si besoin.
+        print("  → Navigation vers le module Banque…")
+        _bank_ok = False
+        for _attempt in range(3):
+            await page.evaluate("""() => {
+                window.location.hash = '#!/top/manager.fse.bank';
+                window.dispatchEvent(new HashChangeEvent('hashchange'));
+                const m = webix.$$ && webix.$$('manager.fse.bank');
+                if (m && m.show) { try { m.show(); } catch (e) {} }
+            }""")
+            try:
+                await page.wait_for_function(
+                    "() => webix.$$ && webix.$$('fse_bank_origin') "
+                    "&& webix.$$('fse_bank_datatable')",
+                    timeout=25_000)
+                _bank_ok = True
+                break
+            except Exception:
+                await page.wait_for_timeout(2_000)
+        if not _bank_ok:
             await page.screenshot(path="fse_bank_debug.png")
             raise RuntimeError("Module Banque FSE non monté (contrôles introuvables)")
         await page.wait_for_timeout(2_000)
