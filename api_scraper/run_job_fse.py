@@ -441,11 +441,18 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
         # L'origine est mise à HTP+OI ensuite via le richselect DOM (le param htp
         # ne filtrait pas → run #10 exportait du tiers-payant : MGEN, CETIP…).
         print(f"  → Module Banque ({date_from} → {date_to})…")
-        _route = (f"#!/top/manager.fse.bank"
-                  f"?datedebut={date_from}&datefin={date_to}")
-        await page.evaluate(
-            "(r) => { window.location.hash = r; "
-            "window.dispatchEvent(new HashChangeEvent('hashchange')); }", _route)
+        # Chargement FRAIS de la route Banque avec les params (cache-buster ?bp=1
+        # pour forcer un vrai reload → config() lit getParam('datedebut'/'datefin')
+        # au boot ; le hashchange seul ne ré-exécutait pas config() → dates par
+        # défaut au run #11). Le ?bp=1 n'est pas ?code= donc me() ré-authentifie
+        # via cookie sans re-login.
+        _url = (f"{FSE_URL}/?bp=1#!/top/manager.fse.bank"
+                f"?datedebut={date_from}&datefin={date_to}")
+        await page.goto(_url, wait_until="domcontentloaded", timeout=90_000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=30_000)
+        except Exception:
+            pass
         try:
             await page.wait_for_function(
                 "() => document.querySelector('[view_id=\"fse_bank_origin\"]') "
