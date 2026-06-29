@@ -172,144 +172,136 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
             await page.screenshot(path="fse_login_debug.png")
             raise RuntimeError(f"Formulaire login FSE introuvable (URL: {page.url})")
 
-        # Remplir
+        # Remplir le formulaire de login accounts.dev (form POST /authorize).
+        # client_id=test est le client FSE officiel (validé côté serveur) ; en cas
+        # d'identifiants corrects le serveur renvoie ?code=… vers fse.ospharm.org.
         email_sel = "input[type='email'],input[name='email'],input[name='username'],input[type='text']"
         await page.locator(email_sel).first.fill(username)
         await page.locator("input[type='password']").first.fill(password)
-        await page.locator("input[type='password']").first.press("Enter")
-
-        # Attendre la redirection vers fse.ospharm.org
         try:
-            await page.wait_for_url(f"{FSE_URL}/**", timeout=20_000)
+            await page.locator("button[type='submit'],input[type='submit']").first.click(timeout=5_000)
+        except Exception:
+            await page.locator("input[type='password']").first.press("Enter")
+
+        # Attendre la redirection vers fse.ospharm.org (avec ?code=…)
+        try:
+            await page.wait_for_url(f"{FSE_URL}/**", timeout=30_000)
         except Exception:
             pass
         if LOGIN_URL in page.url:
             await page.screenshot(path="fse_login_debug.png")
-            raise RuntimeError(f"Login FSE échoué (toujours sur {page.url})")
+            raise RuntimeError(
+                f"Login FSE échoué — identifiants OSPHARM refusés par accounts.dev "
+                f"('Connexion impossible'). URL: {page.url}")
 
-        print(f"  ✓ Connecté — URL: {page.url}")
+        print(f"  ✓ Code d'autorisation reçu — URL: {page.url[:80]}…")
 
-        # ── 2. Navigation vers Banque ────────────────────────────────────────────
-        print("  → Navigation vers Banque…")
-        await page.goto(f"{FSE_URL}/#!/top/manager.fse.bank", wait_until="networkidle", timeout=60_000)
-        await page.wait_for_timeout(5_000)  # Angular SPA init
+        # ── 1b. Échange du code + montage de l'app SPA Webix ──────────────────────
+        # L'app FSE détecte ?code=… au chargement, l'échange contre un token
+        # (getAccountToken → window.location = redirect_uri) puis monte l'UI Webix.
+        # On attend que Webix soit prêt ET que le menu authentifié 'manager.fse.bank'
+        # existe (preuve que l'utilisateur est connecté).
+        print("  → Échange du code et initialisation de l'app FSE…")
+        try:
+            await page.wait_for_function(
+                "() => typeof webix !== 'undefined' && webix.$$ "
+                "&& webix.$$('manager.fse.bank')",
+                timeout=120_000)
+        except Exception:
+            await page.screenshot(path="fse_app_debug.png")
+            raise RuntimeError(f"App FSE non chargée après login (URL: {page.url})")
+        print("  ✓ App FSE chargée et authentifiée")
 
-        # ── 3. Filtre HTP+OI ──────────────────────────────────────────────────────
-        print("  → Sélection filtre HTP+OI…")
-        # Chercher le premier dropdown et sélectionner HTP+OI
-        _sel_htp = await page.evaluate("""() => {
-            // Chercher tous les éléments qui ressemblent à un sélecteur avec "HTP"
-            const selects = document.querySelectorAll('select');
-            for (const s of selects) {
-                for (const o of s.options) {
-                    if (o.text.includes('HTP') || o.value.includes('HTP')) {
-                        s.value = o.value;
-                        s.dispatchEvent(new Event('change', {bubbles: true}));
-                        return 'select:' + o.text;
-                    }
-                }
-            }
-            // Chercher dropdowns custom (boutons/div avec texte HTP)
-            const btns = document.querySelectorAll('[class*="dropdown"],[class*="select"] *');
-            for (const el of btns) {
-                if ((el.textContent||'').includes('HTP + OI') || (el.textContent||'').includes('HTP+OI')) {
-                    el.click();
-                    return 'btn:' + el.textContent.trim();
-                }
-            }
-            return 'not-found';
-        }""")
-        print(f"  filter-HTP: {_sel_htp}")
-        if 'not-found' in str(_sel_htp):
-            # Essayer de cliquer sur le premier dropdown pour l'ouvrir puis sélectionner HTP
-            for _ in range(3):
-                _r2 = await page.evaluate("""() => {
-                    const el = document.querySelector('[class*="dropdown-toggle"],[class*="select-btn"]');
-                    if (el) { el.click(); return 'opened'; }
-                    return 'no-toggle';
-                }""")
-                await page.wait_for_timeout(500)
-                _r3 = await page.evaluate("""() => {
-                    const items = document.querySelectorAll('[class*="dropdown-item"],[class*="option"]');
-                    for (const it of items) {
-                        if ((it.textContent||'').includes('HTP')) { it.click(); return 'clicked:' + it.textContent.trim(); }
-                    }
-                    return 'no-htp';
-                }""")
-                if 'clicked' in str(_r3): break
-                await page.wait_for_timeout(500)
-
-        await page.wait_for_timeout(3_000)
-
-        # ── 4. Filtre "Tous les virements" ────────────────────────────────────────
-        print("  → Sélection 'Tous les virements'…")
+        # ── 2. Navigation vers le module Banque ───────────────────────────────────
+        print("  → Navigation vers le module Banque…")
         await page.evaluate("""() => {
-            const selects = document.querySelectorAll('select');
-            for (const s of selects) {
-                for (const o of s.options) {
-                    if (o.text.includes('Tous') && o.text.toLowerCase().includes('virement')) {
-                        s.value = o.value;
-                        s.dispatchEvent(new Event('change', {bubbles: true}));
-                        return;
-                    }
-                }
-            }
-            const items = document.querySelectorAll('[class*="dropdown-item"],[class*="option"]');
-            for (const it of items) {
-                if ((it.textContent||'').includes('Tous les virements')) { it.click(); break; }
-            }
+            if (window.location.hash !== '#!/top/manager.fse.bank')
+                window.location.hash = '#!/top/manager.fse.bank';
+            const m = webix.$$('manager.fse.bank');
+            if (m && m.show) { try { m.show(); } catch (e) {} }
         }""")
-        await page.wait_for_timeout(3_000)
+        # Les contrôles de filtre (fse_bank_origin) ne sont montés qu'une fois dans
+        # le module Banque.
+        try:
+            await page.wait_for_function(
+                "() => webix.$$ && webix.$$('fse_bank_origin') "
+                "&& webix.$$('fse_bank_datatable')",
+                timeout=60_000)
+        except Exception:
+            await page.screenshot(path="fse_bank_debug.png")
+            raise RuntimeError("Module Banque FSE non monté (contrôles introuvables)")
+        await page.wait_for_timeout(2_000)
 
-        # ── 5. Plage de dates ──────────────────────────────────────────────────────
+        # ── 3. Filtres : HTP+OI · tous les virements · rapprochés + non ───────────
+        print("  → Filtres : HTP+OI, tous les virements…")
+        _filters = await page.evaluate("""() => {
+            const out = {};
+            const set = (id, v) => {
+                const c = webix.$$(id);
+                if (c && c.setValue) { c.setValue(v); out[id] = c.getValue(); }
+                else out[id] = 'absent';
+            };
+            set('fse_bank_origin', 'HTPOI');   // HTP + OI
+            set('fse_bank_valid',  'ALL');     // Tous les virements (pointés + non)
+            set('fse_bank_type',   'ALL');     // Rapprochés + non rapprochés
+            return out;
+        }""")
+        print(f"  filtres: {_filters}")
+        await page.wait_for_timeout(1_500)
+
+        # ── 4. Plage de dates (daterangepicker Webix) ─────────────────────────────
         if date_from and date_to:
-            print(f"  → Plage dates : {date_from} → {date_to}")
-            # Convertir YYYY-MM-DD → DD/MM/YYYY pour l'affichage
-            def _fmt(d: str) -> str:
-                y, m, day = d.split('-'); return f"{day}/{m}/{y}"
-            date_from_fr = _fmt(date_from)
-            date_to_fr   = _fmt(date_to)
+            print(f"  → Plage de dates : {date_from} → {date_to}")
+            _dset = await page.evaluate(
+                """([start, end]) => {
+                    const toD = s => { const p = s.split('-').map(Number);
+                                       return new Date(p[0], p[1] - 1, p[2]); };
+                    let dp = webix.$$('fse_bank_date');
+                    if (!dp) {
+                        const root = webix.$$('fse_bank');
+                        if (root && root.queryView)
+                            dp = root.queryView({view: 'daterangepicker'});
+                    }
+                    if (dp && dp.setValue) {
+                        dp.setValue({start: toD(start), end: toD(end)});
+                        return 'set';
+                    }
+                    return 'no-daterangepicker';
+                }""",
+                [date_from, date_to])
+            print(f"  date-set: {_dset}")
 
-            _date_set = await page.evaluate(f"""([from_fr, to_fr]) => {{
-                // Chercher des inputs de type date ou texte avec placeholder DD/MM/YYYY
-                const inputs = [...document.querySelectorAll('input[type="date"],input[type="text"]')];
-                const dateInputs = inputs.filter(i =>
-                    i.placeholder?.includes('/') || i.name?.toLowerCase().includes('date') ||
-                    i.id?.toLowerCase().includes('date')
-                );
-                if (dateInputs.length >= 2) {{
-                    dateInputs[0].value = from_fr;
-                    dateInputs[0].dispatchEvent(new Event('input', {{bubbles:true}}));
-                    dateInputs[0].dispatchEvent(new Event('change', {{bubbles:true}}));
-                    dateInputs[1].value = to_fr;
-                    dateInputs[1].dispatchEvent(new Event('input', {{bubbles:true}}));
-                    dateInputs[1].dispatchEvent(new Event('change', {{bubbles:true}}));
-                    return 'set:' + dateInputs[0].value + '→' + dateInputs[1].value;
-                }}
-                return 'no-date-inputs:' + inputs.length;
-            }}""", [date_from_fr, date_to_fr])
-            print(f"  date-set: {_date_set}")
-            # Le site recharge les virements côté serveur (~20s) avant de pouvoir exporter
-            print("  → Attente chargement des virements (~20s)…")
-            await page.wait_for_timeout(25_000)
+        # Laisser le datatable recharger côté serveur avant l'export.
+        print("  → Rechargement des virements…")
+        await page.wait_for_timeout(12_000)
 
-        # ── 6. Export ──────────────────────────────────────────────────────────────
-        print("  → Clic sur Export…")
+        # ── 5. Export → bouton "Exporter" → webix.toExcel → téléchargement ────────
+        print("  → Export Excel…")
         async with page.expect_download(timeout=120_000) as dl_info:
             _exp = await page.evaluate("""() => {
-                // Chercher le bouton Export
-                const btns = document.querySelectorAll('button,a,[class*="btn"],[class*="export"]');
-                for (const b of btns) {
-                    const t = (b.textContent||b.title||b.getAttribute('title')||'').trim().toLowerCase();
-                    if (t === 'exporter' || t === 'export' || t.includes('export')) {
-                        b.click(); return 'clicked:' + b.textContent.trim();
+                // Le bouton "Exporter" du module Banque construit un datatable
+                // d'export (toutes les lignes) puis appelle webix.toExcel().
+                let btn = null;
+                const root = webix.$$('fse_bank');
+                if (root && root.queryView)
+                    btn = root.queryView({view: 'button', value: 'Exporter'});
+                if (!btn) {
+                    // fallback : balayer toutes les vues Webix enregistrées
+                    const reg = (webix.ui && webix.ui.views) || {};
+                    for (const id in reg) {
+                        const v = webix.$$(id);
+                        if (v && v.config && v.config.value === 'Exporter') { btn = v; break; }
                     }
                 }
-                return 'no-export-btn';
+                if (!btn) return 'no-export-btn';
+                try { btn.callEvent('onItemClick', [btn.config.id]); }
+                catch (e) { return 'click-err:' + e; }
+                return 'clicked';
             }""")
             print(f"  export-btn: {_exp}")
-            if 'no-export-btn' in str(_exp):
-                raise RuntimeError("Bouton Export non trouvé sur la page Banque FSE")
+            if 'no-export-btn' in str(_exp) or 'click-err' in str(_exp):
+                await page.screenshot(path="fse_export_debug.png")
+                raise RuntimeError(f"Export Banque FSE impossible ({_exp})")
 
         download  = await dl_info.value
         filename  = download.suggested_filename or f"fse_bank_{date_from}_{date_to}.xlsx"
