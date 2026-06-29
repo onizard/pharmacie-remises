@@ -6388,6 +6388,126 @@ function _verifFillBiogaranCoop(year) {
     </div>`;
 }
 
+// Coefficient de réalisation Biogaran (règle 80 %) — réutilisé par l'échéancier
+// et le tableau par palier. Réalisation = achats annualisés / CA cible.
+function _verifBiogaranCoef(yr) {
+  const today = new Date();
+  const mRef  = yr < today.getFullYear() ? 12 : (today.getMonth() + 1);
+  const lpB   = (state.labPages || []).find(p => p.selectedLab === 'Biogaran');
+  const condsB= lpB ? (getEffectiveCondsForMonth(lpB, yr, mRef) || []) : [];
+  const caMax = Math.max(0, ...condsB.map(c => parseFloat(c.caCondition) || 0));
+  if (caMax <= 0) return 1;  // pas de cible → pas de coef
+  let tot = 0;
+  for (let i = 1; i <= 12; i++) {
+    const mk = `${yr}-${String(i).padStart(2,'0')}`;
+    ((state._digiMonthStats||{})[mk]      || []).forEach(r => { if (_verifNormLab(r.labo)==='BIOGARAN') tot += r.total_ht || 0; });
+    ((state._grossisteMonthStats||{})[mk] || []).forEach(r => { if (_verifNormLab(r.labo)==='BIOGARAN') tot += r.total_ht || 0; });
+  }
+  const real = caMax > 0 ? (tot / Math.max(1, mRef) * 12) / caMax : 0;
+  return real >= 0.8 ? (0.9 + Math.min(real, 1) * 0.1) : 0;
+}
+
+// ── Tableau détaillé PAR PALIER RSF (Attendue / Reçue) ─────────────────────────
+// Données : grossiste 'paliers' (RSF reçu par taux) + digi 'rdp_by_taux'
+// (R2/RDP reçu par taux, grossiste+direct) + contrat (remise2/coopR3) + FSE (R3).
+// Retourne null si aucune ventilation par palier dispo → fallback ancien tableau.
+function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
+  const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
+  const digiRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
+  const paliers   = (grosRow && Array.isArray(grosRow.paliers))     ? grosRow.paliers     : [];
+  const rdpByTaux = (digiRow && Array.isArray(digiRow.rdp_by_taux)) ? digiRow.rdp_by_taux : [];
+  if (!paliers.length && !rdpByTaux.length) return null;
+
+  const [mkY, mkM] = mk.split('-').map(Number);
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fmtP = v => v != null ? (Math.round(v*100)/100).toString().replace('.',',') + ' %' : '—';
+  const TVA_R3 = 1.20, isBio = selNorm === 'BIOGARAN';
+  const cond   = _verifGetCond(labDisplay, mkY, mkM);
+  const coopR3 = cond ? (parseFloat(cond.coopR3)||0) : 0;
+  const coef   = isBio ? _verifBiogaranCoef(mkY) : 1;
+  const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=parseFloat(r.rsf_pct); if(!isNaN(k)&&!r.excluded) cmap[k]=r; });
+  const gmap = {}; paliers.forEach(p => gmap[p.taux]=p);
+  const rmap = {}; rdpByTaux.forEach(e => rmap[e.taux]=e);
+  const allTaux = [...new Set([...paliers.map(p=>p.taux), ...rdpByTaux.map(e=>e.taux)])]
+    .filter(t => t!=null).sort((a,b)=>a-b);
+  let fseR3 = 0; Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{ if(_verifNormLab(l)===selNorm) fseR3 += s.montant_ttc||0; });
+
+  const dCls = v => v==null ? '' : v>0.5 ? ' style="color:var(--red);font-weight:700"' : v<-0.5 ? ' style="color:var(--green)"' : '';
+  const ATT='background:rgba(255,171,0,.06)', REC='background:rgba(0,255,136,.06)';
+  let T = {qr:0, brut:0, rsfA:0, rsfR:0, r2A:0, r2R:0, r3A:0};
+
+  const body = allTaux.map(tx => {
+    const g=gmap[tx], rd=rmap[tx], c=cmap[tx]||{};
+    const grosBrut = g?(g.brut||0):0, dirBrut = rd?(rd.ca_direct||0):0, brut = grosBrut+dirBrut;
+    const qr = g?(g.qty||0):0;
+    const rsfA = grosBrut*tx/100, rsfR = g?(g.remise||0):0, rsfD = rsfA-rsfR;
+    const r2pct = (c.remise2!=null && c.remise2!=='') ? parseFloat(c.remise2) : null;
+    const r2A = r2pct!=null ? brut*r2pct/100 : 0;
+    const r2R = rd ? ((rd.grossiste||0)+(rd.direct||0)) : 0;
+    const r2D = (r2pct!=null || r2R>0) ? r2A-r2R : null;
+    const r3pct = isBio ? coopR3 : ((c.remise3!=null && c.remise3!=='') ? parseFloat(c.remise3) : 0);
+    const r3A = r3pct>0 ? brut*r3pct/100*TVA_R3*(isBio?coef:1) : 0;
+    T.qr+=qr; T.brut+=brut; T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
+    const rsfEff = grosBrut>0 ? rsfR/grosBrut*100 : null;
+    const r2Eff  = (brut>0 && r2R>0) ? r2R/brut*100 : null;
+    return `
+      <tr style="${ATT}">
+        <td rowspan="2" style="font-weight:700;color:var(--cyan)">${fmtP(tx)}</td>
+        <td rowspan="2">—</td>
+        <td rowspan="2">${qr?qr.toLocaleString('fr'):'—'}</td>
+        <td rowspan="2">${fmtE(brut)}</td>
+        <td>${fmtP(tx)}</td><td>${fmtE(rsfA)}</td><td rowspan="2"${dCls(rsfD)}>${fmtE(rsfD)}</td>
+        <td class="verif-r2">${r2pct!=null?fmtP(r2pct):'—'}</td><td class="verif-r2">${r2pct!=null?fmtE(r2A):'—'}</td><td rowspan="2" class="verif-r2"${dCls(r2D)}>${r2D!=null?fmtE(r2D):'—'}</td>
+        <td class="verif-r3">${r3pct?fmtP(r3pct):'—'}</td><td class="verif-r3">${r3A>0?fmtE(r3A):'—'}</td><td rowspan="2" class="verif-r3" style="color:var(--text-dim);font-size:9px">cf.&nbsp;total</td>
+      </tr>
+      <tr style="${REC}">
+        <td>${rsfEff!=null?fmtP(rsfEff):'—'}</td><td>${fmtE(rsfR)}</td>
+        <td class="verif-r2">${r2Eff!=null?fmtP(r2Eff):'—'}</td><td class="verif-r2">${r2R>0?fmtE(r2R):'—'}</td>
+        <td class="verif-r3">—</td><td class="verif-r3">—</td>
+      </tr>`;
+  }).join('');
+
+  const totRows = `
+    <tr style="${ATT};border-top:2px solid var(--border)">
+      <td rowspan="2" style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
+      <td rowspan="2">—</td>
+      <td rowspan="2">${T.qr?T.qr.toLocaleString('fr'):'—'}</td>
+      <td rowspan="2">${fmtE(T.brut)}</td>
+      <td style="color:var(--amber);font-size:9px">ATT</td><td>${fmtE(T.rsfA)}</td><td rowspan="2"${dCls(T.rsfA-T.rsfR)}>${fmtE(T.rsfA-T.rsfR)}</td>
+      <td class="verif-r2" style="color:var(--amber);font-size:9px">ATT</td><td class="verif-r2">${fmtE(T.r2A)}</td><td rowspan="2" class="verif-r2"${dCls(T.r2A-T.r2R)}>${fmtE(T.r2A-T.r2R)}</td>
+      <td class="verif-r3" style="color:var(--amber);font-size:9px">ATT</td><td class="verif-r3">${fmtE(T.r3A)}</td><td rowspan="2" class="verif-r3"${dCls(T.r3A-fseR3)}>${fmtE(T.r3A-fseR3)}</td>
+    </tr>
+    <tr style="${REC}">
+      <td style="color:var(--green);font-size:9px">REÇU</td><td>${fmtE(T.rsfR)}</td>
+      <td class="verif-r2" style="color:var(--green);font-size:9px">REÇU</td><td class="verif-r2">${fmtE(T.r2R)}</td>
+      <td class="verif-r3" style="color:var(--green);font-size:9px">REÇU</td><td class="verif-r3">${fseR3>0?fmtE(fseR3):'—'}</td>
+    </tr>`;
+
+  return `
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 8px;font-family:'Share Tech Mono',monospace;font-size:10px">
+      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:rgba(255,171,0,.5);display:inline-block"></span>Attendue</span>
+      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:rgba(0,255,136,.5);display:inline-block"></span>Reçue</span>
+      <span style="color:var(--text-dim)">RSF appliquée directement (info) · R2/RDP vérifiée par palier · R3/coop au total (virement FSE, cf. échéancier)</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="verif-tbl">
+        <thead>
+          <tr>
+            <th rowspan="3" style="text-align:left">CAT. RSF</th><th rowspan="3">QTÉ DIRECT</th><th rowspan="3">QTÉ RÉP.</th><th rowspan="3">PA BRUT</th>
+            <th colspan="9" style="color:var(--amber);letter-spacing:2px">REMISE</th>
+          </tr>
+          <tr><th colspan="3">RSF</th><th colspan="3" class="verif-r2">REMISE 2 (RDP)</th><th colspan="3" class="verif-r3">REMISE 3 (COOP)</th></tr>
+          <tr>
+            <th>%</th><th>€</th><th>Δ</th>
+            <th class="verif-r2">%</th><th class="verif-r2">€</th><th class="verif-r2">Δ</th>
+            <th class="verif-r3">%</th><th class="verif-r3">€</th><th class="verif-r3">Δ</th>
+          </tr>
+        </thead>
+        <tbody>${body}${totRows}</tbody>
+      </table>
+    </div>`;
+}
+
 function _verifFillMonthDetail(mk) {
   const wrap = document.getElementById('verifMonthDetail'); if (!wrap) return;
   if (mk.endsWith('-ALL')) { _verifFillTout(parseInt(mk)); return; }
@@ -6405,6 +6525,13 @@ function _verifFillMonthDetail(mk) {
   Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, stats]) => { fseMap[_verifNormLab(labo)] = stats; });
 
   const selNorm = _verifSelLab ? _verifNormLab(_verifSelLab) : null;
+
+  // Labo sélectionné avec ventilation par palier → nouveau tableau Attendue/Reçue.
+  if (selNorm) {
+    const palHtml = _verifRenderPalierDetail(mk, selNorm, _verifSelLab);
+    if (palHtml) { wrap.innerHTML = palHtml + _verifEscompteBlock(mk) + _verifMdlBlock(mk); return; }
+  }
+
   const allKeys = [...new Set([...Object.keys(ospMap),...Object.keys(digiMap),...Object.keys(grosMap)])].sort();
   const keys    = selNorm ? allKeys.filter(k => k === selNorm) : allKeys;
   if (!keys.length) { wrap.innerHTML = `<div class="verif-note">// Aucune donnée pour ${_MONTH_LABELS[mkM-1]} ${mkY}</div>`; return; }
