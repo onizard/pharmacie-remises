@@ -5697,14 +5697,9 @@ function _renderVerifDigiBanner(el) {
       <span style="font-family:'Orbitron',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:var(--cyan)">DIGI</span>
       <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim)">Analyse en cours… ${pdfTxt} — encore ~${eta} min</span>
     </div>`;
-  } else if (state._digiSavedAt) {
-    const ageMin = Math.floor((Date.now() - state._digiSavedAt) / 60_000);
-    const ageTxt = ageMin < 60 ? `il y a ${ageMin} min` : ageMin < 1440 ? `il y a ${Math.floor(ageMin/60)} h` : `il y a ${Math.floor(ageMin/1440)} j`;
-    el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;margin-bottom:14px;border:1px solid var(--border);border-radius:3px;opacity:.7">
-      <span style="color:var(--green);font-size:11px">✓</span>
-      <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim)">DIGI — données à jour (${ageTxt})</span>
-    </div>`;
   } else {
+    // Bandeau "DIGI — données à jour" retiré (peu utile) ; on n'affiche que
+    // l'état d'analyse en cours.
     el.innerHTML = '';
   }
 }
@@ -6207,7 +6202,10 @@ function _verifFillAnnualSummary(year) {
 
   const rows = keys.map(k => {
     const d      = labAcc[k];
-    const pa_tot = d.pa_osp + d.pa_di + d.pa_gr;
+    // Base remises 2 & 3 = ACHATS (labo direct Digi + répartiteur), JAMAIS les
+    // ventes OSPHARM (sellout). cf. règle métier : les remises portent sur ce
+    // qu'on a acheté, pas sur ce qu'on a vendu.
+    const pa_tot = d.pa_di + d.pa_gr;
     if (pa_tot <= 0) return '';
 
     const qtyDigi = d.qty_di || 0;
@@ -6294,22 +6292,43 @@ function _verifFillBiogaranCoop(year) {
   const r3pct = cond ? (parseFloat(cond.coopR3) || 0) : 0;
   if (r3pct <= 0) { wrap.innerHTML = ''; return; }
 
-  // Échéancier mensuel : coop due (théorique TTC) vs virée (FSE), cumuls + solde.
+  // Achats Biogaran (Digi direct + répartiteur) par mois — base des remises.
+  const paByMonth = [];
+  let totAchats = 0;
+  for (let i = 1; i <= 12; i++) {
+    const mk = `${yr}-${String(i).padStart(2,'0')}`;
+    let pa = 0;
+    ((state._digiMonthStats||{})[mk]      || []).forEach(r => { if (_verifNormLab(r.labo)===norm) pa += r.total_ht || 0; });
+    ((state._grossisteMonthStats||{})[mk] || []).forEach(r => { if (_verifNormLab(r.labo)===norm) pa += r.total_ht || 0; });
+    paByMonth.push(pa);
+    totAchats += pa;
+  }
+
+  // Réalisation du marché Biogaran (règle des 80 %). caCondition_max = CA cible.
+  // N-1 : réalisation = achats année / cible. N (année en cours) : on annualise
+  // les achats YTD (achats/mois écoulés × 12) pour estimer la trajectoire.
+  const lpB   = (state.labPages || []).find(p => p.selectedLab === 'Biogaran');
+  const condsB= lpB ? (getEffectiveCondsForMonth(lpB, yr, mRef) || []) : [];
+  const caMax = Math.max(0, ...condsB.map(c => parseFloat(c.caCondition) || 0));
+  const monthsElapsed = yr < today.getFullYear() ? 12 : (today.getMonth() + 1);
+  const achatsAnnualises = monthsElapsed > 0 ? totAchats / monthsElapsed * 12 : 0;
+  const realisation = caMax > 0 ? achatsAnnualises / caMax : 0;
+  // Coefficient coop : 0 si < 80 % (marché non validé), sinon 0,9 + réal×0,1
+  // (90 % immédiat + rattrapage proratisé en avril N+1).
+  const coopCoef = realisation >= 0.8 ? (0.9 + Math.min(realisation, 1) * 0.1) : 0;
+
+  // Échéancier mensuel : coop due (théorique TTC, après coef) vs virée (FSE).
   const months = [];
   let cumulDue = 0, cumulRec = 0;
   for (let i = 1; i <= 12; i++) {
     const mk = `${yr}-${String(i).padStart(2,'0')}`;
-    let pa = 0;
-    ((state._monthStats||{})[mk]          || []).forEach(r => { if (_verifNormLab(r.labo)===norm) pa += r.ca_brut  || 0; });
-    ((state._digiMonthStats||{})[mk]      || []).forEach(r => { if (_verifNormLab(r.labo)===norm) pa += r.total_ht || 0; });
-    ((state._grossisteMonthStats||{})[mk] || []).forEach(r => { if (_verifNormLab(r.labo)===norm) pa += r.total_ht || 0; });
     let rec = 0;
     Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, s]) => {
       if (_verifNormLab(labo) === norm) rec += s.montant_ttc || 0;
     });
-    const due = pa * r3pct / 100 * TVA_R3;
+    const due = paByMonth[i-1] * r3pct / 100 * TVA_R3 * coopCoef;
     cumulDue += due; cumulRec += rec;
-    months.push({ lbl: _MONTH_LABELS[i-1], pa, due, rec, cumulDue, cumulRec, solde: cumulDue - cumulRec });
+    months.push({ lbl: _MONTH_LABELS[i-1], pa: paByMonth[i-1], due, rec, cumulDue, cumulRec, solde: cumulDue - cumulRec });
   }
 
   const soldeAnnuel = cumulDue - cumulRec;                       // > 0 = reste à virer
@@ -6329,16 +6348,29 @@ function _verifFillBiogaranCoop(year) {
     </tr>`;
   }).join('');
 
+  const realPct = (realisation * 100);
+  const realCls = realisation >= 0.8 ? 'var(--green)' : 'var(--red)';
+  const realInfo = caMax > 0
+    ? `Réalisation marché ${yr} : <b style="color:${realCls}">${realPct.toFixed(0)} %</b> de la cible (${fmtE(caMax)})${
+        yr >= today.getFullYear() ? ' — annualisée sur ' + monthsElapsed + ' mois' : ''
+      } → ${
+        coopCoef > 0
+          ? `coop validée, coefficient <b>×${coopCoef.toFixed(2)}</b> (90 % + réal×10 %)`
+          : `<b style="color:var(--red)">&lt; 80 % : marché non validé, coop = 0</b>`
+      }.`
+    : `<span style="color:var(--amber)">CA cible (caCondition) non renseigné dans MES CONDITIONS LABO → coefficient de réalisation non appliqué.</span>`;
+
   wrap.innerHTML = `
     <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:2px;margin:20px 0 8px">◈ COOP BIOGARAN — ÉCHÉANCIER (plafond ${fmtE(CAP)}/mois)</div>
     <div class="verif-note" style="margin-bottom:8px;font-size:11px;line-height:1.5">
+      ${realInfo}<br>
       Les virements coop (remise 3) Biogaran sont plafonnés à ~${fmtE(CAP)}/mois ; l'excédent d'un mois est reporté sur les suivants jusqu'au solde de l'année. Un <b style="color:var(--amber)">écart positif</b> (dû &gt; reçu) en cours d'année est donc <b>normal</b> (rattrapage étalé), pas une anomalie.
     </div>
     <div style="overflow-x:auto;margin-bottom:10px">
       <table class="verif-tbl">
         <thead><tr>
           <th style="text-align:left">MOIS</th>
-          <th title="Coop théorique du mois = PA brut × ${r3pct}% × TVA">COOP DUE (TTC)</th>
+          <th title="Coop théorique du mois = achats HT × ${r3pct}% × TVA × coef réalisation (${coopCoef.toFixed(2)})">COOP DUE (TTC)</th>
           <th>CUMUL DÛ</th>
           <th title="Virements coop reçus (FSE) ce mois">VIRÉ (FSE)</th>
           <th>CUMUL VIRÉ</th>
@@ -6383,7 +6415,8 @@ function _verifFillMonthDetail(mk) {
 
   const rowObjs = keys.map(key => {
     const osp = ospMap[key]||{}, digi = digiMap[key]||{}, gros = grosMap[key]||{};
-    const pa_tot = (osp.ca_brut || ((osp.pa_net||0)+(osp.remise_totale||0))) + (digi.total_ht||0) + (gros.total_ht||0);
+    // Base remises 2 & 3 = ACHATS (Digi direct + répartiteur), pas les ventes OSPHARM.
+    const pa_tot = (digi.total_ht||0) + (gros.total_ht||0);
     if (pa_tot <= 0 && !(digi.presta_total_ttc > 0)) return null;
     const labDisplay = osp.labo || digi.labo || gros.labo || key;
     const qtyDigi = digi.qty || 0, qtyGros = gros.qty || 0;
@@ -6393,7 +6426,7 @@ function _verifFillMonthDetail(mk) {
     const r2pct   = osp.r2_pond_pct > 0 ? osp.r2_pond_pct : _verifR2avg(cond);
     const r3pct   = cond ? (parseFloat(cond.coopR3) || 0) : 0;
     const rsfEst  = rsfData.eur ?? (rsfPct != null ? pa_tot * rsfPct / 100 : null);
-    const r2est   = r2pct != null ? (osp.r2_ca || pa_tot) * r2pct / 100 : null;
+    const r2est   = r2pct != null ? pa_tot * r2pct / 100 : null;
     const r3estTTC= r3pct > 0 ? pa_tot * r3pct / 100 * TVA_R3 : null;
     const _fse    = fseMap[key];
     const r2rec_tot = (digi.rdp_total || 0) + (_fse?.r2_ttc || 0);
