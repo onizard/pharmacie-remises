@@ -200,16 +200,35 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
         # L'app FSE détecte ?code=… au chargement, l'échange contre un token
         # (getAccountToken → window.location = redirect_uri) puis monte l'UI Webix
         # et route vers un module authentifié (#!/top/manager.fse.home par défaut).
-        # On attend que Webix soit prêt ET que la route #!/top/ soit active (preuve
-        # que me() a validé la session). Les vues de modules (manager.fse.bank…)
-        # sont créées paresseusement à la navigation, donc on ne peut pas les
-        # attendre ici.
+        # L'accesseur de vues est le GLOBAL $$ (l'app fait $$("fse_bank")), pas
+        # webix.$$ (absent dans ce build) — d'où l'échec des runs précédents.
         print("  → Échange du code et initialisation de l'app FSE…")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(4_000)
+
+        # Diagnostic de l'environnement (une fois l'app rechargée).
+        _diag = await page.evaluate("""() => {
+            const Q = window.$$ || (window.webix && window.webix.$$) || null;
+            let nViews = -1;
+            try { nViews = (window.webix && webix.ui && webix.ui.views)
+                  ? Object.keys(webix.ui.views).length : -1; } catch (e) {}
+            return {
+                webix: typeof window.webix,
+                dollar: typeof window.$$,
+                hash: window.location.hash,
+                title: document.title,
+                nViews: nViews,
+                body: (document.body && document.body.innerText || '').slice(0, 120)
+            };
+        }""")
+        print(f"  DIAG: {_diag}")
+
         try:
             await page.wait_for_function(
-                "() => typeof webix !== 'undefined' && webix.$$ "
+                "() => (typeof window.$$ === 'function' "
+                "|| (window.webix && typeof window.webix.$$ === 'function')) "
                 "&& /#!\\/top\\//.test(window.location.hash)",
-                timeout=120_000)
+                timeout=90_000)
         except Exception:
             await page.screenshot(path="fse_app_debug.png")
             raise RuntimeError(f"App FSE non chargée après login (URL: {page.url})")
@@ -221,17 +240,18 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
         # le module Banque ; on route par hash (webix-jet) et on retente si besoin.
         print("  → Navigation vers le module Banque…")
         _bank_ok = False
-        for _attempt in range(3):
+        for _attempt in range(4):
             await page.evaluate("""() => {
+                const Q = window.$$ || (window.webix && window.webix.$$);
                 window.location.hash = '#!/top/manager.fse.bank';
                 window.dispatchEvent(new HashChangeEvent('hashchange'));
-                const m = webix.$$ && webix.$$('manager.fse.bank');
+                const m = Q && Q('manager.fse.bank');
                 if (m && m.show) { try { m.show(); } catch (e) {} }
             }""")
             try:
                 await page.wait_for_function(
-                    "() => webix.$$ && webix.$$('fse_bank_origin') "
-                    "&& webix.$$('fse_bank_datatable')",
+                    "() => { const Q = window.$$ || (window.webix && window.webix.$$); "
+                    "return Q && Q('fse_bank_origin') && Q('fse_bank_datatable'); }",
                     timeout=25_000)
                 _bank_ok = True
                 break
@@ -239,15 +259,21 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
                 await page.wait_for_timeout(2_000)
         if not _bank_ok:
             await page.screenshot(path="fse_bank_debug.png")
-            raise RuntimeError("Module Banque FSE non monté (contrôles introuvables)")
+            _hint = await page.evaluate("""() => {
+                const Q = window.$$ || (window.webix && window.webix.$$);
+                return { hash: window.location.hash, hasQ: typeof Q,
+                         bank: Q ? !!Q('manager.fse.bank') : 'no-Q' };
+            }""")
+            raise RuntimeError(f"Module Banque FSE non monté ({_hint})")
         await page.wait_for_timeout(2_000)
 
         # ── 3. Filtres : HTP+OI · tous les virements · rapprochés + non ───────────
         print("  → Filtres : HTP+OI, tous les virements…")
         _filters = await page.evaluate("""() => {
+            const Q = window.$$ || (window.webix && window.webix.$$);
             const out = {};
             const set = (id, v) => {
-                const c = webix.$$(id);
+                const c = Q(id);
                 if (c && c.setValue) { c.setValue(v); out[id] = c.getValue(); }
                 else out[id] = 'absent';
             };
@@ -264,11 +290,12 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
             print(f"  → Plage de dates : {date_from} → {date_to}")
             _dset = await page.evaluate(
                 """([start, end]) => {
+                    const Q = window.$$ || (window.webix && window.webix.$$);
                     const toD = s => { const p = s.split('-').map(Number);
                                        return new Date(p[0], p[1] - 1, p[2]); };
-                    let dp = webix.$$('fse_bank_date');
+                    let dp = Q('fse_bank_date');
                     if (!dp) {
-                        const root = webix.$$('fse_bank');
+                        const root = Q('fse_bank');
                         if (root && root.queryView)
                             dp = root.queryView({view: 'daterangepicker'});
                     }
@@ -291,15 +318,16 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
             _exp = await page.evaluate("""() => {
                 // Le bouton "Exporter" du module Banque construit un datatable
                 // d'export (toutes les lignes) puis appelle webix.toExcel().
+                const Q = window.$$ || (window.webix && window.webix.$$);
                 let btn = null;
-                const root = webix.$$('fse_bank');
+                const root = Q('fse_bank');
                 if (root && root.queryView)
                     btn = root.queryView({view: 'button', value: 'Exporter'});
                 if (!btn) {
                     // fallback : balayer toutes les vues Webix enregistrées
-                    const reg = (webix.ui && webix.ui.views) || {};
+                    const reg = (window.webix && webix.ui && webix.ui.views) || {};
                     for (const id in reg) {
-                        const v = webix.$$(id);
+                        const v = Q(id);
                         if (v && v.config && v.config.value === 'Exporter') { btn = v; break; }
                     }
                 }
