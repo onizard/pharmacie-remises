@@ -196,152 +196,81 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
 
         print(f"  ✓ Code d'autorisation reçu — URL: {page.url[:80]}…")
 
-        # ── 1b. Échange du code + localisation du frame Webix ─────────────────────
-        # L'app FSE détecte ?code=… au chargement, l'échange contre un token puis
-        # monte l'UI. Le DIAG du run #7 a montré que le top frame n'expose PAS
-        # webix/$$ (titre vide, widget support) : l'app Webix tourne dans une
-        # iframe. On localise donc le frame qui expose l'accesseur global $$.
+        # ── 1b. Échange du code + attente de l'app ────────────────────────────────
+        # L'app FSE est un SPA Vue+Webix où webix N'EST PAS exposé en global
+        # (run #8 : 100 éléments [view_id] rendus mais window.webix/$$ undefined,
+        # un seul frame). On ne peut donc pas piloter l'API Webix : on configure
+        # les filtres + la plage de dates via les PARAMÈTRES DE ROUTE que le module
+        # Banque lit lui-même (getParam: htp, datedebut, datefin…), puis on clique
+        # le bouton "Exporter" via le DOM (l'app fait webix.toExcel en interne).
         print("  → Échange du code et initialisation de l'app FSE…")
         await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(4_000)
-
-        _HAS_WEBIX = ("() => (typeof window.$$ === 'function') "
-                      "|| (typeof window.webix !== 'undefined' && !!window.webix.$$)")
-        wf = None
-        for _i in range(30):  # ~60s
-            for fr in page.frames:
-                try:
-                    if await fr.evaluate(_HAS_WEBIX):
-                        wf = fr
-                        break
-                except Exception:
-                    pass
-            if wf:
-                break
-            await page.wait_for_timeout(2_000)
-
-        if wf is None:
-            _frames = []
-            for f in page.frames:
-                try:
-                    info = await f.evaluate(
-                        "() => ({w: typeof window.webix, d: typeof window.$$, "
-                        "v: document.querySelectorAll('[view_id]').length, "
-                        "t: document.title})")
-                except Exception as _e:
-                    info = {"err": str(_e)[:40]}
-                _frames.append({"url": f.url[:70], **info})
+        try:
+            await page.wait_for_function(
+                "() => /#!\\/top\\//.test(window.location.hash) "
+                "&& document.querySelectorAll('[view_id]').length > 5",
+                timeout=90_000)
+        except Exception:
             await page.screenshot(path="fse_app_debug.png")
-            raise RuntimeError(f"Frame Webix introuvable. frames={_frames}")
-        print(f"  ✓ Frame Webix trouvé — url=…{wf.url[-50:]}")
+            raise RuntimeError(f"App FSE non chargée après login (URL: {page.url})")
+        print(f"  ✓ App FSE rendue — {page.url[-40:]}")
 
-        # ── 2. Navigation vers le module Banque ───────────────────────────────────
-        # Les contrôles de filtre (fse_bank_origin) ne sont montés qu'une fois dans
-        # le module Banque ; on route par hash (webix-jet) et on retente si besoin.
-        print("  → Navigation vers le module Banque…")
-        _bank_ok = False
-        for _attempt in range(5):
-            await wf.evaluate("""() => {
-                const Q = window.$$ || (window.webix && window.webix.$$);
-                window.location.hash = '#!/top/manager.fse.bank';
-                window.dispatchEvent(new HashChangeEvent('hashchange'));
-                const m = Q && Q('manager.fse.bank');
-                if (m && m.show) { try { m.show(); } catch (e) {} }
-            }""")
-            try:
-                await wf.wait_for_function(
-                    "() => { const Q = window.$$ || (window.webix && window.webix.$$); "
-                    "return Q && Q('fse_bank_origin') && Q('fse_bank_datatable'); }",
-                    timeout=20_000)
-                _bank_ok = True
-                break
-            except Exception:
-                await page.wait_for_timeout(2_000)
-        if not _bank_ok:
+        # ── 2. Module Banque avec filtres + dates via params de route ─────────────
+        # htp=1 → origine "Hors tiers-payant" (virements labo directs, RDP/coop).
+        # datedebut/datefin (YYYY-MM-DD) → plage du daterangepicker.
+        print(f"  → Module Banque (HTP, {date_from} → {date_to})…")
+        _route = (f"#!/top/manager.fse.bank?htp=1"
+                  f"&datedebut={date_from}&datefin={date_to}")
+        await page.evaluate(
+            "(r) => { window.location.hash = r; "
+            "window.dispatchEvent(new HashChangeEvent('hashchange')); }", _route)
+        try:
+            await page.wait_for_function(
+                "() => document.querySelector('[view_id=\"fse_bank_origin\"]') "
+                "&& document.querySelector('[view_id=\"fse_bank_datatable\"]')",
+                timeout=60_000)
+        except Exception:
             await page.screenshot(path="fse_bank_debug.png")
-            _hint = await wf.evaluate("""() => {
-                const Q = window.$$ || (window.webix && window.webix.$$);
-                return { hash: window.location.hash, hasQ: typeof Q,
-                         bank: Q ? !!Q('manager.fse.bank') : 'no-Q',
-                         views: Q && webix && webix.ui && webix.ui.views
-                                ? Object.keys(webix.ui.views).slice(0, 25) : [] };
-            }""")
-            raise RuntimeError(f"Module Banque FSE non monté ({_hint})")
-        await page.wait_for_timeout(2_000)
+            _ids = await page.evaluate(
+                "() => [...document.querySelectorAll('[view_id]')]"
+                ".map(e => e.getAttribute('view_id')).slice(0, 40)")
+            raise RuntimeError(f"Module Banque non monté. view_ids={_ids}")
+        print("  ✓ Module Banque monté")
 
-        # ── 3. Filtres : HTP+OI · tous les virements · rapprochés + non ───────────
-        print("  → Filtres : HTP+OI, tous les virements…")
-        _filters = await wf.evaluate("""() => {
-            const Q = window.$$ || (window.webix && window.webix.$$);
-            const out = {};
-            const set = (id, v) => {
-                const c = Q(id);
-                if (c && c.setValue) { c.setValue(v); out[id] = c.getValue(); }
-                else out[id] = 'absent';
-            };
-            set('fse_bank_origin', 'HTPOI');   // HTP + OI
-            set('fse_bank_valid',  'ALL');     // Tous les virements (pointés + non)
-            set('fse_bank_type',   'ALL');     // Rapprochés + non rapprochés
-            return out;
-        }""")
-        print(f"  filtres: {_filters}")
-        await page.wait_for_timeout(1_500)
-
-        # ── 4. Plage de dates (daterangepicker Webix) ─────────────────────────────
-        if date_from and date_to:
-            print(f"  → Plage de dates : {date_from} → {date_to}")
-            _dset = await wf.evaluate(
-                """([start, end]) => {
-                    const Q = window.$$ || (window.webix && window.webix.$$);
-                    const toD = s => { const p = s.split('-').map(Number);
-                                       return new Date(p[0], p[1] - 1, p[2]); };
-                    let dp = Q('fse_bank_date');
-                    if (!dp) {
-                        const root = Q('fse_bank');
-                        if (root && root.queryView)
-                            dp = root.queryView({view: 'daterangepicker'});
-                    }
-                    if (dp && dp.setValue) {
-                        dp.setValue({start: toD(start), end: toD(end)});
-                        return 'set';
-                    }
-                    return 'no-daterangepicker';
-                }""",
-                [date_from, date_to])
-            print(f"  date-set: {_dset}")
-
-        # Laisser le datatable recharger côté serveur avant l'export.
+        # Laisser le datatable charger les virements côté serveur avant l'export.
         print("  → Rechargement des virements…")
-        await page.wait_for_timeout(12_000)
+        await page.wait_for_timeout(15_000)
 
-        # ── 5. Export → bouton "Exporter" → webix.toExcel → téléchargement ────────
+        # ── 3. Export → clic DOM sur "Exporter" → webix.toExcel → téléchargement ──
         print("  → Export Excel…")
         async with page.expect_download(timeout=120_000) as dl_info:
-            _exp = await wf.evaluate("""() => {
-                // Le bouton "Exporter" du module Banque construit un datatable
-                // d'export (toutes les lignes) puis appelle webix.toExcel().
-                const Q = window.$$ || (window.webix && window.webix.$$);
-                let btn = null;
-                const root = Q('fse_bank');
-                if (root && root.queryView)
-                    btn = root.queryView({view: 'button', value: 'Exporter'});
-                if (!btn) {
-                    // fallback : balayer toutes les vues Webix enregistrées
-                    const reg = (window.webix && webix.ui && webix.ui.views) || {};
-                    for (const id in reg) {
-                        const v = Q(id);
-                        if (v && v.config && v.config.value === 'Exporter') { btn = v; break; }
+            _exp = await page.evaluate("""() => {
+                // Bouton "Exporter" du module Banque (webix_button). Son onItemClick
+                // (code interne de l'app) construit un datatable d'export toutes-
+                // lignes puis appelle webix.toExcel() → déclenche le download.
+                const cands = document.querySelectorAll(
+                    'button, .webix_button, .webix_el_button, [role="button"]');
+                for (const b of cands) {
+                    const t = (b.textContent || b.value || '').trim();
+                    if (t === 'Exporter' || t === 'Exporter ') {
+                        (b.querySelector('button') || b).click();
+                        return 'clicked';
                     }
                 }
-                if (!btn) return 'no-export-btn';
-                try { btn.callEvent('onItemClick', [btn.config.id]); }
-                catch (e) { return 'click-err:' + e; }
-                return 'clicked';
+                // fallback : recherche plus large
+                for (const b of cands) {
+                    if ((b.textContent || '').trim().includes('Export')) {
+                        (b.querySelector('button') || b).click();
+                        return 'clicked-loose:' + b.textContent.trim();
+                    }
+                }
+                return 'no-export-btn';
             }""")
             print(f"  export-btn: {_exp}")
-            if 'no-export-btn' in str(_exp) or 'click-err' in str(_exp):
+            if 'no-export-btn' in str(_exp):
                 await page.screenshot(path="fse_export_debug.png")
-                raise RuntimeError(f"Export Banque FSE impossible ({_exp})")
+                raise RuntimeError("Bouton Exporter introuvable (DOM)")
 
         download  = await dl_info.value
         filename  = download.suggested_filename or f"fse_bank_{date_from}_{date_to}.xlsx"
