@@ -84,7 +84,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
     - Lignes presta    : clé = period_month,      cumule presta_total
     """
     def _zero():
-        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0, "facture_refs": []}
+        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0, "facture_refs": [], "rdp_by_taux": {}}
 
     acc: dict[str, dict] = {}
     for line in lines:
@@ -97,6 +97,18 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
             amt  = abs(float(line.get("montant") or 0))
             acc.setdefault(mk, {}).setdefault(labo, _zero())
             acc[mk][labo]["rdp_total"] = round(acc[mk][labo]["rdp_total"] + amt, 2)
+            # Ventilation RDP par taux (= palier RSF) et par canal (grossiste/direct),
+            # avec le CA brut de référence — base de la vérification R2 par palier.
+            for rl in (line.get("rdp_lines") or []):
+                try:
+                    tx = round(float(rl.get("taux") or 0), 2)
+                except (TypeError, ValueError):
+                    continue
+                canal = "grossiste" if str(rl.get("canal", "")).upper().startswith("GROS") else "direct"
+                e = acc[mk][labo]["rdp_by_taux"].setdefault(
+                    tx, {"grossiste": 0.0, "direct": 0.0, "ca_grossiste": 0.0, "ca_direct": 0.0})
+                e[canal]          = round(e[canal]          + abs(float(rl.get("montant") or 0)), 2)
+                e["ca_" + canal]  = round(e["ca_" + canal]  + float(rl.get("ca_brut") or 0),     2)
             if line.get("facture_num"):
                 acc[mk][labo]["facture_refs"].append(str(line["facture_num"]))
 
@@ -131,12 +143,29 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
               "rdp_total":        round(d["rdp_total"], 2),
               "presta_total":     round(d["presta_total"], 2),
               "presta_total_ttc": round(d.get("presta_total_ttc", d["presta_total"] * 1.20), 2),
-              "facture_refs":     list(dict.fromkeys(d["facture_refs"]))[:20]}
+              "facture_refs":     list(dict.fromkeys(d["facture_refs"]))[:20],
+              "rdp_by_taux":      sorted(
+                  [{"taux": tx, **v} for tx, v in d.get("rdp_by_taux", {}).items()],
+                  key=lambda x: x["taux"])}
              for labo, d in labos.items()],
             key=lambda r: r["labo"],
         )
         for mk, labos in acc.items()
     }
+
+
+def _merge_rdp_by_taux(a: list, b: list) -> list:
+    """Fusion additive de la ventilation RDP par taux [{taux, grossiste, direct,
+    ca_grossiste, ca_direct}]."""
+    acc: dict = {}
+    for src in (a or []), (b or []):
+        for r in src:
+            tx = r.get("taux")
+            e  = acc.setdefault(tx, {"grossiste": 0.0, "direct": 0.0, "ca_grossiste": 0.0, "ca_direct": 0.0})
+            for k in ("grossiste", "direct", "ca_grossiste", "ca_direct"):
+                e[k] = round(e[k] + (r.get(k) or 0), 2)
+    return sorted([{"taux": tx, **v} for tx, v in acc.items()],
+                  key=lambda x: (x["taux"] if x["taux"] is not None else -1))
 
 
 def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
@@ -153,6 +182,7 @@ def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
                     labo_map[labo]["qty"]              += nr["qty"]
                     labo_map[labo]["total_ht"]          = round(labo_map[labo]["total_ht"]           + nr["total_ht"],       2)
                     labo_map[labo]["rdp_total"]         = round(labo_map[labo].get("rdp_total",0)    + nr.get("rdp_total",0),   2)
+                    labo_map[labo]["rdp_by_taux"]       = _merge_rdp_by_taux(labo_map[labo].get("rdp_by_taux"), nr.get("rdp_by_taux"))
                     labo_map[labo]["presta_total"]      = round(labo_map[labo].get("presta_total",0) + nr.get("presta_total",0), 2)
                     labo_map[labo]["presta_total_ttc"]  = round(labo_map[labo].get("presta_total_ttc",0) + nr.get("presta_total_ttc",0), 2)
                     existing_refs = labo_map[labo].get("facture_refs") or []
