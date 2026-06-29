@@ -542,6 +542,7 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
 @app.post("/parse/grossiste-xlsx")
 async def parse_grossiste_xlsx(
     file: UploadFile = File(...),
+    reset: bool = Form(False),
     authorization: str = Header(default=""),
 ):
     token = _extract_token(authorization)
@@ -559,13 +560,14 @@ async def parse_grossiste_xlsx(
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
-        _executor, lambda: _parse_grossiste_xlsx_sync(user_id, xlsx_bytes, token)
+        _executor, lambda: _parse_grossiste_xlsx_sync(user_id, xlsx_bytes, token, reset=reset)
     )
 
 
-def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes, user_token: str = "") -> dict:
+def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes, user_token: str = "", reset: bool = False) -> dict:
     # Écriture de l'état via les helpers avec le TOKEN UTILISATEUR (RLS : l'user peut MAJ
     # sa propre ligne). La clé anon est en lecture seule sur user_state → 401 en écriture.
+    # reset=True : on repart d'une base vide (ré-analyse : le 1er fichier réinitialise).
     from supabase_client import _get_state_sync, _patch_state_sync
 
     grossiste_stats = _parse_grossiste_bytes(xlsx_bytes)
@@ -576,9 +578,8 @@ def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes, user_token: str 
         )
 
     state = _get_state_sync(user_id, user_token=user_token) or {}
-    state["grossiste_month_stats"] = _merge_grossiste_stats(
-        state.get("grossiste_month_stats") or {}, grossiste_stats
-    )
+    base  = {} if reset else (state.get("grossiste_month_stats") or {})
+    state["grossiste_month_stats"] = _merge_grossiste_stats(base, grossiste_stats)
     _patch_state_sync(user_id, state, user_token=user_token)
 
     months   = sorted(grossiste_stats)
@@ -751,6 +752,7 @@ def _run_grossiste_gmail_sync(user_id: str, user_token: str = "") -> dict:
 @app.post("/parse/digi-pdf")
 async def parse_digi_pdf(
     file: UploadFile = File(...),
+    reset: bool = Form(False),
     authorization: str = Header(default=""),
 ):
     """Upload direct d'un PDF DIGI (invoice, RDP, presta) → extraction → digi_month_stats."""
@@ -771,12 +773,12 @@ async def parse_digi_pdf(
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
         _executor,
-        lambda: _parse_digi_pdf_sync(user_id, pdf_bytes, file.filename or "upload.pdf"),
+        lambda: _parse_digi_pdf_sync(user_id, pdf_bytes, file.filename or "upload.pdf", reset=reset),
     )
     return result
 
 
-def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
+def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str, reset: bool = False) -> dict:
     import os as _os, sys, tempfile
     from pathlib import Path as _Path
 
@@ -816,19 +818,26 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str) -> dict:
     mdl_lines      = [l for l in lines if l.get("type") == "mdl"]
     digi_lines     = [l for l in lines if l.get("type") not in ("escompte", "mdl")]
 
-    merged = state.get("digi_month_stats") or {}
+    # reset=True (ré-analyse) : on repart de bases vides → 1er fichier réinitialise.
+    merged = {} if reset else (state.get("digi_month_stats") or {})
+    if reset:
+        state["digi_month_stats"] = merged
     if digi_lines:
         new_stats = _compute_digi_month_stats(digi_lines)
         merged    = _merge_digi_stats(merged, new_stats)
         state["digi_month_stats"] = merged
 
-    merged_esc = state.get("escompte_stats") or {}
+    merged_esc = {} if reset else (state.get("escompte_stats") or {})
+    if reset:
+        state["escompte_stats"] = merged_esc
     if escompte_lines:
         new_esc    = _compute_escompte_stats(escompte_lines)
         merged_esc = _merge_escompte_stats(merged_esc, new_esc)
         state["escompte_stats"] = merged_esc
 
-    merged_mdl = state.get("mdl_stats") or {}
+    merged_mdl = {} if reset else (state.get("mdl_stats") or {})
+    if reset:
+        state["mdl_stats"] = merged_mdl
     if mdl_lines:
         new_mdl    = _compute_mdl_stats(mdl_lines)
         merged_mdl = _merge_mdl_stats(merged_mdl, new_mdl)
@@ -1346,6 +1355,7 @@ async def parse_fse_bank(
 @app.post("/parse/fse-bank-xlsx")
 async def parse_fse_bank_xlsx(
     file: UploadFile = File(...),
+    reset: bool = Form(False),
     authorization: str = Header(default=""),
 ):
     """Upload direct multipart du XLSX FSE Banque (sans MinIO, auth S3 inaccessible côté
@@ -1365,11 +1375,11 @@ async def parse_fse_bank_xlsx(
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
-        _executor, lambda: _parse_fse_bank_sync(user_id, xlsx_bytes=xlsx_bytes, user_token=token)
+        _executor, lambda: _parse_fse_bank_sync(user_id, xlsx_bytes=xlsx_bytes, user_token=token, reset=reset)
     )
 
 
-def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes = None, user_token: str = "") -> dict:
+def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes = None, user_token: str = "", reset: bool = False) -> dict:
     import io, re as _re, datetime as _dt
     import openpyxl
 
@@ -1650,7 +1660,7 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes
     with urllib.request.urlopen(req2, timeout=15) as r:
         rows2 = json.loads(r.read())
     state = (rows2[0]["state_json"] if rows2 else {}) or {}
-    existing = state.get("fse_month_stats") or {}
+    existing = {} if reset else (state.get("fse_month_stats") or {})
 
     # Migration ancien format (dict-of-lists) → dict-of-dicts
     merged: dict = {}

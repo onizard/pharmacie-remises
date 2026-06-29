@@ -1351,6 +1351,7 @@
       <div id="univFileList" style="display:none"></div>
       <div id="univStatus"   style="display:none"></div>
       <button id="univAnalyseBtn" style="display:none">ANALYSER</button>
+      <button id="univReanalyseBtn" title="Repasse les fichiers déjà déposés dans le parser à jour, sans avoir à les re-déposer" style="display:none;margin-top:8px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff);font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1px;padding:7px 12px;cursor:pointer">↻ RÉ-ANALYSER LES FICHIERS DÉPOSÉS</button>
       <div id="univDropZone"  style="display:none"></div>
 
       <div class="conn-sites">
@@ -11340,8 +11341,66 @@ function initConnecteurModal() {
     setTimeout(() => document.getElementById('concPass')?.focus(), 80);
   });
 
+  // ── Persistance locale des fichiers déposés (IndexedDB) ─────────────────────
+  // On garde les fichiers bruts déposés (justificatifs grossiste, avoirs RDP, FSE)
+  // pour pouvoir les RÉ-ANALYSER après une mise à jour du parser, sans avoir à les
+  // re-déposer manuellement.
+  const _BPDB = { name: 'bp_dropfiles', store: 'files', _p: null };
+  function _bpIdb() {
+    if (_BPDB._p) return _BPDB._p;
+    _BPDB._p = new Promise((res, rej) => {
+      const rq = indexedDB.open(_BPDB.name, 1);
+      rq.onupgradeneeded = () => { const db = rq.result; if (!db.objectStoreNames.contains(_BPDB.store)) db.createObjectStore(_BPDB.store, { keyPath: 'id', autoIncrement: true }); };
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror   = () => rej(rq.error);
+    });
+    return _BPDB._p;
+  }
+  async function _bpFileSave(kind, file) {
+    try {
+      const db  = await _bpIdb();
+      const buf = await file.arrayBuffer();
+      await new Promise((res, rej) => {
+        const tx = db.transaction(_BPDB.store, 'readwrite');
+        const st = tx.objectStore(_BPDB.store);
+        // dédoublonnage : supprimer un éventuel enregistrement même kind+nom
+        const cur = st.openCursor();
+        cur.onsuccess = () => { const c = cur.result; if (c) { if (c.value.kind === kind && c.value.name === file.name) st.delete(c.key); c.continue(); }
+          else st.add({ kind, name: file.name, type: file.type || '', ts: Date.now(), data: buf }); };
+        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      });
+    } catch (e) { console.warn('[BP] idb save', e); }
+  }
+  async function _bpFilesAll() {
+    try {
+      const db = await _bpIdb();
+      return await new Promise((res, rej) => {
+        const out = []; const tx = db.transaction(_BPDB.store, 'readonly');
+        const cur = tx.objectStore(_BPDB.store).openCursor();
+        cur.onsuccess = () => { const c = cur.result; if (c) { out.push(c.value); c.continue(); } else res(out); };
+        cur.onerror = () => rej(cur.error);
+      });
+    } catch (e) { return []; }
+  }
+  async function _reanalyseStoredFiles() {
+    const stored = await _bpFilesAll();
+    if (!stored.length) { showToast('Aucun fichier mémorisé — déposez vos justificatifs une fois, ils seront ré-analysables ensuite.'); return; }
+    if (!confirm(`Ré-analyser ${stored.length} fichier(s) déposé(s) ?\nLes statistiques grossiste / FSE / Digi seront reconstruites à partir de ces fichiers.`)) return;
+    _univFiles.length = 0;
+    const seenReset = {};
+    for (const rec of stored) {
+      const file  = new File([rec.data], rec.name, { type: rec.type || '' });
+      const reset = !seenReset[rec.kind]; seenReset[rec.kind] = true;
+      _univFiles.push({ file, type: rec.kind, status: 'pending', statusMsg: '', reset, fromIdb: true });
+    }
+    _univRenderList();
+    await _univAnalyse();
+    if (state.currentPageId === 'verificateur') renderVerificateur();
+    else if (state.currentPageId === 'recap') renderRecap();
+  }
+
   // ── Dropzone universelle ────────────────────────────────────────────────────
-  const _univFiles = [];  // {file, type, status, statusMsg}
+  const _univFiles = [];  // {file, type, status, statusMsg, reset?, fromIdb?}
 
   function _univDetectExt(file) {
     const n = file.name.toLowerCase();
@@ -11418,7 +11477,7 @@ function initConnecteurModal() {
       try {
         if (entry.type === 'pdf') {
           // PDF DIGI → POST /parse/digi-pdf (multipart)
-          const form = new FormData(); form.append('file', entry.file);
+          const form = new FormData(); form.append('file', entry.file); form.append('reset', entry.reset ? 'true' : 'false');
           const resp = await fetch(`${API_URL}/parse/digi-pdf`, {
             method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
           });
@@ -11437,7 +11496,7 @@ function initConnecteurModal() {
 
         } else if (entry.type === 'grossiste') {
           // XLSX grossiste → upload DIRECT multipart (sans MinIO, auth S3 inaccessible navigateur)
-          const form = new FormData(); form.append('file', entry.file);
+          const form = new FormData(); form.append('file', entry.file); form.append('reset', entry.reset ? 'true' : 'false');
           const resp = await fetch(`${API_URL}/parse/grossiste-xlsx`, {
             method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
           });
@@ -11454,7 +11513,7 @@ function initConnecteurModal() {
 
         } else if (entry.type === 'fse') {
           // XLSX FSE Banque → upload DIRECT multipart (sans MinIO)
-          const form = new FormData(); form.append('file', entry.file);
+          const form = new FormData(); form.append('file', entry.file); form.append('reset', entry.reset ? 'true' : 'false');
           const resp = await fetch(`${API_URL}/parse/fse-bank-xlsx`, {
             method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
           });
@@ -11472,6 +11531,11 @@ function initConnecteurModal() {
           entry.status = 'error'; entry.statusMsg = '// CSV OSPHARM : parser en cours de développement';
         } else {
           entry.status = 'error'; entry.statusMsg = '// Format non reconnu';
+        }
+        // Mémoriser le fichier brut (IndexedDB) pour ré-analyse ultérieure — sauf
+        // si on est justement en train de ré-analyser depuis le stockage.
+        if (entry.status === 'done' && !entry.fromIdb && ['pdf','grossiste','fse'].includes(entry.type)) {
+          _bpFileSave(entry.type, entry.file);
         }
       } catch(e) {
         entry.status = 'error'; entry.statusMsg = e.message || String(e);
@@ -11496,6 +11560,14 @@ function initConnecteurModal() {
     });
     input.addEventListener('change', () => { if (input.files.length) { _univAddFiles([...input.files]); input.value = ''; } });
     anaBtn.addEventListener('click', _univAnalyse);
+    const reBtn = document.getElementById('univReanalyseBtn');
+    if (reBtn) {
+      reBtn.addEventListener('click', async () => {
+        reBtn.disabled = true; const t = reBtn.textContent; reBtn.textContent = '⏳ Ré-analyse…';
+        try { await _reanalyseStoredFiles(); } finally { reBtn.disabled = false; reBtn.textContent = t; }
+      });
+      _bpFilesAll().then(f => { reBtn.style.display = f.length ? '' : 'none'; });
+    }
   })();
 
   document.getElementById('ospTest').addEventListener('click',   () => connectConn('ospharm', 'osp'));
