@@ -363,21 +363,21 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
     return {"months": sorted(fse_stats), "rows_parsed": row_num, "total_ttc": round(total_ttc, 2)}
 
 
-def _date_windows(date_from: str, date_to: str, step_days: int = 110) -> list:
-    """Découpe [date_from, date_to] en fenêtres de ≤120 j (contrainte du
-    daterangepicker FSE). Retourne la liste des dates de fin (datefin) ; chaque
-    fenêtre couvre [datefin-120, datefin]. Pas de 110 j → chevauchement de 10 j
-    absorbé par le dédoublonnage du parseur."""
+def _month_list(date_from: str, date_to: str) -> list:
+    """Liste des mois 'YYYYMM' de date_from à date_to inclus. Le module Banque
+    accepte un param de route `date=YYYYMM` qui fait un setValue explicite du
+    daterangepicker sur ce mois (start=1er, end=dernier jour) — seul moyen fiable
+    de fixer la plage (datedebut/datefin ne s'appliquent pas, plafond ~120 j)."""
     d_from = _dt_module.date.fromisoformat(date_from)
     d_to   = _dt_module.date.fromisoformat(date_to)
-    wins: list = []
-    cur = d_to
-    while True:
-        wins.append(cur.isoformat())
-        if cur - _dt_module.timedelta(days=120) <= d_from:
-            break
-        cur = cur - _dt_module.timedelta(days=step_days)
-    return wins
+    months: list = []
+    y, m = d_from.year, d_from.month
+    while (y, m) <= (d_to.year, d_to.month):
+        months.append(f"{y:04d}{m:02d}")
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return months
 
 
 # ── Scraper Playwright/camoufox ────────────────────────────────────────────────
@@ -453,20 +453,20 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> list:
             raise RuntimeError(f"App FSE non chargée après login (URL: {page.url})")
         print(f"  ✓ App FSE rendue — {page.url[-40:]}")
 
-        # ── 2. Export par fenêtres de ≤120 jours ──────────────────────────────────
-        # Le daterangepicker FSE plafonne la plage à ~120 jours (datefin appliquée,
-        # datedebut rogné à datefin-120). Pour couvrir toute la période demandée on
-        # exporte par fenêtres glissantes (datefin reculé de ~110 j) et on agrège
-        # avec dédoublonnage côté parseur.
-        windows = _date_windows(date_from, date_to, step_days=110)
-        print(f"  → {len(windows)} fenêtre(s) d'export : {windows}")
+        # ── 2. Export mois par mois (param de route date=YYYYMM) ──────────────────
+        # Le daterangepicker FSE plafonne la plage à ~120 j et ignore datedebut/
+        # datefin (run #13 : toutes les fenêtres retombaient sur les 120 j par
+        # défaut). En revanche le module Banque lit `date=YYYYMM` et fait un
+        # setValue EXPLICITE du picker sur ce mois → on exporte mois par mois.
+        months = _month_list(date_from, date_to)
+        print(f"  → {len(months)} mois à exporter : {months}")
 
-        async def _export_window(win_idx: int, win_end: str) -> bytes:
-            # Chargement FRAIS de la route Banque (cache-buster unique → config()
-            # relit datefin au boot ; le ?bp=… n'est pas ?code= donc me()
-            # ré-authentifie via cookie sans re-login).
-            url = (f"{FSE_URL}/?bp={win_idx}#!/top/manager.fse.bank"
-                   f"?datedebut={date_from}&datefin={win_end}")
+        async def _export_month(idx: int, yyyymm: str) -> bytes:
+            # Chargement FRAIS de la route Banque (cache-buster unique ; ?cb=… n'est
+            # pas ?code= donc me() ré-authentifie via cookie sans re-login).
+            # rappnonrapp=1 → type "rapprochés + non rapprochés".
+            url = (f"{FSE_URL}/?cb={idx}#!/top/manager.fse.bank"
+                   f"?date={yyyymm}&rappnonrapp=1")
             await page.goto(url, wait_until="domcontentloaded", timeout=90_000)
             try:
                 await page.wait_for_load_state("networkidle", timeout=30_000)
@@ -478,8 +478,8 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> list:
                     "&& document.querySelector('[view_id=\"fse_bank_datatable\"]')",
                     timeout=60_000)
             except Exception:
-                await page.screenshot(path=f"fse_bank_debug_{win_idx}.png")
-                raise RuntimeError(f"Module Banque non monté (fenêtre {win_end})")
+                await page.screenshot(path=f"fse_bank_debug_{idx}.png")
+                raise RuntimeError(f"Module Banque non monté (mois {yyyymm})")
             await page.wait_for_timeout(3_000)
 
             # Origine = HTP + OI via le richselect DOM.
@@ -501,13 +501,12 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> list:
             }""")
             if str(_pick) == 'not-found':
                 await page.keyboard.press("Escape")
-            await page.wait_for_timeout(15_000)
+            await page.wait_for_timeout(12_000)
             _diag = await page.evaluate("""() => ({
-                origin: (document.querySelector('[view_id="fse_bank_origin"]')||{}).innerText,
-                date:   (document.querySelector('[view_id="fse_bank_date"]')||{}).innerText,
+                date: (document.querySelector('[view_id="fse_bank_date"]')||{}).innerText,
                 rows: document.querySelectorAll('[view_id="fse_bank_datatable"] .webix_cell').length
             })""")
-            print(f"  [fenêtre {win_idx}] origin={_pick} {_diag}")
+            print(f"  [{yyyymm}] origin={_pick} {_diag}")
 
             async with page.expect_download(timeout=120_000) as dl_info:
                 _exp = await page.evaluate("""() => {
@@ -527,18 +526,18 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> list:
                     return 'no-export-btn';
                 }""")
                 if 'no-export-btn' in str(_exp):
-                    await page.screenshot(path=f"fse_export_debug_{win_idx}.png")
-                    raise RuntimeError(f"Bouton Exporter introuvable (fenêtre {win_end})")
+                    await page.screenshot(path=f"fse_export_debug_{idx}.png")
+                    raise RuntimeError(f"Bouton Exporter introuvable (mois {yyyymm})")
             download = await dl_info.value
-            tmp_path = Path(f"/tmp/fse_bank_{win_idx}.xlsx")
+            tmp_path = Path(f"/tmp/fse_bank_{idx}.xlsx")
             await download.save_as(tmp_path)
             data = tmp_path.read_bytes()
-            print(f"  [fenêtre {win_idx}] ✓ {win_end} — {len(data)} bytes")
+            print(f"  [{yyyymm}] ✓ {len(data)} bytes")
             return data
 
         all_bytes: list = []
-        for _i, _we in enumerate(windows):
-            all_bytes.append(await _export_window(_i, _we))
+        for _i, _mm in enumerate(months):
+            all_bytes.append(await _export_month(_i, _mm))
         return all_bytes
 
 
