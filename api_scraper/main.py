@@ -365,7 +365,13 @@ def _norm_grossiste_labo(raw: str) -> str:
 
 
 def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
-    """Parse feuille 'Récap par mois' et retourne {year-MM: [{labo, qty, total_ht}]}."""
+    """Parse feuille 'Récap par mois' → {year-MM: [{labo, qty, total_ht, ca_brut,
+    paliers: [{taux, qty, brut, remise, net}]}]}.
+
+    Le justificatif répartiteur ventile chaque labo par 'Tx Rem' (= palier RSF :
+    0 / 2,5 / 5 / 10 / 20 / 25 / 30 / 40). On conserve ce détail par palier
+    (montant remise = RSF effectivement obtenu) en plus des totaux par labo.
+    """
     import io, re, openpyxl
 
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
@@ -387,18 +393,39 @@ def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
             continue
         if current_month is None:
             continue
-        rep_dep, labo_raw, _, qty, ca_brut_raw, _, ca_net = (list(row) + [None]*7)[:7]
+        # Cols : Rep/Dep | nom | Tx Rem | qtes | Mt Vente Brut HT | Montant remise | CA net HT
+        rep_dep, labo_raw, taux, qty, ca_brut_raw, remise_raw, ca_net = (list(row) + [None]*7)[:7]
         if rep_dep == "Rep G" and labo_raw and qty:
             labo = _norm_grossiste_labo(labo_raw)
-            acc  = month_acc[current_month].setdefault(labo, {"qty": 0, "total_ht": 0.0, "ca_brut": 0.0})
-            acc["qty"]      += int(qty or 0)
-            acc["total_ht"] += float(ca_net or 0)
-            acc["ca_brut"]  += float(ca_brut_raw or 0)
+            acc  = month_acc[current_month].setdefault(
+                labo, {"qty": 0, "total_ht": 0.0, "ca_brut": 0.0, "paliers": {}})
+            q = int(qty or 0)
+            b = float(ca_brut_raw or 0)
+            r = float(remise_raw or 0)
+            n = float(ca_net or 0)
+            acc["qty"]      += q
+            acc["total_ht"] += n
+            acc["ca_brut"]  += b
+            try:
+                tx = round(float(taux), 2)
+            except (TypeError, ValueError):
+                tx = None
+            if tx is not None:
+                p = acc["paliers"].setdefault(tx, {"qty": 0, "brut": 0.0, "remise": 0.0, "net": 0.0})
+                p["qty"]    += q
+                p["brut"]   += b
+                p["remise"] += r
+                p["net"]    += n
 
     wb.close()
     return {
         mk: sorted(
-            [{"labo": l, "qty": d["qty"], "total_ht": round(d["total_ht"], 2), "ca_brut": round(d["ca_brut"], 2)}
+            [{"labo": l, "qty": d["qty"], "total_ht": round(d["total_ht"], 2), "ca_brut": round(d["ca_brut"], 2),
+              "paliers": sorted(
+                  [{"taux": tx, "qty": p["qty"], "brut": round(p["brut"], 2),
+                    "remise": round(p["remise"], 2), "net": round(p["net"], 2)}
+                   for tx, p in d["paliers"].items()],
+                  key=lambda x: x["taux"])}
              for l, d in labos.items()],
             key=lambda r: r["labo"],
         )
@@ -406,8 +433,27 @@ def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
     }
 
 
+def _merge_paliers(a: list, b: list) -> list:
+    """Fusion additive de deux listes de paliers [{taux, qty, brut, remise, net}]."""
+    acc: dict = {}
+    for src in (a or []), (b or []):
+        for p in src:
+            tx = p.get("taux")
+            d  = acc.setdefault(tx, {"qty": 0, "brut": 0.0, "remise": 0.0, "net": 0.0})
+            d["qty"]    += p.get("qty", 0)
+            d["brut"]   += p.get("brut", 0)
+            d["remise"] += p.get("remise", 0)
+            d["net"]    += p.get("net", 0)
+    return sorted(
+        [{"taux": tx, "qty": d["qty"], "brut": round(d["brut"], 2),
+          "remise": round(d["remise"], 2), "net": round(d["net"], 2)}
+         for tx, d in acc.items()],
+        key=lambda x: (x["taux"] if x["taux"] is not None else -1))
+
+
 def _merge_grossiste_stats(existing: dict, new_stats: dict) -> dict:
-    """Fusion additive : mois distincts → union ; mois communs → addition par labo."""
+    """Fusion additive : mois distincts → union ; mois communs → addition par labo
+    (y compris la ventilation par palier)."""
     merged = dict(existing)
     for mk, new_rows in new_stats.items():
         if mk not in merged:
@@ -416,9 +462,11 @@ def _merge_grossiste_stats(existing: dict, new_stats: dict) -> dict:
             labo_map = {r["labo"]: dict(r) for r in merged[mk]}
             for nr in new_rows:
                 if nr["labo"] in labo_map:
-                    labo_map[nr["labo"]]["qty"]      += nr["qty"]
-                    labo_map[nr["labo"]]["total_ht"]  = round(labo_map[nr["labo"]]["total_ht"] + nr["total_ht"], 2)
-                    labo_map[nr["labo"]]["ca_brut"]   = round(labo_map[nr["labo"]].get("ca_brut", 0) + nr.get("ca_brut", 0), 2)
+                    ex = labo_map[nr["labo"]]
+                    ex["qty"]      += nr["qty"]
+                    ex["total_ht"]  = round(ex["total_ht"] + nr["total_ht"], 2)
+                    ex["ca_brut"]   = round(ex.get("ca_brut", 0) + nr.get("ca_brut", 0), 2)
+                    ex["paliers"]   = _merge_paliers(ex.get("paliers"), nr.get("paliers"))
                 else:
                     labo_map[nr["labo"]] = dict(nr)
             merged[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])
