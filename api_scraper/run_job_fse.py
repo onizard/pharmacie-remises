@@ -436,12 +436,13 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
             raise RuntimeError(f"App FSE non chargée après login (URL: {page.url})")
         print(f"  ✓ App FSE rendue — {page.url[-40:]}")
 
-        # ── 2. Module Banque avec filtres + dates via params de route ─────────────
-        # htp=1 → origine "Hors tiers-payant" (virements labo directs, RDP/coop).
-        # datedebut/datefin (YYYY-MM-DD) → plage du daterangepicker.
-        print(f"  → Module Banque (HTP, {date_from} → {date_to})…")
-        _route = (f"#!/top/manager.fse.bank?htp=1"
-                  f"&datedebut={date_from}&datefin={date_to}")
+        # ── 2. Module Banque avec dates via params de route ───────────────────────
+        # datedebut/datefin (YYYY-MM-DD) → plage du daterangepicker (lue par config).
+        # L'origine est mise à HTP+OI ensuite via le richselect DOM (le param htp
+        # ne filtrait pas → run #10 exportait du tiers-payant : MGEN, CETIP…).
+        print(f"  → Module Banque ({date_from} → {date_to})…")
+        _route = (f"#!/top/manager.fse.bank"
+                  f"?datedebut={date_from}&datefin={date_to}")
         await page.evaluate(
             "(r) => { window.location.hash = r; "
             "window.dispatchEvent(new HashChangeEvent('hashchange')); }", _route)
@@ -456,11 +457,49 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> bytes:
                 "() => [...document.querySelectorAll('[view_id]')]"
                 ".map(e => e.getAttribute('view_id')).slice(0, 40)")
             raise RuntimeError(f"Module Banque non monté. view_ids={_ids}")
-        print("  ✓ Module Banque monté")
+        await page.wait_for_timeout(3_000)
+        _before = await page.evaluate("""() => ({
+            origin: (document.querySelector('[view_id="fse_bank_origin"]')||{}).innerText,
+            date:   (document.querySelector('[view_id="fse_bank_date"]')||{}).innerText
+        })""")
+        print(f"  ✓ Module monté — {_before}")
 
-        # Laisser le datatable charger les virements côté serveur avant l'export.
+        # ── 2b. Origine = HTP + OI via le richselect DOM ──────────────────────────
+        _open = await page.evaluate("""() => {
+            const el = document.querySelector('[view_id="fse_bank_origin"]');
+            if (!el) return 'no-origin';
+            (el.querySelector('.webix_inp_static') || el.querySelector('input') || el).click();
+            return 'opened';
+        }""")
+        await page.wait_for_timeout(1_000)
+        _pick = await page.evaluate("""() => {
+            const items = document.querySelectorAll('.webix_list_item');
+            const opts = [...items].map(i => (i.textContent||'').trim());
+            for (const it of items) {
+                const t = (it.textContent||'').trim();
+                if (t === 'HTP + OI' || t === 'HTP+OI') { it.click(); return 'picked:HTPOI'; }
+            }
+            for (const it of items) {
+                if ((it.textContent||'').trim() === 'Hors tiers-payant') {
+                    it.click(); return 'picked:HTP';
+                }
+            }
+            return 'not-found:' + opts.slice(0, 10).join('|');
+        }""")
+        print(f"  origin richselect: {_open}/{_pick}")
+        if str(_pick).startswith('not-found'):
+            # fermer un éventuel popup et continuer (origine par défaut = TP : on
+            # tentera quand même l'export, mais on signale le problème)
+            await page.keyboard.press("Escape")
+
+        # Laisser le datatable recharger les virements côté serveur avant l'export.
         print("  → Rechargement des virements…")
         await page.wait_for_timeout(15_000)
+        _after = await page.evaluate("""() => ({
+            origin: (document.querySelector('[view_id="fse_bank_origin"]')||{}).innerText,
+            rows: document.querySelectorAll('[view_id="fse_bank_datatable"] .webix_cell').length
+        })""")
+        print(f"  → après filtre: {_after}")
 
         # ── 3. Export → clic DOM sur "Exporter" → webix.toExcel → téléchargement ──
         print("  → Export Excel…")
