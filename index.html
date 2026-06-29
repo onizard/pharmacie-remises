@@ -1399,6 +1399,7 @@
             <div class="conn-connected-name">DIGIPHARMACIE</div>
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="conn-test-btn" id="digiReconnectBtn">RECONNECTER</button>
+            <button class="conn-test-btn" id="digiSyncBtn" title="Re-scrape complet de l'historique Digi (ré-applique les parsers à jour, ex. RDP par palier)" style="margin-top:6px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff)">⟳ SYNCHRONISER LE CONNECTEUR</button>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
           <div class="conn-ring-wrap" id="digiProgBar">
@@ -3188,42 +3189,71 @@ async function autoRunDigi() {
     }
     if (state.currentPageId === 'recap') renderRecap();
 
-    const deadline = Date.now() + 75 * 60_000; // 75 min = timeout GitHub Actions (60 min) + marge
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 5_000));
-      try {
-        const { data: row } = await window._sbClient.from('user_state')
-          .select('state_json').eq('user_id', session.user.id).maybeSingle();
-        const job = row?.state_json?.verif_job;
-        if (!job || job.status === 'running') {
-          if (job?.message) {
-            const _pm = job.message.match(/PDF\s+(\d+)\/(\d+)/i);
-            if (_pm && !state._digiProgressFirstAt) {
-              state._digiProgressFirstAt  = Date.now();
-              state._digiProgressFirstNum = parseInt(_pm[1]);
-            }
-            state._digiJobMessage = job.message;
-            if (state.currentPageId === 'recap') renderRecap();
-          }
-          continue;
-        }
-        state._digiJobRunning = false;
-        if (job.status === 'done') {
-          const digiStats = row?.state_json?.digi_month_stats;
-          if (digiStats && Object.keys(digiStats).length) {
-            state._digiMonthStats = digiStats;
-            if (row.state_json.escompte_stats) state._escompteStats = row.state_json.escompte_stats;
-            if (row.state_json.mdl_stats)      state._mdlStats      = row.state_json.mdl_stats;
-            state._digiSavedAt = Date.now();
-            saveState();
-          }
-        }
-        if (state.currentPageId === 'recap') renderRecap();
-        break;
-      } catch(_) {}
-    }
-    state._digiJobRunning = false;
+    await _pollDigiJob(session);
   } catch(_) { state._digiJobRunning = false; }
+}
+
+async function _pollDigiJob(session) {
+  const deadline = Date.now() + 75 * 60_000; // 75 min = timeout GitHub Actions (60 min) + marge
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 5_000));
+    try {
+      const { data: row } = await window._sbClient.from('user_state')
+        .select('state_json').eq('user_id', session.user.id).maybeSingle();
+      const job = row?.state_json?.verif_job;
+      if (!job || job.status === 'running') {
+        if (job?.message) {
+          const _pm = job.message.match(/PDF\s+(\d+)\/(\d+)/i);
+          if (_pm && !state._digiProgressFirstAt) {
+            state._digiProgressFirstAt  = Date.now();
+            state._digiProgressFirstNum = parseInt(_pm[1]);
+          }
+          state._digiJobMessage = job.message;
+          if (state.currentPageId === 'recap') renderRecap();
+        }
+        continue;
+      }
+      state._digiJobRunning = false;
+      if (job.status === 'done') {
+        const digiStats = row?.state_json?.digi_month_stats;
+        if (digiStats && Object.keys(digiStats).length) {
+          state._digiMonthStats = digiStats;
+          if (row.state_json.escompte_stats) state._escompteStats = row.state_json.escompte_stats;
+          if (row.state_json.mdl_stats)      state._mdlStats      = row.state_json.mdl_stats;
+          state._digiSavedAt = Date.now();
+          saveState();
+        }
+      }
+      if (state.currentPageId === 'recap') renderRecap();
+      if (state.currentPageId === 'verificateur') renderVerificateur();
+      break;
+    } catch(_) {}
+  }
+  state._digiJobRunning = false;
+}
+
+// Synchroniser le connecteur Digipharmacie : re-scrape complet (vide cache +
+// stats, ré-applique les parsers à jour, ex. ventilation RDP par palier).
+async function syncDigiConnector() {
+  if (!confirm('Synchroniser le connecteur Digipharmacie ?\n\nLe cache et les données Digi seront réinitialisés, puis tout l\'historique sera re-scrapé depuis Digipharmacie (quelques minutes).')) return;
+  const { data: { session } } = await window._sbClient.auth.getSession();
+  if (!session) { showToast('Session expirée'); return; }
+  if (typeof _waitApiReady === 'function' && !await _waitApiReady(12_000)) { showToast('API indisponible — réessayez'); return; }
+  try {
+    const resp = await fetch(`${API_URL}/run/digipharmacie?resync=true`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${session.access_token}` },
+    });
+    if (!resp.ok) { const e = await resp.json().catch(()=>({})); showToast('Échec : ' + (e.detail || `HTTP ${resp.status}`)); return; }
+  } catch(e) { showToast('Échec du lancement : ' + (e?.message || e)); return; }
+  // Reset local + état "job en cours"
+  state._digiMonthStats = {}; state._escompteStats = {}; state._mdlStats = {};
+  state._digiJobRunning = true; state._digiJobStartedAt = Date.now();
+  state._digiJobMessage = ''; state._digiProgressFirstAt = null; state._digiProgressFirstNum = null;
+  saveState();
+  if (state.currentPageId === 'recap') renderRecap();
+  if (state.currentPageId === 'verificateur') renderVerificateur();
+  showToast('Synchronisation lancée — re-scrape de l\'historique Digi en cours…');
+  await _pollDigiJob(session);
 }
 
 // ── Activités pharmacien pendant chargement OSPHARM ──────────────────────────
@@ -11598,6 +11628,7 @@ function initConnecteurModal() {
     if (btn) { btn.disabled = false; btn.textContent = '↺ RELANCER JOB'; }
   });
   document.getElementById('digiReconnectBtn').addEventListener('click', () => _showReconnectForm('digi', 'digipharmacie'));
+  document.getElementById('digiSyncBtn')?.addEventListener('click', () => syncDigiConnector());
 
 
   document.getElementById('compRefreshBtn').addEventListener('click', () => {
