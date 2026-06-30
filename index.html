@@ -6602,7 +6602,9 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   const cond   = _verifGetCond(labDisplay, year, monthForCond);
   const coopR3 = cond ? (parseFloat(cond.coopR3)||0) : 0;
   const coef   = isBio ? _verifBiogaranCoef(year) : 1;
-  const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=parseFloat(r.rsf_pct); if(!isNaN(k)&&!r.excluded) cmap[k]=r; });
+  // rsf_pct des conditions est souvent stocké NÉGATIF (remise), alors que le taux
+  // grossiste/RDP est positif → on indexe par valeur absolue pour les apparier.
+  const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)&&!r.excluded) cmap[k]=r; });
   const gmap = {}; paliers.forEach(p => gmap[p.taux]=p);
   const rmap = {}; rdpByTaux.forEach(e => rmap[e.taux]=e);
   const allTaux = [...new Set([...paliers.map(p=>p.taux), ...rdpByTaux.map(e=>e.taux)])]
@@ -6614,7 +6616,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   let T = {qty:0, brut:0, rsfA:0, rsfR:0, r2A:0, r2R:0, r3A:0};
 
   const body = allTaux.map(tx => {
-    const g=gmap[tx], rd=rmap[tx], c=cmap[tx]||{};
+    const g=gmap[tx], rd=rmap[tx], c=cmap[Math.abs(tx)]||{};
     const grosBrut = g?(g.brut||0):0, dirBrut = rd?(rd.ca_direct||0):0, brut = grosBrut+dirBrut;
     const qty = g?(g.qty||0):0;
     const rsfA = grosBrut*tx/100, rsfR = g?(g.remise||0):0, rsfD = rsfA-rsfR;
