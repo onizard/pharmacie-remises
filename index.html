@@ -11257,6 +11257,20 @@ function initConnecteurModal() {
     }
   }
 
+  // Import multiple : traite les fichiers séquentiellement (l'accumulation se fait
+  // côté backend, chaque fichier s'ajoute à grossiste_month_stats sans écraser).
+  async function _uploadGrossisteMulti(files) {
+    const list = [...(files || [])].filter(Boolean);
+    if (!list.length) return;
+    if (list.length === 1) { await _uploadGrossiste(list[0]); return; }
+    const statusEl = document.getElementById('grossisteUploadStatus');
+    for (let i = 0; i < list.length; i++) {
+      if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Fichier ${i+1}/${list.length} — ${list[i].name}…`; }
+      await _uploadGrossiste(list[i]);
+    }
+    if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${list.length} fichiers importés`; }
+  }
+
   async function _syncGrossisteGmail() {
     const statusEl = document.getElementById('grossisteUploadStatus');
     const btn      = document.getElementById('grossisteGmailBtn');
@@ -11370,10 +11384,9 @@ function initConnecteurModal() {
     zone.addEventListener('drop', e => {
       e.preventDefault();
       zone.classList.remove('drag-over');
-      const f = e.dataTransfer.files[0];
-      if (f) _uploadGrossiste(f);
+      if (e.dataTransfer.files.length) _uploadGrossisteMulti([...e.dataTransfer.files]);
     });
-    input.addEventListener('change', () => { if (input.files[0]) { _uploadGrossiste(input.files[0]); input.value = ''; } });
+    input.addEventListener('change', () => { if (input.files.length) { _uploadGrossisteMulti([...input.files]); input.value = ''; } });
 
     sendBtn.addEventListener('click', () => {
       const path  = sendBtn.dataset.path;
