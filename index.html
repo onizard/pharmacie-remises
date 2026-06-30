@@ -724,10 +724,12 @@
   .verif-tbl td:first-child { text-align: left; font-weight: 700; letter-spacing: .3px; }
   .verif-tbl tr:hover td { background: var(--bg2); }
   .verif-tbl tfoot td { border-top: 1px solid var(--border); border-bottom: none; font-weight: 700; }
-  /* Tableau détaillé par palier : colonnes égales + titres centrés (lisibilité) */
-  .verif-tbl.verif-palier { table-layout: fixed; min-width: 860px; }
-  .verif-tbl.verif-palier th, .verif-tbl.verif-palier td { text-align: center; padding-left: 5px; padding-right: 5px; }
-  .verif-tbl.verif-palier th:first-child, .verif-tbl.verif-palier td:first-child { text-align: left; width: 11%; }
+  /* Tableau détaillé par palier : titres centrés, chiffres à droite, bordures de groupe */
+  .verif-tbl.verif-palier { table-layout: fixed; min-width: 1180px; }
+  .verif-tbl.verif-palier th { text-align: center; padding-left: 6px; padding-right: 6px; }
+  .verif-tbl.verif-palier td { text-align: right; padding-left: 6px; padding-right: 6px; }
+  .verif-tbl.verif-palier th:first-child, .verif-tbl.verif-palier td:first-child { text-align: left; }
+  .verif-tbl.verif-palier .gsep { border-left: 1px solid var(--border); }
   .verif-cat-row td { background: rgba(255,171,0,.06) !important; pointer-events: none; }
   .verif-r2 { color: var(--amber); }
   .verif-r3 { color: var(--green); }
@@ -6172,14 +6174,12 @@ function _verifRenderYear(year) {
   const toutBtn = `<button class="verif-mon-btn${toutActive?' active':''}" onclick="_verifSelectMonth('${toutKey}')" data-mk="${toutKey}" style="margin-left:6px;border-color:var(--amber);${toutActive?'color:var(--amber);background:rgba(255,171,0,.07)':'color:var(--text-dim)'}">TOUT</button>`;
 
   wrap.innerHTML = `
-    <div id="verifAnnualTable"></div>
     <div id="verifBiogaranCoop"></div>
     <div class="verif-contract-label" style="margin:16px 0 6px;letter-spacing:2px">TABLEAU DÉTAILLÉ</div>
     <div style="margin:0 0 12px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">${monthBtns}${toutBtn}</div>
     <div id="verifMonthDetail"></div>
   `;
 
-  _verifFillAnnualSummary(year);
   _verifFillBiogaranCoop(year);
   if (_verifSelMonth?.startsWith(String(year) + '-')) _verifFillMonthDetail(_verifSelMonth);
 }
@@ -6536,14 +6536,17 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, 
       <td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>
       <td>${qty?qty.toLocaleString('fr'):'—'}</td>
       <td>${fmtE(brut)}</td>
-      <td style="${A}">${fmtE(rsfA)}</td>
+      <td class="gsep" style="${A}">${fmtE(rsfA)}</td>
       <td style="${G}">${fmtE(rsfR)}</td>
       <td style="${dRsf}">${fmtE(rsfD)}</td>
-      <td class="verif-r2">${r2pct!=null?fmtP(r2pct):'—'}</td>
+      <td class="verif-r2 gsep">${r2pct!=null?fmtP(r2pct):'—'}</td>
       <td class="verif-r2" style="${A}">${r2pct!=null?fmtE(r2A):'—'}</td>
       <td class="verif-r2" style="${G}">${r2R>0?fmtE(r2R):'—'}</td>
       <td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>
+      <td class="verif-r3 gsep">${r3pct>0?fmtP(r3pct):'—'}</td>
       <td class="verif-r3" style="${A}">${r3A>0?fmtE(r3A):'—'}</td>
+      <td class="verif-r3" style="color:var(--text-dim)">—</td>
+      <td class="verif-r3" style="color:var(--text-dim)">—</td>
     </tr>`;
   }).join('');
 
@@ -6552,53 +6555,52 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, 
     <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
     <td>${T.qty?T.qty.toLocaleString('fr'):'—'}</td>
     <td>${fmtE(T.brut)}</td>
-    <td style="${A}">${fmtE(T.rsfA)}</td>
+    <td class="gsep" style="${A}">${fmtE(T.rsfA)}</td>
     <td style="${G}">${fmtE(T.rsfR)}</td>
     <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td>
-    <td class="verif-r2">—</td>
+    <td class="verif-r2 gsep">—</td>
     <td class="verif-r2" style="${A}">${fmtE(T.r2A)}</td>
     <td class="verif-r2" style="${G}">${fmtE(T.r2R)}</td>
     <td class="verif-r2" style="${dTr2}">${fmtE(T.r2A-T.r2R)}</td>
+    <td class="verif-r3 gsep">—</td>
     <td class="verif-r3" style="${A}">${T.r3A>0?fmtE(T.r3A):'—'}</td>
+    <td class="verif-r3" style="${G}">${fseR3>0?fmtE(fseR3):'—'}</td>
+    <td class="verif-r3" style="${dTr3}">${(T.r3A>0||fseR3>0)?fmtE(T.r3A-fseR3):'—'}</td>
   </tr>`;
-
-  // Bloc R3/Coop (total FSE — non ventilable par palier)
-  const r3Block = T.r3A>0 ? `
-    <div style="margin-top:10px;padding:8px 12px;border:1px solid var(--border);border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;display:flex;gap:20px;flex-wrap:wrap;align-items:center">
-      <span style="color:var(--text-dim);letter-spacing:1px;font-size:10px">R3 / COOP</span>
-      <span>Attendue&nbsp;: <b style="${A}">${fmtE(T.r3A)}</b></span>
-      <span>Reçue (FSE)&nbsp;: <b style="${G}">${fseR3>0?fmtE(fseR3):'—'}</b></span>
-      ${fseR3>0 ? `<span style="${dTr3};font-weight:700">Δ ${fmtE(T.r3A-fseR3)}</span>` : ''}
-    </div>` : '';
 
   return `
     <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 8px;font-family:'Share Tech Mono',monospace;font-size:10px">
       ${cumulYear ? `<span style="color:var(--cyan);font-weight:700;letter-spacing:1px">CUMUL ${cumulYear} · JAN→DÉC</span>` : ''}
       <span style="color:var(--amber);font-weight:700">▸ Attendue</span>
       <span style="color:var(--green)">▸ Reçue</span>
-      <span style="color:var(--text-dim)">RSF&nbsp;: info · R2/RDP&nbsp;: par palier · R3/Coop&nbsp;: total FSE</span>
+      <span style="color:var(--text-dim)">RSF&nbsp;: info · R2/RDP&nbsp;: par palier · R3/Coop&nbsp;: reçu = virement FSE total (au TOTAL)</span>
     </div>
     <div style="overflow-x:auto">
       <table class="verif-tbl verif-palier">
+        <colgroup>
+          <col style="width:7.5%"><col style="width:6.5%"><col style="width:8.5%">
+          <col style="width:7%"><col style="width:7%"><col style="width:6%">
+          <col style="width:4.5%"><col style="width:7%"><col style="width:7%"><col style="width:6%">
+          <col style="width:4.5%"><col style="width:7%"><col style="width:7%"><col style="width:6%">
+        </colgroup>
         <thead>
           <tr>
             <th rowspan="2" style="text-align:left">CAT. RSF</th>
             <th rowspan="2">QTÉ RÉP.</th>
             <th rowspan="2">PA BRUT</th>
-            <th colspan="3">RSF <span style="font-weight:400;font-size:9px;color:var(--text-dim)">(info)</span></th>
-            <th colspan="4" class="verif-r2">REMISE 2 / RDP</th>
-            <th class="verif-r3">REMISE 3</th>
+            <th colspan="3" class="gsep">RSF <span style="font-weight:400;font-size:9px;color:var(--text-dim)">(info)</span></th>
+            <th colspan="4" class="verif-r2 gsep">REMISE 2 / RDP</th>
+            <th colspan="4" class="verif-r3 gsep">REMISE 3 / COOP</th>
           </tr>
           <tr>
-            <th style="${A}">ATT.</th><th style="${G}">REC.</th><th>Δ</th>
-            <th class="verif-r2">%</th><th class="verif-r2" style="${A}">ATT.</th><th class="verif-r2" style="${G}">REC.</th><th class="verif-r2">Δ</th>
-            <th class="verif-r3" style="${A}">ATT.</th>
+            <th class="gsep" style="${A}">ATT.</th><th style="${G}">REC.</th><th>Δ</th>
+            <th class="verif-r2 gsep">%</th><th class="verif-r2" style="${A}">ATT.</th><th class="verif-r2" style="${G}">REC.</th><th class="verif-r2">Δ</th>
+            <th class="verif-r3 gsep">%</th><th class="verif-r3" style="${A}">ATT.</th><th class="verif-r3" style="${G}">REC.</th><th class="verif-r3">Δ</th>
           </tr>
         </thead>
         <tbody>${body}${totRow}</tbody>
       </table>
-    </div>
-    ${r3Block}`;
+    </div>`;
 }
 
 function _verifFillMonthDetail(mk) {
