@@ -6457,15 +6457,68 @@ function _verifBiogaranCoef(yr) {
 // Une seule ligne par palier. Couleur ambre = Attendue, vert = Reçue.
 // R3/Coop : estimatif par palier, total réel FSE dans le bloc récapitulatif.
 // Retourne null si aucune ventilation par palier dispo → fallback ancien tableau.
+// Diagnostic « pourquoi les données reçues ne remontent pas » : pour le labo
+// sélectionné, indique ce que chaque source a réellement livré (Digi RDP, FSE,
+// conditions) sur la période. Affiché sous le tableau, replié par défaut.
+function _verifDataDiag(mkList, selNorm, labDisplay, year, monthForCond) {
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fmtP = v => (Math.round((v||0)*100)/100).toString().replace('.',',') + ' %';
+  let digiRows=0, rdpMonths=0, rdpTotal=0; const rdpTaux=new Set();
+  let fseCount=0, fseR2=0, fseR3=0, fseMont=0;
+  (mkList||[]).forEach(mk => {
+    ((state._digiMonthStats||{})[mk]||[]).forEach(r => {
+      if (_verifNormLab(r.labo)!==selNorm) return;
+      digiRows++;
+      if ((r.rdp_total||0)>0) { rdpMonths++; rdpTotal += r.rdp_total||0; }
+      (r.rdp_by_taux||[]).forEach(e => { if (e.taux!=null) rdpTaux.add(e.taux); });
+    });
+    Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{
+      if (_verifNormLab(l)!==selNorm) return;
+      fseCount += s.count||0; fseR2 += s.r2_ttc||0;
+      fseR3 += (s.r3_ttc != null ? s.r3_ttc : (s.montant_ttc||0));
+      fseMont += s.montant_ttc||0;
+    });
+  });
+  const cond  = _verifGetCond(labDisplay, year, monthForCond);
+  const rsfV  = (cond?.rsfValues||[]).filter(r=>!r.excluded);
+  const r2cfg = rsfV.filter(r=>r.remise2!=null && r.remise2!=='').length;
+  const coop  = cond ? (parseFloat(cond.coopR3)||0) : 0;
+  const ok = b => b ? 'var(--green)' : 'var(--red)';
+  const warn = (!rdpTotal && !fseCount)
+    ? `<div style="color:var(--red);margin-top:4px">⚠ Aucune donnée reçue (RDP Digi + virements FSE) pour ${year}. Vérifie que les connecteurs Digipharmacie et FSE ont bien été synchronisés pour cette période.</div>`
+    : (rdpTotal>0 && !rdpTaux.size)
+      ? `<div style="color:var(--amber);margin-top:4px">⚠ RDP reçu (${fmtE(rdpTotal)}) mais sans ventilation par taux → affiché sur la ligne TOTAL uniquement (l'avoir Digi n'a pas été ventilé par groupe RSF).</div>`
+      : '';
+  return `<details style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px">
+    <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ DIAGNOSTIC DONNÉES REÇUES — ${escH(labDisplay)} ${year}</summary>
+    <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px;display:flex;flex-direction:column;gap:4px">
+      <div><b style="color:var(--cyan)">DIGI / RDP (R2 reçu)</b> — ${digiRows} ligne(s) labo · RDP : <span style="color:${ok(rdpTotal>0)}">${rdpMonths} mois · ${fmtE(rdpTotal)}</span> · ventilation par taux : <span style="color:${ok(rdpTaux.size>0)}">${rdpTaux.size ? [...rdpTaux].sort((a,b)=>a-b).map(t=>fmtP(t)).join(', ') : 'ABSENTE'}</span></div>
+      <div><b style="color:var(--green)">FSE (R3 / coop reçu)</b> — <span style="color:${ok(fseCount>0)}">${fseCount} virement(s)</span> · R3 : ${fmtE(fseR3)} · R2 : ${fmtE(fseR2)} · total : ${fmtE(fseMont)}</div>
+      <div><b style="color:var(--amber)">CONDITIONS (attendu)</b> — remise 2 : <span style="color:${ok(r2cfg>0)}">${r2cfg}/${rsfV.length} palier(s)</span> · coop R3 : <span style="color:${ok(coop>0)}">${coop>0 ? fmtP(coop) : 'ABSENTE'}</span></div>
+      ${warn}
+    </div>
+  </details>`;
+}
+
 function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   const digiRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   const paliers   = (grosRow && Array.isArray(grosRow.paliers))     ? grosRow.paliers     : [];
   const rdpByTaux = (digiRow && Array.isArray(digiRow.rdp_by_taux)) ? digiRow.rdp_by_taux : [];
   if (!paliers.length && !rdpByTaux.length) return null;
-  let fseR3 = 0; Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{ if(_verifNormLab(l)===selNorm) fseR3 += s.montant_ttc||0; });
+  // R3/coop reçu = virements FSE classés r3 (fallback : montant total du virement).
+  let fseR3 = 0, fseR2 = 0;
+  Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{
+    if (_verifNormLab(l)!==selNorm) return;
+    fseR3 += (s.r3_ttc != null ? s.r3_ttc : (s.montant_ttc||0));
+    fseR2 += s.r2_ttc || 0;
+  });
+  // R2 reçu de repli : si la ventilation par taux manque, on utilise le total RDP
+  // de l'avoir Digi (rdp_total) + les virements FSE classés r2.
+  const r2RecTotal = (digiRow?.rdp_total || 0) + fseR2;
   const [mkY, mkM] = mk.split('-').map(Number);
-  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, mkY, mkM, null);
+  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, mkY, mkM, null)
+       + _verifDataDiag([mk], selNorm, labDisplay, mkY, mkM);
 }
 
 // Cumul annuel Jan→Déc : agrège paliers (grossiste) + rdp_by_taux (digi) + FSE
@@ -6490,18 +6543,31 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
   });
   const paliers = Object.values(gAgg), rdpByTaux = Object.values(rAgg);
   if (!paliers.length && !rdpByTaux.length) return null;
-  let fseR3 = 0;
+  let fseR3 = 0, fseR2 = 0;
   Object.entries(state._fseMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,labMap])=>{
-    Object.entries(labMap||{}).forEach(([l,s])=>{ if(_verifNormLab(l)===selNorm) fseR3 += s.montant_ttc||0; });
+    Object.entries(labMap||{}).forEach(([l,s])=>{
+      if (_verifNormLab(l)!==selNorm) return;
+      fseR3 += (s.r3_ttc != null ? s.r3_ttc : (s.montant_ttc||0));
+      fseR2 += s.r2_ttc || 0;
+    });
   });
+  // R2 reçu de repli (ventilation manquante) : Σ rdp_total Digi + virements FSE r2.
+  let rdpTotalSum = 0;
+  Object.entries(state._digiMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,arr])=>{
+    const r = (arr||[]).find(x=>_verifNormLab(x.labo)===selNorm); if (r) rdpTotalSum += r.rdp_total||0;
+  });
+  const r2RecTotal = rdpTotalSum + fseR2;
+  const mkList = Object.keys(state._digiMonthStats||{}).concat(Object.keys(state._grossisteMonthStats||{}),
+    Object.keys(state._fseMonthStats||{})).filter(mksY);
   const today = new Date();
   const mRef  = yr < today.getFullYear() ? 12 : today.getMonth()+1;
-  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, yr, mRef, yr);
+  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr)
+       + _verifDataDiag([...new Set(mkList)], selNorm, labDisplay, yr, mRef);
 }
 
 // Rendu commun du tableau par palier (mensuel ou cumul annuel).
 // cumulYear : null pour un mois donné, l'année pour le cumul Jan→Déc.
-function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, year, monthForCond, cumulYear) {
+function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, year, monthForCond, cumulYear) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP = v => v != null ? (Math.round(v*100)/100).toString().replace('.',',') + ' %' : '—';
   const TVA_R3 = 1.20, isBio = selNorm === 'BIOGARAN';
@@ -6550,7 +6616,9 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, 
     </tr>`;
   }).join('');
 
-  const dTrsf=dStyle(T.rsfA-T.rsfR), dTr2=dStyle(T.r2A-T.r2R), dTr3=dStyle(T.r3A-fseR3);
+  // R2 reçu : somme des ventilations par taux, ou repli sur le total RDP+FSE.
+  const r2Reff = T.r2R > 0 ? T.r2R : (r2RecTotal || 0);
+  const dTrsf=dStyle(T.rsfA-T.rsfR), dTr2=dStyle(T.r2A-r2Reff), dTr3=dStyle(T.r3A-fseR3);
   const totRow = `<tr style="border-top:2px solid var(--border);font-weight:700;background:rgba(255,255,255,.03)">
     <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
     <td>${T.qty?T.qty.toLocaleString('fr'):'—'}</td>
@@ -6560,8 +6628,8 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, 
     <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td>
     <td class="verif-r2 gsep">—</td>
     <td class="verif-r2" style="${A}">${fmtE(T.r2A)}</td>
-    <td class="verif-r2" style="${G}">${fmtE(T.r2R)}</td>
-    <td class="verif-r2" style="${dTr2}">${fmtE(T.r2A-T.r2R)}</td>
+    <td class="verif-r2" style="${G}">${r2Reff>0?fmtE(r2Reff):'—'}</td>
+    <td class="verif-r2" style="${dTr2}">${(T.r2A>0||r2Reff>0)?fmtE(T.r2A-r2Reff):'—'}</td>
     <td class="verif-r3 gsep">—</td>
     <td class="verif-r3" style="${A}">${T.r3A>0?fmtE(T.r3A):'—'}</td>
     <td class="verif-r3" style="${G}">${fseR3>0?fmtE(fseR3):'—'}</td>
