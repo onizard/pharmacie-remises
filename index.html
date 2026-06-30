@@ -652,6 +652,10 @@
   .loading.visible { display: flex; }
   .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--cyan); border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  /* Spinner + ✓ dans les boutons « Synchroniser le connecteur » */
+  .conn-sync-spin { display: inline-block; width: 11px; height: 11px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -1px; margin-right: 4px; }
+  .conn-sync-check { font-weight: 700; margin-right: 3px; }
+  .conn-test-btn.conn-sync-done { border-color: var(--green) !important; color: var(--green) !important; box-shadow: var(--glow-g); }
 
   .btn-row { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
   .btn {
@@ -3251,19 +3255,40 @@ async function _pollDigiJob(session) {
   state._digiJobRunning = false;
 }
 
+// Affiche un spinner dans le bouton pendant le job `work` (promesse), puis un
+// ✓ vert qui persiste 2 s avant de restaurer le libellé d'origine. `work` doit
+// renvoyer false en cas d'échec (→ pas de ✓).
+async function _syncBtnFeedback(btn, work) {
+  if (!btn) { try { return await work(); } catch(_) { return false; } }
+  const orig = btn.innerHTML, origDis = btn.disabled;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="conn-sync-spin"></span>SYNCHRO…';
+  let ok = false;
+  try { ok = (await work()) !== false; } catch(_) { ok = false; }
+  if (ok) {
+    btn.classList.add('conn-sync-done');
+    btn.innerHTML = '<span class="conn-sync-check">✓</span>TERMINÉ';
+    await new Promise(r => setTimeout(r, 2000));
+    btn.classList.remove('conn-sync-done');
+  }
+  btn.innerHTML = orig;
+  btn.disabled = origDis;
+  return ok;
+}
+
 // Synchroniser le connecteur Digipharmacie : re-scrape complet (vide cache +
 // stats, ré-applique les parsers à jour, ex. ventilation RDP par palier).
+// Renvoie true quand le job est terminé, false en cas d'échec de lancement.
 async function syncDigiConnector() {
-  if (!confirm('Synchroniser le connecteur Digipharmacie ?\n\nLe cache et les données Digi seront réinitialisés, puis tout l\'historique sera re-scrapé depuis Digipharmacie (quelques minutes).')) return;
   const { data: { session } } = await window._sbClient.auth.getSession();
-  if (!session) { showToast('Session expirée'); return; }
-  if (typeof _waitApiReady === 'function' && !await _waitApiReady(12_000)) { showToast('API indisponible — réessayez'); return; }
+  if (!session) { showToast('Session expirée'); return false; }
+  if (typeof _waitApiReady === 'function' && !await _waitApiReady(12_000)) { showToast('API indisponible — réessayez'); return false; }
   try {
     const resp = await fetch(`${API_URL}/run/digipharmacie?resync=true`, {
       method: 'POST', headers: { 'Authorization': `Bearer ${session.access_token}` },
     });
-    if (!resp.ok) { const e = await resp.json().catch(()=>({})); showToast('Échec : ' + (e.detail || `HTTP ${resp.status}`)); return; }
-  } catch(e) { showToast('Échec du lancement : ' + (e?.message || e)); return; }
+    if (!resp.ok) { const e = await resp.json().catch(()=>({})); showToast('Échec : ' + (e.detail || `HTTP ${resp.status}`)); return false; }
+  } catch(e) { showToast('Échec du lancement : ' + (e?.message || e)); return false; }
   // Reset local + état "job en cours"
   state._digiMonthStats = {}; state._escompteStats = {}; state._mdlStats = {};
   state._digiJobRunning = true; state._digiJobStartedAt = Date.now();
@@ -3273,6 +3298,7 @@ async function syncDigiConnector() {
   if (state.currentPageId === 'verificateur') renderVerificateur();
   showToast('Synchronisation lancée — re-scrape de l\'historique Digi en cours…');
   await _pollDigiJob(session);
+  return true;
 }
 
 // ── Activités pharmacien pendant chargement OSPHARM ──────────────────────────
@@ -11820,41 +11846,52 @@ function initConnecteurModal() {
     if (btn) { btn.disabled = false; btn.textContent = '↺ RELANCER JOB'; }
   });
   document.getElementById('digiReconnectBtn').addEventListener('click', () => _showReconnectForm('digi', 'digipharmacie'));
-  document.getElementById('digiSyncBtn')?.addEventListener('click', () => syncDigiConnector());
+  document.getElementById('digiSyncBtn')?.addEventListener('click', (e) => {
+    if (!confirm('Synchroniser le connecteur Digipharmacie ?\n\nLe cache et les données Digi seront réinitialisés, puis tout l\'historique sera re-scrapé depuis Digipharmacie (quelques minutes).')) return;
+    _syncBtnFeedback(e.currentTarget, () => syncDigiConnector());
+  });
 
   // ── Synchroniser le connecteur FSE (concentrateur) : ré-export + ré-appariement ──
-  document.getElementById('concSyncBtn')?.addEventListener('click', async () => {
+  document.getElementById('concSyncBtn')?.addEventListener('click', (e) => {
     if (!confirm('Synchroniser le connecteur FSE ?\n\nLes virements FSE seront ré-exportés et ré-appariés aux laboratoires (quelques minutes).')) return;
-    const { data: { session } } = await window._sbClient.auth.getSession();
-    if (!session) { showToast('Session expirée'); return; }
-    if (typeof _waitApiReady === 'function' && !await _waitApiReady(12_000)) { showToast('API indisponible — réessayez'); return; }
-    const btn = document.getElementById('concSyncBtn');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ SYNCHRO…'; }
-    try {
-      const resp = await fetch(`${API_URL}/run/fse-export?resync=true`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (!resp.ok) { const e = await resp.json().catch(()=>({})); showToast('Échec : ' + (e.detail || `HTTP ${resp.status}`)); return; }
-    } catch(e) { showToast('Échec du lancement : ' + (e?.message || e)); return; }
-    finally { if (btn) { btn.disabled = false; btn.textContent = '⟳ SYNCHRONISER LE CONNECTEUR'; } }
-    state._fseMonthStats = {}; saveState();
-    if (state.currentPageId === 'verificateur') renderVerificateur();
-    showToast('Synchronisation FSE lancée — ré-export en cours…');
-    if (typeof _pollFseJob === 'function') _pollFseJob().catch(() => {});
+    _syncBtnFeedback(e.currentTarget, async () => {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) { showToast('Session expirée'); return false; }
+      if (typeof _waitApiReady === 'function' && !await _waitApiReady(12_000)) { showToast('API indisponible — réessayez'); return false; }
+      try {
+        const resp = await fetch(`${API_URL}/run/fse-export?resync=true`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!resp.ok) { const er = await resp.json().catch(()=>({})); showToast('Échec : ' + (er.detail || `HTTP ${resp.status}`)); return false; }
+      } catch(err) { showToast('Échec du lancement : ' + (err?.message || err)); return false; }
+      state._fseMonthStats = {}; saveState();
+      if (state.currentPageId === 'verificateur') renderVerificateur();
+      showToast('Synchronisation FSE lancée — ré-export en cours…');
+      await _pollFseJob();   // attend la fin du job
+      return true;
+    });
   });
 
   // ── Synchroniser le connecteur OSPHARM : relance le scraping des ventes ──
-  document.getElementById('ospSyncBtn')?.addEventListener('click', async () => {
+  document.getElementById('ospSyncBtn')?.addEventListener('click', (e) => {
     if (!confirm('Synchroniser le connecteur OSPHARM ?\n\nLe scraping des ventes OSPHARM va être relancé (peut prendre plusieurs minutes).')) return;
-    const btn = document.getElementById('ospSyncBtn');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ SYNCHRO…'; }
-    state._ospJobRunning = true; state._ospJobStartedAt = Date.now(); state._ospJobMessage = '';
-    _setJobStatusEl('ospJobStatus', 'running', '');
-    if (state.currentPageId === 'recap') renderRecap();
-    await _triggerWorkflow('ospharm', 'osp');
-    if (btn) { btn.disabled = false; btn.textContent = '⟳ SYNCHRONISER LE CONNECTEUR'; }
+    _syncBtnFeedback(e.currentTarget, async () => {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) { showToast('Session expirée'); return false; }
+      if (typeof _waitApiReady === 'function' && !await _waitApiReady(12_000)) { showToast('API indisponible — réessayez'); return false; }
+      state._ospJobRunning = true; state._ospJobStartedAt = Date.now(); state._ospJobMessage = '';
+      _setJobStatusEl('ospJobStatus', 'running', '');
+      let resp;
+      try { resp = await fetch(`${API_URL}/run/ospharm`, { method: 'POST', headers: { 'Authorization': `Bearer ${session.access_token}` } }); }
+      catch(err) { state._ospJobRunning = false; showToast('Échec : ' + (err?.message || err)); return false; }
+      if (!resp.ok) { state._ospJobRunning = false; const er = await resp.json().catch(()=>({})); showToast('Échec : ' + (er.detail || `HTTP ${resp.status}`)); return false; }
+      _setConnProgress('osp', 'job');
+      if (state.currentPageId === 'recap') renderRecap();
+      await _pollOspJobAndLaunch('osp');   // attend la fin du job
+      return true;
+    });
   });
 
 
