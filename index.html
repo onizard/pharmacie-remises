@@ -1453,6 +1453,7 @@
             <div class="conn-connected-name" id="concConnName">OSPHARM FSE</div>
             <div class="conn-job-status" id="concJobStatus"></div>
             <button class="conn-test-btn" id="concReconnectBtn">RECONNECTER</button>
+            <button class="conn-test-btn" id="concSyncBtn" title="Re-scrape complet de l'historique FSE (ré-applique l'appariement des virements à jour)" style="margin-top:6px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff)">⟳ SYNCHRONISER LE CONNECTEUR</button>
           </div>
         </div>
         <!-- OSPHARM -->
@@ -1483,6 +1484,7 @@
             <div class="conn-job-status" id="ospJobStatus"></div>
             <button class="conn-test-btn" id="ospRelancerBtn" style="display:none">↺ RELANCER JOB</button>
             <button class="conn-test-btn" id="ospReconnectBtn">RECONNECTER</button>
+            <button class="conn-test-btn" id="ospSyncBtn" title="Relance le scraping complet des ventes OSPHARM" style="margin-top:6px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff)">⟳ SYNCHRONISER LE CONNECTEUR</button>
             <div class="conn-req-status" id="ospReqStatus"></div>
           </div>
           <div class="conn-ring-wrap" id="ospProgBar">
@@ -11819,6 +11821,41 @@ function initConnecteurModal() {
   });
   document.getElementById('digiReconnectBtn').addEventListener('click', () => _showReconnectForm('digi', 'digipharmacie'));
   document.getElementById('digiSyncBtn')?.addEventListener('click', () => syncDigiConnector());
+
+  // ── Synchroniser le connecteur FSE (concentrateur) : ré-export + ré-appariement ──
+  document.getElementById('concSyncBtn')?.addEventListener('click', async () => {
+    if (!confirm('Synchroniser le connecteur FSE ?\n\nLes virements FSE seront ré-exportés et ré-appariés aux laboratoires (quelques minutes).')) return;
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) { showToast('Session expirée'); return; }
+    if (typeof _waitApiReady === 'function' && !await _waitApiReady(12_000)) { showToast('API indisponible — réessayez'); return; }
+    const btn = document.getElementById('concSyncBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ SYNCHRO…'; }
+    try {
+      const resp = await fetch(`${API_URL}/run/fse-export?resync=true`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!resp.ok) { const e = await resp.json().catch(()=>({})); showToast('Échec : ' + (e.detail || `HTTP ${resp.status}`)); return; }
+    } catch(e) { showToast('Échec du lancement : ' + (e?.message || e)); return; }
+    finally { if (btn) { btn.disabled = false; btn.textContent = '⟳ SYNCHRONISER LE CONNECTEUR'; } }
+    state._fseMonthStats = {}; saveState();
+    if (state.currentPageId === 'verificateur') renderVerificateur();
+    showToast('Synchronisation FSE lancée — ré-export en cours…');
+    if (typeof _pollFseJob === 'function') _pollFseJob().catch(() => {});
+  });
+
+  // ── Synchroniser le connecteur OSPHARM : relance le scraping des ventes ──
+  document.getElementById('ospSyncBtn')?.addEventListener('click', async () => {
+    if (!confirm('Synchroniser le connecteur OSPHARM ?\n\nLe scraping des ventes OSPHARM va être relancé (peut prendre plusieurs minutes).')) return;
+    const btn = document.getElementById('ospSyncBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ SYNCHRO…'; }
+    state._ospJobRunning = true; state._ospJobStartedAt = Date.now(); state._ospJobMessage = '';
+    _setJobStatusEl('ospJobStatus', 'running', '');
+    if (state.currentPageId === 'recap') renderRecap();
+    await _triggerWorkflow('ospharm', 'osp');
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ SYNCHRONISER LE CONNECTEUR'; }
+  });
 
 
   document.getElementById('compRefreshBtn').addEventListener('click', () => {

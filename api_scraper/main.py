@@ -172,6 +172,14 @@ def _reset_digi_state(user_id: str, user_token: str = ""):
     _patch_state_sync(user_id, state, user_token=user_token)
 
 
+def _reset_fse_state(user_id: str, user_token: str = ""):
+    """Vide les stats FSE (re-scrape complet : ré-applique l'appariement à jour)."""
+    from supabase_client import _get_state_sync, _patch_state_sync
+    state = _get_state_sync(user_id, user_token=user_token) or {}
+    state["fse_month_stats"] = {}
+    _patch_state_sync(user_id, state, user_token=user_token)
+
+
 @app.post("/run/{connector}")
 async def run_connector(
     background_tasks: BackgroundTasks,
@@ -201,8 +209,13 @@ async def run_connector(
     # la route dédiée /run/fse-export est masquée par cette route générique /run/{connector}
     # (FastAPI matche dans l'ordre de déclaration) → sinon "Connecteur inconnu : fse-export".
     if connector == "fse-export":
+        if resync:
+            # Synchro complète : on vide les stats FSE avant de relancer pour que le
+            # ré-export ré-applique l'appariement des virements à jour.
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(_executor, lambda: _reset_fse_state(user_id, token))
         background_tasks.add_task(_dispatch_gh_fse, user_id, token)
-        return {"status": "dispatched"}
+        return {"status": "dispatched", "resync": resync}
 
     if connector not in SUPPORTED_CONNECTORS:
         raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
