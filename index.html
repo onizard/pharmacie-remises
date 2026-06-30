@@ -11051,8 +11051,11 @@ function initConnecteurModal() {
           _simResultsReady = false;
           await launchComparateur();
           state._ospJobRunning = false;
-          goTo('recap');
-          renderRecap();
+          // Pas de navigation automatique vers le récap : on reste sur la vue
+          // courante (ex. modale connecteurs) → même mécanisme que Digi/FSE,
+          // le ✓ de validation reste visible. On rafraîchit le récap s'il est
+          // déjà affiché.
+          if (state.currentPageId === 'recap') renderRecap();
           break;
         }
         if (job.status === 'error') {
