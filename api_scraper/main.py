@@ -1439,8 +1439,13 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes
         return None
 
     def _extract_all_refs(libelle: str) -> list[str]:
-        """Extrait TOUS les groupes de 8-14 chiffres du libellé (= numéros de facture potentiels)."""
-        return [s for s in _re.findall(r'\b(\d{8,14})\b', libelle) if len(s) <= 14]
+        """Numéros de facture potentiels : groupes 8-14 chiffres + tokens
+        alphanumériques (ex. '24BO24121001288')."""
+        refs = [s for s in _re.findall(r'\b(\d{8,14})\b', libelle) if len(s) <= 14]
+        for tok in _re.findall(r'\b([A-Z0-9]{8,20})\b', libelle.upper()):
+            if any(c.isalpha() for c in tok) and any(c.isdigit() for c in tok):
+                refs.append(tok)
+        return refs
 
     def _classify_transfer(libelle: str, ref: str) -> str:
         """Classifie le virement en 'r2' (RDP) ou 'r3' (prestation coopérative)."""
@@ -1544,6 +1549,7 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes
     _digi_stats = _state_pre.get("digi_month_stats") or {}
     ref_to_labo: dict[str, str] = {}   # ref_number → canonical_labo
     ref_to_type: dict[str, str] = {}   # ref_number → 'r2' | 'r3'
+    norm_ref_index: list[tuple[str, str, str]] = []   # (norm_ref, labo, type)
     # amount_to_candidates : montant_cents → [(labo, month_key, type)]
     # Permet d'identifier le labo quand le libellé ne contient ni nom ni ref
     amount_to_candidates: dict[int, list[tuple[str, str, str]]] = {}
@@ -1553,15 +1559,20 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes
             for _ref in (_row.get("facture_refs") or []):
                 _ref_s = str(_ref).strip()
                 if _ref_s and len(_ref_s) >= 6:
+                    _typ_r = 'r2' if (_row.get("rdp_total") or 0) > 0 else 'r3'
                     ref_to_labo[_ref_s] = _labo_d
-                    ref_to_type[_ref_s] = 'r2' if (_row.get("rdp_total") or 0) > 0 else 'r3'
+                    ref_to_type[_ref_s] = _typ_r
+                    _nr = _re.sub(r'[^A-Z0-9]', '', _ref_s.upper())
+                    if len(_nr) >= 7:
+                        norm_ref_index.append((_nr, _labo_d, _typ_r))
             # Presta TTC → r3 ; RDP → r2
             for _field, _typ in [("presta_total_ttc", "r3"), ("rdp_total", "r2")]:
                 _amt = _row.get(_field) or 0
                 if _amt > 0:
                     _cents = round(_amt * 100)
                     amount_to_candidates.setdefault(_cents, []).append((_labo_d, _mk_d, _typ))
-    print(f"  → Lookup facture refs : {len(ref_to_labo)} entrées · {len(amount_to_candidates)} montants distincts depuis digi_month_stats")
+    norm_ref_index.sort(key=lambda x: -len(x[0]))   # n° les plus longs d'abord
+    print(f"  → Lookup facture refs : {len(ref_to_labo)} entrées ({len(norm_ref_index)} normalisés) · {len(amount_to_candidates)} montants distincts depuis digi_month_stats")
 
     # ── Parcours des lignes de données ─────────────────────────────────────────
     acc: dict[str, dict] = {}
@@ -1600,6 +1611,16 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes
                 if _r in ref_to_labo:
                     labo  = ref_to_labo[_r]
                     vtype = ref_to_type.get(_r, vtype)
+                    n_ref_matched += 1
+                    break
+
+        # Fallback 1b : n° de facture Digi en sous-chaîne du libellé normalisé
+        # (n° souvent noyé dans le libellé, ex. ".../INV/24BO24121001288...").
+        if not labo and norm_ref_index:
+            _norm_lib = _re.sub(r'[^A-Z0-9]', '', libelle.upper())
+            for _nref, _nlabo, _ntyp in norm_ref_index:
+                if _nref in _norm_lib:
+                    labo, vtype = _nlabo, _ntyp
                     n_ref_matched += 1
                     break
 

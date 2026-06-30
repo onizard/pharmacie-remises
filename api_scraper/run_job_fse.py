@@ -166,7 +166,14 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
         return None
 
     def _extract_all_refs(libelle):
-        return [s for s in _re.findall(r'\b(\d{8,14})\b', libelle) if len(s) <= 14]
+        # Numéros purement numériques (8-14 chiffres) + tokens alphanumériques de
+        # facture (ex. "24BO24121001288") — les n° de facture labo ne sont pas
+        # toujours purement numériques.
+        refs = [s for s in _re.findall(r'\b(\d{8,14})\b', libelle) if len(s) <= 14]
+        for tok in _re.findall(r'\b([A-Z0-9]{8,20})\b', libelle.upper()):
+            if any(c.isalpha() for c in tok) and any(c.isdigit() for c in tok):
+                refs.append(tok)
+        return refs
 
     def _classify_transfer(libelle, ref):
         text = (libelle + ' ' + ref).upper()
@@ -198,6 +205,7 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
     state_pre   = _supa_get_state()
     _digi_stats = state_pre.get("digi_month_stats") or {}
     ref_to_labo, ref_to_type = {}, {}
+    norm_ref_index: list = []   # [(norm_ref, labo, type)] — n° facture normalisé
     amount_to_candidates: dict = {}
     for _mk_d, _arr in _digi_stats.items():
         for _row in (_arr or []):
@@ -205,13 +213,19 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
             for _ref in (_row.get("facture_refs") or []):
                 _ref_s = str(_ref).strip()
                 if _ref_s and len(_ref_s) >= 6:
+                    _typ_r = 'r2' if (_row.get("rdp_total") or 0) > 0 else 'r3'
                     ref_to_labo[_ref_s] = _labo_d
-                    ref_to_type[_ref_s] = 'r2' if (_row.get("rdp_total") or 0) > 0 else 'r3'
+                    ref_to_type[_ref_s] = _typ_r
+                    _nr = _re.sub(r'[^A-Z0-9]', '', _ref_s.upper())
+                    if len(_nr) >= 7:
+                        norm_ref_index.append((_nr, _labo_d, _typ_r))
             for _field, _typ in [("presta_total_ttc", "r3"), ("rdp_total", "r2")]:
                 _amt = _row.get(_field) or 0
                 if _amt > 0:
                     amount_to_candidates.setdefault(round(_amt * 100), []).append((_labo_d, _mk_d, _typ))
-    print(f"  → Lookup factures : {len(ref_to_labo)} refs · {len(amount_to_candidates)} montants (digi)")
+    # Les n° les plus longs d'abord → on apparie le match le plus spécifique.
+    norm_ref_index.sort(key=lambda x: -len(x[0]))
+    print(f"  → Lookup factures : {len(ref_to_labo)} refs ({len(norm_ref_index)} normalisés) · {len(amount_to_candidates)} montants (digi)")
 
     _DATE_KW = ('date',)
     _LIB_KW  = ('libell', 'libellé', 'description', 'opération', 'operation', 'désignation')
@@ -292,6 +306,17 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
                     if _r in ref_to_labo:
                         labo  = ref_to_labo[_r]
                         vtype = ref_to_type.get(_r, vtype)
+                        n_ref_matched += 1
+                        break
+
+            # Fallback 1b : n° de facture Digi présent en sous-chaîne du libellé
+            # normalisé (le n° est souvent noyé dans le libellé du virement, ex.
+            # ".../INV/24BO24121001288..."), ciblage par numéro de facture.
+            if not labo and norm_ref_index:
+                _norm_lib = _re.sub(r'[^A-Z0-9]', '', libelle.upper())
+                for _nref, _nlabo, _ntyp in norm_ref_index:
+                    if _nref in _norm_lib:
+                        labo, vtype = _nlabo, _ntyp
                         n_ref_matched += 1
                         break
 
