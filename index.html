@@ -7918,6 +7918,22 @@ async function launchSimulation() {
     // forceMarketMet=true → prend le palier avec le seuil le plus élevé sans vérifier le CA.
     function getProrata(_labName) { return 1; }
 
+    // Prorata contrat direct : si le contrat labo a été signé en cours d'année
+    // simulée, le CA cible annuel est ramené aux mois restants (signature → déc.).
+    // Ex. signé en juin → facteur 7/12. Cherche le contrat dont la date tombe
+    // dans l'année simulée (champ N-1 spécifique en priorité, sinon contrat N).
+    function _contractProrata(lp, year) {
+      if (!lp || !year) return 1;
+      const cands = [];
+      if (year === 2025 && lp.contractSigned25 && lp.contractDate25) cands.push(lp.contractDate25);
+      if (lp.contractSigned && lp.contractDate) cands.push(lp.contractDate);
+      for (const ds of cands) {
+        const d = new Date(ds);
+        if (!isNaN(d) && d.getFullYear() === year) return (12 - d.getMonth()) / 12;
+      }
+      return 1;  // signé avant l'année simulée ou non renseigné → plein
+    }
+
     function getBestCondFromArray(conditions, ca, forceMarketMet = false, prorataFactor = 1) {
       if (!conditions?.length) return null;
       const tol = state.condTolerance ?? 1.0;
@@ -8020,7 +8036,7 @@ async function launchSimulation() {
     //    rsfOnly=true  → RSF uniquement (scénario N-1)
     //    forceMarketMet=true → marché toujours atteint (optimisé 1)
     //    prorataRatios → { ratio2025, ratio2026 } — split CA par année
-    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false, forcedConds = null, prorataRatios = null, use2025Conds = false } = {}) {
+    function calcScenario(assignment, { rsfOnly = false, forceMarketMet = false, applyProrata = false, forcedConds = null, prorataRatios = null, use2025Conds = false, prorataYear = null } = {}) {
       const labMap = new Map();
       // Phase 1 : CA par labo
       // Le PUHT utilisé pour le CA BRUT est toujours celui du CIP réellement acheté
@@ -8102,11 +8118,14 @@ async function launchSimulation() {
           }
         } else {
           // ── Comportement existant ───────────────────────────────────────────
+          // pr = facteur prorata : contrat signé en cours d'année (prorataYear) →
+          // CA cible ramené aux mois restants → palier plus facile à atteindre.
+          const pr = prorataYear ? _contractProrata(e.lp, prorataYear)
+                   : (applyProrata ? getProrata(e.lp?.selectedLab) : 1);
           const bestCond = rsfOnly ? null
             : isForced ? forcedConds.get(e.lp.selectedLab)
-            : use2025Conds ? getBestCondFromArray(e.lp?.conditions2025 || [], e.ca, forceMarketMet)
-            : getBestCond(e.lp, e.ca, forceMarketMet, applyProrata);
-          const pr = applyProrata ? getProrata(e.lp?.selectedLab) : 1;
+            : use2025Conds ? getBestCondFromArray(e.lp?.conditions2025 || [], e.ca, forceMarketMet, pr)
+            : getBestCondFromArray(e.lp?.conditions || [], e.ca, forceMarketMet, pr);
           // Palier forcé : si CA < seuil → RSF base ; si CA ≥ seuil → meilleur palier atteint
           // (le palier le plus difficile/rentable est prioritaire s'il est atteint)
           const _forcedCA = parseFloat(bestCond?.caCondition) || 0;
@@ -8114,7 +8133,7 @@ async function launchSimulation() {
           const effectiveCond = !isForced ? bestCond
             : (_forcedCA && e.ca < _tol * pr * _forcedCA)
               ? null
-              : (getBestCond(e.lp, e.ca, false, applyProrata) || bestCond);
+              : (getBestCondFromArray(e.lp?.conditions || [], e.ca, false, pr) || bestCond);
           const _effCA = parseFloat(effectiveCond?.caCondition) || 0;
           const firstMet = e.isSelected && !rsfOnly && (
             (state.gers != null && _effCA > 0 && _effCA >= 0.9 * state.gers)
@@ -8138,7 +8157,7 @@ async function launchSimulation() {
               e.caThreshold = pr * Math.min(..._tiers);
             } else if (e.lp?.contratRepartiteur) {
               // RSF via grossiste uniquement, pas de contrat labo direct → seuil RSF standard 350 €/mois
-              e.caThreshold = 350 * 12;
+              e.caThreshold = 350 * 12 * pr;
             } else {
               e.caThreshold = 0;
             }
@@ -8168,7 +8187,8 @@ async function launchSimulation() {
       const _normTol = state.condTolerance ?? 1.0;
       labMap.forEach(e => {
         if (e.isSelected && (!e.caThreshold || e.caThreshold <= 0) && (e.lp?.contratRepartiteur ?? true)) {
-          e.caThreshold = 350 * 12;
+          const _pf = prorataYear ? _contractProrata(e.lp, prorataYear) : 1;
+          e.caThreshold = 350 * 12 * _pf;
         }
         if (e.isSelected && e.caThreshold > 0) {
           e.met = e.ca >= _normTol * e.caThreshold;
@@ -8350,8 +8370,10 @@ async function launchSimulation() {
     // 6a. Scénario N-1 : achats (digi + grossiste) avec prorata mensuel cumulé
     const naturalAssignment = new Map();
     csvData.forEach(row => { const ref = naturalRefMap.get(row.cip13); if (ref) naturalAssignment.set(row.cip13, ref); });
-    const naturalScenario = calcScenario(naturalAssignment);
     const n1Year = new Date().getFullYear() - 1;
+    // Scénario N-1 : prorata du CA cible pour les contrats labo signés en cours
+    // d'année N-1 (seuil ramené aux mois restants → palier plus facile à atteindre).
+    const naturalScenario = calcScenario(naturalAssignment, { prorataYear: n1Year });
     const actuel = calcN1FromPurchases(n1Year);
     const totalCA = actuel.totalCA || csvData.reduce((s, r) => s + r.qty * (r.puht || 0), 0);
     // CA annuel N-1 depuis month_stats (source de vérité — couvre les 12 mois même si job.rows est partiel)
