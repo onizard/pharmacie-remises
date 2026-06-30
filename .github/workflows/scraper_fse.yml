@@ -24,7 +24,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Python deps
-        run: pip3 install --quiet camoufox openpyxl
+        # playwright épinglé à 1.60.0 : la 1.61.0 (29/06/2026) envoie viewport.isMobile
+        # au backend Firefox de camoufox qui le rejette → crash new_context/new_page.
+        run: pip3 install --quiet camoufox "playwright==1.60.0" openpyxl
 
       - name: Fetch camoufox browser
         run: python3 -m camoufox fetch || true

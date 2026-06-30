@@ -478,21 +478,18 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
         progress(f"curl_cffi échoué ({ce}) — fallback camoufox…")
 
     # ── Phase 2 : camoufox (gère les challenges Cloudflare restants) ──────────────
-    # On passe le proxy au constructeur AsyncCamoufox et on utilise new_page() sur le
-    # contexte par défaut (comme le scraper FSE). NB : browser.new_context() déclenche
-    # une erreur de protocole avec les builds camoufox récents (viewport.isMobile non
-    # reconnu) → on l'évite.
-    async with AsyncCamoufox(headless=True, geoip=False,
-                             **({"proxy": proxy_cfg} if proxy_cfg else {})) as browser:
-        page = await browser.new_page()
+    async with AsyncCamoufox(headless=True, geoip=False) as browser:
+        ctx  = await browser.new_context(**({"proxy": proxy_cfg} if proxy_cfg else {}))
 
         if session_cookies:
-            await page.context.add_cookies([
+            await ctx.add_cookies([
                 {"name": k, "value": v, "domain": "app.digipharmacie.fr", "path": "/",
                  "sameSite": "Lax"}
                 for k, v in session_cookies.items()
             ])
             progress(f"Cookies curl_cffi injectés ({len(session_cookies)} cookies)")
+
+        page = await ctx.new_page()
         page.on("pageerror", lambda e: None)
         page.set_default_timeout(120_000)
 
