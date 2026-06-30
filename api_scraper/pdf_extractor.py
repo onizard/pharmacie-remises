@@ -128,7 +128,10 @@ def _detect_format(text: str) -> str:
     if "teva sant" in t400 and "votre commande" in t1500:
         return "teva_product"
     # RDP (Remise de performance) / Avoir récapitulatif — avant alloga pour éviter faux-positif
-    if "récapitulatif des remises" in t800 or "remise de performance" in t800:
+    # NB : le texte PDF est souvent en capitales SANS accent ("RECAPITULATIF DES REMISES")
+    # → on accepte les deux formes, sinon l'avoir RDP n'est jamais détecté (0 ligne RDP).
+    if ("récapitulatif des remises" in t800 or "recapitulatif des remises" in t800
+            or "remise de performance" in t800):
         return "rdp"
     # Prestations de services / Coopération commerciale — AVANT alloga (Alloga envoie aussi des presta)
     _presta_kw = (
