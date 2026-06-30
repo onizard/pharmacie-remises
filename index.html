@@ -8081,14 +8081,17 @@ async function launchSimulation() {
           );
           const _useRsf25 = e.lp?.contratRepartiteur25 ?? true;
           const _useRsf26 = e.lp?.contratRepartiteur    ?? true;
+          // Règle Biogaran : réalisation < 80% → pas de R2/R3 ; ≥ 80% → R3 (coop)
+          // proratisée à 0.90 + réal×0.10. Réalisation sur le CA cible (proraté _pf25).
+          const _bioCoeff = _getBiogCoeff(e.lp, _pf25 ? e.ca / _pf25 : e.ca);
           e.rows.forEach(({ row, ref, price }) => {
             const _ovr25 = _rowRsfOverride(ref, cond25, row);
             const _ovr26 = _rowRsfOverride(ref, cond26, row);
-            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25, null, _ovr25) : 0;
-            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26, null, _ovr26) : 0;
+            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25, _bioCoeff, _ovr25) : 0;
+            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26, _bioCoeff, _ovr26) : 0;
             e.remise += row.qty * price * (r25 + r26) / 100;
-            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25, null, _ovr25) : 0;
-            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26, null, _ovr26) : 0;
+            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25, _bioCoeff, _ovr25) : 0;
+            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26, _bioCoeff, _ovr26) : 0;
             e.remiseSansR3 += row.qty * price * (s25 + s26) / 100;
           });
           e.bestCond    = cond26 || cond25;
@@ -8166,15 +8169,19 @@ async function launchSimulation() {
           }
           e.firstMet    = firstMet;
           const _useRsf2 = e.lp?.contratRepartiteur ?? true;
+          // Règle Biogaran : réalisation < 80% → pas de R2/R3 ; ≥ 80% → R3 (coop)
+          // proratisée à 0.90 + réal×0.10 (seuls les 10% restants sont proratisés).
+          // Réalisation calculée sur le CA cible proraté (e.ca / pr).
+          const _bioCoeff = _getBiogCoeff(e.lp, pr ? e.ca / pr : e.ca);
           e.rows.forEach(({ row, ref, price }) => {
             const _ovr = _rowRsfOverride(ref, effectiveCond, row);
             const remisePct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemise(ref, effectiveCond, firstMet, _useRsf2, null, _ovr);
+              : getRemise(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff, _ovr);
             e.remise += row.qty * price * remisePct / 100;
             const remiseSansR3Pct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2, null, _ovr);
+              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff, _ovr);
             e.remiseSansR3 += row.qty * price * remiseSansR3Pct / 100;
           });
         }
