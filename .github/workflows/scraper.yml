@@ -25,6 +25,8 @@ jobs:
         run: pip3 install --quiet camoufox "playwright==1.60.0" curl_cffi pdfplumber
 
       - name: Fetch camoufox browser
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # auth API GitHub (sinon 60 req/h → 403 rate limit)
         run: python3 -m camoufox fetch || true  # binaries déjà présents sur self-hosted ; MMDB geoip non requis
 
       - name: Patch Playwright (null-check pageError.location)
@@ -45,4 +47,5 @@ jobs:
           PROXY_URL:            ${{ secrets.PROXY_URL }}
           LABS_FILTER:          ${{ inputs.labs_filter }}
           PDF_DEBUG:            "0"
+          GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}   # AsyncCamoufox vérifie la version via l'API GitHub au lancement
         run: python3 api_scraper/run_job.py

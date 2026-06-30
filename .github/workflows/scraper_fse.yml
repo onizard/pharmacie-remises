@@ -29,6 +29,8 @@ jobs:
         run: pip3 install --quiet camoufox "playwright==1.60.0" openpyxl
 
       - name: Fetch camoufox browser
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # auth API GitHub (sinon 60 req/h → 403 rate limit)
         run: python3 -m camoufox fetch || true
 
       - name: Patch Playwright null-check
@@ -49,6 +51,7 @@ jobs:
           DATE_FROM:            ${{ inputs.date_from }}
           DATE_TO:              ${{ inputs.date_to }}
           RENDER_API_URL:       https://pharmacie-remises.onrender.com
+          GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}   # AsyncCamoufox vérifie la version via l'API GitHub au lancement
         run: python3 api_scraper/run_job_fse.py
 
       - name: Upload debug screenshots (on failure)
