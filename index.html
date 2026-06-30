@@ -2808,6 +2808,19 @@ let _simBgRunning = false;
 let _simCachedUserId = null;
 let _precomputedWireAndRender = null;
 let _precomputedMeta = null;
+
+// Relance forcée du comparateur : réinitialise TOUS les drapeaux avant de relancer.
+// Sans ça, un calcul de fond (_simRunning=true) encore en vol fait que le 1er clic
+// sur RESET / TRY AGAIN tombe dans le garde `if (_simRunning) return` → il fallait
+// cliquer deux fois. On purge donc aussi _simRunning / _simBgRunning.
+function _forceRestartSim() {
+  _simResultsReady = false;
+  _precomputedWireAndRender = null;
+  _precomputedMeta = null;
+  _simRunning = false;
+  _simBgRunning = false;
+  launchSimulation();
+}
 let _ospAutoRelaunchDone = false;  // évite les boucles si auto-reconnexion répétée
 
 function _compFingerprint() {
@@ -2857,12 +2870,10 @@ function _setupCachedPrecomputed(html) {
         _simResultsReady = true;
         document.getElementById('tolBtn')?.addEventListener('click', () => {
             state.condTolerance = (state.condTolerance ?? 1.0) < 1 ? 1.0 : 0.95;
-            _simResultsReady = false; _precomputedWireAndRender = null; _precomputedMeta = null;
-            launchSimulation();
+            _forceRestartSim();
         });
         document.getElementById('tryAgainBtn')?.addEventListener('click', () => {
-            _simResultsReady = false; _precomputedWireAndRender = null; _precomputedMeta = null;
-            launchSimulation();
+            _forceRestartSim();
         });
         _cont.querySelectorAll('.dl-btn, .sim-dl-inline').forEach(btn => {
             btn.addEventListener('click', () => showToast('↺ Relancez l\'analyse (TRY AGAIN) pour activer les téléchargements.'));
@@ -9454,17 +9465,11 @@ async function launchSimulation() {
 
     document.getElementById('tolBtn')?.addEventListener('click', () => {
       state.condTolerance = (state.condTolerance ?? 1.0) < 1 ? 1.0 : 0.95;
-      _simResultsReady = false;
-      _precomputedWireAndRender = null;
-      _precomputedMeta = null;
-      launchSimulation();
+      _forceRestartSim();
     });
 
     document.getElementById('tryAgainBtn')?.addEventListener('click', () => {
-      _simResultsReady = false;
-      _precomputedWireAndRender = null;
-      _precomputedMeta = null;
-      launchSimulation();
+      _forceRestartSim();
     });
 
     _simResultsReady = true;
