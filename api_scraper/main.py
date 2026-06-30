@@ -612,7 +612,7 @@ def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes, user_token: str 
         "labos":    len({r["labo"] for rows in grossiste_stats.values() for r in rows}),
         "qty":      total_q,
         "total_ht": round(total_ht, 2),
-        "grossiste_month_stats": grossiste_stats,
+        "grossiste_month_stats": state["grossiste_month_stats"],
     }
 
 

@@ -6439,8 +6439,8 @@ function _verifBiogaranCoef(yr) {
 }
 
 // ── Tableau détaillé PAR PALIER RSF (Attendue / Reçue) ─────────────────────────
-// Données : grossiste 'paliers' (RSF reçu par taux) + digi 'rdp_by_taux'
-// (R2/RDP reçu par taux, grossiste+direct) + contrat (remise2/coopR3) + FSE (R3).
+// Une seule ligne par palier. Couleur ambre = Attendue, vert = Reçue.
+// R3/Coop : estimatif par palier, total réel FSE dans le bloc récapitulatif.
 // Retourne null si aucune ventilation par palier dispo → fallback ancien tableau.
 function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
@@ -6463,14 +6463,15 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
     .filter(t => t!=null).sort((a,b)=>a-b);
   let fseR3 = 0; Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{ if(_verifNormLab(l)===selNorm) fseR3 += s.montant_ttc||0; });
 
-  const dCls = v => v==null ? '' : v>0.5 ? ' style="color:var(--red);font-weight:700"' : v<-0.5 ? ' style="color:var(--green)"' : '';
-  const ATT='background:rgba(255,171,0,.06)', REC='background:rgba(0,255,136,.06)';
-  let T = {qr:0, brut:0, rsfA:0, rsfR:0, r2A:0, r2R:0, r3A:0};
+  // Δ positif = sous-remisé (rouge), négatif = sur-remisé (vert)
+  const dStyle = v => v==null ? '' : v>0.5 ? 'color:var(--red);font-weight:700' : v<-0.5 ? 'color:var(--green)' : '';
+  const A = 'color:var(--amber)', G = 'color:var(--green)';
+  let T = {qty:0, brut:0, rsfA:0, rsfR:0, r2A:0, r2R:0, r3A:0};
 
   const body = allTaux.map(tx => {
     const g=gmap[tx], rd=rmap[tx], c=cmap[tx]||{};
     const grosBrut = g?(g.brut||0):0, dirBrut = rd?(rd.ca_direct||0):0, brut = grosBrut+dirBrut;
-    const qr = g?(g.qty||0):0;
+    const qty = g?(g.qty||0):0;
     const rsfA = grosBrut*tx/100, rsfR = g?(g.remise||0):0, rsfD = rsfA-rsfR;
     const r2pct = (c.remise2!=null && c.remise2!=='') ? parseFloat(c.remise2) : null;
     const r2A = r2pct!=null ? brut*r2pct/100 : 0;
@@ -6478,65 +6479,74 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
     const r2D = (r2pct!=null || r2R>0) ? r2A-r2R : null;
     const r3pct = isBio ? coopR3 : ((c.remise3!=null && c.remise3!=='') ? parseFloat(c.remise3) : 0);
     const r3A = r3pct>0 ? brut*r3pct/100*TVA_R3*(isBio?coef:1) : 0;
-    T.qr+=qr; T.brut+=brut; T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
-    const rsfEff = grosBrut>0 ? rsfR/grosBrut*100 : null;
-    const r2Eff  = (brut>0 && r2R>0) ? r2R/brut*100 : null;
-    return `
-      <tr style="${ATT}">
-        <td rowspan="2" style="font-weight:700;color:var(--cyan)">${fmtP(tx)}</td>
-        <td rowspan="2">—</td>
-        <td rowspan="2">${qr?qr.toLocaleString('fr'):'—'}</td>
-        <td rowspan="2">${fmtE(brut)}</td>
-        <td>${fmtP(tx)}</td><td>${fmtE(rsfA)}</td><td rowspan="2"${dCls(rsfD)}>${fmtE(rsfD)}</td>
-        <td class="verif-r2">${r2pct!=null?fmtP(r2pct):'—'}</td><td class="verif-r2">${r2pct!=null?fmtE(r2A):'—'}</td><td rowspan="2" class="verif-r2"${dCls(r2D)}>${r2D!=null?fmtE(r2D):'—'}</td>
-        <td class="verif-r3">${r3pct?fmtP(r3pct):'—'}</td><td class="verif-r3">${r3A>0?fmtE(r3A):'—'}</td><td rowspan="2" class="verif-r3" style="color:var(--text-dim);font-size:9px">cf.&nbsp;total</td>
-      </tr>
-      <tr style="${REC}">
-        <td>${rsfEff!=null?fmtP(rsfEff):'—'}</td><td>${fmtE(rsfR)}</td>
-        <td class="verif-r2">${r2Eff!=null?fmtP(r2Eff):'—'}</td><td class="verif-r2">${r2R>0?fmtE(r2R):'—'}</td>
-        <td class="verif-r3">—</td><td class="verif-r3">—</td>
-      </tr>`;
+    T.qty+=qty; T.brut+=brut; T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
+    const dRsf = dStyle(rsfD), dR2 = dStyle(r2D);
+    return `<tr>
+      <td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>
+      <td>${qty?qty.toLocaleString('fr'):'—'}</td>
+      <td>${fmtE(brut)}</td>
+      <td style="${A}">${fmtE(rsfA)}</td>
+      <td style="${G}">${fmtE(rsfR)}</td>
+      <td style="${dRsf}">${fmtE(rsfD)}</td>
+      <td class="verif-r2">${r2pct!=null?fmtP(r2pct):'—'}</td>
+      <td class="verif-r2" style="${A}">${r2pct!=null?fmtE(r2A):'—'}</td>
+      <td class="verif-r2" style="${G}">${r2R>0?fmtE(r2R):'—'}</td>
+      <td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>
+      <td class="verif-r3" style="${A}">${r3A>0?fmtE(r3A):'—'}</td>
+    </tr>`;
   }).join('');
 
-  const totRows = `
-    <tr style="${ATT};border-top:2px solid var(--border)">
-      <td rowspan="2" style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
-      <td rowspan="2">—</td>
-      <td rowspan="2">${T.qr?T.qr.toLocaleString('fr'):'—'}</td>
-      <td rowspan="2">${fmtE(T.brut)}</td>
-      <td style="color:var(--amber);font-size:9px">ATT</td><td>${fmtE(T.rsfA)}</td><td rowspan="2"${dCls(T.rsfA-T.rsfR)}>${fmtE(T.rsfA-T.rsfR)}</td>
-      <td class="verif-r2" style="color:var(--amber);font-size:9px">ATT</td><td class="verif-r2">${fmtE(T.r2A)}</td><td rowspan="2" class="verif-r2"${dCls(T.r2A-T.r2R)}>${fmtE(T.r2A-T.r2R)}</td>
-      <td class="verif-r3" style="color:var(--amber);font-size:9px">ATT</td><td class="verif-r3">${fmtE(T.r3A)}</td><td rowspan="2" class="verif-r3"${dCls(T.r3A-fseR3)}>${fmtE(T.r3A-fseR3)}</td>
-    </tr>
-    <tr style="${REC}">
-      <td style="color:var(--green);font-size:9px">REÇU</td><td>${fmtE(T.rsfR)}</td>
-      <td class="verif-r2" style="color:var(--green);font-size:9px">REÇU</td><td class="verif-r2">${fmtE(T.r2R)}</td>
-      <td class="verif-r3" style="color:var(--green);font-size:9px">REÇU</td><td class="verif-r3">${fseR3>0?fmtE(fseR3):'—'}</td>
-    </tr>`;
+  const dTrsf=dStyle(T.rsfA-T.rsfR), dTr2=dStyle(T.r2A-T.r2R), dTr3=dStyle(T.r3A-fseR3);
+  const totRow = `<tr style="border-top:2px solid var(--border);font-weight:700;background:rgba(255,255,255,.03)">
+    <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
+    <td>${T.qty?T.qty.toLocaleString('fr'):'—'}</td>
+    <td>${fmtE(T.brut)}</td>
+    <td style="${A}">${fmtE(T.rsfA)}</td>
+    <td style="${G}">${fmtE(T.rsfR)}</td>
+    <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td>
+    <td class="verif-r2">—</td>
+    <td class="verif-r2" style="${A}">${fmtE(T.r2A)}</td>
+    <td class="verif-r2" style="${G}">${fmtE(T.r2R)}</td>
+    <td class="verif-r2" style="${dTr2}">${fmtE(T.r2A-T.r2R)}</td>
+    <td class="verif-r3" style="${A}">${T.r3A>0?fmtE(T.r3A):'—'}</td>
+  </tr>`;
+
+  // Bloc R3/Coop (total FSE — non ventilable par palier)
+  const r3Block = T.r3A>0 ? `
+    <div style="margin-top:10px;padding:8px 12px;border:1px solid var(--border);border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+      <span style="color:var(--text-dim);letter-spacing:1px;font-size:10px">R3 / COOP</span>
+      <span>Attendue&nbsp;: <b style="${A}">${fmtE(T.r3A)}</b></span>
+      <span>Reçue (FSE)&nbsp;: <b style="${G}">${fseR3>0?fmtE(fseR3):'—'}</b></span>
+      ${fseR3>0 ? `<span style="${dTr3};font-weight:700">Δ ${fmtE(T.r3A-fseR3)}</span>` : ''}
+    </div>` : '';
 
   return `
     <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 8px;font-family:'Share Tech Mono',monospace;font-size:10px">
-      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:rgba(255,171,0,.5);display:inline-block"></span>Attendue</span>
-      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:rgba(0,255,136,.5);display:inline-block"></span>Reçue</span>
-      <span style="color:var(--text-dim)">RSF appliquée directement (info) · R2/RDP vérifiée par palier · R3/coop au total (virement FSE, cf. échéancier)</span>
+      <span style="color:var(--amber);font-weight:700">▸ Attendue</span>
+      <span style="color:var(--green)">▸ Reçue</span>
+      <span style="color:var(--text-dim)">RSF&nbsp;: info · R2/RDP&nbsp;: par palier · R3/Coop&nbsp;: total FSE</span>
     </div>
     <div style="overflow-x:auto">
       <table class="verif-tbl">
         <thead>
           <tr>
-            <th rowspan="3" style="text-align:left">CAT. RSF</th><th rowspan="3">QTÉ DIRECT</th><th rowspan="3">QTÉ RÉP.</th><th rowspan="3">PA BRUT</th>
-            <th colspan="9" style="color:var(--amber);letter-spacing:2px">REMISE</th>
+            <th rowspan="2" style="text-align:left">CAT. RSF</th>
+            <th rowspan="2">QTÉ RÉP.</th>
+            <th rowspan="2">PA BRUT</th>
+            <th colspan="3">RSF <span style="font-weight:400;font-size:9px;color:var(--text-dim)">(info)</span></th>
+            <th colspan="4" class="verif-r2">REMISE 2 / RDP</th>
+            <th class="verif-r3">REMISE 3</th>
           </tr>
-          <tr><th colspan="3">RSF</th><th colspan="3" class="verif-r2">REMISE 2 (RDP)</th><th colspan="3" class="verif-r3">REMISE 3 (COOP)</th></tr>
           <tr>
-            <th>%</th><th>€</th><th>Δ</th>
-            <th class="verif-r2">%</th><th class="verif-r2">€</th><th class="verif-r2">Δ</th>
-            <th class="verif-r3">%</th><th class="verif-r3">€</th><th class="verif-r3">Δ</th>
+            <th style="${A}">ATT.</th><th style="${G}">REC.</th><th>Δ</th>
+            <th class="verif-r2">%</th><th class="verif-r2" style="${A}">ATT.</th><th class="verif-r2" style="${G}">REC.</th><th class="verif-r2">Δ</th>
+            <th class="verif-r3" style="${A}">ATT.</th>
           </tr>
         </thead>
-        <tbody>${body}${totRows}</tbody>
+        <tbody>${body}${totRow}</tbody>
       </table>
-    </div>`;
+    </div>
+    ${r3Block}`;
 }
 
 function _verifFillMonthDetail(mk) {
