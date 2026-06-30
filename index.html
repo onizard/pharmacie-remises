@@ -724,6 +724,10 @@
   .verif-tbl td:first-child { text-align: left; font-weight: 700; letter-spacing: .3px; }
   .verif-tbl tr:hover td { background: var(--bg2); }
   .verif-tbl tfoot td { border-top: 1px solid var(--border); border-bottom: none; font-weight: 700; }
+  /* Tableau détaillé par palier : colonnes égales + titres centrés (lisibilité) */
+  .verif-tbl.verif-palier { table-layout: fixed; min-width: 860px; }
+  .verif-tbl.verif-palier th, .verif-tbl.verif-palier td { text-align: center; padding-left: 5px; padding-right: 5px; }
+  .verif-tbl.verif-palier th:first-child, .verif-tbl.verif-palier td:first-child { text-align: left; width: 11%; }
   .verif-cat-row td { background: rgba(255,171,0,.06) !important; pointer-events: none; }
   .verif-r2 { color: var(--amber); }
   .verif-r3 { color: var(--green); }
@@ -6459,20 +6463,56 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const paliers   = (grosRow && Array.isArray(grosRow.paliers))     ? grosRow.paliers     : [];
   const rdpByTaux = (digiRow && Array.isArray(digiRow.rdp_by_taux)) ? digiRow.rdp_by_taux : [];
   if (!paliers.length && !rdpByTaux.length) return null;
-
+  let fseR3 = 0; Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{ if(_verifNormLab(l)===selNorm) fseR3 += s.montant_ttc||0; });
   const [mkY, mkM] = mk.split('-').map(Number);
+  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, mkY, mkM, null);
+}
+
+// Cumul annuel Jan→Déc : agrège paliers (grossiste) + rdp_by_taux (digi) + FSE
+// sur tous les mois de l'année, puis rend le MÊME tableau que le détail mensuel.
+function _verifRenderPalierCumul(year, selNorm, labDisplay) {
+  const yr = parseInt(year);
+  const mksY = mk => mk.startsWith(yr + '-');
+  const gAgg = {}, rAgg = {};
+  Object.entries(state._grossisteMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,arr])=>{
+    ((arr||[]).find(r=>_verifNormLab(r.labo)===selNorm)?.paliers||[]).forEach(p=>{
+      if (p.taux==null) return;
+      const a = gAgg[p.taux] || (gAgg[p.taux]={taux:p.taux,qty:0,brut:0,remise:0,net:0});
+      a.qty+=p.qty||0; a.brut+=p.brut||0; a.remise+=p.remise||0; a.net+=p.net||0;
+    });
+  });
+  Object.entries(state._digiMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,arr])=>{
+    ((arr||[]).find(r=>_verifNormLab(r.labo)===selNorm)?.rdp_by_taux||[]).forEach(e=>{
+      if (e.taux==null) return;
+      const a = rAgg[e.taux] || (rAgg[e.taux]={taux:e.taux,grossiste:0,direct:0,ca_grossiste:0,ca_direct:0});
+      a.grossiste+=e.grossiste||0; a.direct+=e.direct||0; a.ca_grossiste+=e.ca_grossiste||0; a.ca_direct+=e.ca_direct||0;
+    });
+  });
+  const paliers = Object.values(gAgg), rdpByTaux = Object.values(rAgg);
+  if (!paliers.length && !rdpByTaux.length) return null;
+  let fseR3 = 0;
+  Object.entries(state._fseMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,labMap])=>{
+    Object.entries(labMap||{}).forEach(([l,s])=>{ if(_verifNormLab(l)===selNorm) fseR3 += s.montant_ttc||0; });
+  });
+  const today = new Date();
+  const mRef  = yr < today.getFullYear() ? 12 : today.getMonth()+1;
+  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, yr, mRef, yr);
+}
+
+// Rendu commun du tableau par palier (mensuel ou cumul annuel).
+// cumulYear : null pour un mois donné, l'année pour le cumul Jan→Déc.
+function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, selNorm, labDisplay, year, monthForCond, cumulYear) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP = v => v != null ? (Math.round(v*100)/100).toString().replace('.',',') + ' %' : '—';
   const TVA_R3 = 1.20, isBio = selNorm === 'BIOGARAN';
-  const cond   = _verifGetCond(labDisplay, mkY, mkM);
+  const cond   = _verifGetCond(labDisplay, year, monthForCond);
   const coopR3 = cond ? (parseFloat(cond.coopR3)||0) : 0;
-  const coef   = isBio ? _verifBiogaranCoef(mkY) : 1;
+  const coef   = isBio ? _verifBiogaranCoef(year) : 1;
   const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=parseFloat(r.rsf_pct); if(!isNaN(k)&&!r.excluded) cmap[k]=r; });
   const gmap = {}; paliers.forEach(p => gmap[p.taux]=p);
   const rmap = {}; rdpByTaux.forEach(e => rmap[e.taux]=e);
   const allTaux = [...new Set([...paliers.map(p=>p.taux), ...rdpByTaux.map(e=>e.taux)])]
     .filter(t => t!=null).sort((a,b)=>a-b);
-  let fseR3 = 0; Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{ if(_verifNormLab(l)===selNorm) fseR3 += s.montant_ttc||0; });
 
   // Δ positif = sous-remisé (rouge), négatif = sur-remisé (vert)
   const dStyle = v => v==null ? '' : v>0.5 ? 'color:var(--red);font-weight:700' : v<-0.5 ? 'color:var(--green)' : '';
@@ -6533,12 +6573,13 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
 
   return `
     <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 8px;font-family:'Share Tech Mono',monospace;font-size:10px">
+      ${cumulYear ? `<span style="color:var(--cyan);font-weight:700;letter-spacing:1px">CUMUL ${cumulYear} · JAN→DÉC</span>` : ''}
       <span style="color:var(--amber);font-weight:700">▸ Attendue</span>
       <span style="color:var(--green)">▸ Reçue</span>
       <span style="color:var(--text-dim)">RSF&nbsp;: info · R2/RDP&nbsp;: par palier · R3/Coop&nbsp;: total FSE</span>
     </div>
     <div style="overflow-x:auto">
-      <table class="verif-tbl">
+      <table class="verif-tbl verif-palier">
         <thead>
           <tr>
             <th rowspan="2" style="text-align:left">CAT. RSF</th>
@@ -6861,6 +6902,14 @@ function _verifEscompteBlock(mk) {
 function _verifFillTout(year) {
   const wrap = document.getElementById('verifMonthDetail'); if (!wrap) return;
   const yr   = parseInt(year);
+
+  // Labo sélectionné : cumul annuel par palier (même présentation que le mensuel).
+  if (_verifSelLab) {
+    const selN = _verifNormLab(_verifSelLab);
+    const palHtml = _verifRenderPalierCumul(yr, selN, _verifSelLab);
+    if (palHtml) { wrap.innerHTML = palHtml; return; }
+  }
+
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP = v => v != null ? v.toFixed(1) + ' %' : '—';
   const TVA_R3 = 1.20;
