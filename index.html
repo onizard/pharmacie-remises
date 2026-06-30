@@ -8160,6 +8160,20 @@ async function launchSimulation() {
           });
         }
       });
+      // ── Normalisation seuils marché (affichage SEUIL ✓/✗) ────────────────────
+      // 1. Répartiteur : à défaut de palier labo direct, le seuil RSF est le minimum
+      //    grossiste 350 €/mois = 4 200 €/an (contrat répartiteur coché).
+      // 2. SEUIL atteint = CA réel ≥ seuil affiché — honnête, indépendant de
+      //    forceMarketMet (sinon un CA non atteint s'affichait quand même ✓).
+      const _normTol = state.condTolerance ?? 1.0;
+      labMap.forEach(e => {
+        if (e.isSelected && (!e.caThreshold || e.caThreshold <= 0) && (e.lp?.contratRepartiteur ?? true)) {
+          e.caThreshold = 350 * 12;
+        }
+        if (e.isSelected && e.caThreshold > 0) {
+          e.met = e.ca >= _normTol * e.caThreshold;
+        }
+      });
       const labResults = [...labMap.entries()]
         .filter(([name]) => name != null && !LABS_BRAND_EXCL.has(name))
         .map(([name, e]) => ({
@@ -9190,8 +9204,8 @@ async function launchSimulation() {
       <canvas class="sim-fireworks" id="simFireworks"></canvas>
       <div class="sim-winner-dl">${winnerEntry.dlBtns}</div>
       <div class="sim-winner-crown">★</div>
-      <div class="sim-winner-title">${winnerEntry.label}</div>
-      <div class="sim-winner-sub">GAIN LE PLUS ÉLEVÉ — PA NET LE PLUS BAS${winnerEntry.sub ? ' — ' + winnerEntry.sub : ''}</div>
+      <div class="sim-winner-title">SCÉNARIO GAGNANT</div>
+      <div class="sim-winner-sub">${winnerEntry.label} — GAIN LE PLUS ÉLEVÉ — PA NET LE PLUS BAS${winnerEntry.sub ? ' — ' + winnerEntry.sub : ''}</div>
       <div class="sim-winner-gain">GAIN ${winnerSaving>=0?'+':''}${fmtE(winnerSaving)}</div>
       ${mkScenarioTable(winnerEntry.scenario.labResults, true, null)}
     </div>`;
