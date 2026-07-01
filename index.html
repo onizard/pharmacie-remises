@@ -910,6 +910,8 @@
   .conn-sites { display: flex; gap: 24px; flex-wrap: wrap; }
   .conn-site { flex: 1; min-width: 220px; background: var(--panel); border: 1px solid var(--border); padding: 20px; }
   .conn-site-title { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--amber); margin-bottom: 16px; }
+  .conn-auto-toggle { display: block; width: 100%; margin-top: 20px; padding: 11px 14px; background: transparent; border: 1px dashed var(--border); border-radius: 4px; color: var(--text-dim); font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; letter-spacing: 2px; cursor: pointer; text-align: left; transition: color .2s, border-color .2s; }
+  .conn-auto-toggle:hover { color: var(--cyan); border-color: var(--cyan-dim); }
   .conn-field { margin-bottom: 12px; }
   .conn-label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px; }
   .conn-input-wrap { position: relative; }
@@ -1325,7 +1327,7 @@
       <div class="term-line"><span class="prompt">SYS:</span><span class="val">PRÊT</span><span class="cursor"></span><span id="saveBadge" class="save-badge">&nbsp;✓ sauvegardé</span></div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn-cond-labo" id="btnConditionsLabo" style="font-size:11px;padding:6px 14px">⚙ MES CONDITIONS LABO</button>
-        <button id="btnConnecteur" class="btn-connecteur" title="Gérer les connecteurs OSPHARM / DIGIPHARMACIE">CONNECTEURS<span id="connNotifBadge" class="conn-notif-badge"></span></button>
+        <button id="btnConnecteur" class="btn-connecteur" title="Déposer vos fichiers justificatifs (grossiste, RDP Digi, FSE…)">DÉPÔT DES FICHIERS<span id="connNotifBadge" class="conn-notif-badge"></span></button>
         <button id="btnTheme" class="btn-theme" title="Thème clair / sombre">☀</button>
 <div class="account-wrap">
   <button class="account-btn" id="btnAccount" title="Mon compte">
@@ -1355,7 +1357,7 @@
   <div id="connecteurModal">
     <div class="conn-box">
       <button class="conn-close" id="connClose">✕</button>
-      <div class="conn-title">CONNECTEURS</div>
+      <div class="conn-title">DÉPÔT DES FICHIERS</div>
       <!-- Éléments cachés de la dropzone universelle (JS seul, pas de UI visible ici) -->
       <input type="file" id="univFileInput" multiple accept=".pdf,.xlsx,.xls,.csv" style="display:none">
       <div id="univFileList" style="display:none"></div>
@@ -1382,6 +1384,12 @@
           </div>
           <div id="grossisteFileList" style="display:none;margin-top:10px"></div>
         </div>
+      </div><!-- /conn-sites : dépôt de fichiers -->
+
+      <!-- Connecteurs automatiques (scraping) — repliés par défaut -->
+      <button type="button" id="autoConnToggle" class="conn-auto-toggle">▸ CONNECTEURS AUTOMATIQUES <span style="font-weight:400;letter-spacing:1px;color:var(--text-dim);font-size:9px">(avancé — OSPHARM / DIGI / FSE)</span></button>
+      <div id="autoConnectorsWrap" style="display:none">
+      <div class="conn-sites">
         <!-- DIGIPHARMACIE -->
         <div class="conn-site">
           <div id="digiFormView">
@@ -1498,7 +1506,8 @@
             <div class="conn-ring-pct" id="ospProgPct"></div>
           </div>
         </div>
-      </div>
+      </div><!-- /conn-sites : connecteurs auto -->
+      </div><!-- /autoConnectorsWrap -->
       <!-- Admin : demandes de changement de compte -->
       <div id="connAdminPanel" class="conn-admin-panel" style="display:none">
         <div style="font-size:10px;color:var(--red);letter-spacing:2px;margin-bottom:10px;font-family:'Share Tech Mono',monospace">// DEMANDES DE CHANGEMENT DE COMPTE</div>
@@ -10797,6 +10806,15 @@ function initConnecteurModal() {
   btnOpen.addEventListener('click', openModal);
   btnClose.addEventListener('click', closeModal);
   modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+  // Repli/dépli des connecteurs automatiques (scraping) — cachés par défaut.
+  const _autoToggle = document.getElementById('autoConnToggle');
+  const _autoWrap   = document.getElementById('autoConnectorsWrap');
+  _autoToggle?.addEventListener('click', () => {
+    const open = _autoWrap.style.display !== 'none';
+    _autoWrap.style.display = open ? 'none' : '';
+    _autoToggle.innerHTML = (open ? '▸' : '▾') + ' CONNECTEURS AUTOMATIQUES <span style="font-weight:400;letter-spacing:1px;color:var(--text-dim);font-size:9px">(avancé — OSPHARM / DIGI / FSE)</span>';
+  });
 
   document.querySelectorAll('.conn-eye').forEach(btn => {
     btn.addEventListener('click', () => {
