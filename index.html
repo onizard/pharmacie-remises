@@ -981,6 +981,14 @@
   .conn-file-del { background:none; border:none; color:var(--red); cursor:pointer; font-size:13px; padding:0 2px; opacity:.7; flex-shrink:0; }
   .conn-file-del:hover { opacity:1; }
   .conn-req-status { font-size:10px; font-family:'Share Tech Mono',monospace; margin-top:2px; min-height:14px; }
+  .gms-table { width:100%; border-collapse:collapse; font-family:'Share Tech Mono',monospace; font-size:11px; margin-bottom:12px; }
+  .gms-table th { text-align:center; color:var(--text-dim); font-weight:400; font-size:9px; letter-spacing:1px; padding:4px 6px; border-bottom:1px solid var(--border); }
+  .gms-table th:first-child { text-align:left; }
+  .gms-table td { padding:3px 6px; border-bottom:1px solid rgba(255,255,255,.04); text-align:center; }
+  .gms-table td:first-child { text-align:left; color:var(--text-dim); }
+  .gms-ok { color:var(--green); }
+  .gms-missing { color:var(--text-dim); opacity:.3; }
+  .gms-current td:first-child { color:var(--cyan); }
   .btn-connecteur { position:relative; }
   .conn-notif-badge { position:absolute; top:-4px; right:-4px; width:8px; height:8px; background:var(--red); border-radius:50%; display:none; pointer-events:none; }
   .conn-admin-panel { margin-top:18px; border-top:1px solid var(--border); padding-top:14px; }
@@ -1370,6 +1378,7 @@
         <!-- GROSSISTE LISTINGS — dropzone étendue : XLSX grossiste + PDF DIGI + XLSX FSE -->
         <div class="conn-site" id="grossisteSection" style="flex:0 0 100%;min-width:0">
           <div class="conn-site-title" style="color:var(--green)">DÉPÔT DE FICHIERS &nbsp;<span style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px">XLSX GROSSISTE · PDF DIGI · PDF ESCOMPTE · PDF MDL · XLSX FSE BANQUE</span></div>
+          <div id="grossisteMonthStatus"></div>
           <div id="grossisteDropZone" class="conn-drop-zone">
             <div class="conn-drop-icon">⬇</div>
             <div class="conn-drop-label">Déposer les fichiers ici — plusieurs fichiers acceptés</div>
@@ -10791,6 +10800,7 @@ function initConnecteurModal() {
     showView('digi',  c.digipharmacie.connected);
     showView('conc',  c.concentrateur?.connected || false);
     modal.classList.add('open');
+    _renderGrossisteMonthStatus();
     refreshConnJobStatuses();
     // Vérifications asynchrones
     checkUserPendingRequests();
@@ -11304,10 +11314,49 @@ function initConnecteurModal() {
     return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
   }
 
+  // ── État de couverture par mois (GROSSISTE / DIGI / FSE) ────────────────────
+  // De janvier N-1 (contrat Biogaran) au mois courant, la plus récente en tête.
+  function _grossisteStatusMonths() {
+    const now  = new Date();
+    const curY = now.getFullYear(), curM = now.getMonth() + 1;
+    const months = [];
+    for (let y = curY - 1; y <= curY; y++) {
+      const mEnd = (y === curY) ? curM : 12;
+      for (let m = 1; m <= mEnd; m++) months.push(`${y}-${String(m).padStart(2, '0')}`);
+    }
+    return months.reverse();
+  }
+
+  function _renderGrossisteMonthStatus() {
+    const el = document.getElementById('grossisteMonthStatus');
+    if (!el) return;
+    const gros = state._grossisteMonthStats || {};
+    const digi = state._digiMonthStats      || {};
+    const fse  = state._fseMonthStats       || {};
+    const nowMk = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })();
+    const rows = _grossisteStatusMonths().map(mk => {
+      const [y, m] = mk.split('-').map(Number);
+      return {
+        mk, label: `${_MONTH_LABELS[m - 1]} ${String(y).slice(2)}`,
+        hasG: !!(gros[mk]?.length), hasD: !!(digi[mk]?.length), hasF: !!(fse[mk]?.length),
+      };
+    });
+    if (!rows.some(r => r.hasG || r.hasD || r.hasF)) {
+      el.innerHTML = `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0">// Aucun fichier importé pour l'instant — déposez-en un ci-dessous</div>`;
+      return;
+    }
+    const cell = ok => `<td class="${ok ? 'gms-ok' : 'gms-missing'}">${ok ? '✓' : '—'}</td>`;
+    el.innerHTML = `<table class="gms-table">
+      <thead><tr><th>MOIS</th><th>GROSSISTE</th><th>DIGI</th><th>FSE</th></tr></thead>
+      <tbody>${rows.map(r => `<tr class="${r.mk === nowMk ? 'gms-current' : ''}"><td>${r.label}</td>${cell(r.hasG)}${cell(r.hasD)}${cell(r.hasF)}</tr>`).join('')}</tbody>
+    </table>`;
+  }
+
   function _updateGrossisteBtn() {
     const n = (state._grossisteUploads || []).length + (state._grossisteGmailFiles || []).length;
     const btn = document.getElementById('grossisteDetailsBtn');
     if (btn) btn.textContent = `Détails (${n} fichier${n !== 1 ? 's' : ''})`;
+    _renderGrossisteMonthStatus();
   }
 
   function _renderGrossisteList() {
@@ -11379,6 +11428,7 @@ function initConnecteurModal() {
       if (data.digi_month_stats || data.escompte_stats || data.mdl_stats) {
         state._digiSavedAt = Date.now();
         saveState(); saveCloudState(serializeState());
+        _renderGrossisteMonthStatus();
         if (state.currentPageId === 'recap') renderRecap();
         else if (state.currentPageId === 'verificateur') renderVerificateur();
       }
@@ -11541,6 +11591,7 @@ function initConnecteurModal() {
             }
           }
         } catch(_) {}
+        _renderGrossisteMonthStatus();
         if (state.currentPageId === 'recap') renderRecap();
         else if (state.currentPageId === 'verificateur') renderVerificateur();
       }
@@ -11757,7 +11808,7 @@ function initConnecteurModal() {
           if (data.digi_month_stats) { state._digiMonthStats = data.digi_month_stats; }
           if (data.escompte_stats)   { state._escompteStats  = data.escompte_stats;   }
           if (data.mdl_stats)        { state._mdlStats        = data.mdl_stats;        }
-          if (data.digi_month_stats || data.escompte_stats || data.mdl_stats) { saveState(); if (state.currentPageId === 'recap') renderRecap(); }
+          if (data.digi_month_stats || data.escompte_stats || data.mdl_stats) { saveState(); _renderGrossisteMonthStatus(); if (state.currentPageId === 'recap') renderRecap(); }
           // Indexer le fichier pour les liens de téléchargement du vérificateur
           state._digiUploads = [{ name: entry.file.name, months: data.months || [], lines: data.lines || 0, uploaded_at: Date.now() }, ...(state._digiUploads || []).slice(0, 19)];
           saveState();
@@ -11777,6 +11828,7 @@ function initConnecteurModal() {
             state._grossisteMonthStats = data.grossiste_month_stats;
             state._grossisteUploads = [{ name: entry.file.name, months: data.months || [], uploaded_at: Date.now() }, ...(state._grossisteUploads || []).slice(0, 19)];
             saveState(); saveCloudState(serializeState());
+            _renderGrossisteMonthStatus();
             if (state.currentPageId === 'recap') renderRecap();
             else if (state.currentPageId === 'verificateur') renderVerificateur();
           }
@@ -11795,6 +11847,7 @@ function initConnecteurModal() {
             state._fseSavedAt    = Date.now();
             state._fseUploads = [{ name: entry.file.name, months: data.months || [], uploaded_at: Date.now() }, ...(state._fseUploads || []).slice(0, 9)];
             saveState(); saveCloudState(serializeState());
+            _renderGrossisteMonthStatus();
             if (state.currentPageId === 'verificateur') renderVerificateur();
           }
           entry.status = 'done'; entry.statusMsg = `${(data.months||[]).length} mois · ${(data.total_ttc||0).toLocaleString('fr',{minimumFractionDigits:2})} € TTC`;
