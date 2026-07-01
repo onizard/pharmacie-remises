@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Xvfb (écran virtuel pour camoufox non-headless)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+
       - name: Install Python deps
         # playwright épinglé à 1.60.0 : la 1.61.0 (29/06/2026) envoie viewport.isMobile
         # au backend Firefox de camoufox qui le rejette → crash new_context/new_page.
@@ -48,4 +51,6 @@ jobs:
           LABS_FILTER:          ${{ inputs.labs_filter }}
           PDF_DEBUG:            "0"
           GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}   # AsyncCamoufox vérifie la version via l'API GitHub au lancement
-        run: python3 api_scraper/run_job.py
+        # xvfb-run : écran virtuel → camoufox tourne en navigateur réel (non headless),
+        # bien moins détecté par Cloudflare que le headless.
+        run: xvfb-run -a python3 api_scraper/run_job.py

@@ -478,7 +478,10 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
         progress(f"curl_cffi échoué ({ce}) — fallback camoufox…")
 
     # ── Phase 2 : camoufox (gère les challenges Cloudflare restants) ──────────────
-    async with AsyncCamoufox(headless=True, geoip=False) as browser:
+    # headless=False + humanize=True sur écran virtuel (Xvfb, cf. workflow) : un vrai
+    # navigateur est bien moins détecté que le headless → passe le challenge Cloudflare
+    # « Just a moment » que le headless ne résolvait plus.
+    async with AsyncCamoufox(headless=False, humanize=True, geoip=False) as browser:
         ctx  = await browser.new_context(**({"proxy": proxy_cfg} if proxy_cfg else {}))
 
         if session_cookies:
