@@ -2686,6 +2686,24 @@ async function _waitApiReady(waitMs = 12_000) {
   return false;
 }
 
+// POST multipart robuste : retry sur erreur réseau (« failed to fetch ») et sur
+// 502/503/504 (Render free en réveil). Reconstruit le FormData à chaque essai.
+async function _postFormRetry(url, token, buildForm, tries = 4) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const resp = await fetch(url, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: buildForm() });
+      if ([502, 503, 504].includes(resp.status) && i < tries - 1) { await new Promise(s => setTimeout(s, 4000 * (i + 1))); continue; }
+      return resp;
+    } catch (e) {
+      lastErr = e;
+      if (i < tries - 1) { await new Promise(s => setTimeout(s, 4000 * (i + 1))); continue; }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 async function _pollFseJob() {
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
@@ -11367,9 +11385,8 @@ function initConnecteurModal() {
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
       if (!session) throw new Error('Session expirée');
-      const form = new FormData(); form.append('file', file);
-      const resp = await fetch(`${API_URL}/parse/digi-pdf`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${session.access_token}` }, body: form,
+      const resp = await _postFormRetry(`${API_URL}/parse/digi-pdf`, session.access_token, () => {
+        const form = new FormData(); form.append('file', file); return form;
       });
       if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
       const data = await resp.json();
@@ -11394,7 +11411,7 @@ function initConnecteurModal() {
 
   async function _uploadGrossiste(file) {
     if (!file) return;
-    if (file.name.toLowerCase().endsWith('.pdf')) { _uploadDigiPdf(file); return; }
+    if (file.name.toLowerCase().endsWith('.pdf')) { await _uploadDigiPdf(file); return; }
     const exts = ['.xlsx', '.xls'];
     const hasExt = exts.some(e => file.name.toLowerCase().endsWith(e));
     if (!hasExt) {
@@ -11412,9 +11429,8 @@ function initConnecteurModal() {
       if (!session) throw new Error('Session expirée');
       // Upload DIRECT multipart vers l'API (comme DIGI) — le stockage self-hosted est du
       // MinIO brut (auth S3) sur lequel supabase-js .upload() ne peut pas s'authentifier.
-      const form = new FormData(); form.append('file', file);
-      const resp = await fetch(`${API_URL}/parse/grossiste-xlsx`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${session.access_token}` }, body: form,
+      const resp = await _postFormRetry(`${API_URL}/parse/grossiste-xlsx`, session.access_token, () => {
+        const form = new FormData(); form.append('file', file); return form;
       });
       if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
       const parsed = await resp.json();
@@ -11444,8 +11460,14 @@ function initConnecteurModal() {
   async function _uploadGrossisteMulti(files) {
     const list = [...(files || [])].filter(Boolean);
     if (!list.length) return;
-    if (list.length === 1) { await _uploadGrossiste(list[0]); return; }
     const statusEl = document.getElementById('grossisteUploadStatus');
+    // Réveiller Render (instance gratuite : ~50s de démarrage à froid) AVANT le 1er
+    // envoi — sinon la 1re requête échoue en « failed to fetch ».
+    if (typeof _waitApiReady === 'function') {
+      if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = '⏳ Réveil du serveur…'; }
+      await _waitApiReady(90_000);
+    }
+    if (list.length === 1) { await _uploadGrossiste(list[0]); return; }
     for (let i = 0; i < list.length; i++) {
       if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Fichier ${i+1}/${list.length} — ${list[i].name}…`; }
       await _uploadGrossiste(list[i]);
@@ -11737,10 +11759,34 @@ function initConnecteurModal() {
     _univRenderList();
   }
 
+  // POST multipart avec réveil serveur + retry (Render free : cold start ~50s,
+  // et 502/503/504 pendant le réveil). Reconstruit le FormData à chaque essai.
+  async function _uploadRetry(url, token, buildForm, tries = 4) {
+    let lastErr;
+    for (let i = 0; i < tries; i++) {
+      try {
+        const resp = await fetch(url, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: buildForm() });
+        if ([502, 503, 504].includes(resp.status) && i < tries - 1) { await new Promise(s => setTimeout(s, 3000 * (i + 1))); continue; }
+        return resp;
+      } catch (e) {
+        lastErr = e;
+        if (i < tries - 1) { await new Promise(s => setTimeout(s, 3000 * (i + 1))); continue; }
+        throw e;
+      }
+    }
+    throw lastErr;
+  }
+
   async function _univAnalyse() {
     const { data: { session } } = await window._sbClient.auth.getSession();
     if (!session) { showToast('Session expirée'); return; }
     const token = session.access_token;
+
+    // Réveiller Render (instance gratuite : ~50s de démarrage à froid) avant d'envoyer
+    // le premier fichier — sinon la 1re requête échoue en « failed to fetch ».
+    const _statEl0 = document.getElementById('univStatus');
+    if (_statEl0) { _statEl0.style.display = ''; _statEl0.className = 'conn-job-status running'; _statEl0.textContent = '⏳ Réveil du serveur…'; }
+    if (typeof _waitApiReady === 'function') { await _waitApiReady(90_000); }
 
     for (const entry of _univFiles) {
       if (entry.status !== 'pending') continue;
@@ -11748,9 +11794,8 @@ function initConnecteurModal() {
       try {
         if (entry.type === 'pdf') {
           // PDF DIGI → POST /parse/digi-pdf (multipart)
-          const form = new FormData(); form.append('file', entry.file); form.append('reset', entry.reset ? 'true' : 'false');
-          const resp = await fetch(`${API_URL}/parse/digi-pdf`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+          const resp = await _uploadRetry(`${API_URL}/parse/digi-pdf`, token, () => {
+            const form = new FormData(); form.append('file', entry.file); form.append('reset', entry.reset ? 'true' : 'false'); return form;
           });
           if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
           const data = await resp.json();
@@ -11767,9 +11812,8 @@ function initConnecteurModal() {
 
         } else if (entry.type === 'grossiste') {
           // XLSX grossiste → upload DIRECT multipart (sans MinIO, auth S3 inaccessible navigateur)
-          const form = new FormData(); form.append('file', entry.file); form.append('reset', entry.reset ? 'true' : 'false');
-          const resp = await fetch(`${API_URL}/parse/grossiste-xlsx`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+          const resp = await _uploadRetry(`${API_URL}/parse/grossiste-xlsx`, token, () => {
+            const form = new FormData(); form.append('file', entry.file); form.append('reset', entry.reset ? 'true' : 'false'); return form;
           });
           if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
           const data = await resp.json();
@@ -11784,9 +11828,8 @@ function initConnecteurModal() {
 
         } else if (entry.type === 'fse') {
           // XLSX FSE Banque → upload DIRECT multipart (sans MinIO)
-          const form = new FormData(); form.append('file', entry.file); form.append('reset', entry.reset ? 'true' : 'false');
-          const resp = await fetch(`${API_URL}/parse/fse-bank-xlsx`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+          const resp = await _uploadRetry(`${API_URL}/parse/fse-bank-xlsx`, token, () => {
+            const form = new FormData(); form.append('file', entry.file); form.append('reset', entry.reset ? 'true' : 'false'); return form;
           });
           if (!resp.ok) { const err = await resp.json().catch(() => ({})); const msg = Array.isArray(err.detail) ? JSON.stringify(err.detail) : (err.detail || `HTTP ${resp.status}`); throw new Error(msg); }
           const data = await resp.json();
