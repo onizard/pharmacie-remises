@@ -11402,8 +11402,10 @@ function initConnecteurModal() {
       const escLabel = data.escompte_cerp ? ` · ${data.escompte_cerp} escompte` : '';
       const mdlLabel = data.mdl_cerp       ? ` · ${data.mdl_cerp} MDL`          : '';
       if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}${escLabel}${mdlLabel}`; }
+      return true;
     } catch(e) {
       if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ ${e.message}`; }
+      return false;
     } finally {
       if (dropZone) dropZone.style.pointerEvents = '';
     }
@@ -11411,7 +11413,7 @@ function initConnecteurModal() {
 
   async function _uploadGrossiste(file) {
     if (!file) return;
-    if (file.name.toLowerCase().endsWith('.pdf')) { await _uploadDigiPdf(file); return; }
+    if (file.name.toLowerCase().endsWith('.pdf')) { return await _uploadDigiPdf(file); }
     const exts = ['.xlsx', '.xls'];
     const hasExt = exts.some(e => file.name.toLowerCase().endsWith(e));
     if (!hasExt) {
@@ -11447,9 +11449,11 @@ function initConnecteurModal() {
       }
       const months = (parsed.months || []).join(', ');
       if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${parsed.labos} labos · ${(parsed.total_ht || 0).toLocaleString('fr', {minimumFractionDigits:2})} € HT (${months})`; }
+      return true;
     } catch(e) {
       const msg = e?.message || String(e);
       if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ ${msg}`; }
+      return false;
     } finally {
       if (dropZone) dropZone.style.pointerEvents = '';
     }
@@ -11468,11 +11472,18 @@ function initConnecteurModal() {
       await _waitApiReady(90_000);
     }
     if (list.length === 1) { await _uploadGrossiste(list[0]); return; }
+    let ok = 0, ko = 0;
     for (let i = 0; i < list.length; i++) {
       if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Fichier ${i+1}/${list.length} — ${list[i].name}…`; }
-      await _uploadGrossiste(list[i]);
+      const r = await _uploadGrossiste(list[i]);
+      if (r === false) ko++; else ok++;
     }
-    if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${list.length} fichiers importés`; }
+    if (statusEl) {
+      statusEl.className = 'conn-job-status done';
+      statusEl.textContent = ko
+        ? `✓ ${ok} fichier(s) importé(s) · ${ko} ignoré(s) (format non reconnu ou scan illisible)`
+        : `✓ ${ok} fichiers importés`;
+    }
   }
 
   async function _syncGrossisteGmail() {
