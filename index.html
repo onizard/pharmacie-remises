@@ -11394,7 +11394,7 @@ function initConnecteurModal() {
 
   async function _uploadGrossiste(file) {
     if (!file) return;
-    if (file.name.toLowerCase().endsWith('.pdf')) { _uploadDigiPdf(file); return; }
+    if (file.name.toLowerCase().endsWith('.pdf')) { await _uploadDigiPdf(file); return; }
     const exts = ['.xlsx', '.xls'];
     const hasExt = exts.some(e => file.name.toLowerCase().endsWith(e));
     if (!hasExt) {
