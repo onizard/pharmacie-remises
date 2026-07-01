@@ -495,22 +495,42 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
 
         if not session_cookies:
             progress(f"Login via camoufox… (user: {username[:4]}***)")
-            await page.goto(f"{BASE_URL}/login/", timeout=90_000)
-            title = await page.title()
-            _cf_kw = ("just a moment", "checking", "verifying", "cloudflare")
-            if any(k in title.lower() for k in _cf_kw):
-                progress("Challenge Cloudflare détecté — attente formulaire (120s)…")
-
             # Attendre directement l'apparition d'un input (couvre CF challenge + React mount)
             _form_sel = (
                 "input[type='email'], input[name='email'], "
                 "input[name='username'], input[type='text'], input[type='password']"
             )
-            try:
-                await page.wait_for_selector(_form_sel, timeout=120_000)
-                progress(f"Formulaire présent. Title: {await page.title()!r}")
-            except Exception:
-                raise RuntimeError(f"Formulaire introuvable après 120s (URL: {page.url})")
+            _cf_kw   = ("just a moment", "checking", "verifying", "cloudflare", "un instant")
+            _form_ok = False
+            _last_url = ""
+            # Cloudflare est aléatoire → on retente jusqu'à 3 fois en rechargeant la
+            # page entre chaque essai (un reload aide souvent plus qu'une longue attente).
+            for _attempt in range(1, 4):
+                try:
+                    await page.goto(f"{BASE_URL}/login/", timeout=90_000, wait_until="domcontentloaded")
+                except Exception as _ge:
+                    progress(f"goto /login échec (essai {_attempt}/3): {_ge}")
+                    await asyncio.sleep(5)
+                    continue
+                title = await page.title()
+                if any(k in title.lower() for k in _cf_kw):
+                    progress(f"Challenge Cloudflare détecté (essai {_attempt}/3) — attente résolution JS…")
+                    # Laisser le challenge JS se résoudre (réseau qui se calme).
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=45_000)
+                    except Exception:
+                        pass
+                try:
+                    await page.wait_for_selector(_form_sel, timeout=90_000)
+                    progress(f"Formulaire présent (essai {_attempt}/3). Title: {await page.title()!r}")
+                    _form_ok = True
+                    break
+                except Exception:
+                    _last_url = page.url
+                    progress(f"Formulaire introuvable (essai {_attempt}/3, URL: {_last_url}) — on retente…")
+                    await asyncio.sleep(8)
+            if not _form_ok:
+                raise RuntimeError(f"Formulaire introuvable après 3 essais (URL: {_last_url})")
 
             # Phase 2a : login via JS fetch depuis le contexte browser
             # (le cookie CF clearance est déjà présent — même stratégie que test_connector.py)
