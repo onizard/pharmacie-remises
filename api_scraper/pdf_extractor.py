@@ -881,6 +881,35 @@ def _extract_escompte_cerp(text: str, provider: str, billing_date: str) -> list[
 
 # ── Point d'entrée public ──────────────────────────────────────────────────────
 
+def _ocr_pdf(pdf_path: Path) -> str:
+    """OCR de secours pour les PDF scannés (sans couche texte) : rend chaque page
+    en image via PyMuPDF puis lit le texte avec Tesseract (français). Traite les
+    pages une par une pour limiter la mémoire."""
+    try:
+        import io as _io
+        import fitz               # PyMuPDF (déjà en requirements)
+        import pytesseract
+        from PIL import Image
+    except Exception as e:
+        print(f"[OCR] dépendances manquantes : {e}", flush=True)
+        return ""
+    out = []
+    try:
+        doc = fitz.open(str(pdf_path))
+        for page in doc:
+            pix = page.get_pixmap(dpi=200)          # 200 DPI : bon compromis OCR/mémoire
+            img = Image.open(_io.BytesIO(pix.tobytes("png")))
+            out.append(pytesseract.image_to_string(img, lang="fra"))
+            img.close()
+            pix = None
+        doc.close()
+    except Exception as e:
+        print(f"[OCR] échec : {e}", flush=True)
+    txt = "\n".join(out)
+    print(f"[OCR] {len(txt)} caractères extraits", flush=True)
+    return txt
+
+
 def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> list[dict]:
     """
     Extrait les lignes d'une facture PDF. Pour les formats produits (alloga, csp,
@@ -890,6 +919,9 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
     try:
         with pdfplumber.open(str(pdf_path)) as pdf:
             full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+            # PDF scanné (aucune couche texte) → OCR de secours.
+            if not full_text.strip():
+                full_text = _ocr_pdf(pdf_path)
             fmt = _detect_format(full_text)
 
             if fmt in ("lcr_releve", "cpf_product", "teva_product"):
