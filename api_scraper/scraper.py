@@ -527,7 +527,18 @@ async def _run_scraper_async(creds: dict, progress: Callable) -> list[dict]:
                     break
                 except Exception:
                     _last_url = page.url
-                    progress(f"Formulaire introuvable (essai {_attempt}/3, URL: {_last_url}) — on retente…")
+                    # Diagnostic : titre + extrait de la page pour identifier le type
+                    # exact de blocage Cloudflare (challenge JS résoluble vs blocage dur).
+                    try:
+                        _dtitle = await page.title()
+                    except Exception:
+                        _dtitle = "?"
+                    try:
+                        _body = (await page.inner_text("body"))[:280].replace("\n", " ")
+                    except Exception:
+                        _body = "?"
+                    progress(f"Formulaire introuvable (essai {_attempt}/3, URL: {_last_url})")
+                    progress(f"   [DIAG] title={_dtitle!r} | body={_body!r}")
                     await asyncio.sleep(8)
             if not _form_ok:
                 raise RuntimeError(f"Formulaire introuvable après 3 essais (URL: {_last_url})")
