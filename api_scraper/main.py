@@ -807,12 +807,12 @@ async def parse_digi_pdf(
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
         _executor,
-        lambda: _parse_digi_pdf_sync(user_id, pdf_bytes, file.filename or "upload.pdf", reset=reset),
+        lambda: _parse_digi_pdf_sync(user_id, pdf_bytes, file.filename or "upload.pdf", user_token=token, reset=reset),
     )
     return result
 
 
-def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str, reset: bool = False) -> dict:
+def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str, user_token: str = "", reset: bool = False) -> dict:
     import os as _os, sys, tempfile
     from pathlib import Path as _Path
 
@@ -822,9 +822,11 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str, reset: b
                          _compute_escompte_stats, _merge_escompte_stats,
                          _compute_mdl_stats, _merge_mdl_stats)
 
-    from supabase_client import SUPA_URL, _supa_key
-    _tok = _supa_key()
-    HEADERS = {"apikey": _tok, "Authorization": f"Bearer {_tok}"}
+    # Lecture/écriture de l'état via le TOKEN UTILISATEUR (rôle authenticated) —
+    # comme le connecteur grossiste. La clé anon/service (_supa_key) n'a PAS le
+    # droit d'UPDATE sur user_state (permission denied 42501 → 500), alors que
+    # l'utilisateur peut écrire sa propre ligne (RLS auth.uid() = user_id).
+    from supabase_client import _get_state_sync, _patch_state_sync
 
     # Écrire le PDF dans un fichier temp, extraire les lignes
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -839,14 +841,8 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str, reset: b
     if not lines:
         raise HTTPException(status_code=422, detail="Aucune donnée extractible depuis ce PDF — format non reconnu ou labo hors cible.")
 
-    # Charger l'état courant
-    req = urllib.request.Request(
-        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}&select=state_json&limit=1",
-        headers=HEADERS,
-    )
-    with urllib.request.urlopen(req, timeout=15) as r:
-        rows = json.loads(r.read())
-    state = (rows[0]["state_json"] if rows else {}) or {}
+    # Charger l'état courant (via token utilisateur)
+    state = _get_state_sync(user_id, user_token=user_token) or {}
 
     escompte_lines = [l for l in lines if l.get("type") == "escompte"]
     mdl_lines      = [l for l in lines if l.get("type") == "mdl"]
@@ -877,14 +873,7 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str, reset: b
         merged_mdl = _merge_mdl_stats(merged_mdl, new_mdl)
         state["mdl_stats"] = merged_mdl
 
-    patch_body = json.dumps({"state_json": state}).encode()
-    patch_req  = urllib.request.Request(
-        f"{SUPA_URL}/rest/v1/user_state?user_id=eq.{user_id}",
-        data=patch_body, method="PATCH",
-        headers={**HEADERS, "Content-Type": "application/json", "Prefer": "return=minimal"},
-    )
-    with urllib.request.urlopen(patch_req, timeout=15):
-        pass
+    _patch_state_sync(user_id, state, user_token=user_token)
 
     months   = sorted(set(l.get("billing_date", "")[:7] for l in lines if l.get("billing_date")))
     n_rdp    = sum(1 for l in lines if l.get("type") == "rdp")
