@@ -11449,12 +11449,21 @@ function initConnecteurModal() {
       if (data.digi_month_stats) state._digiMonthStats = data.digi_month_stats;
       if (data.escompte_stats)   state._escompteStats  = data.escompte_stats;
       if (data.mdl_stats)        state._mdlStats        = data.mdl_stats;
+      // Enregistrer le fichier déposé dans la liste « Détails » (comme le grossiste),
+      // pour que les PDF Digi apparaissent bien parmi les fichiers en mémoire.
+      state._grossisteUploads = [
+        { name: file.name, size: file.size, uploaded_at: Date.now(), kind: 'digi', months: data.months || [] },
+        ...(state._grossisteUploads || []).filter(f => f.name !== file.name),
+      ].slice(0, 60);
       if (data.digi_month_stats || data.escompte_stats || data.mdl_stats) {
         state._digiSavedAt = Date.now();
-        saveState(); saveCloudState(serializeState());
-        if (state.currentPageId === 'recap') renderRecap();
-        else if (state.currentPageId === 'verificateur') renderVerificateur();
       }
+      saveState(); saveCloudState(serializeState());
+      _updateGrossisteBtn();
+      { const listEl = document.getElementById('grossisteFileList');
+        if (listEl && listEl.style.display !== 'none') _renderGrossisteList(); }
+      if (state.currentPageId === 'recap') renderRecap();
+      else if (state.currentPageId === 'verificateur') renderVerificateur();
       const escLabel = data.escompte_cerp ? ` · ${data.escompte_cerp} escompte` : '';
       const mdlLabel = data.mdl_cerp       ? ` · ${data.mdl_cerp} MDL`          : '';
       setStatus('done', `✓ ${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}${escLabel}${mdlLabel}`);
