@@ -2704,6 +2704,48 @@ async function _postFormRetry(url, token, buildForm, tries = 4) {
   throw lastErr;
 }
 
+// POST multipart via XHR — expose la progression d'envoi (0→100 %) que fetch()
+// ne donne pas. onUploadPct(pct) est appelé pendant l'envoi ; onUploadPct(100)
+// signale la fin de l'envoi (début de l'analyse serveur). Renvoie un objet
+// façon Response avec .ok/.status/.json() (json() synchrone).
+function _xhrPost(url, token, form, onUploadPct) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.timeout = 180_000;
+    if (xhr.upload && onUploadPct) {
+      xhr.upload.onprogress = e => { if (e.lengthComputable) onUploadPct(Math.min(99, Math.round(e.loaded / e.total * 100))); };
+      xhr.upload.onload     = () => onUploadPct(100);
+    }
+    xhr.onload  = () => resolve({
+      ok: xhr.status >= 200 && xhr.status < 300,
+      status: xhr.status,
+      json: () => { try { return JSON.parse(xhr.responseText); } catch (_) { return {}; } },
+    });
+    xhr.onerror   = () => reject(new Error('Failed to fetch'));
+    xhr.ontimeout = () => reject(new Error('Délai dépassé (3 min) — réessayez'));
+    xhr.send(form);
+  });
+}
+
+// Comme _postFormRetry mais avec progression d'envoi (XHR). Retry réseau + 502/503/504.
+async function _postFormProgress(url, token, buildForm, onUploadPct, tries = 4) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const resp = await _xhrPost(url, token, buildForm(), onUploadPct);
+      if ([502, 503, 504].includes(resp.status) && i < tries - 1) { await new Promise(s => setTimeout(s, 4000 * (i + 1))); continue; }
+      return resp;
+    } catch (e) {
+      lastErr = e;
+      if (i < tries - 1) { await new Promise(s => setTimeout(s, 4000 * (i + 1))); continue; }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 async function _pollFseJob() {
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
@@ -11380,16 +11422,30 @@ function initConnecteurModal() {
     if (!file) return;
     const statusEl = document.getElementById('grossisteUploadStatus');
     const dropZone = document.getElementById('grossisteDropZone');
-    if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Analyse PDF ${file.name}…`; }
+    const _short   = (n) => n.length > 34 ? n.slice(0, 31) + '…' : n;
+    const setStatus = (cls, html) => { if (statusEl) { statusEl.className = `conn-job-status ${cls}`; statusEl.innerHTML = html; } };
+    let analyseTimer = null;
+    const stopTimer = () => { if (analyseTimer) { clearInterval(analyseTimer); analyseTimer = null; } };
+    setStatus('running', `<span class="conn-sync-spin"></span>Préparation ${_short(file.name)}…`);
     if (dropZone) dropZone.style.pointerEvents = 'none';
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
       if (!session) throw new Error('Session expirée');
-      const resp = await _postFormRetry(`${API_URL}/parse/digi-pdf`, session.access_token, () => {
-        const form = new FormData(); form.append('file', file); return form;
-      });
-      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${resp.status}`); }
-      const data = await resp.json();
+      const resp = await _postFormProgress(`${API_URL}/parse/digi-pdf`, session.access_token,
+        () => { const form = new FormData(); form.append('file', file); return form; },
+        pct => {
+          if (pct < 100) {
+            setStatus('running', `<span class="conn-sync-spin"></span>Envoi ${_short(file.name)}… ${pct}%`);
+          } else if (!analyseTimer) {
+            // Envoi terminé : l'analyse serveur n'a pas de progression → compteur de temps.
+            const t0 = Date.now();
+            const tick = () => setStatus('running', `<span class="conn-sync-spin"></span>Analyse en cours… ${Math.round((Date.now() - t0) / 1000)}s`);
+            tick(); analyseTimer = setInterval(tick, 1000);
+          }
+        });
+      stopTimer();
+      if (!resp.ok) { const err = resp.json(); throw new Error(err.detail || `HTTP ${resp.status}`); }
+      const data = resp.json();
       if (data.digi_month_stats) state._digiMonthStats = data.digi_month_stats;
       if (data.escompte_stats)   state._escompteStats  = data.escompte_stats;
       if (data.mdl_stats)        state._mdlStats        = data.mdl_stats;
@@ -11401,12 +11457,14 @@ function initConnecteurModal() {
       }
       const escLabel = data.escompte_cerp ? ` · ${data.escompte_cerp} escompte` : '';
       const mdlLabel = data.mdl_cerp       ? ` · ${data.mdl_cerp} MDL`          : '';
-      if (statusEl) { statusEl.className = 'conn-job-status done'; statusEl.textContent = `✓ ${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}${escLabel}${mdlLabel}`; }
+      setStatus('done', `✓ ${data.lines || 0} ligne(s) · ${(data.months||[]).join(', ')}${escLabel}${mdlLabel}`);
       return true;
     } catch(e) {
-      if (statusEl) { statusEl.className = 'conn-job-status error'; statusEl.textContent = `❌ ${e.message}`; }
+      stopTimer();
+      setStatus('error', `❌ ${e.message}`);
       return false;
     } finally {
+      stopTimer();
       if (dropZone) dropZone.style.pointerEvents = '';
     }
   }
