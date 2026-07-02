@@ -483,21 +483,29 @@ def _extract_text_fallback(text: str, provider: str, billing_date: str) -> list[
 
 def _extract_doc_ref(text: str) -> str:
     """
-    Extrait le numéro de facture/avoir depuis un PDF (8-14 chiffres).
-    Cherche d'abord les prefixes explicites (N°, Réf, Facture…), puis
-    une séquence de 8-14 chiffres isolée en début de ligne.
-    Retourne le premier match ou ''.
+    Extrait le numéro de facture/avoir depuis un PDF.
+
+    Les documents Biogaran/Movianto étiquettent le numéro par « N°Facture : … »
+    (presta) ou « N°Document : … » (RDP). Le numéro commence toujours par un
+    chiffre (ex. 9006249886, 4M51003929) — on l'exige pour éviter de capturer le
+    mot « Facture »/« Document » lui-même (bug historique) ou un N°Client/Contrat.
+    Retourne le numéro en majuscules, ou ''.
     """
-    _KW = r'(?:[Nn][°o]\s*|[Rr][ée]f(?:[eé]rence)?\s*:?\s*|[Ff]acture\s*[Nn][°o]?\s*:?\s*|[Aa]voir\s*[Nn][°o]?\s*:?\s*|[Dd]ocument\s*[Nn][°o]?\s*:?\s*)'
-    m = re.search(_KW + r'([A-Z0-9][-A-Z0-9]{5,13})', text[:3000], re.IGNORECASE)
-    if m:
-        val = m.group(1).replace('-', '')
-        if val.isdigit() and 6 <= len(val) <= 14:
-            return val
-        if not val.isdigit() and 6 <= len(val) <= 20:
-            return val
-    # Fallback : 8-14 chiffres seuls sur une ligne dans les 600 premiers chars
-    for m2 in re.finditer(r'^\s*(\d{8,14})\s*$', text[:600], re.MULTILINE):
+    head = text[:3000]
+    # 1) Étiquettes explicites de numéro de document (ordre = priorité)
+    for pat in (
+        r'N[°o]\s*Facture\s*:?\s*([0-9][0-9A-Za-z]{4,15})',
+        r'N[°o]\s*Document\s*:?\s*([0-9][0-9A-Za-z]{4,15})',
+        r'N[°o]\s*Avoir\s*:?\s*([0-9][0-9A-Za-z]{4,15})',
+        r'Facture\s*N[°o]?\s*:?\s*([0-9][0-9A-Za-z]{4,15})',
+        r'Avoir\s*N[°o]?\s*:?\s*([0-9][0-9A-Za-z]{4,15})',
+        r'Document\s*N[°o]?\s*:?\s*([0-9][0-9A-Za-z]{4,15})',
+    ):
+        m = re.search(pat, head, re.IGNORECASE)
+        if m:
+            return m.group(1).upper()
+    # 2) Fallback : 8-14 chiffres seuls sur une ligne
+    for m2 in re.finditer(r'^\s*(\d{8,14})\s*$', head, re.MULTILINE):
         return m2.group(1)
     return ""
 
