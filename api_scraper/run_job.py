@@ -16,8 +16,20 @@ sys.path.insert(0, os.path.dirname(__file__))
 from scraper import run_scraper  # noqa: E402
 
 SUPA_URL    = "https://api.break-pharma.fr"
-SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
-USER_ID     = os.environ["USER_ID"]
+# NB : lecture NON bloquante à l'import. main.py (API Render) importe les
+# helpers de calcul (_compute_digi_month_stats, _merge_digi_stats…) sans que
+# USER_ID/SERVICE_KEY soient définis → un os.environ["…"] planterait l'import
+# et ferait échouer /parse/digi-pdf en 500. Ces variables ne servent qu'au job
+# GitHub Actions (main()), qui vérifie leur présence via _require_job_env().
+SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+USER_ID     = os.environ.get("USER_ID", "")
+
+
+def _require_job_env():
+    """Vérifie que les variables du job scraper sont présentes (Actions)."""
+    missing = [k for k in ("SUPABASE_SERVICE_KEY", "USER_ID") if not os.environ.get(k)]
+    if missing:
+        raise SystemExit(f"Variables d'environnement manquantes : {', '.join(missing)}")
 
 
 # ── Supabase helpers ───────────────────────────────────────────────────────────
@@ -381,6 +393,8 @@ def _save_results(lines: list, cache: dict, existing_stats: dict,
 
 def main():
     import signal as _sig
+
+    _require_job_env()
 
     # État partagé — mis à jour après chaque PDF pour que SIGTERM puisse sauver
     _partial: dict = {"lines": [], "cache": {}, "existing_stats": {}, "existing_escompte": {}, "existing_mdl": {}}
