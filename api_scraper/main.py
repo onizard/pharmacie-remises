@@ -834,7 +834,15 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str, user_tok
         tmp_path = _Path(tmp.name)
     try:
         provider = filename.rsplit(".", 1)[0][:80]
-        lines    = extract_invoice_lines(tmp_path, provider, "")
+        # Date de facturation depuis le nom de fichier DIGI (« …_JJMMAAAA.pdf »).
+        # Sert de mois de rattachement aux factures produits (CSP, alloga…) dont
+        # la date n'est pas fiable dans le texte PDF. Les avoirs RDP/presta gardent
+        # leur propre date/période lue dans le document.
+        billing_date = ""
+        m_fn = _re.search(r'_(\d{2})(\d{2})(\d{4})(?:\.[Pp][Dd][Ff])?$', filename)
+        if m_fn:
+            billing_date = f"{m_fn.group(3)}-{m_fn.group(2)}-{m_fn.group(1)}"
+        lines    = extract_invoice_lines(tmp_path, provider, billing_date)
     finally:
         tmp_path.unlink(missing_ok=True)
 
