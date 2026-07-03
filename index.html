@@ -11500,7 +11500,11 @@ function initConnecteurModal() {
       if (data.digi_month_stats || data.escompte_stats || data.mdl_stats) {
         state._digiSavedAt = Date.now();
       }
-      saveState(); saveCloudState(serializeState());
+      // saveState() seul : sa sauvegarde cloud est débouncée → 46 dépôts successifs
+      // se fusionnent en UNE écriture (au lieu de 46 saveCloudState concurrentes qui se
+      // courent après et laissent gagner un instantané ancien). Le dépôt multiple fait
+      // en plus une sauvegarde finale explicite (voir _uploadGrossisteMulti).
+      saveState();
       _updateGrossisteBtn();
       { const listEl = document.getElementById('grossisteFileList');
         if (listEl && listEl.style.display !== 'none') _renderGrossisteList(); }
@@ -11587,6 +11591,9 @@ function initConnecteurModal() {
       const r = await _uploadGrossiste(list[i]);
       if (r === false) ko++; else ok++;
     }
+    // Sauvegarde cloud finale UNIQUE et attendue : garantit que l'état complet
+    // (tous les fichiers déposés + stats) atteint le cloud, sans course entre dépôts.
+    try { await saveCloudState(serializeState()); } catch(_) {}
     if (statusEl) {
       statusEl.className = 'conn-job-status done';
       statusEl.textContent = ko
