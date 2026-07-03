@@ -3991,6 +3991,10 @@ function createLabContDom(lp) {
         const f = e.dataTransfer.files?.[0];
         if (f && f.name.toLowerCase().endsWith('.pdf')) applyYear();
       });
+      // Clic simple = « charger les conditions depuis la DB » (comme l'indique l'info-bulle) :
+      // force le barème de la base dans les conditions de l'année (RDP + coop), écrase les
+      // valeurs et sauvegarde. Empêche l'ouverture du sélecteur de fichier.
+      dropEl.addEventListener('click', e => { e.preventDefault(); applyYear(); });
       fileEl.addEventListener('change', () => { if (fileEl.files?.length) { applyYear(); fileEl.value = ''; } });
     });
   }
@@ -5017,7 +5021,7 @@ function initLabPage(conf) {
 
       const inp2 = document.createElement('input');
       inp2.type = 'text'; inp2.className = 'rsf-input inp-r2'; inp2.autocomplete = 'off'; inp2.name = 'rsf-r2';
-      inp2.placeholder = 'ex : 5.00'; inp2.value = row.remise2;
+      inp2.placeholder = '-'; inp2.value = row.remise2;
       if (row.remise2) inp2.classList.add('auto-c');
       if (row.excluded) inp2.classList.add('excl-r2');
       if (!isAdmin) inp2.readOnly = true;
@@ -5036,7 +5040,7 @@ function initLabPage(conf) {
 
       const inp3 = document.createElement('input');
       inp3.type = 'text'; inp3.className = 'rsf-input inp-r3'; inp3.autocomplete = 'off'; inp3.name = 'rsf-r3';
-      inp3.placeholder = 'ex : 2.50'; inp3.value = row.remise3;
+      inp3.placeholder = '-'; inp3.value = row.remise3;
       if (row.remise3) inp3.classList.add('auto-a');
       if (!isAdmin) inp3.readOnly = true;
       inp3.addEventListener('input', e => {
