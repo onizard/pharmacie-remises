@@ -2282,7 +2282,8 @@ async function saveRsfDefaults() {
     const base26 = lp._baseConds2026 || lp.conditions       || [];
     const base25 = lp._baseConds2025 || lp.conditions2025   || [];
     // Deux maps DISTINCTES par année (avant : une seule map où 2026 écrasait 2025,
-    // rendant impossible une RDP 2025 différente de 2026). Chaque ligne porte `year`.
+    // rendant impossible une RDP 2025 différente de 2026). Les paliers 2025 sont
+    // écrits sous une clé préfixée « y25:<rsf_pct> » (aucune colonne/DDL nécessaire).
     const seen26 = {}, seen25 = {};
     const excs26 = {}, r2excs26 = {};
     const excs25 = {}, r2excs25 = {};
