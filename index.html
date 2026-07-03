@@ -2304,8 +2304,8 @@ async function saveRsfDefaults() {
       Object.assign(excs25,   cond.exceptions    || {});
       Object.assign(r2excs25, cond.remise2Except || {});
     });
-    Object.entries(seen26).forEach(([rsf_pct, vals]) => rows.push({ lab: lp.selectedLab, rsf_pct, ...vals, year: 2026 }));
-    Object.entries(seen25).forEach(([rsf_pct, vals]) => rows.push({ lab: lp.selectedLab, rsf_pct, ...vals, year: 2025 }));
+    Object.entries(seen26).forEach(([rsf_pct, vals]) => rows.push({ lab: lp.selectedLab, rsf_pct, ...vals }));
+    Object.entries(seen25).forEach(([rsf_pct, vals]) => rows.push({ lab: lp.selectedLab, rsf_pct: 'y25:' + rsf_pct, ...vals }));
     // Sentinel : structure des conditions/paliers diffusée à tous les users.
     // Contient les flags (rsfOnly/showR3/forceFirst) ET, pour les paliers 2+, le CA cible
     // et la remise globale cible STANDARD. Les conditions sont triées CA décroissant →
@@ -2327,10 +2327,10 @@ async function saveRsfDefaults() {
       }));
     };
     if (base26.length) {
-      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds26', remise2: JSON.stringify(_compactConds(base26)), remise3: '', year: 2026 });
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds26', remise2: JSON.stringify(_compactConds(base26)), remise3: '' });
     }
     if (base25.length) {
-      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds25', remise2: JSON.stringify(_compactConds(base25)), remise3: '', year: 2025 });
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds25', remise2: JSON.stringify(_compactConds(base25)), remise3: '' });
     }
     if (Object.keys(excs25).length || Object.keys(excs26).length || Object.keys(r2excs25).length || Object.keys(r2excs26).length) {
       excRows.push({
@@ -2343,7 +2343,7 @@ async function saveRsfDefaults() {
   console.log('[BP] saveRsfDefaults — rows:', rows.length, '| excRows:', excRows.length);
   let ok = true;
   if (rows.length) {
-    const { error: e1 } = await sb.from('rsf_defaults').upsert(rows, { onConflict: 'lab,rsf_pct,year' });
+    const { error: e1 } = await sb.from('rsf_defaults').upsert(rows, { onConflict: 'lab,rsf_pct' });
     if (e1) { console.error('[BP] rsf_defaults upsert ERREUR:', e1); ok = false; }
     else console.log('[BP] rsf_defaults upsert OK');
   }
@@ -2359,12 +2359,12 @@ async function loadRsfDefaults() {
   const sb = window._sbClient;
   if (!sb) return;
   try {
-    const { data, error: e1 } = await sb.from('rsf_defaults').select('*');
+    const { data, error: e1 } = await sb.from('rsf_defaults').select('lab,rsf_pct,remise2,remise3');
     if (e1) { console.error('[BP] loadRsfDefaults rsf_defaults ERREUR:', e1); }
     else if (!data?.length) { console.warn('[BP] loadRsfDefaults: rsf_defaults vide'); }
     else {
       window._rsfDefaults   = {};   // paliers 2026 + sentinels (__cgv_*, __conds*)
-      window._rsfDefaults25 = {};   // paliers 2025 (colonne year = 2025)
+      window._rsfDefaults25 = {};   // paliers 2025 (clé préfixée « y25: »)
       window._labConditions = {};
       data.forEach(r => {
         const k = String(r.rsf_pct);
@@ -2374,14 +2374,18 @@ async function loadRsfDefaults() {
         } else if (k === '__conds25' && r.remise2) {
           try { if (!window._labConditions[r.lab]) window._labConditions[r.lab] = {}; window._labConditions[r.lab].conds25 = JSON.parse(r.remise2); } catch(_) {}
         }
-        // Paliers réels : router par année (year=2025 → _rsfDefaults25). Les sentinels
-        // __* (LED, structure) restent dans _rsfDefaults quelle que soit l'année.
-        // NB : avant la migration DB, r.year est absent → tout va dans _rsfDefaults
-        // (comportement identique à aujourd'hui — 2025 retombe sur 2026 via _defsFor).
-        const isSentinel = k.startsWith('__');
-        const store = (!isSentinel && String(r.year) === '2025') ? window._rsfDefaults25 : window._rsfDefaults;
-        if (!store[r.lab]) store[r.lab] = {};
-        store[r.lab][k] = { remise2: r.remise2, remise3: r.remise3 };
+        // Paliers 2025 : stockés sous clé préfixée « y25:<rsf_pct> » (aucune colonne
+        // year → aucun DDL). On retire le préfixe → _rsfDefaults25. Les autres lignes
+        // (paliers 2026 + sentinels __*) → _rsfDefaults. NB : tant qu'aucune valeur 2025
+        // n'a été saisie, _rsfDefaults25 est vide et 2025 retombe sur 2026 via _defsFor.
+        if (k.startsWith('y25:')) {
+          const realK = k.slice(4);
+          if (!window._rsfDefaults25[r.lab]) window._rsfDefaults25[r.lab] = {};
+          window._rsfDefaults25[r.lab][realK] = { remise2: r.remise2, remise3: r.remise3 };
+        } else {
+          if (!window._rsfDefaults[r.lab]) window._rsfDefaults[r.lab] = {};
+          window._rsfDefaults[r.lab][k] = { remise2: r.remise2, remise3: r.remise3 };
+        }
       });
       console.log('[BP] loadRsfDefaults OK:', Object.keys(window._rsfDefaults).length, 'labs 2026 —', Object.keys(window._rsfDefaults25).length, 'labs 2025 | _labConditions:', Object.keys(window._labConditions).length, 'labs');
     }
@@ -3818,7 +3822,7 @@ async function applyCgvYear(lp, year) {
   if (sb) {
     const tsKey = year === '2025' ? '__cgv_2025' : '__cgv_2026';
     const ts = new Date().toISOString();
-    await sb.from('rsf_defaults').upsert({ lab, rsf_pct: tsKey, remise2: ts, remise3: '', year: (year === '2025' ? 2025 : 2026) }, { onConflict: 'lab,rsf_pct,year' });
+    await sb.from('rsf_defaults').upsert({ lab, rsf_pct: tsKey, remise2: ts, remise3: '' }, { onConflict: 'lab,rsf_pct' });
     if (!window._rsfDefaults[lab]) window._rsfDefaults[lab] = {};
     window._rsfDefaults[lab][tsKey] = { remise2: ts, remise3: '' };
     window._syncCgvLeds?.(lp.uid, lab);
