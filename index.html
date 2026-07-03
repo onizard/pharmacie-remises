@@ -1724,10 +1724,20 @@ function applyDefaultExcepts(cond, lab) {
   });
 }
 
-function mkRsfValues(lab, paliers) {
+// Renvoie la map de defaults RDP (par rsf_pct) pour un labo et une année.
+// 2025 utilise _rsfDefaults25 ; à défaut (avant migration DB, ou labo non encore
+// dissocié) il retombe sur les valeurs 2026 — donc aucun changement de comportement
+// tant que des valeurs 2025 spécifiques n'ont pas été saisies.
+function _defsFor(lab, year) {
+  if (String(year) === '2025') return window._rsfDefaults25?.[lab] || window._rsfDefaults?.[lab] || null;
+  return window._rsfDefaults?.[lab] || null;
+}
+window._defsFor = _defsFor;
+
+function mkRsfValues(lab, paliers, year = '2026') {
   return paliers.map(v => {
     const excluded = lab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v));
-    const defs = !isAdmin && window._rsfDefaults?.[lab]?.[String(v)];
+    const defs = !isAdmin && _defsFor(lab, year)?.[String(v)];
     const r2 = defs ? defs.remise2 : (excluded || parseFloat(v) === -2.5 || parseFloat(v) === 0) ? '0' : '';
     const r3 = defs ? defs.remise3 : '';
     return { rsf_pct: v, remise2: r2, remise3: r3, excluded, hasExcept: false };
@@ -2271,14 +2281,16 @@ async function saveRsfDefaults() {
     // Toujours utiliser les conditions de BASE, pas la vue mensuelle courante
     const base26 = lp._baseConds2026 || lp.conditions       || [];
     const base25 = lp._baseConds2025 || lp.conditions2025   || [];
-    const seen = {};
+    // Deux maps DISTINCTES par année (avant : une seule map où 2026 écrasait 2025,
+    // rendant impossible une RDP 2025 différente de 2026). Chaque ligne porte `year`.
+    const seen26 = {}, seen25 = {};
     const excs26 = {}, r2excs26 = {};
     const excs25 = {}, r2excs25 = {};
     base26.forEach(cond => {
       (cond.rsfValues || []).forEach(r => {
         const key = String(r.rsf_pct);
-        if (!seen[key] && (r.remise2 || r.remise3))
-          seen[key] = { remise2: r.remise2 || '', remise3: r.remise3 || '' };
+        if (!seen26[key] && (r.remise2 || r.remise3))
+          seen26[key] = { remise2: r.remise2 || '', remise3: r.remise3 || '' };
       });
       Object.assign(excs26,   cond.exceptions    || {});
       Object.assign(r2excs26, cond.remise2Except || {});
@@ -2286,15 +2298,14 @@ async function saveRsfDefaults() {
     base25.forEach(cond => {
       (cond.rsfValues || []).forEach(r => {
         const key = String(r.rsf_pct);
-        if (!seen[key] && (r.remise2 || r.remise3))
-          seen[key] = { remise2: r.remise2 || '', remise3: r.remise3 || '' };
+        if (!seen25[key] && (r.remise2 || r.remise3))
+          seen25[key] = { remise2: r.remise2 || '', remise3: r.remise3 || '' };
       });
       Object.assign(excs25,   cond.exceptions    || {});
       Object.assign(r2excs25, cond.remise2Except || {});
     });
-    Object.entries(seen).forEach(([rsf_pct, vals]) => {
-      rows.push({ lab: lp.selectedLab, rsf_pct, ...vals });
-    });
+    Object.entries(seen26).forEach(([rsf_pct, vals]) => rows.push({ lab: lp.selectedLab, rsf_pct, ...vals, year: 2026 }));
+    Object.entries(seen25).forEach(([rsf_pct, vals]) => rows.push({ lab: lp.selectedLab, rsf_pct, ...vals, year: 2025 }));
     // Sentinel : structure des conditions/paliers diffusée à tous les users.
     // Contient les flags (rsfOnly/showR3/forceFirst) ET, pour les paliers 2+, le CA cible
     // et la remise globale cible STANDARD. Les conditions sont triées CA décroissant →
@@ -2316,10 +2327,10 @@ async function saveRsfDefaults() {
       }));
     };
     if (base26.length) {
-      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds26', remise2: JSON.stringify(_compactConds(base26)), remise3: '' });
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds26', remise2: JSON.stringify(_compactConds(base26)), remise3: '', year: 2026 });
     }
     if (base25.length) {
-      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds25', remise2: JSON.stringify(_compactConds(base25)), remise3: '' });
+      rows.push({ lab: lp.selectedLab, rsf_pct: '__conds25', remise2: JSON.stringify(_compactConds(base25)), remise3: '', year: 2025 });
     }
     if (Object.keys(excs25).length || Object.keys(excs26).length || Object.keys(r2excs25).length || Object.keys(r2excs26).length) {
       excRows.push({
@@ -2332,7 +2343,7 @@ async function saveRsfDefaults() {
   console.log('[BP] saveRsfDefaults — rows:', rows.length, '| excRows:', excRows.length);
   let ok = true;
   if (rows.length) {
-    const { error: e1 } = await sb.from('rsf_defaults').upsert(rows, { onConflict: 'lab,rsf_pct' });
+    const { error: e1 } = await sb.from('rsf_defaults').upsert(rows, { onConflict: 'lab,rsf_pct,year' });
     if (e1) { console.error('[BP] rsf_defaults upsert ERREUR:', e1); ok = false; }
     else console.log('[BP] rsf_defaults upsert OK');
   }
@@ -2348,11 +2359,12 @@ async function loadRsfDefaults() {
   const sb = window._sbClient;
   if (!sb) return;
   try {
-    const { data, error: e1 } = await sb.from('rsf_defaults').select('lab,rsf_pct,remise2,remise3');
+    const { data, error: e1 } = await sb.from('rsf_defaults').select('*');
     if (e1) { console.error('[BP] loadRsfDefaults rsf_defaults ERREUR:', e1); }
     else if (!data?.length) { console.warn('[BP] loadRsfDefaults: rsf_defaults vide'); }
     else {
-      window._rsfDefaults   = {};
+      window._rsfDefaults   = {};   // paliers 2026 + sentinels (__cgv_*, __conds*)
+      window._rsfDefaults25 = {};   // paliers 2025 (colonne year = 2025)
       window._labConditions = {};
       data.forEach(r => {
         const k = String(r.rsf_pct);
@@ -2362,11 +2374,16 @@ async function loadRsfDefaults() {
         } else if (k === '__conds25' && r.remise2) {
           try { if (!window._labConditions[r.lab]) window._labConditions[r.lab] = {}; window._labConditions[r.lab].conds25 = JSON.parse(r.remise2); } catch(_) {}
         }
-        // Tout mettre dans _rsfDefaults (les sentinels __cgv_* sont utilisés pour les LEDs)
-        if (!window._rsfDefaults[r.lab]) window._rsfDefaults[r.lab] = {};
-        window._rsfDefaults[r.lab][k] = { remise2: r.remise2, remise3: r.remise3 };
+        // Paliers réels : router par année (year=2025 → _rsfDefaults25). Les sentinels
+        // __* (LED, structure) restent dans _rsfDefaults quelle que soit l'année.
+        // NB : avant la migration DB, r.year est absent → tout va dans _rsfDefaults
+        // (comportement identique à aujourd'hui — 2025 retombe sur 2026 via _defsFor).
+        const isSentinel = k.startsWith('__');
+        const store = (!isSentinel && String(r.year) === '2025') ? window._rsfDefaults25 : window._rsfDefaults;
+        if (!store[r.lab]) store[r.lab] = {};
+        store[r.lab][k] = { remise2: r.remise2, remise3: r.remise3 };
       });
-      console.log('[BP] loadRsfDefaults OK:', Object.keys(window._rsfDefaults).length, 'labs —', Object.keys(window._rsfDefaults).join(', '), '| _labConditions:', Object.keys(window._labConditions).length, 'labs');
+      console.log('[BP] loadRsfDefaults OK:', Object.keys(window._rsfDefaults).length, 'labs 2026 —', Object.keys(window._rsfDefaults25).length, 'labs 2025 | _labConditions:', Object.keys(window._labConditions).length, 'labs');
     }
   } catch(e) { console.error('[BP] loadRsfDefaults catch:', e); }
   try {
@@ -2429,18 +2446,19 @@ function applyRsfDefaults() {
   if (isAdmin) return;
   state.labPages.forEach(lp => {
     if (!lp.selectedLab) return;
-    const defs   = window._rsfDefaults?.[lp.selectedLab];
+    const defs26 = _defsFor(lp.selectedLab, '2026');
+    const defs25 = _defsFor(lp.selectedLab, '2025');
     const exc26  = getLabExc(lp.selectedLab, '2026');
     const exc25  = getLabExc(lp.selectedLab, '2025');
     const tpl26  = window._labConditions?.[lp.selectedLab]?.conds26 || [];
     const tpl25  = window._labConditions?.[lp.selectedLab]?.conds25 || [];
-    if (!defs && !exc26 && !exc25) return;
+    if (!defs26 && !defs25 && !exc26 && !exc25) return;
     (lp.conditions || []).forEach((cond, i) => {
-      if (defs) (cond.rsfValues || []).forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
+      if (defs26) (cond.rsfValues || []).forEach(r => { const d = defs26[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
       applyCondExceptions(cond, tpl26[i], exc26);
     });
     (lp.conditions2025 || []).forEach((cond, i) => {
-      if (defs) (cond.rsfValues || []).forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
+      if (defs25) (cond.rsfValues || []).forEach(r => { const d = defs25[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; } });
       applyCondExceptions(cond, tpl25[i], exc25);
     });
     if (lp._reRenderCondTables) lp._reRenderCondTables();
@@ -3774,7 +3792,7 @@ async function applyCgvYear(lp, year) {
   if (!isAdmin || !lp.selectedLab) return;
   const lab = lp.selectedLab;
   await loadRsfDefaults();
-  const defs    = window._rsfDefaults?.[lab];
+  const defs    = _defsFor(lab, year);
   const excYear = getLabExc(lab, year);
   if (!defs && !excYear) { showToast(`⚠ Aucun default DB pour ${lab}`); return; }
 
@@ -3800,7 +3818,7 @@ async function applyCgvYear(lp, year) {
   if (sb) {
     const tsKey = year === '2025' ? '__cgv_2025' : '__cgv_2026';
     const ts = new Date().toISOString();
-    await sb.from('rsf_defaults').upsert({ lab, rsf_pct: tsKey, remise2: ts, remise3: '' }, { onConflict: 'lab,rsf_pct' });
+    await sb.from('rsf_defaults').upsert({ lab, rsf_pct: tsKey, remise2: ts, remise3: '', year: (year === '2025' ? 2025 : 2026) }, { onConflict: 'lab,rsf_pct,year' });
     if (!window._rsfDefaults[lab]) window._rsfDefaults[lab] = {};
     window._rsfDefaults[lab][tsKey] = { remise2: ts, remise3: '' };
     window._syncCgvLeds?.(lp.uid, lab);
@@ -4275,7 +4293,7 @@ function initLabPage(conf) {
 
   function addCondition() {
     const cond = mkCondState('c' + Date.now());
-    cond.rsfValues = mkRsfValues(s.selectedLab, s[paliersKey]);
+    cond.rsfValues = mkRsfValues(s.selectedLab, s[paliersKey], year);
     s[condKey].push(cond);
     const panel = buildCondPanel(cond);
     el.condPanels.appendChild(panel);
@@ -5123,11 +5141,11 @@ function initLabPage(conf) {
       s[paliersKey] = paliers;
       s[firstMapKey] = firstMap;
       s[countMapKey] = countMap || new Map();
-      s[condKey][0].rsfValues = mkRsfValues(lab, paliers);
+      s[condKey][0].rsfValues = mkRsfValues(lab, paliers, year);
       if (!isAdmin) {
         const _tKey = year === '2025' ? 'conds25' : 'conds26';
         const tmpl0 = window._labConditions?.[lab]?.[_tKey]?.[0] || null;
-        const defs  = window._rsfDefaults?.[lab];
+        const defs  = _defsFor(lab, year);
         const exc   = getLabExc(lab, year);
         // Flags comportement depuis admin — NE touche PAS caCondition/remiseGlobale (valeurs user)
         if (tmpl0) {
@@ -5151,7 +5169,7 @@ function initLabPage(conf) {
       // Non-admin : hériter des paliers 2+ standard diffusés par l'admin (palier 1 = perso).
       if (!isAdmin) {
         const _tmpl = window._labConditions?.[lab]?.[year === '2025' ? 'conds25' : 'conds26'] || [];
-        const defs  = window._rsfDefaults?.[lab];
+        const defs  = _defsFor(lab, year);
         const exc   = getLabExc(lab, year);
         for (let i = 1; i < _tmpl.length; i++) {
           const tc = _tmpl[i];
@@ -5161,7 +5179,7 @@ function initLabPage(conf) {
           c.forceFirst = tc.forceFirst || false;
           if (tc.remiseGlobale != null) c.remiseGlobale = tc.remiseGlobale;
           if (tc.caCondition   != null) c.caCondition   = tc.caCondition;
-          c.rsfValues = mkRsfValues(lab, paliers);
+          c.rsfValues = mkRsfValues(lab, paliers, year);
           if (defs) c.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
           applyCondExceptions(c, tc, exc);
           s[condKey].push(c);
@@ -5194,7 +5212,7 @@ function initLabPage(conf) {
       s[condKey].forEach(cond => {
         const prev = {};
         (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
-        cond.rsfValues = mkRsfValues(s.selectedLab, paliers).map(r => {
+        cond.rsfValues = mkRsfValues(s.selectedLab, paliers, year).map(r => {
           const p = prev[String(r.rsf_pct)];
           return p ? { ...r, remise2: p.remise2, remise3: p.remise3, excluded: p.excluded, hasExcept: p.hasExcept, remise2Manual: p.remise2Manual || false, remise3Manual: p.remise3Manual || false } : r;
         });
@@ -5317,12 +5335,12 @@ function initLabPage(conf) {
         cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
         // Récupération admin : si toutes les remise2 sont vides (état cloud tronqué)
         if (isAdmin && cond.rsfValues.every(r => !r.remise2 && !r.remise3)) {
-          const defs = window._rsfDefaults?.[lab];
+          const defs = _defsFor(lab, year);
           if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2 || ''; r.remise3 = d.remise3 || ''; } });
         }
         // Non-admin : toujours appliquer les defaults admin (remise2/remise3 + exceptions)
         if (!isAdmin) {
-          const defs = window._rsfDefaults?.[lab];
+          const defs = _defsFor(lab, year);
           if (defs) {
             cond.rsfValues.forEach(r => {
               const d = defs[String(r.rsf_pct)];
@@ -5352,11 +5370,11 @@ function initLabPage(conf) {
       // Fallback : aucune condition sauvegardée (migration, nouveau compte) → créer depuis template admin
       if (s[condKey].length === 0) {
         const cond = mkCondState('c0');
-        cond.rsfValues = mkRsfValues(lab, paliers);
+        cond.rsfValues = mkRsfValues(lab, paliers, year);
         if (!isAdmin) {
           const _tKey = year === '2025' ? 'conds25' : 'conds26';
           const tmpl0 = window._labConditions?.[lab]?.[_tKey]?.[0] || null;
-          const defs  = window._rsfDefaults?.[lab];
+          const defs  = _defsFor(lab, year);
           const exc   = getLabExc(lab, year);
           if (tmpl0) {
             cond.rsfOnly    = { ...(tmpl0.rsfOnly    || { enabled: false, libelles: [] }) };
@@ -5402,7 +5420,7 @@ function initLabPage(conf) {
       // perdre les valeurs saisies (préservées via prev) ni les lignes custom.
       if (s[paliersKey] && s[paliersKey].length) {
         const _lab = s.selectedLab;
-        const _defs = !isAdmin ? window._rsfDefaults?.[_lab] : null;
+        const _defs = !isAdmin ? _defsFor(_lab, year) : null;
         const prev = {};
         (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
         cond.rsfValues = s[paliersKey].map(v => {
@@ -10399,7 +10417,8 @@ async function saveProfile() {
     // mais remise3 (Coop) préservée si l'user a saisi sa propre valeur (coopR3 != null)
     state.labPages.forEach(lp => {
       if (!lp.selectedLab) return;
-      const defs = window._rsfDefaults?.[lp.selectedLab];
+      const defs26 = _defsFor(lp.selectedLab, '2026');
+      const defs25 = _defsFor(lp.selectedLab, '2025');
       // Non-admin : re-synchroniser la STRUCTURE des paliers depuis le template admin
       // pour que le pop-up reflète la dernière diffusion (paliers 2+, CA cible & remise
       // globale standard) sans recharger la page. Le palier 1 (idx 0) reste personnel.
@@ -10430,8 +10449,7 @@ async function saveProfile() {
           base.forEach((cond, i) => applyCondExceptions(cond, tmpl[i], exc));
         });
       }
-      const conds = [...(lp._baseConds2026 || lp.conditions || []), ...(lp._baseConds2025 || lp.conditions2025 || [])];
-      conds.forEach(cond => {
+      const _applyDefsYear = (arr, defs) => (arr || []).forEach(cond => {
         if (defs) cond.rsfValues.forEach(r => {
           const d = defs[String(r.rsf_pct)];
           if (d) {
@@ -10445,6 +10463,8 @@ async function saveProfile() {
           cond.rsfValues.forEach(r => { r.remise3 = String(cond.coopR3); });
         }
       });
+      _applyDefsYear(lp._baseConds2026 || lp.conditions || [], defs26);
+      _applyDefsYear(lp._baseConds2025 || lp.conditions2025 || [], defs25);
     });
     content.innerHTML = _buildLabsInfoHtml(filterLab || null);
   }
@@ -10482,22 +10502,23 @@ async function saveProfile() {
     await loadRsfDefaults();
     state.labPages.forEach(lp => {
       if (!lp.selectedLab) return;
-      const defs   = window._rsfDefaults?.[lp.selectedLab];
+      const defs26 = _defsFor(lp.selectedLab, '2026');
+      const defs25 = _defsFor(lp.selectedLab, '2025');
       const exc26  = getLabExc(lp.selectedLab, '2026');
       const exc25  = getLabExc(lp.selectedLab, '2025');
-      if (!defs && !exc26 && !exc25) return;
+      if (!defs26 && !defs25 && !exc26 && !exc25) return;
       // Applique les defaults à TOUTES les conditions : actives, base et overrides mensuels.
       // Sans ça, si l'admin est sur un mois, _baseConds2026 n'est pas mis à jour
       // et serializeState() y lit remise3='' alors que conditions (mensuel) a remise3 correct.
       const _seen = new Set();
-      const _applyArr = (arr, exc) => (Array.isArray(arr) ? arr : [arr]).forEach(cond => {
+      const _applyArr = (arr, exc, defs) => (Array.isArray(arr) ? arr : [arr]).forEach(cond => {
         if (!cond || _seen.has(cond)) return;
         _seen.add(cond);
         if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { if (!r.remise2Manual) r.remise2 = d.remise2; if (!r.remise3Manual) r.remise3 = d.remise3; } });
         if (exc) { Object.assign(cond.exceptions, exc.exceptions || {}); Object.assign(cond.remise2Except, exc.remise2Except || {}); }
       });
-      [lp.conditions, lp._baseConds2026, ...Object.values(lp.condsByMonth?.[2026] || {})].filter(Boolean).forEach(arr => _applyArr(arr, exc26));
-      [lp.conditions2025, lp._baseConds2025, ...Object.values(lp.condsByMonth?.[2025] || {})].filter(Boolean).forEach(arr => _applyArr(arr, exc25));
+      [lp.conditions, lp._baseConds2026, ...Object.values(lp.condsByMonth?.[2026] || {})].filter(Boolean).forEach(arr => _applyArr(arr, exc26, defs26));
+      [lp.conditions2025, lp._baseConds2025, ...Object.values(lp.condsByMonth?.[2025] || {})].filter(Boolean).forEach(arr => _applyArr(arr, exc25, defs25));
       if (lp._reRenderCondTables)     lp._reRenderCondTables();
       if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();
     });
@@ -10535,16 +10556,17 @@ async function saveProfile() {
         await loadRsfDefaults();
         state.labPages.forEach(lp => {
           if (!lp.selectedLab) return;
-          const defs  = window._rsfDefaults?.[lp.selectedLab];
+          const defs26 = _defsFor(lp.selectedLab, '2026');
+          const defs25 = _defsFor(lp.selectedLab, '2025');
           const exc26 = getLabExc(lp.selectedLab, '2026');
           const exc25 = getLabExc(lp.selectedLab, '2025');
-          if (!defs && !exc26 && !exc25) return;
+          if (!defs26 && !defs25 && !exc26 && !exc25) return;
           (lp.conditions || []).forEach(cond => {
-            if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; r.remise2Manual = false; r.remise3Manual = false; } });
+            if (defs26) cond.rsfValues.forEach(r => { const d = defs26[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; r.remise2Manual = false; r.remise3Manual = false; } });
             if (exc26) { Object.assign(cond.exceptions, exc26.exceptions || {}); Object.assign(cond.remise2Except, exc26.remise2Except || {}); }
           });
           (lp.conditions2025 || []).forEach(cond => {
-            if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; r.remise2Manual = false; r.remise3Manual = false; } });
+            if (defs25) cond.rsfValues.forEach(r => { const d = defs25[String(r.rsf_pct)]; if (d) { r.remise2 = d.remise2; r.remise3 = d.remise3; r.remise2Manual = false; r.remise3Manual = false; } });
             if (exc25) { Object.assign(cond.exceptions, exc25.exceptions || {}); Object.assign(cond.remise2Except, exc25.remise2Except || {}); }
           });
           if (lp._reRenderCondTables)     lp._reRenderCondTables();
