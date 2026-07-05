@@ -2365,6 +2365,7 @@ async function loadRsfDefaults() {
     else {
       window._rsfDefaults   = {};   // paliers 2026 + sentinels (__cgv_*, __conds*)
       window._rsfDefaults25 = {};   // paliers 2025 (clé préfixée « y25: »)
+      window._y25cut        = {};   // bascule mensuelle 2025 : à partir de ce mois, barème = 2026
       window._labConditions = {};
       data.forEach(r => {
         const k = String(r.rsf_pct);
@@ -2373,6 +2374,10 @@ async function loadRsfDefaults() {
           try { if (!window._labConditions[r.lab]) window._labConditions[r.lab] = {}; window._labConditions[r.lab].conds26 = JSON.parse(r.remise2); } catch(_) {}
         } else if (k === '__conds25' && r.remise2) {
           try { if (!window._labConditions[r.lab]) window._labConditions[r.lab] = {}; window._labConditions[r.lab].conds25 = JSON.parse(r.remise2); } catch(_) {}
+        } else if (k === '__y25cut' && r.remise2) {
+          // Mois (1-12) à partir duquel, en 2025, le barème RDP bascule sur celui de 2026
+          const _cm = parseInt(r.remise2, 10);
+          if (_cm >= 1 && _cm <= 12) window._y25cut[r.lab] = _cm;
         }
         // Paliers 2025 : stockés sous clé préfixée « y25:<rsf_pct> » (aucune colonne
         // year → aucun DDL). On retire le préfixe → _rsfDefaults25. Les autres lignes
@@ -6133,7 +6138,26 @@ function _verifGetCond(labDisplay, year, month) {
   }
   const conds = getEffectiveCondsForMonth(lp, year, month);
   const idx   = _verifAutoCondIdx(labDisplay, year, conds);
-  return conds?.[idx] ?? conds?.[0] ?? null;
+  const cond  = conds?.[idx] ?? conds?.[0] ?? null;
+  return _applyY25Cutover(cond, labDisplay, year, month);
+}
+
+// Bascule mensuelle 2025 : à partir du mois __y25cut (ex. Biogaran = 9 → sept),
+// le barème RDP (remise2) et la coop (remise3) passent à ceux de 2026. Renvoie un
+// CLONE avec les valeurs 2026 remappées par palier (sans muter la condition d'origine).
+function _applyY25Cutover(cond, lab, year, month) {
+  if (!cond || year !== 2025) return cond;
+  const cut = window._y25cut?.[lab];
+  if (!cut || month < cut) return cond;
+  const defs26 = window._rsfDefaults?.[lab];
+  if (!defs26) return cond;
+  return {
+    ...cond,
+    rsfValues: (cond.rsfValues || []).map(r => {
+      const d = defs26[String(r.rsf_pct)];
+      return d ? { ...r, remise2: d.remise2, remise3: d.remise3 } : { ...r };
+    }),
+  };
 }
 
 // R2 moyenne pondérée des paliers actifs (non exclus, remise2 > 0)
