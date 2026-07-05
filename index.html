@@ -6160,6 +6160,19 @@ function _applyY25Cutover(cond, lab, year, month) {
   };
 }
 
+// Comparateur N-1 : conditions du mois. Pour 2025, à partir du mois de bascule
+// (__y25cut, ex. Biogaran = 9), on utilise les CONDITIONS 2026 ENTIÈRES
+// (remiseGlobale + coopR3 + paliers), comme demandé (« sept–déc 2025 = CGV 2026 »).
+// Le comparateur lit remiseGlobale/coopR3 au niveau condition, d'où le swap complet
+// (le simple remap de paliers d'_applyY25Cutover ne suffirait pas ici).
+function _condsN1ForMonth(lp, n1Year, month) {
+  const cut = window._y25cut?.[lp?.selectedLab];
+  if (n1Year === 2025 && cut && month >= cut) {
+    return getEffectiveCondsForMonth(lp, 2026, month);
+  }
+  return getEffectiveCondsForMonth(lp, n1Year, month);
+}
+
 // R2 moyenne pondérée des paliers actifs (non exclus, remise2 > 0)
 function _verifR2avg(cond) {
   const vals = (cond?.rsfValues || []).filter(r => !r.excluded && parseFloat(r.remise2) > 0);
@@ -8622,7 +8635,7 @@ async function launchSimulation() {
           monthsElapsed++;
           if (cumulCA === 0 || _bioN1SkipR2R3) return;
           const annualizedCA = (cumulCA / monthsElapsed) * 12;
-          const conds    = getEffectiveCondsForMonth(lp, n1Year, monthNum);
+          const conds    = _condsN1ForMonth(lp, n1Year, monthNum);
           const bestCond = getBestCondFromArray(conds, annualizedCA);
           if (bestCond) {
             const r2_pct = parseFloat(bestCond.remiseGlobale) || 0;
@@ -8633,7 +8646,7 @@ async function launchSimulation() {
         });
 
         const totalRemise = r2r3_paid > 0 ? r2r3_paid : rsf_total;
-        const lastConds   = getEffectiveCondsForMonth(lp, n1Year, 12);
+        const lastConds   = _condsN1ForMonth(lp, n1Year, 12);
         const annFinal    = monthsElapsed > 0 ? (cumulCA / monthsElapsed) * 12 : 0;
         const finalCond   = getBestCondFromArray(lastConds, annFinal);
         const allThr      = lastConds.filter(c => parseFloat(c.caCondition) > 0).map(c => parseFloat(c.caCondition));
