@@ -3871,7 +3871,6 @@ function createLabContDom(lp) {
       </div>
       <div style="display:flex;align-items:center">
         <div class="year-label">2026</div>
-        ${isAdmin ? `<label class="cgv-drop-label" id="cgvDrop26-${uid}" title="Déposer le PDF CGV 2026 ou cliquer pour charger les conditions depuis la DB"><span class="cgv-led" id="cgvLed26-${uid}"></span><input type="file" accept=".pdf" style="display:none" id="cgvFile26-${uid}"></label>` : ''}
       </div>
       <div class="mon-btns" id="monBtns26-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}<button class="mon-idem-mois" title="Appliquer ce palier à tous les mois 2026">IDEM MOIS</button></div>
       <div class="cond-tabs" id="condTabs-${uid}"></div>
@@ -3879,7 +3878,6 @@ function createLabContDom(lp) {
       <div style="margin-top:24px">
         <div style="display:flex;align-items:center">
           <div class="year-label year-label-toggle" id="yearToggle25-${uid}">2025 ▶</div>
-          ${isAdmin ? `<label class="cgv-drop-label" id="cgvDrop25-${uid}" title="Déposer le PDF CGV 2025 ou cliquer pour charger les conditions depuis la DB"><span class="cgv-led" id="cgvLed25-${uid}"></span><input type="file" accept=".pdf" style="display:none" id="cgvFile25-${uid}"></label>` : ''}
         </div>
         <div id="yearBody25-${uid}" style="display:none">
           <div id="contractRow25-${uid}" style="padding:10px 0 14px;border-bottom:1px solid rgba(0,229,255,.08);margin-bottom:14px">
