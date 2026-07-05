@@ -3829,11 +3829,13 @@ async function applyCgvYear(lp, year) {
     window._syncCgvLeds?.(lp.uid, lab);
   }
 
+  // NE PAS ré-écrire rsf_defaults ici : un CHARGEMENT depuis la base ne doit jamais
+  // re-diffuser. Avant, ce saveRsfDefaults() renvoyait les conditions (parfois
+  // périmées) vers la base et corrompait le barème (ex. RDP 2025 30→20). Le
+  // chargement met à jour les conditions de l'admin + son user_state (saveState).
+  // Pour (re)diffuser volontairement, l'admin utilise « ↑ SAVE ».
   saveState();
-  const _defSaved = await saveRsfDefaults();
-  showToast(_defSaved
-    ? `✓ Conditions ${year} ${lab} chargées et sauvegardées dans le cloud`
-    : `✓ Conditions ${year} ${lab} chargées — ⚠ erreur sauvegarde defaults`);
+  showToast(`✓ Conditions ${year} ${lab} chargées depuis la base`);
 }
 
 // ── Create lab condition container ────────────────────────────────────────────
