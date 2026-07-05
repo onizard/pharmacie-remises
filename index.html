@@ -5345,16 +5345,18 @@ function initLabPage(conf) {
             cond.rsfValues.push({ rsf_pct: cr.rsf_pct, remise2: cr.remise2 || '', remise3: cr.remise3 || '', excluded: cr.excluded || false, hasExcept: cr.hasExcept || false, custom: true, remise2Manual: cr.remise2Manual || false, remise3Manual: cr.remise3Manual || false });
         });
         cond.rsfValues.sort((a, b) => parseFloat(a.rsf_pct) - parseFloat(b.rsf_pct));
-        // Admin : compléter les paliers laissés VIDES depuis les defaults DB, palier
-        // par palier (avant : tout-ou-rien — si un seul palier avait une valeur, aucun
-        // ne se remplissait → RDP vides). Ne touche jamais une valeur saisie (manual).
+        // Admin : re-synchroniser les paliers NON saisis manuellement depuis la base
+        // (la base est la vérité pour les valeurs non-manuelles). Avant, on ne remplissait
+        // que les cases vides → une valeur périmée (ex. RDP 20 au lieu de 30) restait et
+        // était re-diffusée au SAVE. Désormais : quand je mets la base à jour, l'affichage
+        // admin suit tout seul au rechargement. Les valeurs saisies (manual) sont préservées.
         if (isAdmin) {
           const defs = _defsFor(lab, year);
           if (defs) cond.rsfValues.forEach(r => {
             const d = defs[String(r.rsf_pct)];
             if (!d) return;
-            if (!r.remise2Manual && !r.remise2) r.remise2 = d.remise2 || '';
-            if (!r.remise3Manual && !r.remise3) r.remise3 = d.remise3 || '';
+            if (!r.remise2Manual) r.remise2 = d.remise2 || '';
+            if (!r.remise3Manual) r.remise3 = d.remise3 || '';
           });
         }
         // Non-admin : toujours appliquer les defaults admin (remise2/remise3 + exceptions)
