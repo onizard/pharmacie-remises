@@ -1320,7 +1320,7 @@
 
   <header class="site-header">
     <div>
-      <a href="#" class="logo" onclick="event.preventDefault();goTo('recap')">BREAK-PHARMA</a>
+      <a href="#" class="logo" onclick="event.preventDefault();goTo('verificateur');renderVerificateur()">BREAK-PHARMA</a>
       <div class="header-sub">comparateur de génériques</div>
     </div>
     <div class="header-right">
@@ -1521,9 +1521,8 @@
   </div>
 
   <nav class="main-tabs" id="mainTabs">
-    <button class="main-tab" data-page="recap">RÉCAP ACHATS</button>
-    <button class="main-tab" data-page="comparateur">COMPARATEUR</button>
     <button class="main-tab" data-page="verificateur">VÉRIFICATEUR DE REMISE</button>
+    <button class="main-tab" data-page="comparateur">COMPARATEUR</button>
   </nav>
 
   <div id="stepbar" style="display:none"></div>
@@ -10496,17 +10495,18 @@ async function saveProfile() {
   document.getElementById('labsInfoModal')?.addEventListener('click', e => { if (e.target === document.getElementById('labsInfoModal')) document.getElementById('labsInfoModal').classList.remove('open'); });
 
   // ── CONDITIONS LABO button (toggle : aller/revenir) ───────────────────────────
+  const _closeLabs = () => { goTo('verificateur'); renderVerificateur(); };
   document.getElementById('btnConditionsLabo')?.addEventListener('click', () => {
-    if (state.currentPageId === 'labs') goTo('recap');
+    if (state.currentPageId === 'labs') _closeLabs();
     else goTo('labs');
   });
   // Fermeture modal labs : bouton ✕, clic sur l'overlay, touche ESC
-  document.getElementById('labsModalClose')?.addEventListener('click', () => goTo('recap'));
+  document.getElementById('labsModalClose')?.addEventListener('click', _closeLabs);
   document.getElementById('page-labs')?.addEventListener('click', e => {
-    if (e.target === document.getElementById('page-labs')) goTo('recap');
+    if (e.target === document.getElementById('page-labs')) _closeLabs();
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && state.currentPageId === 'labs') goTo('recap');
+    if (e.key === 'Escape' && state.currentPageId === 'labs') _closeLabs();
   });
 
   document.getElementById('btnSaveConditions')?.addEventListener('click', async () => {
@@ -10641,17 +10641,18 @@ async function saveProfile() {
     renderLabGrid();
     const firstConfigured = state.labPages.find(lp => lp.selectedLab);
     if (firstConfigured) { switchToLab(firstConfigured.uid); renderLabGrid(); }
-    // Page cible : admin peut voir results, sinon par défaut recap
-    let targetPage = saved.currentPageId || 'recap';
-    if (!['results', 'labs', 'recap', 'verificateur'].includes(targetPage)) targetPage = 'recap';
-    if (!isAdmin && ['results', 'labs'].includes(targetPage)) targetPage = 'recap';
+    // Page d'accueil : vérificateur par défaut (le module « récap achats » a été retiré).
+    // Un ancien currentPageId 'recap' retombe donc sur le vérificateur.
+    let targetPage = saved.currentPageId || 'verificateur';
+    if (!['results', 'labs', 'verificateur'].includes(targetPage)) targetPage = 'verificateur';
+    if (!isAdmin && ['results', 'labs'].includes(targetPage)) targetPage = 'verificateur';
     goTo(targetPage);
     if (targetPage === 'results') launchComparateur();
     setTimeout(() => renderRecap(), 0);
     if (targetPage === 'verificateur') setTimeout(() => renderVerificateur(), 0);
   } else {
-    goTo('recap');
-    setTimeout(() => renderRecap(), 0);
+    goTo('verificateur');
+    setTimeout(() => renderVerificateur(), 0);
   }
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
