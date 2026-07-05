@@ -11460,6 +11460,10 @@ function initConnecteurModal() {
     setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
   }
 
+  // Contexte de dépôt multiple : { done, total }. Non-null pendant un lot → l'état
+  // affiche une progression globale en % au lieu du temps écoulé.
+  let _digiBatch = null;
+
   async function _uploadDigiPdf(file) {
     if (!file) return;
     const statusEl = document.getElementById('grossisteUploadStatus');
@@ -11476,13 +11480,16 @@ function initConnecteurModal() {
       const resp = await _postFormProgress(`${API_URL}/parse/digi-pdf`, session.access_token,
         () => { const form = new FormData(); form.append('file', file); return form; },
         pct => {
-          if (pct < 100) {
+          if (_digiBatch) {
+            // Dépôt multiple : progression GLOBALE en % (fichiers traités + envoi du
+            // fichier courant) / total. Plus parlant que le temps écoulé.
+            const overall = Math.round((_digiBatch.done + pct / 100) / _digiBatch.total * 100);
+            setStatus('running', `<span class="conn-sync-spin"></span>${overall}% · fichier ${_digiBatch.done + 1}/${_digiBatch.total} — ${_short(file.name)}`);
+          } else if (pct < 100) {
             setStatus('running', `<span class="conn-sync-spin"></span>Envoi ${_short(file.name)}… ${pct}%`);
-          } else if (!analyseTimer) {
-            // Envoi terminé : l'analyse serveur n'a pas de progression → compteur de temps.
-            const t0 = Date.now();
-            const tick = () => setStatus('running', `<span class="conn-sync-spin"></span>Analyse en cours… ${Math.round((Date.now() - t0) / 1000)}s`);
-            tick(); analyseTimer = setInterval(tick, 1000);
+          } else {
+            // Fichier unique : l'analyse serveur n'a pas de progression → spinner simple.
+            setStatus('running', `<span class="conn-sync-spin"></span>Analyse…`);
           }
         });
       stopTimer();
@@ -11586,10 +11593,17 @@ function initConnecteurModal() {
     }
     if (list.length === 1) { await _uploadGrossiste(list[0]); return; }
     let ok = 0, ko = 0;
-    for (let i = 0; i < list.length; i++) {
-      if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.textContent = `⏳ Fichier ${i+1}/${list.length} — ${list[i].name}…`; }
-      const r = await _uploadGrossiste(list[i]);
-      if (r === false) ko++; else ok++;
+    _digiBatch = { done: 0, total: list.length };
+    try {
+      for (let i = 0; i < list.length; i++) {
+        _digiBatch.done = i;
+        const overall = Math.round(i / list.length * 100);
+        if (statusEl) { statusEl.className = 'conn-job-status running'; statusEl.innerHTML = `<span class="conn-sync-spin"></span>${overall}% · fichier ${i+1}/${list.length} — ${list[i].name}`; }
+        const r = await _uploadGrossiste(list[i]);
+        if (r === false) ko++; else ok++;
+      }
+    } finally {
+      _digiBatch = null;
     }
     // Sauvegarde cloud finale UNIQUE et attendue : garantit que l'état complet
     // (tous les fichiers déposés + stats) atteint le cloud, sans course entre dépôts.
