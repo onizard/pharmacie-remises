@@ -6167,10 +6167,29 @@ function _applyY25Cutover(cond, lab, year, month) {
 // (le simple remap de paliers d'_applyY25Cutover ne suffirait pas ici).
 function _condsN1ForMonth(lp, n1Year, month) {
   const cut = window._y25cut?.[lp?.selectedLab];
-  if (n1Year === 2025 && cut && month >= cut) {
-    return getEffectiveCondsForMonth(lp, 2026, month);
-  }
-  return getEffectiveCondsForMonth(lp, n1Year, month);
+  const base25 = getEffectiveCondsForMonth(lp, n1Year, month);
+  if (!(n1Year === 2025 && cut && month >= cut)) return base25;
+  // Sept–déc 2025 : barème (RDP) + remise globale + coop = 2026, MAIS la cible de CA
+  // (caCondition) reste celle de 2025 toute l'année. On part des conditions 2025 (on
+  // garde leur caCondition + structure) et on remplace remiseGlobale / coopR3 / paliers
+  // par ceux des conditions 2026 correspondantes (appariées par cible de CA décroissante).
+  const lab    = lp.selectedLab;
+  const defs26 = window._rsfDefaults?.[lab];
+  const conds26 = getEffectiveCondsForMonth(lp, 2026, month) || [];
+  const _byCA  = arr => [...arr].sort((a, b) => (parseFloat(b.caCondition) || 0) - (parseFloat(a.caCondition) || 0));
+  const s26    = _byCA(conds26);
+  return _byCA(base25 || []).map((c, i) => {
+    const c26 = s26[i] || s26[s26.length - 1] || null;
+    return {
+      ...c,                                   // garde caCondition (cible CA 2025) + reste
+      remiseGlobale: c26 ? c26.remiseGlobale : c.remiseGlobale,
+      coopR3:        c26 ? c26.coopR3        : c.coopR3,
+      rsfValues: (c.rsfValues || []).map(r => {
+        const d = defs26?.[String(r.rsf_pct)];
+        return d ? { ...r, remise2: d.remise2, remise3: d.remise3 } : { ...r };
+      }),
+    };
+  });
 }
 
 // R2 moyenne pondérée des paliers actifs (non exclus, remise2 > 0)
