@@ -140,12 +140,14 @@ if [ "$APPLY" = 1 ]; then
   done
   if [ -n "$COMPOSE_DIR" ]; then
     echo "  compose détecté dans : $COMPOSE_DIR"
-    ( cd "$COMPOSE_DIR" && docker compose up -d auth rest 2>/dev/null \
-        || docker compose up -d 2>/dev/null \
-        || docker-compose up -d )
+    # --force-recreate : indispensable — un simple restart NE relit PAS le .env
+    # (les variables d'env sont figées à la création du conteneur). Postgres est
+    # sur un volume → aucune perte de données à la recréation.
+    ( cd "$COMPOSE_DIR" && docker compose up -d --force-recreate 2>/dev/null \
+        || docker-compose up -d --force-recreate )
   else
-    echo "  compose non détecté automatiquement. Redémarre à la main, ex :"
-    echo "    docker restart \$(docker ps --format '{{.Names}}' | grep -Ei 'gotrue|auth|postgrest|rest')"
+    echo "  compose non détecté. Recrée à la main (PAS 'restart' — il ne relit pas le .env) :"
+    echo "    cd /opt/supabase-self && docker compose up -d --force-recreate"
   fi
 else
   echo "  [dry-run] ne redémarre rien."
