@@ -1640,6 +1640,74 @@ const ADMIN_UID   = '371894cb-aaf9-4018-a29d-1aeda340493b';
 const API_URL     = 'https://pharmacie-remises.onrender.com';
 let   isAdmin     = false;
 
+// ── Avoirs Digi (PDF) : stockage base64 dans la table digi_files + aperçu ──────
+// Le stockage self-hosted est du MinIO S3 brut (inaccessible via JWT), donc on
+// conserve les PDF dans Postgres (base64) via PostgREST avec le token utilisateur.
+// state._digiPdfIndex : { 'YYYY-MM': [{key, filename}] } — index léger (sans le PDF)
+// pour afficher le lien cliquable ; le contenu n'est chargé qu'au clic.
+async function _loadDigiPdfIndex() {
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) return;
+    const res = await fetch(`${SUPA_URL}/rest/v1/digi_files?select=storage_key,filename,months`,
+      { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` } });
+    if (!res.ok) return;                       // table absente / non déployée → silencieux
+    const rows = await res.json();
+    const idx = {};
+    (rows || []).forEach(r => (r.months || []).forEach(mk => {
+      (idx[mk] = idx[mk] || []).push({ key: r.storage_key, filename: r.filename });
+    }));
+    state._digiPdfIndex = idx;
+  } catch (_) {}
+}
+function _fileToB64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload  = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+// Stocke le PDF déposé (best-effort, non bloquant). months = mois couverts (du parse).
+async function _storeDigiPdf(file, months) {
+  try {
+    if (!file || file.size > 8 * 1024 * 1024) return;   // garde-fou : PDF > 8 Mo ignoré
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) return;
+    const b64 = await _fileToB64(file);
+    if (!b64) return;
+    const key = `${Date.now()}_${file.name}`.replace(/[^\w.\-]/g, '_').slice(0, 180);
+    const res = await fetch(`${SUPA_URL}/rest/v1/digi_files`, {
+      method: 'POST',
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}`,
+                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ storage_key: key, filename: file.name, months: months || [], content_b64: b64 }),
+    });
+    if (res.ok) {
+      state._digiPdfIndex = state._digiPdfIndex || {};
+      (months || []).forEach(mk => { (state._digiPdfIndex[mk] = state._digiPdfIndex[mk] || []).push({ key, filename: file.name }); });
+    }
+  } catch (_) {}
+}
+// Au clic sur une remise reçue : récupère le PDF (base64) et l'ouvre dans un onglet.
+async function _previewDigiPdf(key) {
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) { showToast('Session expirée'); return; }
+    showToast('Ouverture de l\'avoir…');
+    const res = await fetch(`${SUPA_URL}/rest/v1/digi_files?storage_key=eq.${encodeURIComponent(key)}&select=content_b64,filename&limit=1`,
+      { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` } });
+    const rows = await res.json();
+    if (!rows || !rows.length) { showToast('Facture introuvable'); return; }
+    const bin = atob(rows[0].content_b64 || '');
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { showToast('Aperçu impossible : ' + (e.message || e)); }
+}
+
 // ── Catch toutes les erreurs async non gérées → toast admin ───────────────────
 window.addEventListener('unhandledrejection', e => {
   if (!isAdmin) return;
@@ -1897,6 +1965,7 @@ let state = {
   _digiSavedAt: null,    // timestamp ms du dernier sync Digi réussi
   _fseSavedAt:  null,    // timestamp ms du dernier sync FSE (concentrateur) réussi
   _fseOverrides: {},     // { [cléVirement]: { vtype:'r2'|'r3' } } — reclassements manuels RDP/Coop
+  _digiPdfIndex: {},     // { 'YYYY-MM': [{key, filename}] } — avoirs Digi cliquables (contenu en base)
   verifContracts: {},  // { [year]: { labKey: { active, type, startDate } } }
 };
 
@@ -6960,6 +7029,17 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   // R2 reçu : somme des ventilations par taux, ou repli sur le total RDP+FSE.
   const r2Reff = T.r2R > 0 ? T.r2R : (r2RecTotal || 0);
   const dTrsf=dStyle(T.rsfA-T.rsfR), dTr2=dStyle(T.r2A-r2Reff), dTr3=dStyle(T.r3A-fseR3);
+  // Aperçu avoir Digi : la valeur REÇUE (RDP/coop) devient cliquable si un PDF couvre
+  // ce mois (vue mensuelle uniquement — en cumul annuel plusieurs PDF se chevauchent).
+  const _pdfMk   = cumulYear ? null : `${year}-${String(monthForCond).padStart(2,'0')}`;
+  const _pdfList = _pdfMk ? (state._digiPdfIndex?.[_pdfMk] || []) : [];
+  const _recCell = (val) => {
+    if (!(val > 0)) return '—';
+    const txt = fmtE(val);
+    if (!_pdfList.length) return txt;
+    const last = _pdfList[_pdfList.length - 1];
+    return `<span onclick="_previewDigiPdf('${last.key}')" title="Voir l'avoir Digi du mois : ${escH(last.filename||'')}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${txt} <span style="font-size:9px">📄</span></span>`;
+  };
   const totRow = `<tr style="border-top:2px solid var(--border);font-weight:700;background:rgba(255,255,255,.03)">
     <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
     <td>${T.qty?T.qty.toLocaleString('fr'):'—'}</td>
@@ -6969,11 +7049,11 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td>
     <td class="verif-r2 gsep">—</td>
     <td class="verif-r2" style="${A}">${fmtE(T.r2A)}</td>
-    <td class="verif-r2" style="${G}">${r2Reff>0?fmtE(r2Reff):'—'}</td>
+    <td class="verif-r2" style="${G}">${_recCell(r2Reff)}</td>
     <td class="verif-r2" style="${dTr2}">${(T.r2A>0||r2Reff>0)?fmtE(T.r2A-r2Reff):'—'}</td>
     <td class="verif-r3 gsep">—</td>
     <td class="verif-r3" style="${A}">${T.r3A>0?fmtE(T.r3A):'—'}</td>
-    <td class="verif-r3" style="${G}">${fseR3>0?fmtE(fseR3):'—'}</td>
+    <td class="verif-r3" style="${G}">${_recCell(fseR3)}</td>
     <td class="verif-r3" style="${dTr3}">${(T.r3A>0||fseR3>0)?fmtE(T.r3A-fseR3):'—'}</td>
   </tr>`;
 
@@ -10845,6 +10925,8 @@ async function saveProfile() {
       }
     }
     applyRsfDefaults();
+    // Index des avoirs Digi cliquables (léger, sans le PDF) → rafraîchit le vérificateur.
+    _loadDigiPdfIndex().then(() => { if (state.currentPageId === 'verificateur') renderVerificateur(); });
     renderLabGrid();
     const firstConfigured = state.labPages.find(lp => lp.selectedLab);
     if (firstConfigured) { switchToLab(firstConfigured.uid); renderLabGrid(); }
@@ -11717,6 +11799,8 @@ function initConnecteurModal() {
       if (data.digi_month_stats || data.escompte_stats || data.mdl_stats) {
         state._digiSavedAt = Date.now();
       }
+      // Conserver le PDF (base64) pour l'aperçu au clic sur la remise reçue (non bloquant).
+      _storeDigiPdf(file, data.months || []);
       // saveState() seul : sa sauvegarde cloud est débouncée → 46 dépôts successifs
       // se fusionnent en UNE écriture (au lieu de 46 saveCloudState concurrentes qui se
       // courent après et laissent gagner un instantané ancien). Le dépôt multiple fait
