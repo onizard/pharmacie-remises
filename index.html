@@ -5359,10 +5359,14 @@ function initLabPage(conf) {
         // admin suit tout seul au rechargement. Les valeurs saisies (manual) sont préservées.
         if (isAdmin) {
           const defs = _defsFor(lab, year);
+          // 2025 = barème figé : la base (clés y25:) fait foi. On force remise2 même
+          // si un flag "manual" a été cloné de 2026 par erreur (bug récurrent RDP
+          // 20/10 au lieu de 30/20), et on nettoie ce flag. 2026 : inchangé (manual respecté).
+          const force25 = String(year) === '2025';
           if (defs) cond.rsfValues.forEach(r => {
             const d = defs[String(r.rsf_pct)];
             if (!d) return;
-            if (!r.remise2Manual) r.remise2 = d.remise2 || '';
+            if (force25 || !r.remise2Manual) { r.remise2 = d.remise2 || ''; if (force25) r.remise2Manual = false; }
             if (!r.remise3Manual) r.remise3 = d.remise3 || '';
           });
         }
