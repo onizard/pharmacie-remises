@@ -1896,6 +1896,7 @@ let state = {
   _mdlStats: null,       // { "YYYY-MM": { "Biogaran": { ca_fab_mois, ca_fab_cumul }, "_cerp": {...} } }
   _digiSavedAt: null,    // timestamp ms du dernier sync Digi réussi
   _fseSavedAt:  null,    // timestamp ms du dernier sync FSE (concentrateur) réussi
+  _fseOverrides: {},     // { [cléVirement]: { vtype:'r2'|'r3' } } — reclassements manuels RDP/Coop
   verifContracts: {},  // { [year]: { labKey: { active, type, startDate } } }
 };
 
@@ -1971,6 +1972,7 @@ function serializeState() {
     mdlStats:              state._mdlStats               || null,
     digiSavedAt:           state._digiSavedAt            || null,
     fseSavedAt:            state._fseSavedAt             || null,
+    fseOverrides:          state._fseOverrides           || {},
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -6562,7 +6564,7 @@ function _verifFillBiogaranCoop(year) {
     const mk = `${yr}-${String(i).padStart(2,'0')}`;
     let rec = 0;
     Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, s]) => {
-      if (_verifNormLab(labo) === norm) rec += s.montant_ttc || 0;
+      if (_verifNormLab(labo) === norm) rec += _fseEff(s).r3_ttc || 0;
     });
     const due = paByMonth[i-1] * r3pct / 100 * TVA_R3 * coopCoef;
     cumulDue += due; cumulRec += rec;
@@ -6666,9 +6668,8 @@ function _verifDataDiag(mkList, selNorm, labDisplay, year, monthForCond) {
     });
     Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{
       if (_verifNormLab(l)!==selNorm) return;
-      fseCount += s.count||0; fseR2 += s.r2_ttc||0;
-      fseR3 += (s.r3_ttc != null ? s.r3_ttc : (s.montant_ttc||0));
-      fseMont += s.montant_ttc||0;
+      const e = _fseEff(s);
+      fseCount += e.count; fseR2 += e.r2_ttc; fseR3 += e.r3_ttc; fseMont += e.montant_ttc;
     });
   });
   const cond  = _verifGetCond(labDisplay, year, monthForCond);
@@ -6692,6 +6693,125 @@ function _verifDataDiag(mkList, selNorm, labDisplay, year, monthForCond) {
   </details>`;
 }
 
+// ── Détail virement par virement (rapprochement RDP) ───────────────────────
+// Clé stable d'un virement (date + montant + début de libellé) pour l'override.
+function _fseTransferKey(t) {
+  return `${t.date||''}|${t.montant||0}|${(t.lib||'').slice(0,40)}`;
+}
+// Type effectif : override manuel (reclassement r2/r3) sinon classement backend.
+function _fseVtype(t) {
+  const o = (state._fseOverrides||{})[_fseTransferKey(t)];
+  return (o && o.vtype) || t.vtype || 'r3';
+}
+// Stats FSE effectives d'un labo/mois : si le détail unitaire est là, recalcule
+// r2/r3 depuis les virements en appliquant les reclassements manuels ; sinon
+// repli sur les agrégats backend (r2_ttc/r3_ttc). Source unique pour tout le front.
+function _fseEff(stats) {
+  if (!stats) return { montant_ttc: 0, r2_ttc: 0, r3_ttc: 0, count: 0 };
+  const tr = stats.transfers, r2 = v => Math.round(v*100)/100;
+  if (Array.isArray(tr) && tr.length) {
+    let a2 = 0, a3 = 0, tot = 0;
+    tr.forEach(t => { const m = t.montant || 0; tot += m; if (_fseVtype(t) === 'r2') a2 += m; else a3 += m; });
+    return { montant_ttc: r2(tot), r2_ttc: r2(a2), r3_ttc: r2(a3), count: stats.count || tr.length };
+  }
+  const m = stats.montant_ttc || 0;
+  return { montant_ttc: m, r2_ttc: stats.r2_ttc || 0,
+           r3_ttc: (stats.r3_ttc != null ? stats.r3_ttc : m), count: stats.count || 0 };
+}
+// Reclasse un virement RDP↔Coop à la main. La clé est encodée dans le bouton ;
+// on bascule le type, on nettoie l'override s'il retombe sur le défaut backend.
+function _fseReclassify(enc) {
+  let key; try { key = decodeURIComponent(enc); } catch(_) { key = enc; }
+  state._fseOverrides = state._fseOverrides || {};
+  const baseVt = (window._fseKeyType && window._fseKeyType[key]) || 'r3';
+  const effNow = state._fseOverrides[key]?.vtype || baseVt;
+  const next   = effNow === 'r2' ? 'r3' : 'r2';
+  if (next === baseVt) delete state._fseOverrides[key];
+  else state._fseOverrides[key] = { vtype: next };
+  saveState();
+  try { if (typeof saveCloudState === 'function') saveCloudState(serializeState()); } catch(_) {}
+  if (_verifSelMonth) _verifFillMonthDetail(_verifSelMonth);
+}
+// Rassemble les virements unitaires (sur tous les mois de mkList) pour le labo.
+function _verifCollectTransfers(mkList, selNorm) {
+  const out = []; let fseCount = 0, hasTransfers = false;
+  (mkList||[]).forEach(mk => {
+    Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, s]) => {
+      if (_verifNormLab(labo) !== selNorm) return;
+      fseCount += s.count || 0;
+      (s.transfers || []).forEach(t => { hasTransfers = true; out.push({ ...t, mk, labo }); });
+    });
+  });
+  out.sort((a,b) => (a.date||'').localeCompare(b.date||'') || (b.montant||0)-(a.montant||0));
+  return { transfers: out, fseCount, hasTransfers };
+}
+// Bloc dépliable listant chaque virement, son type (RDP/COOP), un bouton de
+// reclassement manuel, et le rapprochement RDP encaissé ↔ avoir Digi annoncé.
+// r2Avoir = RDP annoncé par l'avoir Digipharmacie (rdp_total) sur la période.
+function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
+  const { transfers, fseCount, hasTransfers } = _verifCollectTransfers(mkList, selNorm);
+  if (!fseCount && !transfers.length) return '';
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fmtD = d => { const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(d||''); return m?`${m[3]}/${m[2]}/${m[1].slice(2)}`:'—'; };
+  if (!hasTransfers) {
+    return `<details style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px">
+      <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ VIREMENTS RDP / COOP — ${escH(labDisplay)}</summary>
+      <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px;color:var(--amber)">
+        ${fseCount} virement(s) FSE agrégé(s), mais le détail unitaire n'a pas encore été récupéré.
+        Va dans l'onglet <b>Connecteurs</b> puis clique <b>⟳ SYNCHRONISER LE CONNECTEUR</b> pour obtenir le détail virement par virement.
+      </div></details>`;
+  }
+  window._fseKeyType = window._fseKeyType || {};
+  let sR2 = 0, sR3 = 0;
+  const rows = transfers.map(t => {
+    const key = _fseTransferKey(t);
+    window._fseKeyType[key] = t.vtype || 'r3';       // type backend, pour le toggle
+    const isR2 = _fseVtype(t) === 'r2';
+    if (isR2) sR2 += t.montant||0; else sR3 += t.montant||0;
+    const overridden = (state._fseOverrides||{})[key];
+    const badge = isR2
+      ? '<span style="color:var(--cyan);font-weight:700">RDP</span>'
+      : '<span style="color:var(--text-dim)">COOP</span>';
+    const btn = `<button onclick="_fseReclassify('${encodeURIComponent(key)}')" title="Reclasser RDP↔Coop"
+        style="font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:3px;padding:1px 5px">⇄ ${isR2?'→Coop':'→RDP'}</button>`;
+    return `<tr>
+      <td style="white-space:nowrap">${fmtD(t.date)}</td>
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(t.lib||'')}">${escH(t.lib||'—')}</td>
+      <td style="text-align:right;white-space:nowrap">${fmtE(t.montant)}</td>
+      <td style="text-align:center">${badge}${overridden?' <span title="reclassé manuellement" style="color:var(--amber)">✎</span>':''}</td>
+      <td style="text-align:center">${btn}</td>
+    </tr>`;
+  }).join('');
+  // Rapprochement RDP : virement encaissé (source de vérité) vs avoir annoncé.
+  const av = r2Avoir || 0;
+  const ecart = av > 0 && sR2 > 0 ? sR2 - av : null;
+  const divergent = ecart != null && Math.abs(ecart) >= 1;
+  const flag = av <= 0 ? ''
+    : divergent
+      ? `<div style="margin-top:6px;color:var(--amber)">⚠ RDP encaissé (virements) <b>${fmtE(sR2)}</b> ≠ RDP annoncé par l'avoir Digi <b>${fmtE(av)}</b> — écart <b>${(ecart>0?'+':'')}${fmtE(ecart)}</b>. Le virement bancaire fait foi.</div>`
+      : `<div style="margin-top:6px;color:var(--green)">✓ RDP encaissé (virements) = avoir Digi annoncé (${fmtE(sR2)}).</div>`;
+  return `<details style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px">
+    <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ VIREMENTS RDP / COOP — ${escH(labDisplay)} · ${transfers.length} virement(s)</summary>
+    <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px">
+      <div style="overflow-x:auto"><table class="verif-tbl" style="font-size:11px">
+        <thead><tr>
+          <th style="text-align:left">DATE</th><th style="text-align:left">LIBELLÉ</th>
+          <th style="text-align:right">MONTANT</th><th style="text-align:center">TYPE</th><th style="text-align:center">RECLASSER</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr style="border-top:2px solid var(--border);font-weight:700">
+            <td colspan="2" style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL REÇU</td>
+            <td style="text-align:right">${fmtE(sR2+sR3)}</td><td colspan="2"></td></tr>
+          <tr><td colspan="2" style="color:var(--cyan)">↳ dont RDP (r2)</td><td style="text-align:right;color:var(--cyan)">${fmtE(sR2)}</td><td colspan="2"></td></tr>
+          <tr><td colspan="2" style="color:var(--text-dim)">↳ dont Coop (r3)</td><td style="text-align:right;color:var(--text-dim)">${fmtE(sR3)}</td><td colspan="2"></td></tr>
+        </tfoot>
+      </table></div>
+      ${flag}
+      <div style="margin-top:6px;color:var(--text-dim);font-size:10px">Un virement mal classé ? Clique <b>⇄</b> pour le basculer RDP↔Coop — le rapprochement se recalcule et se synchronise.</div>
+    </div></details>`;
+}
+
 function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   const digiRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
@@ -6702,14 +6822,14 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   let fseR3 = 0, fseR2 = 0;
   Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{
     if (_verifNormLab(l)!==selNorm) return;
-    fseR3 += (s.r3_ttc != null ? s.r3_ttc : (s.montant_ttc||0));
-    fseR2 += s.r2_ttc || 0;
+    const e = _fseEff(s); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
   });
-  // R2 reçu de repli : si la ventilation par taux manque, on utilise le total RDP
-  // de l'avoir Digi (rdp_total) + les virements FSE classés r2.
-  const r2RecTotal = (digiRow?.rdp_total || 0) + fseR2;
+  // R2 reçu : virements bancaires (FSE r2) = source de vérité ; repli sur l'avoir
+  // Digi (rdp_total) seulement s'il n'y a aucun virement RDP encaissé.
+  const r2RecTotal = fseR2 > 0 ? fseR2 : (digiRow?.rdp_total || 0);
   const [mkY, mkM] = mk.split('-').map(Number);
   return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, mkY, mkM, null)
+       + _verifRenderVirements([mk], selNorm, labDisplay, digiRow?.rdp_total || 0)
        + _verifDataDiag([mk], selNorm, labDisplay, mkY, mkM);
 }
 
@@ -6739,21 +6859,23 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
   Object.entries(state._fseMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,labMap])=>{
     Object.entries(labMap||{}).forEach(([l,s])=>{
       if (_verifNormLab(l)!==selNorm) return;
-      fseR3 += (s.r3_ttc != null ? s.r3_ttc : (s.montant_ttc||0));
-      fseR2 += s.r2_ttc || 0;
+      const e = _fseEff(s); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
     });
   });
-  // R2 reçu de repli (ventilation manquante) : Σ rdp_total Digi + virements FSE r2.
+  // R2 reçu : virements bancaires (FSE r2) = source de vérité ; repli sur Σ avoir
+  // Digi (rdp_total) seulement en l'absence de virement RDP encaissé.
   let rdpTotalSum = 0;
   Object.entries(state._digiMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,arr])=>{
     const r = (arr||[]).find(x=>_verifNormLab(x.labo)===selNorm); if (r) rdpTotalSum += r.rdp_total||0;
   });
-  const r2RecTotal = rdpTotalSum + fseR2;
+  const r2RecTotal = fseR2 > 0 ? fseR2 : rdpTotalSum;
   const mkList = Object.keys(state._digiMonthStats||{}).concat(Object.keys(state._grossisteMonthStats||{}),
     Object.keys(state._fseMonthStats||{})).filter(mksY);
   const today = new Date();
   const mRef  = yr < today.getFullYear() ? 12 : today.getMonth()+1;
+  const fseMksY = Object.keys(state._fseMonthStats||{}).filter(mksY);
   return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr)
+       + _verifRenderVirements(fseMksY, selNorm, labDisplay, rdpTotalSum)
        + _verifDataDiag([...new Set(mkList)], selNorm, labDisplay, yr, mRef);
 }
 
@@ -6912,10 +7034,11 @@ function _verifFillMonthDetail(mk) {
     const rsfEst  = rsfData.eur ?? (rsfPct != null ? pa_tot * rsfPct / 100 : null);
     const r2est   = r2pct != null ? pa_tot * r2pct / 100 : null;
     const r3estTTC= r3pct > 0 ? pa_tot * r3pct / 100 * TVA_R3 : null;
-    const _fse    = fseMap[key];
-    const r2rec_tot = (digi.rdp_total || 0) + (_fse?.r2_ttc || 0);
+    const _fse    = _fseEff(fseMap[key]);
+    // Virement RDP (FSE r2) = source de vérité ; repli sur l'avoir Digi si aucun.
+    const r2rec_tot = _fse.r2_ttc > 0 ? _fse.r2_ttc : (digi.rdp_total || 0);
     const r2rec   = r2rec_tot > 0 ? r2rec_tot : null;
-    const r3_fse  = (_fse?.r3_ttc ?? (_fse && !_fse.r2_ttc ? _fse.montant_ttc : 0)) || 0;
+    const r3_fse  = _fse.r3_ttc || 0;
     const r3rec   = r3_fse > 0 ? r3_fse : null;
     const gap     = (r2est != null || r3estTTC != null) && (r2rec != null || r3rec != null)
       ? ((r2est||0) + (r3estTTC||0)) - ((r2rec||0) + (r3rec||0)) : null;
@@ -7049,7 +7172,7 @@ function _verifPrestaBlock(mk) {
     const pht  = r.presta_total     || 0;
     if (!pttc && !pht) return;
     const k = _verifNormLab(r.labo);
-    const fse_r3 = (fseMap[k]?.r3_ttc || 0);
+    const fse_r3 = _fseEff(fseMap[k]).r3_ttc || 0;
     const ecart  = fse_r3 > 0 ? fse_r3 - pttc : null;
     const ecartCls = ecart == null ? '' : Math.abs(ecart) < 1 ? ' style="color:var(--green)"' : ' style="color:var(--amber)"';
     rows.push(`<tr>
@@ -7220,8 +7343,9 @@ function _verifFillTout(year) {
     Object.entries(labMap || {}).forEach(([labo, stats]) => {
       const k = _verifNormLab(labo);
       if (!fseAcc[k]) fseAcc[k] = { r2: 0, r3: 0 };
-      fseAcc[k].r2 += stats.r2_ttc || 0;
-      fseAcc[k].r3 += stats.r3_ttc ?? stats.montant_ttc ?? 0;
+      const e = _fseEff(stats);
+      fseAcc[k].r2 += e.r2_ttc;
+      fseAcc[k].r3 += e.r3_ttc;
     })
   );
 
@@ -7251,7 +7375,8 @@ function _verifFillTout(year) {
     const rsfEst  = d.rsf_rem > 0 ? d.rsf_rem : (rsfPct != null ? pa_tot * rsfPct / 100 : null);
     const r2est   = d.r2_rem  > 0 ? d.r2_rem  : (r2pct  != null ? (d.r2_ca || pa_tot) * r2pct / 100 : null);
     const r3estTTC= r3pct  >  0   ? pa_tot * r3pct  / 100 * TVA_R3 : null;
-    const r2rec_tot = (d.r2rec || 0) + (fseAcc[k]?.r2 || 0);
+    // Virement RDP (FSE r2) = source de vérité ; repli sur l'avoir Digi si aucun.
+    const r2rec_tot = (fseAcc[k]?.r2 || 0) > 0 ? fseAcc[k].r2 : (d.r2rec || 0);
     const r2rec   = r2rec_tot  > 0 ? r2rec_tot : null;
     const r3_fse  = fseAcc[k]?.r3 || 0;
     const r3rec   = r3_fse > 0 ? r3_fse : null;
@@ -7346,7 +7471,7 @@ function _verifPrestaAnnualBlock(yr) {
     Object.entries(labMap || {}).forEach(([labo, s]) => {
       const k = _verifNormLab(labo);
       if (!fseAcc[k]) fseAcc[k] = 0;
-      fseAcc[k] += s.r3_ttc || 0;
+      fseAcc[k] += _fseEff(s).r3_ttc || 0;
     })
   );
   const rows = Object.entries(prestaAcc).sort(([a],[b]) => a.localeCompare(b)).map(([labo, d]) => {
@@ -10202,6 +10327,7 @@ async function saveProfile() {
     if (saved.mdlStats)      state._mdlStats      = saved.mdlStats;
     if (saved.digiSavedAt)   state._digiSavedAt   = saved.digiSavedAt;
     if (saved.fseSavedAt)    state._fseSavedAt    = saved.fseSavedAt;
+    if (saved.fseOverrides && Object.keys(saved.fseOverrides).length) state._fseOverrides = saved.fseOverrides;
     if (saved.verifContracts && Object.keys(saved.verifContracts).length) {
       // Migration : ancien format plat { labKey: {active,type,startDate} } → { [year]: {...} }
       const first = Object.values(saved.verifContracts)[0];
