@@ -338,7 +338,8 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
                     break
 
             acc.setdefault(mk, {}).setdefault(
-                labo, {"montant_ttc": 0.0, "r2_ttc": 0.0, "r3_ttc": 0.0, "count": 0, "refs": []})
+                labo, {"montant_ttc": 0.0, "r2_ttc": 0.0, "r3_ttc": 0.0,
+                       "count": 0, "refs": [], "transfers": []})
             acc[mk][labo]["montant_ttc"] += amount
             acc[mk][labo]["r2_ttc"]      += amount if vtype == 'r2' else 0.0
             acc[mk][labo]["r3_ttc"]      += amount if vtype == 'r3' else 0.0
@@ -346,6 +347,16 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
             for _r in refs[:3]:
                 if _r not in acc[mk][labo]["refs"]:
                     acc[mk][labo]["refs"].append(_r)
+            # Détail virement par virement (pour le rapprochement RDP côté front).
+            # Borné pour ne pas gonfler user_state ; libellé tronqué.
+            if len(acc[mk][labo]["transfers"]) < 200:
+                acc[mk][labo]["transfers"].append({
+                    "date":    date_str,
+                    "lib":     libelle.strip()[:90],
+                    "montant": round(amount, 2),
+                    "vtype":   vtype,
+                    "refs":    refs[:3],
+                })
             row_num += 1
 
     print(f"  → {row_num} virements parsés · {n_ref_matched} via ref · "
@@ -365,6 +376,7 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
             "r3_ttc":      round(d["r3_ttc"], 2),
             "count":       d["count"],
             "refs":        d["refs"][:10],
+            "transfers":   d.get("transfers", []),
         } for labo, d in labos.items()}
         for mk, labos in sorted(acc.items())
     }
