@@ -2454,6 +2454,27 @@ function applyCondExceptions(cond, tc, fallbackExc) {
 }
 
 function applyRsfDefaults() {
+  // 2025 = barème figé : la base (clés y25:) fait foi, y compris pour l'admin.
+  // On lit _rsfDefaults25 EN DIRECT (pas _defsFor, qui retombe sur 2026 si y25 absent)
+  // et on force remise2 sur conditions2025 + _baseConds2025 (celui réellement affiché),
+  // en nettoyant un éventuel flag "manual" cloné de 2026 (bug RDP 20/10 au lieu de 30/20).
+  state.labPages.forEach(lp => {
+    if (!lp.selectedLab) return;
+    const d25 = window._rsfDefaults25?.[lp.selectedLab];
+    if (!d25) return;
+    let changed = false;
+    const force = arr => (arr || []).forEach(cond => (cond.rsfValues || []).forEach(r => {
+      const d = d25[String(r.rsf_pct)];
+      if (d && d.remise2 != null && (String(r.remise2) !== String(d.remise2) || r.remise2Manual)) {
+        r.remise2 = d.remise2; r.remise2Manual = false; changed = true;
+      }
+    }));
+    force(lp.conditions2025); force(lp._baseConds2025);
+    if (changed) {
+      if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();
+      if (isAdmin) saveState();  // persiste la correction (cloud) pour tous les appareils
+    }
+  });
   if (isAdmin) return;
   state.labPages.forEach(lp => {
     if (!lp.selectedLab) return;
