@@ -11953,7 +11953,7 @@ function initConnecteurModal() {
     uploads.forEach((f, i) => { const c = _fileCategory(f); (cats[c] = cats[c] || []).push({ f, idx: i }); });
     const rank  = x => x === 'Grossiste' ? 0 : x === 'Autres' ? 2 : 1;
     const order = Object.keys(cats).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-    const badge = n => `<span style="background:var(--cyan);color:#04060f;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;flex-shrink:0">${n}</span>`;
+    const badge = n => `<span style="background:#0369a1;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;flex-shrink:0">${n}</span>`;
     const headStyle = 'cursor:pointer;display:flex;align-items:center;gap:8px;padding:7px 4px;font-family:\'Orbitron\',monospace;font-size:12px;font-weight:700;color:var(--cyan);border-bottom:1px solid var(--border)';
     const section = (title, count, rowsHtml) => `
       <div class="conn-file-cat" style="margin-bottom:4px">
