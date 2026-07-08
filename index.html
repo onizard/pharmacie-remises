@@ -7185,8 +7185,11 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   const _recCell = (val, wantKind) => {
     if (!(val > 0)) return '—';
     const txt = fmtE(val);
-    const cands = _pdfList.filter(p => (p.kinds || []).includes(wantKind));
-    if (!cands.length) return txt;               // pas d'avoir du bon type → non cliquable
+    // 1. Précis : PDF de la bonne catégorie (kinds renseignés au dépôt).
+    let cands = _pdfList.filter(p => (p.kinds || []).includes(wantKind));
+    // 2. Repli anciens PDF (kinds absents) : un fichier « avoir_… » (jamais une facture produit).
+    if (!cands.length) cands = _pdfList.filter(p => !(p.kinds || []).length && /avoir/i.test(p.filename || ''));
+    if (!cands.length) return txt;               // rien d'adapté → non cliquable
     const pick = cands[cands.length - 1];
     const lbl  = wantKind === 'presta' ? 'coop' : 'RDP';
     return `<span onclick="_previewDigiPdf('${pick.key}')" title="Voir l'avoir ${lbl} du mois : ${escH(pick.filename||'')}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${txt} <span style="font-size:9px">📄</span></span>`;
