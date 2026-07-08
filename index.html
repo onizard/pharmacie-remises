@@ -1512,6 +1512,13 @@
       <div id="connAdminPanel" class="conn-admin-panel" style="display:none">
         <div style="font-size:10px;color:var(--red);letter-spacing:2px;margin-bottom:10px;font-family:'Share Tech Mono',monospace">// DEMANDES DE CHANGEMENT DE COMPTE</div>
         <div id="connAdminRequests" style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--text-dim)">Chargement…</div>
+        <div style="margin-top:16px;padding:10px 12px;border:1px solid var(--border);border-radius:6px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text)">
+            <input type="checkbox" id="assistToggle">
+            <span>🛟 Activer l'assistance <span style="color:var(--text-dim)">— copie mes données (état + avoirs) vers le compte support, pour tests en temps réel</span></span>
+          </label>
+          <div id="assistStatus" style="font-size:10px;color:var(--text-dim);margin-top:6px;font-family:'Share Tech Mono',monospace"></div>
+        </div>
       </div>
       <p style="margin-top:20px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;line-height:1.6;letter-spacing:.5px">
         🔒 Vos identifiants sont chiffrés et strictement personnels.<br>
@@ -11347,8 +11354,34 @@ function initConnecteurModal() {
     if (isAdmin) {
       document.getElementById('connAdminPanel').style.display = '';
       loadAdminRequests();
+      _wireAssistToggle();
       // boutons edit/refresh supprimés de l'UI
     }
+  }
+
+  // Toggle « Activer l'assistance » : copie état + avoirs vers le compte support
+  // (RPC assist_sync réservée à l'admin), pour que le support teste en temps réel.
+  let _assistWired = false;
+  function _wireAssistToggle() {
+    const cb = document.getElementById('assistToggle'), st = document.getElementById('assistStatus');
+    if (!cb) return;
+    cb.checked = localStorage.getItem('bp_assist') === '1';
+    if (st) st.textContent = cb.checked ? '● Assistance ACTIVE — données copiées vers le support.' : '';
+    if (_assistWired) return; _assistWired = true;
+    cb.addEventListener('change', async () => {
+      const on = cb.checked;
+      cb.disabled = true;
+      if (st) { st.style.color = 'var(--amber)'; st.textContent = on ? '⏳ Copie des données vers le support…' : '⏳ Purge du compte support…'; }
+      try {
+        const { data, error } = await window._sbClient.rpc('assist_sync', { enable: on });
+        if (error) throw error;
+        localStorage.setItem('bp_assist', on ? '1' : '0');
+        if (st) { st.style.color = on ? 'var(--green)' : 'var(--text-dim)'; st.textContent = (on ? '● ' : '○ ') + (data || (on ? 'Assistance activée.' : 'Assistance désactivée.')); }
+      } catch (e) {
+        cb.checked = !on;
+        if (st) { st.style.color = 'var(--red)'; st.textContent = '❌ ' + (e.message || e) + (String(e.message||'').includes('assist_sync') ? ' — la fonction SQL n\'est pas installée.' : ''); }
+      } finally { cb.disabled = false; }
+    });
   }
 
   function closeModal() { modal.classList.remove('open'); }
