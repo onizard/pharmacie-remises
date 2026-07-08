@@ -175,14 +175,17 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
                 refs.append(tok)
         return refs
 
-    def _classify_transfer(libelle, ref):
-        text = (libelle + ' ' + ref).upper()
-        r2_kw = ['RDP', ' R2 ', '-R2-', 'R2-', '-R2', 'REMISE FIN', 'AVOIR', 'REDUCTI', 'RED FIN']
-        r3_kw = ['PRESTA', 'COOP', ' R3 ', '-R3-', 'R3-', '-R3', 'PREST', 'COOPERAT', 'PRESTAT']
-        if any(kw in text for kw in r2_kw):
+    def _classify_transfer(libelle, ref, amount=0.0):
+        # Règle principale (fiable pour Biogaran) : les virements COOP sont des sommes
+        # RONDES (sans centimes) ; dès qu'il y a des décimales, c'est de la RDP
+        # (CA brut × taux → quasi toujours des centimes).
+        cents = int(round(abs(float(amount or 0)) * 100)) % 100
+        if cents != 0:
             return 'r2'
-        if any(kw in text for kw in r3_kw):
-            return 'r3'
+        # Somme ronde → coop par défaut ; un mot-clé RDP explicite peut la basculer.
+        text = (libelle + ' ' + ref).upper()
+        if any(kw in text for kw in ('RDP', ' R2 ', '-R2-', 'R2-', '-R2')):
+            return 'r2'
         return 'r3'
 
     def _parse_date(val):
@@ -299,7 +302,7 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
             mk    = date_str[:7]
             labo  = _identify_labo(libelle)
             refs  = _extract_all_refs(libelle)
-            vtype = _classify_transfer(libelle, refs[0] if refs else "")
+            vtype = _classify_transfer(libelle, refs[0] if refs else "", amount)
 
             if not labo and refs:
                 for _r in refs:

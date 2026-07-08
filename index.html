@@ -6904,10 +6904,17 @@ function _verifDataDiag(mkList, selNorm, labDisplay, year, monthForCond) {
 function _fseTransferKey(t) {
   return `${t.date||''}|${t.montant||0}|${(t.lib||'').slice(0,40)}`;
 }
-// Type effectif : override manuel (reclassement r2/r3) sinon classement backend.
+// Type effectif d'un virement :
+//  1. reclassement manuel (override) prioritaire ;
+//  2. sinon RÈGLE DU MONTANT — décimales ⇒ RDP (r2), somme ronde ⇒ coop (r3),
+//     sauf si le backend l'a explicitement marqué r2 (mot-clé RDP dans le libellé).
+// Les virements coop Biogaran sont toujours des sommes rondes.
 function _fseVtype(t) {
   const o = (state._fseOverrides||{})[_fseTransferKey(t)];
-  return (o && o.vtype) || t.vtype || 'r3';
+  if (o && o.vtype) return o.vtype;
+  const cents = Math.round(Math.abs(t.montant || 0) * 100) % 100;
+  if (cents !== 0) return 'r2';
+  return t.vtype === 'r2' ? 'r2' : 'r3';
 }
 // Stats FSE effectives d'un labo/mois : si le détail unitaire est là, recalcule
 // r2/r3 depuis les virements en appliquant les reclassements manuels ; sinon
