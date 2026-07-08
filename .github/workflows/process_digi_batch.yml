@@ -1,0 +1,35 @@
+name: Traitement avoirs Digi (lot)
+
+# Traite en file les avoirs Digi déposés par l'utilisateur (statut 'pending' dans
+# digi_files), un par un, côté serveur → continue même si l'utilisateur ferme son
+# navigateur. Déclenché par le backend Render (dispatch) avec le user_id.
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: 'Supabase user ID'
+        required: true
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Dépendances système (OCR français)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-fra
+
+      - name: Dépendances Python (parsing PDF uniquement)
+        run: pip install --no-input pdfplumber pymupdf pytesseract pillow openpyxl
+
+      - name: Traiter la file d'avoirs Digi
+        env:
+          USER_ID: ${{ inputs.user_id }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python3 api_scraper/run_job_digi_batch.py

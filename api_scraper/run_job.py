@@ -13,7 +13,13 @@ import urllib.request
 
 # Permettre l'import de scraper.py dans le même dossier
 sys.path.insert(0, os.path.dirname(__file__))
-from scraper import run_scraper  # noqa: E402
+# Import tolérant : scraper.py tire playwright/camoufox (lourd). Les runners légers
+# qui n'importent run_job QUE pour les fonctions de calcul de stats (ex. traitement
+# des avoirs Digi en lot) n'ont pas besoin du scraper → on n'échoue pas à l'import.
+try:
+    from scraper import run_scraper  # noqa: E402
+except Exception:
+    run_scraper = None
 
 SUPA_URL    = "https://api.break-pharma.fr"
 # NB : lecture NON bloquante à l'import. main.py (API Render) importe les

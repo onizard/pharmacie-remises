@@ -42,6 +42,7 @@ GH_WORKFLOW      = "scraper_ospharm.yml"
 GH_DIGI_WORKFLOW = "scraper.yml"
 GH_TEST_WORKFLOW = "test_connector.yml"
 GH_FSE_WORKFLOW  = "scraper_fse.yml"
+GH_DIGI_BATCH_WORKFLOW = "process_digi_batch.yml"
 
 GMAIL_USER     = os.environ.get("GMAIL_USER", "pharmaciemontmagny@gmail.com")
 GMAIL_APP_PASS = os.environ.get("GMAIL_APP_PASSWORD", "")
@@ -217,6 +218,12 @@ async def run_connector(
         background_tasks.add_task(_dispatch_gh_fse, user_id, token)
         return {"status": "dispatched", "resync": resync}
 
+    # digi-batch : traite en file les avoirs Digi déposés (statut 'pending' dans
+    # digi_files) via GitHub Actions → survit à la fermeture du navigateur.
+    if connector == "digi-batch":
+        background_tasks.add_task(_dispatch_gh_digi_batch, user_id, token)
+        return {"status": "dispatched"}
+
     if connector not in SUPPORTED_CONNECTORS:
         raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {connector}")
 
@@ -272,6 +279,38 @@ async def _dispatch_gh_digi(user_id: str, user_token: str = ""):
     except Exception as e:
         print(f"  [gh-dispatch] ERREUR digi: {e}")
         await patch_job_status(user_id, "verif_job", "error",
+                               f"Impossible de lancer le workflow GitHub: {e}", [],
+                               user_token=user_token)
+
+
+async def _dispatch_gh_digi_batch(user_id: str, user_token: str = ""):
+    """Déclenche process_digi_batch.yml : traite les avoirs Digi 'pending' en file."""
+    loop = asyncio.get_event_loop()
+    cur  = await loop.run_in_executor(None, lambda: _get_state_sync(user_id, user_token))
+    if (cur.get("digi_batch_job") or {}).get("status") == "running":
+        print(f"  [gh-dispatch] digi_batch_job déjà en cours pour {user_id[:8]} — ignoré")
+        return
+    await patch_job_status(user_id, "digi_batch_job", "running",
+                           "File en attente de démarrage…", [], user_token=user_token)
+    if not GH_TOKEN:
+        await patch_job_status(user_id, "digi_batch_job", "error",
+                               "GH_TOKEN manquant sur le serveur — contacter l'admin", [],
+                               user_token=user_token)
+        return
+    url  = f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{GH_DIGI_BATCH_WORKFLOW}/dispatches"
+    body = json.dumps({"ref": "master", "inputs": {"user_id": user_id}}).encode()
+    req  = urllib.request.Request(url, data=body, method="POST", headers={
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept":        "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type":  "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            print(f"  [gh-dispatch] HTTP {r.status} — digi-batch déclenché pour {user_id[:8]}")
+    except Exception as e:
+        print(f"  [gh-dispatch] ERREUR digi-batch: {e}")
+        await patch_job_status(user_id, "digi_batch_job", "error",
                                f"Impossible de lancer le workflow GitHub: {e}", [],
                                user_token=user_token)
 
