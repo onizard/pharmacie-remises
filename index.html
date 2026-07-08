@@ -10413,6 +10413,16 @@ async function saveProfile() {
       if (session) {
         _sessionExistedAtInit = true;
         isAdmin = (session.user.email === ADMIN_EMAIL);
+        // Mode assistance : le compte support passe en admin UNIQUEMENT si l'admin a
+        // activé l'assistance (flag _assistAdmin posé côté serveur par assist_sync ;
+        // non falsifiable côté client car seul l'admin peut appeler cette fonction).
+        if (!isAdmin && session.user.email === 'claude@test.fr') {
+          try {
+            const { data: _a } = await sb.from('user_state').select('state_json')
+              .eq('user_id', session.user.id).maybeSingle();
+            if (_a?.state_json?._assistAdmin) { isAdmin = true; console.log('[BP] mode assistance ADMIN actif'); }
+          } catch (_) {}
+        }
         _simCachedUserId = session.user.id;
         // Mise en cache pour le flush keepalive (accès sync en pagehide)
         _cachedFlushSession = { user_id: session.user.id, token: session.access_token };

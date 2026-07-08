@@ -27,10 +27,16 @@ BEGIN
   admin_id := (current_setting('request.jwt.claims', true)::json ->> 'sub')::uuid;
 
   IF enable THEN
-    -- Copier l'état (state_json uniquement — PAS les identifiants connecteurs).
-    INSERT INTO user_state (user_id, state_json)
-      SELECT test_id, state_json FROM user_state WHERE user_id = admin_id
-      ON CONFLICT (user_id) DO UPDATE SET state_json = EXCLUDED.state_json;
+    -- Copier l'état COMPLET (state_json = conditions labo, données…) + les connecteurs
+    -- (ospharm/digi), et poser le flag _assistAdmin → le compte support s'affiche
+    -- exactement comme le compte admin.
+    INSERT INTO user_state (user_id, state_json, connectors)
+      SELECT test_id,
+             jsonb_set(COALESCE(state_json, '{}'::jsonb), '{_assistAdmin}', 'true'::jsonb),
+             COALESCE(connectors, '{}'::jsonb)
+      FROM user_state WHERE user_id = admin_id
+      ON CONFLICT (user_id) DO UPDATE
+        SET state_json = EXCLUDED.state_json, connectors = EXCLUDED.connectors;
 
     -- Copier les avoirs (digi_files) : on repart propre côté support.
     DELETE FROM digi_files WHERE user_id = test_id;
@@ -39,10 +45,10 @@ BEGIN
              COALESCE(status, 'done'), COALESCE(kinds, '{}')
       FROM digi_files WHERE user_id = admin_id;
     GET DIAGNOSTICS n = ROW_COUNT;
-    RETURN 'assistance ON — ' || n || ' avoir(s) copié(s)';
+    RETURN 'assistance ON — état + connecteurs + ' || n || ' avoir(s) copiés';
   ELSE
-    -- Purge du compte support.
-    UPDATE user_state SET state_json = '{}'::jsonb WHERE user_id = test_id;
+    -- Purge du compte support (état, connecteurs, avoirs, flag admin).
+    UPDATE user_state SET state_json = '{}'::jsonb, connectors = '{}'::jsonb WHERE user_id = test_id;
     DELETE FROM digi_files WHERE user_id = test_id;
     RETURN 'assistance OFF — compte support purgé';
   END IF;
