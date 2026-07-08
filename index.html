@@ -12074,6 +12074,17 @@ function initConnecteurModal() {
     if (pdfs.length >= 2 && typeof _uploadDigiBatch === 'function') {
       try {
         await _uploadDigiBatch(pdfs);
+        // Ajouter les PDF du lot à la liste « Détails » (comme le dépôt unitaire).
+        let ups = state._grossisteUploads || [];
+        pdfs.forEach(f => {
+          ups = [{ name: f.name, size: f.size, uploaded_at: Date.now(), kind: 'digi', months: [] },
+                 ...ups.filter(u => u.name !== f.name)];
+        });
+        state._grossisteUploads = ups.slice(0, 200);
+        saveState();
+        _updateGrossisteBtn();
+        { const listEl = document.getElementById('grossisteFileList');
+          if (listEl && listEl.style.display !== 'none') _renderGrossisteList(); }
         if (others.length) await _uploadGrossisteMultiSync(others);
         return;
       } catch (e) {
