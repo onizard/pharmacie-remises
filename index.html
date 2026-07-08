@@ -1649,13 +1649,13 @@ async function _loadDigiPdfIndex() {
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
     if (!session) return;
-    const res = await fetch(`${SUPA_URL}/rest/v1/digi_files?select=storage_key,filename,months`,
+    const res = await fetch(`${SUPA_URL}/rest/v1/digi_files?select=storage_key,filename,months,kinds`,
       { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` } });
     if (!res.ok) return;                       // table absente / non déployée → silencieux
     const rows = await res.json();
     const idx = {};
     (rows || []).forEach(r => (r.months || []).forEach(mk => {
-      (idx[mk] = idx[mk] || []).push({ key: r.storage_key, filename: r.filename });
+      (idx[mk] = idx[mk] || []).push({ key: r.storage_key, filename: r.filename, kinds: r.kinds || [] });
     }));
     state._digiPdfIndex = idx;
   } catch (_) {}
@@ -1668,8 +1668,18 @@ function _fileToB64(file) {
     r.readAsDataURL(file);
   });
 }
-// Stocke le PDF déposé (best-effort, non bloquant). months = mois couverts (du parse).
-async function _storeDigiPdf(file, months) {
+// Déduit la (les) catégorie(s) d'un avoir depuis la réponse de /parse/digi-pdf.
+function _digiKindsFromParse(data) {
+  const k = [];
+  if ((data.rdp_avoirs    || 0) > 0) k.push('rdp');
+  if ((data.presta_avoirs || 0) > 0) k.push('presta');
+  if ((data.escompte_cerp || 0) > 0) k.push('escompte');
+  if ((data.mdl_cerp      || 0) > 0) k.push('mdl');
+  if ((data.product_lines || 0) > 0) k.push('product');
+  return k;
+}
+// Stocke le PDF déposé (best-effort, non bloquant). months = mois, kinds = catégories.
+async function _storeDigiPdf(file, months, kinds) {
   try {
     if (!file || file.size > 8 * 1024 * 1024) return;   // garde-fou : PDF > 8 Mo ignoré
     const { data: { session } } = await window._sbClient.auth.getSession();
@@ -1681,11 +1691,11 @@ async function _storeDigiPdf(file, months) {
       method: 'POST',
       headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}`,
                  'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ storage_key: key, filename: file.name, months: months || [], content_b64: b64 }),
+      body: JSON.stringify({ storage_key: key, filename: file.name, months: months || [], content_b64: b64, kinds: kinds || [] }),
     });
     if (res.ok) {
       state._digiPdfIndex = state._digiPdfIndex || {};
-      (months || []).forEach(mk => { (state._digiPdfIndex[mk] = state._digiPdfIndex[mk] || []).push({ key, filename: file.name }); });
+      (months || []).forEach(mk => { (state._digiPdfIndex[mk] = state._digiPdfIndex[mk] || []).push({ key, filename: file.name, kinds: kinds || [] }); });
     }
   } catch (_) {}
 }
@@ -7162,12 +7172,16 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   // ce mois (vue mensuelle uniquement — en cumul annuel plusieurs PDF se chevauchent).
   const _pdfMk   = cumulYear ? null : `${year}-${String(monthForCond).padStart(2,'0')}`;
   const _pdfList = _pdfMk ? (state._digiPdfIndex?.[_pdfMk] || []) : [];
-  const _recCell = (val) => {
+  // wantKind : 'rdp' pour la colonne RDP, 'presta' pour la colonne coop → ouvre le BON
+  // avoir (jamais une facture produit). Repli : un avoir sans catégorie connue.
+  const _recCell = (val, wantKind) => {
     if (!(val > 0)) return '—';
     const txt = fmtE(val);
-    if (!_pdfList.length) return txt;
-    const last = _pdfList[_pdfList.length - 1];
-    return `<span onclick="_previewDigiPdf('${last.key}')" title="Voir l'avoir Digi du mois : ${escH(last.filename||'')}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${txt} <span style="font-size:9px">📄</span></span>`;
+    const cands = _pdfList.filter(p => (p.kinds || []).includes(wantKind));
+    if (!cands.length) return txt;               // pas d'avoir du bon type → non cliquable
+    const pick = cands[cands.length - 1];
+    const lbl  = wantKind === 'presta' ? 'coop' : 'RDP';
+    return `<span onclick="_previewDigiPdf('${pick.key}')" title="Voir l'avoir ${lbl} du mois : ${escH(pick.filename||'')}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${txt} <span style="font-size:9px">📄</span></span>`;
   };
   const totRow = `<tr style="border-top:2px solid var(--border);font-weight:700;background:rgba(255,255,255,.03)">
     <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
@@ -7178,11 +7192,11 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td>
     <td class="verif-r2 gsep">—</td>
     <td class="verif-r2" style="${A}">${fmtE(T.r2A)}</td>
-    <td class="verif-r2" style="${G}">${_recCell(r2Reff)}</td>
+    <td class="verif-r2" style="${G}">${_recCell(r2Reff, 'rdp')}</td>
     <td class="verif-r2" style="${dTr2}">${(T.r2A>0||r2Reff>0)?fmtE(T.r2A-r2Reff):'—'}</td>
     <td class="verif-r3 gsep">—</td>
     <td class="verif-r3" style="${A}">${T.r3A>0?fmtE(T.r3A):'—'}</td>
-    <td class="verif-r3" style="${G}">${_recCell(fseR3)}</td>
+    <td class="verif-r3" style="${G}">${_recCell(fseR3, 'presta')}</td>
     <td class="verif-r3" style="${dTr3}">${(T.r3A>0||fseR3>0)?fmtE(T.r3A-fseR3):'—'}</td>
   </tr>`;
 
@@ -11931,7 +11945,7 @@ function initConnecteurModal() {
         state._digiSavedAt = Date.now();
       }
       // Conserver le PDF (base64) pour l'aperçu au clic sur la remise reçue (non bloquant).
-      _storeDigiPdf(file, data.months || []);
+      _storeDigiPdf(file, data.months || [], _digiKindsFromParse(data));
       // saveState() seul : sa sauvegarde cloud est débouncée → 46 dépôts successifs
       // se fusionnent en UNE écriture (au lieu de 46 saveCloudState concurrentes qui se
       // courent après et laissent gagner un instantané ancien). Le dépôt multiple fait
