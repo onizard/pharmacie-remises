@@ -11857,7 +11857,11 @@ function initConnecteurModal() {
         || low.includes('générique') || low.includes('partenariat'))
       return 'Grossiste';
     const labos = ['Biogaran','Viatris','Sandoz','Teva','Cristers','Zentiva','Zydus','Arrow','Mylan','Krka','EG'];
-    for (const lab of labos) { if (new RegExp('\\b' + lab + '\\b', 'i').test(n)) return lab; }
+    // Frontière personnalisée : « _ » (caractère de mot pour \b) doit compter comme
+    // séparateur → on borne par début/fin ou tout caractère non alphanumérique.
+    for (const lab of labos) {
+      if (new RegExp('(?:^|[^a-z0-9])' + lab + '(?:[^a-z0-9]|$)', 'i').test(n)) return lab;
+    }
     return 'Autres';
   }
 
