@@ -1649,9 +1649,16 @@ async function _loadDigiPdfIndex() {
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
     if (!session) return;
-    const res = await fetch(`${SUPA_URL}/rest/v1/digi_files?select=storage_key,filename,months,kinds`,
-      { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` } });
-    if (!res.ok) return;                       // table absente / non déployée → silencieux
+    const H = { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` };
+    // Tolérant : si la colonne `kinds` n'existe pas encore (migration non lancée),
+    // on retombe sur un select sans `kinds` → l'aperçu reste cliquable (sans filtre
+    // par catégorie), au lieu de tout casser.
+    let res = await fetch(`${SUPA_URL}/rest/v1/digi_files?select=storage_key,filename,months,kinds`, { headers: H });
+    if (!res.ok) {
+      window._digiNoKinds = true;
+      res = await fetch(`${SUPA_URL}/rest/v1/digi_files?select=storage_key,filename,months`, { headers: H });
+    }
+    if (!res.ok) return;                       // table absente → silencieux
     const rows = await res.json();
     const idx = {};
     (rows || []).forEach(r => (r.months || []).forEach(mk => {
@@ -1687,12 +1694,13 @@ async function _storeDigiPdf(file, months, kinds) {
     const b64 = await _fileToB64(file);
     if (!b64) return;
     const key = `${Date.now()}_${file.name}`.replace(/[^\w.\-]/g, '_').slice(0, 180);
-    const res = await fetch(`${SUPA_URL}/rest/v1/digi_files`, {
-      method: 'POST',
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}`,
-                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ storage_key: key, filename: file.name, months: months || [], content_b64: b64, kinds: kinds || [] }),
-    });
+    const H = { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json', Prefer: 'return=minimal' };
+    const base = { storage_key: key, filename: file.name, months: months || [], content_b64: b64 };
+    const post = body => fetch(`${SUPA_URL}/rest/v1/digi_files`, { method: 'POST', headers: H, body: JSON.stringify(body) });
+    // Tolérant à l'absence de la colonne `kinds` (migration non lancée).
+    let res = window._digiNoKinds ? await post(base) : await post({ ...base, kinds: kinds || [] });
+    if (!res.ok && !window._digiNoKinds) { window._digiNoKinds = true; res = await post(base); }
     if (res.ok) {
       state._digiPdfIndex = state._digiPdfIndex || {};
       (months || []).forEach(mk => { (state._digiPdfIndex[mk] = state._digiPdfIndex[mk] || []).push({ key, filename: file.name, kinds: kinds || [] }); });
