@@ -950,6 +950,101 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str, user_tok
     }
 
 
+# ── Import JSON depuis l'extension navigateur « break-pharma connect » ────────
+#
+# L'extension récupère la liste des factures Digi dans la SESSION de l'utilisateur
+# (contourne l'anti-bot Cloudflare) et l'envoie ici. On insère une ligne digi_files
+# 'pending' par facture (portant l'URL du PDF), puis on déclenche le runner GitHub
+# Actions qui télécharge et parse chaque PDF — même pipeline que le dépôt manuel.
+
+class DigiJsonInvoice(BaseModel):
+    file:          str = ""
+    provider_ref:  str = ""
+    provider_name: str = ""
+    billing_date:  str = ""
+    content_b64:   Optional[str] = None   # optionnel : si l'extension a déjà téléchargé le PDF
+
+
+class DigiJsonBody(BaseModel):
+    invoices: list[DigiJsonInvoice] = []
+
+
+@app.post("/import/digi-json")
+async def import_digi_json(
+    background_tasks: BackgroundTasks,
+    body: DigiJsonBody,
+    authorization: str = Header(default=""),
+):
+    """Reçoit la liste des factures Digi de l'extension → file d'attente + traitement."""
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    loop   = asyncio.get_event_loop()
+    queued = await loop.run_in_executor(
+        _executor, lambda: _insert_pending_digi_json(user_id, body.invoices, token)
+    )
+    if queued:
+        background_tasks.add_task(_dispatch_gh_digi_batch, user_id, token)
+    return {"status": "dispatched" if queued else "empty", "queued": queued,
+            "received": len(body.invoices)}
+
+
+def _insert_pending_digi_json(user_id: str, invoices: list, user_token: str = "") -> int:
+    """Insère une ligne digi_files 'pending' par facture non déjà connue (clé = URL PDF).
+    Le PDF sera téléchargé côté runner. Retourne le nombre de lignes mises en file."""
+    from supabase_client import SUPA_URL, SUPA_KEY
+    key    = SUPA_KEY
+    bearer = user_token or key
+
+    # URLs déjà en base pour cet utilisateur → on ne réimporte pas.
+    gurl = f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&select=storage_key"
+    greq = urllib.request.Request(gurl, headers={"apikey": key, "Authorization": f"Bearer {bearer}"})
+    with urllib.request.urlopen(greq, timeout=30) as r:
+        existing = {row.get("storage_key") for row in json.loads(r.read())}
+
+    rows, seen = [], set()
+    for inv in invoices:
+        src = (inv.file or "").strip()
+        if not src or src in existing or src in seen:
+            continue
+        seen.add(src)
+        provider = (inv.provider_ref or inv.provider_name or "digi")[:80]
+        bd = (inv.billing_date or "")[:10]
+        fnd = ""
+        m = _re.match(r'^(\d{4})-(\d{2})-(\d{2})', bd)
+        if m:
+            # date encodée _JJMMAAAA → rattachement au mois pour les factures produits
+            fnd = f"_{m.group(3)}{m.group(2)}{m.group(1)}"
+        safe = _re.sub(r'[^A-Za-z0-9._-]+', '-', provider).strip('-') or "digi"
+        rows.append({
+            "storage_key": src,
+            "filename":    f"{safe}{fnd}.pdf",
+            "source_url":  src,
+            "content_b64": inv.content_b64 or "",
+            "status":      "pending",
+        })
+
+    if not rows:
+        return 0
+
+    purl = f"{SUPA_URL}/rest/v1/digi_files"
+    total = 0
+    for i in range(0, len(rows), 200):
+        chunk = rows[i:i + 200]
+        preq = urllib.request.Request(purl, data=json.dumps(chunk).encode(), method="POST", headers={
+            "apikey": key, "Authorization": f"Bearer {bearer}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal,resolution=ignore-duplicates",
+        })
+        with urllib.request.urlopen(preq, timeout=60):
+            pass
+        total += len(chunk)
+    return total
+
+
 # ── Parse XLSX FSE Banque (HTP+OI) ───────────────────────────────────────────
 #
 # Format export OSPHARM FSE Banque → XLSX avec colonnes :

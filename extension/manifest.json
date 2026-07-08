@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "break-pharma connect",
+  "version": "1.0.0",
+  "description": "Envoie vos factures/avoirs Digipharmacie vers break-pharma.fr, en un clic, depuis votre session.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://app.digipharmacie.fr/*",
+    "https://pharmacie-remises.onrender.com/*",
+    "https://api.break-pharma.fr/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "break-pharma connect"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://app.digipharmacie.fr/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": { "service_worker": "background.js" }
+}
