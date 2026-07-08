@@ -24,6 +24,7 @@ import base64
 import tempfile
 import urllib.request
 import urllib.parse
+import urllib.error
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -40,11 +41,24 @@ USER_ID = os.environ.get("USER_ID", "").strip()
 # ── Accès digi_files (clé service_role → bypass RLS) ──────────────────────────
 def _digi_pending(user_id: str) -> list:
     key = _supa_key()
-    url = (f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&status=eq.pending"
-           f"&select=id,filename,content_b64&order=id.asc")
-    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read())
+    def _fetch(sel):
+        url = (f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&status=eq.pending"
+               f"&select={sel}&order=id.asc")
+        req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read())
+    try:
+        return _fetch("id,filename,content_b64,source_url")
+    except urllib.error.HTTPError:
+        # Colonne source_url absente (migration non lancée) → repli sans elle.
+        return _fetch("id,filename,content_b64")
+
+
+def _download(url: str) -> bytes:
+    """Télécharge un PDF depuis son URL (avoirs/factures Digi = URLs publiques/S3)."""
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=45) as r:
+        return r.read()
 
 
 def _digi_update(row_id, patch: dict):
@@ -195,7 +209,15 @@ def main():
       for i, row in enumerate(rows):
         fname = row.get("filename") or f"fichier {i+1}"
         try:
-            pdf_bytes = base64.b64decode(row["content_b64"])
+            # PDF déjà stocké (dépôt manuel) ? sinon on le télécharge depuis source_url
+            # (import via l'extension navigateur) et on le persiste pour l'aperçu.
+            pdf_bytes = base64.b64decode(row["content_b64"]) if row.get("content_b64") else b""
+            if not pdf_bytes and row.get("source_url"):
+                pdf_bytes = _download(row["source_url"])
+                if pdf_bytes:
+                    _digi_update(row["id"], {"content_b64": base64.b64encode(pdf_bytes).decode()})
+            if not pdf_bytes:
+                raise ValueError("PDF indisponible (ni contenu stocké ni URL téléchargeable)")
             lines = _parse_one(pdf_bytes, fname)
             if not lines:
                 raise ValueError("aucune donnée extractible (format non reconnu)")

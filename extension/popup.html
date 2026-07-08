@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      width: 300px; margin: 0; padding: 16px;
+      background: #04060f; color: #e6f7ff;
+      font: 14px system-ui, sans-serif;
+    }
+    h1 { font-size: 15px; margin: 0 0 4px; color: #00e5ff; letter-spacing: .5px; }
+    p.sub { margin: 0 0 14px; font-size: 12px; color: #8bb8c8; }
+    label { display: block; font-size: 12px; margin: 10px 0 4px; color: #8bb8c8; }
+    input {
+      width: 100%; box-sizing: border-box; padding: 9px 10px;
+      background: #0a1020; border: 1px solid #16324a; border-radius: 8px;
+      color: #e6f7ff; font-size: 14px;
+    }
+    input:focus { outline: none; border-color: #00e5ff; }
+    button {
+      width: 100%; margin-top: 14px; padding: 10px;
+      background: #0369a1; color: #fff; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: default; }
+    button.ghost { background: transparent; border: 1px solid #16324a; color: #8bb8c8; }
+    #msg { margin-top: 12px; font-size: 12px; line-height: 1.4; min-height: 16px; }
+    .ok { color: #00ff88; } .err { color: #ff3366; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #ff3366; flex: 0 0 auto; }
+    .dot.on { background: #00ff88; }
+    #logged { display: none; }
+    a { color: #00e5ff; }
+  </style>
+</head>
+<body>
+  <h1>break-pharma connect</h1>
+  <p class="sub">Envoie vos factures Digipharmacie vers break-pharma.fr.</p>
+
+  <!-- Écran connexion -->
+  <div id="login">
+    <label for="email">E-mail break-pharma</label>
+    <input id="email" type="email" autocomplete="username" placeholder="vous@pharmacie.fr">
+    <label for="pass">Mot de passe</label>
+    <input id="pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    <button id="btnLogin">Se connecter</button>
+  </div>
+
+  <!-- Écran connecté -->
+  <div id="logged">
+    <div class="row"><span class="dot on"></span><span id="who"></span></div>
+    <p class="sub" style="margin-top:10px">
+      Ouvrez <a href="https://app.digipharmacie.fr" target="_blank">app.digipharmacie.fr</a>,
+      connectez-vous, puis cliquez le bouton <b>« Envoyer à break-pharma »</b> en bas à droite.
+    </p>
+    <button id="btnLogout" class="ghost">Se déconnecter</button>
+  </div>
+
+  <div id="msg"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
