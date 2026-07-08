@@ -6904,10 +6904,17 @@ function _verifDataDiag(mkList, selNorm, labDisplay, year, monthForCond) {
 function _fseTransferKey(t) {
   return `${t.date||''}|${t.montant||0}|${(t.lib||'').slice(0,40)}`;
 }
-// Type effectif : override manuel (reclassement r2/r3) sinon classement backend.
+// Type effectif d'un virement :
+//  1. reclassement manuel (override) prioritaire ;
+//  2. sinon RÈGLE DU MONTANT — décimales ⇒ RDP (r2), somme ronde ⇒ coop (r3),
+//     sauf si le backend l'a explicitement marqué r2 (mot-clé RDP dans le libellé).
+// Les virements coop Biogaran sont toujours des sommes rondes.
 function _fseVtype(t) {
   const o = (state._fseOverrides||{})[_fseTransferKey(t)];
-  return (o && o.vtype) || t.vtype || 'r3';
+  if (o && o.vtype) return o.vtype;
+  const cents = Math.round(Math.abs(t.montant || 0) * 100) % 100;
+  if (cents !== 0) return 'r2';
+  return t.vtype === 'r2' ? 'r2' : 'r3';
 }
 // Stats FSE effectives d'un labo/mois : si le détail unitaire est là, recalcule
 // r2/r3 depuis les virements en appliquant les reclassements manuels ; sinon
@@ -7109,7 +7116,17 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
 
   const body = allTaux.map(tx => {
     const g=gmap[tx], rd=rmap[tx], c=cmap[Math.abs(tx)]||{};
-    const grosBrut = g?(g.brut||0):0, dirBrut = rd?(rd.ca_direct||0):0, brut = grosBrut+dirBrut;
+    // CA brut RÉALISÉ selon l'avoir Digi (ce sur quoi le labo a calculé la RDP),
+    // ventilé grossiste / direct labo. Sert de base de repli quand le connecteur
+    // grossiste n'a pas (encore) de données → évite un faux écart « attendu 0 ».
+    const caGros = rd ? (rd.ca_grossiste||0) : 0;
+    const gBrutConn = g ? (g.brut||0) : 0;
+    const grosBrut = gBrutConn || caGros;            // achats connecteur si dispo, sinon avoir
+    const dirBrut = rd?(rd.ca_direct||0):0, brut = grosBrut+dirBrut;
+    // Écart entre le CA remisé par le labo (avoir) et tes achats grossiste (connecteur).
+    const caDiv = (gBrutConn>0 && caGros>0 && Math.abs(gBrutConn-caGros) > Math.max(1, caGros*0.02));
+    const brutTitle = `Grossiste (connecteur) : ${fmtE(gBrutConn)} · CA grossiste réalisé (avoir) : ${fmtE(caGros)} · Direct labo (avoir) : ${fmtE(dirBrut)}`
+      + (caDiv ? ` — ⚠ écart avoir/achats : ${fmtE(gBrutConn-caGros)}` : '');
     const qty = g?(g.qty||0):0;
     const rsfA = grosBrut*tx/100, rsfR = g?(g.remise||0):0, rsfD = rsfA-rsfR;
     const r2pct = (c.remise2!=null && c.remise2!=='') ? parseFloat(c.remise2) : null;
@@ -7123,7 +7140,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     return `<tr>
       <td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>
       <td>${qty?qty.toLocaleString('fr'):'—'}</td>
-      <td>${fmtE(brut)}</td>
+      <td title="${brutTitle}"${caDiv?' style="color:var(--amber);cursor:help"':' style="cursor:help"'}>${fmtE(brut)}${caDiv?' ⚠':''}</td>
       <td class="gsep" style="${A}">${fmtE(rsfA)}</td>
       <td style="${G}">${fmtE(rsfR)}</td>
       <td style="${dRsf}">${fmtE(rsfD)}</td>
