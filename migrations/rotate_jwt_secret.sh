@@ -60,9 +60,13 @@ echo " Rotation du secret JWT — Supabase self-hosted"
 echo " Mode : $([ "$APPLY" = 1 ] && echo 'APPLIQUER' || echo 'DRY-RUN (aucune écriture)')"
 echo "=============================================================="
 
-# --- 1) Minter les nouvelles clés anon + service_role ------------------------
-# On garde le MÊME payload que les clés existantes (role/iss/iat), on ne
-# change que la signature (nouveau secret). iat = maintenant.
+# --- 1) Nouvelles clés anon + service_role -----------------------------------
+# Si NEW_ANON / NEW_SERVICE sont fournis en env (clés pré-générées, coordonnées
+# avec le code déjà poussé), on les utilise TELS QUELS. Sinon on les minte à la
+# volée à partir du nouveau secret (payload identique, iat = maintenant).
+if [ -n "${NEW_ANON:-}" ] && [ -n "${NEW_SERVICE:-}" ]; then
+  echo "  (clés anon/service fournies en env — utilisées telles quelles)"
+else
 read -r NEW_ANON NEW_SERVICE <<EOF
 $(python3 - "$NEW_SECRET" <<'PY'
 import sys, json, time, hmac, hashlib, base64
@@ -81,6 +85,7 @@ print(anon, service)
 PY
 )
 EOF
+fi
 
 echo
 echo ">>> NOUVEAU secret        : $NEW_SECRET"

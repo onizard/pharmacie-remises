@@ -12,14 +12,13 @@ import time
 import urllib.request
 
 SUPA_URL    = "https://api.break-pharma.fr"
-SUPA_KEY    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLXNlbGYiLCJpYXQiOjE3ODA4NTM5MTV9.CWLe1kClQhffk3EL_WgVOQQUERn6IwF7xNqbBL9lUKI"
+SUPA_KEY    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLXNlbGYiLCJpYXQiOjE3ODM1NDU0MjV9.Ga5ubKMU5mnlcBncdb1TUgprBHxuDkRw0LBmGP81XwM"
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
-# Clé HMAC-SHA256 utilisée par GoTrue pour signer les JWT utilisateurs
-_JWT_SECRET = os.environ.get(
-    "GOTRUE_JWT_SECRET",
-    "OyS6Vj-ximYGsVAj4izBUtx21EvQRbzymIUjmg__ZciE-9XFgpAB0SOmnPDlTVcU",
-)
+# Clé HMAC-SHA256 utilisée par GoTrue pour signer les JWT utilisateurs.
+# JAMAIS de valeur par défaut ici : le secret ne doit PAS vivre dans le dépôt public.
+# Il est fourni par la variable d'environnement GOTRUE_JWT_SECRET (Render).
+_JWT_SECRET = os.environ.get("GOTRUE_JWT_SECRET", "")
 
 
 def _b64url_decode(s: str) -> bytes:
