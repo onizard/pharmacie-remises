@@ -143,6 +143,36 @@ def _reindex(user_id: str) -> int:
     return n
 
 
+def _dedupe(user_id: str) -> int:
+    """Supprime les avoirs en double (même nom de fichier = même document, le nom
+    encode le n° de facture). On garde le plus ancien (plus petit id)."""
+    key = _supa_key()
+    url = f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&select=id,filename&order=id.asc"
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        rows = json.loads(r.read())
+    seen, dele = set(), []
+    for row in rows:
+        fn = (row.get("filename") or "").strip()
+        if not fn:
+            continue
+        if fn in seen:
+            dele.append(row["id"])          # doublon → à supprimer
+        else:
+            seen.add(fn)
+    if not dele:
+        return 0
+    for i in range(0, len(dele), 100):
+        ids = ",".join(str(x) for x in dele[i:i + 100])
+        durl = f"{SUPA_URL}/rest/v1/digi_files?id=in.({ids})"
+        dreq = urllib.request.Request(durl, method="DELETE", headers={
+            "apikey": key, "Authorization": f"Bearer {key}", "Prefer": "return=minimal"})
+        with urllib.request.urlopen(dreq, timeout=60):
+            pass
+    print(f"→ dé-doublonnage : {len(dele)} doublon(s) supprimé(s)", flush=True)
+    return len(dele)
+
+
 def main():
     if not USER_ID:
         print("!! USER_ID manquant — abandon", flush=True)
@@ -194,13 +224,15 @@ def main():
         _persist(USER_ID, acc, {"status": "running", "done": i + 1, "total": total, "message": msg})
         print(f"  {msg}", flush=True)
 
-    # Ré-indexation des avoirs existants mal datés / sans catégorie (une passe).
+    # Ré-indexation des avoirs existants mal datés / sans catégorie, puis dé-doublonnage.
     reidx = _reindex(USER_ID)
+    ndup  = _dedupe(USER_ID)
 
     parts = []
     if total: parts.append(f"{ok} importé(s)")
     if err:   parts.append(f"{err} en erreur")
-    if reidx: parts.append(f"{reidx} avoir(s) ré-indexé(s)")
+    if reidx: parts.append(f"{reidx} ré-indexé(s)")
+    if ndup:  parts.append(f"{ndup} doublon(s) supprimé(s)")
     _persist(USER_ID, acc, {"status": "done", "done": total, "total": total,
                             "message": "Terminé : " + (", ".join(parts) if parts else "rien à faire")})
     print(f"✅ Terminé — {ok} ok, {err} err, {reidx} ré-indexé(s)", flush=True)
