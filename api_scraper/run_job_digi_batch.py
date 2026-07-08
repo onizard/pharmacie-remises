@@ -59,6 +59,34 @@ def _digi_update(row_id, patch: dict):
         pass
 
 
+def _digi_done_no_kinds(user_id: str) -> list:
+    """Avoirs déjà traités mais sans catégorie (kinds vide) → à ré-indexer
+    (corriger months = période + kinds)."""
+    key = _supa_key()
+    url = (f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&status=eq.done"
+           f"&kinds=eq.%7B%7D&select=id,filename,content_b64&order=id.asc")
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read())
+
+
+def _derive_months_kinds(lines: list):
+    """Mois de rattachement (période pour rdp/presta) + catégories du PDF."""
+    def _mois(l):
+        if l.get("type") in ("rdp", "presta") and l.get("period_month"):
+            return str(l["period_month"])[:7]
+        return str(l.get("billing_date", ""))[:7]
+    months = sorted({_mois(l) for l in lines if _mois(l)})
+    kinds = []
+    if any(l.get("type") == "rdp" for l in lines):    kinds.append("rdp")
+    if any(l.get("type") == "presta" for l in lines): kinds.append("presta")
+    if any(l.get("type") == "escompte" for l in lines): kinds.append("escompte")
+    if any(l.get("type") == "mdl" for l in lines):      kinds.append("mdl")
+    if any(l.get("type") not in ("rdp", "presta", "escompte", "mdl") for l in lines):
+        kinds.append("product")
+    return months, (kinds or ["product"])
+
+
 def _persist(user_id: str, acc: dict, job: dict):
     """Relit l'état FRAIS (préserve ce que le frontend aurait écrit entre-temps),
     puis n'écrase que les clés du runner : stats Digi + statut du job."""
@@ -88,6 +116,33 @@ def _parse_one(pdf_bytes: bytes, filename: str):
     return lines
 
 
+def _reindex(user_id: str) -> int:
+    """Ré-indexe les avoirs déjà stockés mais sans catégorie : re-parse chaque PDF
+    et corrige months (= période de référence) + kinds. Ne touche PAS aux stats
+    (déjà calculées au 1er dépôt). Passe unique : une fois kinds renseigné, exclu."""
+    rows = _digi_done_no_kinds(user_id)
+    if not rows:
+        return 0
+    print(f"→ ré-indexation de {len(rows)} avoir(s) existant(s)…", flush=True)
+    n = 0
+    for row in rows:
+        try:
+            pdf   = base64.b64decode(row.get("content_b64") or "")
+            lines = _parse_one(pdf, row.get("filename") or "")
+            if lines:
+                months, kinds = _derive_months_kinds(lines)
+                patch = {"kinds": kinds, "months": months}
+            else:
+                patch = {"kinds": ["product"]}   # illisible → marque pour ne pas reboucler
+            _digi_update(row["id"], patch)
+            n += 1
+        except Exception as e:
+            _digi_update(row["id"], {"kinds": ["product"]})
+            print(f"  [warn] réindex {str(row.get('filename',''))[:40]} : {e}", flush=True)
+    print(f"→ ré-indexation terminée : {n}", flush=True)
+    return n
+
+
 def main():
     if not USER_ID:
         print("!! USER_ID manquant — abandon", flush=True)
@@ -103,16 +158,11 @@ def main():
            "esc":  state.get("escompte_stats")   or {},
            "mdl":  state.get("mdl_stats")         or {}}
 
-    if total == 0:
-        _persist(USER_ID, {}, {"status": "done", "done": 0, "total": 0,
-                               "message": "Aucun fichier en attente."})
-        return
-
-    _persist(USER_ID, acc, {"status": "running", "done": 0, "total": total,
-                            "message": f"Traitement de {total} fichier(s)…"})
-
     ok = err = 0
-    for i, row in enumerate(rows):
+    if total > 0:
+      _persist(USER_ID, acc, {"status": "running", "done": 0, "total": total,
+                              "message": f"Traitement de {total} fichier(s)…"})
+      for i, row in enumerate(rows):
         fname = row.get("filename") or f"fichier {i+1}"
         try:
             pdf_bytes = base64.b64decode(row["content_b64"])
@@ -131,14 +181,7 @@ def main():
             if mdl:
                 acc["mdl"]  = _merge_mdl_stats(acc["mdl"], _compute_mdl_stats(mdl))
 
-            months = sorted(set(l.get("billing_date", "")[:7] for l in lines if l.get("billing_date")))
-            kinds = []
-            if digi and any(l.get("type") == "rdp" for l in digi):    kinds.append("rdp")
-            if any(l.get("type") == "presta" for l in lines):         kinds.append("presta")
-            if esc:                                                    kinds.append("escompte")
-            if mdl:                                                    kinds.append("mdl")
-            if any(l.get("type") not in ("rdp", "presta", "escompte", "mdl") for l in lines):
-                kinds.append("product")
+            months, kinds = _derive_months_kinds(lines)
             _digi_update(row["id"], {"status": "done", "months": months, "kinds": kinds})
             ok += 1
             msg = f"{i+1}/{total} · {fname} ✓"
@@ -151,9 +194,16 @@ def main():
         _persist(USER_ID, acc, {"status": "running", "done": i + 1, "total": total, "message": msg})
         print(f"  {msg}", flush=True)
 
+    # Ré-indexation des avoirs existants mal datés / sans catégorie (une passe).
+    reidx = _reindex(USER_ID)
+
+    parts = []
+    if total: parts.append(f"{ok} importé(s)")
+    if err:   parts.append(f"{err} en erreur")
+    if reidx: parts.append(f"{reidx} avoir(s) ré-indexé(s)")
     _persist(USER_ID, acc, {"status": "done", "done": total, "total": total,
-                            "message": f"Terminé : {ok} importé(s)" + (f", {err} en erreur" if err else "")})
-    print(f"✅ Terminé — {ok} ok, {err} erreur(s)", flush=True)
+                            "message": "Terminé : " + (", ".join(parts) if parts else "rien à faire")})
+    print(f"✅ Terminé — {ok} ok, {err} err, {reidx} ré-indexé(s)", flush=True)
 
 
 if __name__ == "__main__":

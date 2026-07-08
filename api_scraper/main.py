@@ -922,7 +922,14 @@ def _parse_digi_pdf_sync(user_id: str, pdf_bytes: bytes, filename: str, user_tok
 
     _patch_state_sync(user_id, state, user_token=user_token)
 
-    months   = sorted(set(l.get("billing_date", "")[:7] for l in lines if l.get("billing_date")))
+    # Mois de rattachement : pour les avoirs RDP/presta, la PÉRIODE de référence
+    # (period_month) — pas la date du document, qui est souvent le mois suivant.
+    # C'est ainsi que le vérificateur affiche la RDP → le PDF doit être indexé pareil.
+    def _mois(l):
+        if l.get("type") in ("rdp", "presta") and l.get("period_month"):
+            return str(l["period_month"])[:7]
+        return str(l.get("billing_date", ""))[:7]
+    months   = sorted({_mois(l) for l in lines if _mois(l)})
     n_rdp    = sum(1 for l in lines if l.get("type") == "rdp")
     n_presta = sum(1 for l in lines if l.get("type") == "presta")
     n_esc    = len(escompte_lines)
