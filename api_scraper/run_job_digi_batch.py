@@ -132,7 +132,14 @@ def main():
                 acc["mdl"]  = _merge_mdl_stats(acc["mdl"], _compute_mdl_stats(mdl))
 
             months = sorted(set(l.get("billing_date", "")[:7] for l in lines if l.get("billing_date")))
-            _digi_update(row["id"], {"status": "done", "months": months})
+            kinds = []
+            if digi and any(l.get("type") == "rdp" for l in digi):    kinds.append("rdp")
+            if any(l.get("type") == "presta" for l in lines):         kinds.append("presta")
+            if esc:                                                    kinds.append("escompte")
+            if mdl:                                                    kinds.append("mdl")
+            if any(l.get("type") not in ("rdp", "presta", "escompte", "mdl") for l in lines):
+                kinds.append("product")
+            _digi_update(row["id"], {"status": "done", "months": months, "kinds": kinds})
             ok += 1
             msg = f"{i+1}/{total} · {fname} ✓"
         except Exception as e:
