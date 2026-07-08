@@ -7147,15 +7147,22 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     // ventilé grossiste / direct labo. Sert de base de repli quand le connecteur
     // grossiste n'a pas (encore) de données → évite un faux écart « attendu 0 ».
     const caGros = rd ? (rd.ca_grossiste||0) : 0;
+    const caDir  = rd ? (rd.ca_direct||0)    : 0;
     const gBrutConn = g ? (g.brut||0) : 0;
-    const grosBrut = gBrutConn || caGros;            // achats connecteur si dispo, sinon avoir
-    const dirBrut = rd?(rd.ca_direct||0):0, brut = grosBrut+dirBrut;
+    // Deux bases DIFFÉRENTES :
+    //  • RSF (grossiste) → CA total du connecteur grossiste à ce taux.
+    //  • RDP / coop (labo) → CA brut RÉALISÉ de l'avoir (ce sur quoi le labo remise),
+    //    ventilé grossiste + direct. Repli sur les achats grossiste si pas d'avoir.
+    const avoirCA  = caGros + caDir;
+    const rsfBrut  = gBrutConn || avoirCA;
+    const brut     = avoirCA > 0 ? avoirCA : (gBrutConn + caDir);   // PA BRUT = base RDP/coop
+    const dirBrut  = caDir;
     // Écart entre le CA remisé par le labo (avoir) et tes achats grossiste (connecteur).
-    const caDiv = (gBrutConn>0 && caGros>0 && Math.abs(gBrutConn-caGros) > Math.max(1, caGros*0.02));
-    const brutTitle = `Grossiste (connecteur) : ${fmtE(gBrutConn)} · CA grossiste réalisé (avoir) : ${fmtE(caGros)} · Direct labo (avoir) : ${fmtE(dirBrut)}`
-      + (caDiv ? ` — ⚠ écart avoir/achats : ${fmtE(gBrutConn-caGros)}` : '');
+    const caDiv = (gBrutConn>0 && avoirCA>0 && Math.abs(gBrutConn-avoirCA) > Math.max(1, avoirCA*0.02));
+    const brutTitle = `Base RDP = CA brut réalisé (avoir) : ${fmtE(avoirCA)} (grossiste ${fmtE(caGros)} + direct ${fmtE(caDir)}) · CA total grossiste (connecteur) : ${fmtE(gBrutConn)}`
+      + (caDiv ? ` — ⚠ écart avoir/achats grossiste` : '');
     const qty = g?(g.qty||0):0;
-    const rsfA = grosBrut*tx/100, rsfR = g?(g.remise||0):0, rsfD = rsfA-rsfR;
+    const rsfA = rsfBrut*tx/100, rsfR = g?(g.remise||0):0, rsfD = rsfA-rsfR;
     const r2pct = (c.remise2!=null && c.remise2!=='') ? parseFloat(c.remise2) : null;
     const r2A = r2pct!=null ? brut*r2pct/100 : 0;
     const r2R = rd ? ((rd.grossiste||0)+(rd.direct||0)) : 0;
