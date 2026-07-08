@@ -11849,6 +11849,18 @@ function initConnecteurModal() {
     if (btn) btn.textContent = `Détails (${n} fichier${n !== 1 ? 's' : ''})`;
   }
 
+  // Catégorie d'un fichier déposé : justificatifs génériques (xlsx grossiste) →
+  // « Grossiste » ; sinon le labo détecté dans le nom ; sinon « Autres ».
+  function _fileCategory(f) {
+    const n = f.name || '', low = n.toLowerCase();
+    if (/\.xlsx?$/i.test(n) || low.includes('justificatif') || low.includes('generique')
+        || low.includes('générique') || low.includes('partenariat'))
+      return 'Grossiste';
+    const labos = ['Biogaran','Viatris','Sandoz','Teva','Cristers','Zentiva','Zydus','Arrow','Mylan','Krka','EG'];
+    for (const lab of labos) { if (new RegExp('\\b' + lab + '\\b', 'i').test(n)) return lab; }
+    return 'Autres';
+  }
+
   function _renderGrossisteList() {
     const el = document.getElementById('grossisteFileList');
     if (!el) return;
@@ -11858,21 +11870,52 @@ function initConnecteurModal() {
       el.innerHTML = `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0">// Aucun fichier déposé</div>`;
       return;
     }
-    const uploadRows = uploads.map((f, i) => `
-      <div class="conn-file-item">
-        <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
-        <span class="conn-file-meta">${_fmtSize(f.size)} &nbsp;·&nbsp; ${_fmtDate(f.uploaded_at)}</span>
-        <button class="conn-file-del" title="Supprimer" data-idx="${i}">✕</button>
-      </div>`).join('');
-    const gmailRows = gmailFiles.map(f => `
-      <div class="conn-file-item">
-        <span style="color:var(--cyan);font-size:10px;flex-shrink:0">✉</span>
-        <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
-        <span class="conn-file-meta">${(f.months||[]).join(', ')}</span>
-      </div>`).join('');
-    el.innerHTML = gmailRows + uploadRows;
+    // Regrouper par catégorie en gardant l'index d'origine (pour la suppression).
+    const cats = {};
+    uploads.forEach((f, i) => { const c = _fileCategory(f); (cats[c] = cats[c] || []).push({ f, idx: i }); });
+    const rank  = x => x === 'Grossiste' ? 0 : x === 'Autres' ? 2 : 1;
+    const order = Object.keys(cats).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    const badge = n => `<span style="background:var(--cyan);color:#04060f;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;flex-shrink:0">${n}</span>`;
+    const headStyle = 'cursor:pointer;display:flex;align-items:center;gap:8px;padding:7px 4px;font-family:\'Orbitron\',monospace;font-size:12px;font-weight:700;color:var(--cyan);border-bottom:1px solid var(--border)';
+    const section = (title, count, rowsHtml) => `
+      <div class="conn-file-cat" style="margin-bottom:4px">
+        <div class="conn-cat-head" style="${headStyle}">
+          <span class="conn-cat-chev" style="display:inline-block;transition:transform .15s;width:10px">▸</span>
+          <span style="flex:1;text-transform:uppercase;letter-spacing:1px">${escH(title)}</span>
+          ${badge(count)}
+        </div>
+        <div class="conn-cat-files" style="display:none">${rowsHtml}</div>
+      </div>`;
+    let html = order.map(cat => {
+      const rows = cats[cat].map(({ f, idx }) => `
+        <div class="conn-file-item">
+          <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
+          <span class="conn-file-meta">${_fmtSize(f.size)} &nbsp;·&nbsp; ${_fmtDate(f.uploaded_at)}</span>
+          <button class="conn-file-del" title="Supprimer" data-idx="${idx}">✕</button>
+        </div>`).join('');
+      return section(cat, cats[cat].length, rows);
+    }).join('');
+    if (gmailFiles.length) {
+      const rows = gmailFiles.map(f => `
+        <div class="conn-file-item">
+          <span style="color:var(--cyan);font-size:10px;flex-shrink:0">✉</span>
+          <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
+          <span class="conn-file-meta">${(f.months||[]).join(', ')}</span>
+        </div>`).join('');
+      html += section('✉ Boîte mail', gmailFiles.length, rows);
+    }
+    el.innerHTML = html;
+    // Déplier / replier une catégorie au clic sur son en-tête.
+    el.querySelectorAll('.conn-cat-head').forEach(h => {
+      h.addEventListener('click', () => {
+        const files = h.nextElementSibling, chev = h.querySelector('.conn-cat-chev');
+        const open  = files.style.display !== 'none';
+        files.style.display = open ? 'none' : '';
+        if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
+      });
+    });
     el.querySelectorAll('.conn-file-del').forEach(btn => {
-      btn.addEventListener('click', () => _deleteGrossiste(parseInt(btn.dataset.idx)));
+      btn.addEventListener('click', e => { e.stopPropagation(); _deleteGrossiste(parseInt(btn.dataset.idx)); });
     });
   }
 
