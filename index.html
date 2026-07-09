@@ -12289,22 +12289,29 @@ function initConnecteurModal() {
     const m = /_([A-Za-z0-9-]{8,})_(\d{8})\.(pdf|xlsx?)$/i.exec(String(name || ''));
     return m ? (m[1] + '|' + m[2]).toUpperCase() : null;
   }
-  async function _dedupeAllFiles(opts = {}) {
+  // Dé-doublonnage SYNCHRONE des listes locales (métadonnées) — appelé à chaque
+  // fichier importé ET à chaque affichage de l'explorateur : l'utilisateur ne
+  // voit jamais de doublon, quel que soit l'ordre des sauvegardes cloud.
+  function _dedupeLocalLists() {
     let removed = 0;
-    // 1. Listes locales — triées récent → ancien : on garde la 1re occurrence.
     ['_grossisteUploads', '_digiUploads', '_fseUploads'].forEach(k => {
       const arr = state[k] || [];
       const seen = new Set(); const out = [];
-      arr.forEach(f => {
+      arr.forEach(f => {   // listes triées récent → ancien : on garde la 1re occurrence
         const key = String(f.name || '').trim().toLowerCase();
         if (!key || !seen.has(key)) { seen.add(key); out.push(f); }
         else removed++;
       });
       if (out.length !== arr.length) state[k] = out;
     });
-    // 2. Base digi_files (avoirs, factures, justificatifs XLSX).
+    return removed;
+  }
+  async function _dedupeAllFiles(opts = {}) {
+    let removed = _dedupeLocalLists();
+    // 2. Base digi_files (avoirs, factures, justificatifs XLSX) — sauté en mode
+    // localOnly (dé-doublonnage instantané par fichier, sans aller-retour réseau).
     try {
-      const { data: { session } } = await window._sbClient.auth.getSession();
+      const { data: { session } } = opts.localOnly ? { data: {} } : await window._sbClient.auth.getSession();
       if (session) {
         const H = { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` };
         const res = await fetch(`${SUPA_URL}/rest/v1/digi_files?select=id,filename&order=id.asc`, { headers: H });
@@ -12352,6 +12359,9 @@ function initConnecteurModal() {
   function _renderGrossisteList() {
     const el = document.getElementById('grossisteFileList');
     if (!el) return;
+    // Jamais de doublon à l'écran : purge synchrone des listes avant affichage
+    // (couvre aussi les doublons ressuscités par une vieille sauvegarde cloud).
+    if (_dedupeLocalLists() > 0) saveState();
     const uploads    = state._grossisteUploads    || [];
     const cloud      = _connCloudFiles();                 // Digi via connecteurs (base)
     const monthMeta  = state._monthMeta  || [];           // exports mensuels OSPHARM
@@ -12553,7 +12563,11 @@ function initConnecteurModal() {
 
   async function _uploadGrossiste(file) {
     if (!file) return;
-    if (file.name.toLowerCase().endsWith('.pdf')) { return await _uploadDigiPdf(file); }
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+      const r = await _uploadDigiPdf(file);
+      _dedupeAllFiles({ silent: true, localOnly: true });   // instantané, par fichier
+      return r;
+    }
     const exts = ['.xlsx', '.xls'];
     const hasExt = exts.some(e => file.name.toLowerCase().endsWith(e));
     if (!hasExt) {
@@ -12578,7 +12592,9 @@ function initConnecteurModal() {
       const parsed = await resp.json();
       if (parsed.grossiste_month_stats) {
         state._grossisteMonthStats = parsed.grossiste_month_stats;
-        state._grossisteUploads = [{ name: file.name, size: file.size, uploaded_at: Date.now() }, ...(state._grossisteUploads || [])];
+        state._grossisteUploads = [{ name: file.name, size: file.size, uploaded_at: Date.now() },
+          ...(state._grossisteUploads || []).filter(f => f.name !== file.name)];
+        _dedupeLocalLists();                   // instantané, par fichier
         saveState();
         saveCloudState(serializeState());
         _updateGrossisteBtn();
