@@ -1734,6 +1734,15 @@ async function _previewDigiPdf(key) {
     const bin = atob(rows[0].content_b64 || '');
     const arr = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const fn = rows[0].filename || '';
+    if (/\.xlsx?$/i.test(fn)) {
+      // Justificatif Excel : téléchargement (pas d'aperçu navigateur pour le xlsx).
+      const url = URL.createObjectURL(new Blob([arr], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = fn; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return;
+    }
     const url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
     window.open(url, '_blank');
     setTimeout(() => URL.revokeObjectURL(url), 60000);

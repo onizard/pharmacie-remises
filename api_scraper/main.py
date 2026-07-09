@@ -633,11 +633,38 @@ async def parse_grossiste_xlsx(
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
-        _executor, lambda: _parse_grossiste_xlsx_sync(user_id, xlsx_bytes, token, reset=reset)
+        _executor, lambda: _parse_grossiste_xlsx_sync(user_id, xlsx_bytes, token, reset=reset,
+                                                      filename=file.filename or "justificatif.xlsx")
     )
 
 
-def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes, user_token: str = "", reset: bool = False) -> dict:
+def _store_grossiste_xlsx(user_id: str, xlsx_bytes: bytes, filename: str, months: list, user_token: str = ""):
+    """Conserve le justificatif XLSX en base (digi_files, kinds=grossiste-xlsx) :
+    permet une ré-analyse ultérieure (ex. détail des achats par CIP pour le calcul
+    des exceptions RDP) sans redemander le fichier. Upsert sur (user_id, storage_key)."""
+    import base64 as _b64
+    from supabase_client import SUPA_URL, SUPA_KEY
+    key    = SUPA_KEY
+    bearer = user_token or key
+    body = json.dumps([{
+        "storage_key": f"xlsx:{filename}",
+        "filename":    filename,
+        "months":      months,
+        "kinds":       ["grossiste-xlsx"],
+        "status":      "done",
+        "content_b64": _b64.b64encode(xlsx_bytes).decode(),
+    }]).encode()
+    req = urllib.request.Request(f"{SUPA_URL}/rest/v1/digi_files?on_conflict=user_id,storage_key",
+                                 data=body, method="POST", headers={
+        "apikey": key, "Authorization": f"Bearer {bearer}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal,resolution=merge-duplicates",
+    })
+    with urllib.request.urlopen(req, timeout=60):
+        pass
+
+
+def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes, user_token: str = "", reset: bool = False, filename: str = "") -> dict:
     # Écriture de l'état via les helpers avec le TOKEN UTILISATEUR (RLS : l'user peut MAJ
     # sa propre ligne). La clé anon est en lecture seule sur user_state → 401 en écriture.
     # reset=True : on repart d'une base vide (ré-analyse : le 1er fichier réinitialise).
@@ -654,6 +681,13 @@ def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes, user_token: str 
     base  = {} if reset else (state.get("grossiste_month_stats") or {})
     state["grossiste_month_stats"] = _merge_grossiste_stats(base, grossiste_stats)
     _patch_state_sync(user_id, state, user_token=user_token)
+
+    # Conserver le fichier (non bloquant) — source du futur détail par CIP.
+    if filename:
+        try:
+            _store_grossiste_xlsx(user_id, xlsx_bytes, filename, sorted(grossiste_stats), user_token)
+        except Exception as e:
+            print(f"  [warn] stockage justificatif XLSX : {e}", flush=True)
 
     months   = sorted(grossiste_stats)
     total_q  = sum(r["qty"]      for rows in grossiste_stats.values() for r in rows)
