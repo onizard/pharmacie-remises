@@ -10778,18 +10778,22 @@ async function saveProfile() {
     if (saved.fseUploads?.length)   state._fseUploads  = saved.fseUploads;
     // Les connecteurs backend (Gmail grossiste, DIGI, FSE) écrivent en snake_case
     // (grossiste_month_stats…) ; le frontend lit/écrit en camelCase. On lit donc les DEUX
-    // au chargement (camelCase prioritaire, fallback snake_case) → la donnée synchronisée par
-    // le backend est toujours récupérée, même si le mapping au clic n'a pas eu lieu (réponse
-    // up_to_date) ou n'a pas persisté. serializeState ré-écrit en camelCase → auto-migration.
-    const _grossM = saved.grossisteMonthStats || saved.grossiste_month_stats;
+    // au chargement. Le SNAKE_CASE (écrit par les runners serveur) est PRIORITAIRE quand il
+    // existe : c'est la copie la plus fraîche (imports, reconstruction des stats d'avoirs…).
+    // La copie camelCase du frontend peut être périmée (sauvegardée avant le passage du
+    // runner) — l'ancienne précédence camelCase faisait revivre des stats gonflées.
+    // serializeState ré-écrit en camelCase → auto-migration au prochain enregistrement.
+    const _pick = (snake, camel) =>
+      (snake && Object.keys(snake).length) ? snake : camel;
+    const _grossM = _pick(saved.grossiste_month_stats, saved.grossisteMonthStats);
     if (_grossM && Object.keys(_grossM).length) {
       state._grossisteMonthStats = _grossM;
     }
-    const _digiM = saved.digiMonthStats || saved.digi_month_stats;
+    const _digiM = _pick(saved.digi_month_stats, saved.digiMonthStats);
     if (_digiM && Object.keys(_digiM).length) {
       state._digiMonthStats = _digiM;
     }
-    const _fseM = saved.fseMonthStats || saved.fse_month_stats;
+    const _fseM = _pick(saved.fse_month_stats, saved.fseMonthStats);
     if (_fseM && Object.keys(_fseM).length) {
       // Migration ancien format liste [{labo, montant_ttc}] → dict {LABO: {montant_ttc}}
       const migrated = {};
