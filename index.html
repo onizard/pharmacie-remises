@@ -1844,6 +1844,8 @@ async function _pollDigiBatchJob(opts = {}) {
   } finally { _digiBatchPolling = false; }
 }
 async function _refreshAfterDigiBatch() {
+  // Dé-doublonnage après l'arrivée de fichiers via le serveur (lot / extension).
+  try { window._dedupeAllFiles?.({ silent: true }); } catch(_) {}
   try {
     const { data: { session } } = await window._sbClient.auth.getSession();
     if (!session) return;
@@ -12277,6 +12279,76 @@ function initConnecteurModal() {
     return 'Autres';
   }
 
+  // ── Dé-doublonnage des fichiers — actif à CHAQUE ajout + bouton explorateur ──
+  // Règle 1 : même nom de fichier → un seul exemplaire.
+  // Règle 2 : même DOCUMENT (n° + date extraits du nom Digi
+  //   « …_9006335480_17122025.pdf ») → un seul exemplaire, préférence au fichier
+  //   « avoir_ » (un même avoir apparaît parfois aussi sous un nom « facture_ »).
+  // Nettoie les listes locales (métadonnées) ET la base (digi_files).
+  function _fileDocSig(name) {
+    const m = /_([A-Za-z0-9-]{8,})_(\d{8})\.(pdf|xlsx?)$/i.exec(String(name || ''));
+    return m ? (m[1] + '|' + m[2]).toUpperCase() : null;
+  }
+  async function _dedupeAllFiles(opts = {}) {
+    let removed = 0;
+    // 1. Listes locales — triées récent → ancien : on garde la 1re occurrence.
+    ['_grossisteUploads', '_digiUploads', '_fseUploads'].forEach(k => {
+      const arr = state[k] || [];
+      const seen = new Set(); const out = [];
+      arr.forEach(f => {
+        const key = String(f.name || '').trim().toLowerCase();
+        if (!key || !seen.has(key)) { seen.add(key); out.push(f); }
+        else removed++;
+      });
+      if (out.length !== arr.length) state[k] = out;
+    });
+    // 2. Base digi_files (avoirs, factures, justificatifs XLSX).
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (session) {
+        const H = { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` };
+        const res = await fetch(`${SUPA_URL}/rest/v1/digi_files?select=id,filename&order=id.asc`, { headers: H });
+        const rows = res.ok ? await res.json() : [];
+        const byName = {}, bySig = {}, del = new Set();
+        rows.forEach(r => {
+          const nk = String(r.filename || '').trim().toLowerCase();
+          if (!nk) return;
+          if (byName[nk]) del.add(r.id); else byName[nk] = r;
+        });
+        rows.forEach(r => {
+          if (del.has(r.id)) return;
+          const sig = _fileDocSig(r.filename);
+          if (!sig) return;
+          const prev = bySig[sig];
+          if (!prev) { bySig[sig] = r; return; }
+          // Même document sous deux noms → garder l'« avoir_ », sinon le plus ancien.
+          const keepPrev = /^avoir/i.test(prev.filename || '') || !/^avoir/i.test(r.filename || '');
+          const loser = keepPrev ? r : prev;
+          if (!keepPrev) bySig[sig] = r;
+          del.add(loser.id);
+        });
+        if (del.size) {
+          const ids = [...del];
+          for (let i = 0; i < ids.length; i += 100) {
+            await fetch(`${SUPA_URL}/rest/v1/digi_files?id=in.(${ids.slice(i, i + 100).join(',')})`,
+              { method: 'DELETE', headers: { ...H, Prefer: 'return=minimal' } });
+          }
+          removed += del.size;
+          try { await _loadDigiPdfIndex(); } catch(_) {}
+        }
+      }
+    } catch (_) {}
+    if (removed) {
+      saveState();
+      _updateGrossisteBtn();
+      const l = document.getElementById('grossisteFileList');
+      if (l && l.style.display !== 'none') _renderGrossisteList();
+    }
+    if (!opts.silent) showToast(removed ? `✓ ${removed} doublon(s) supprimé(s)` : 'Aucun doublon trouvé');
+    return removed;
+  }
+  window._dedupeAllFiles = _dedupeAllFiles;
+
   function _renderGrossisteList() {
     const el = document.getElementById('grossisteFileList');
     if (!el) return;
@@ -12313,7 +12385,13 @@ function initConnecteurModal() {
         </div>
         <div class="conn-cat-files" style="display:none">${rowsHtml}</div>
       </div>`;
-    let html = order.map(cat => {
+    // Barre d'outils : dé-doublonnage manuel (le programme tourne aussi
+    // automatiquement à chaque ajout de fichier).
+    let html = `<div style="display:flex;justify-content:flex-end;padding:2px 0 6px">
+      <button id="dedupeFilesBtn" title="Supprime les fichiers en double (même nom, ou même document sous deux noms avoir_/facture_)"
+        style="font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:3px;padding:2px 8px">⟲ DÉDOUBLONNER</button>
+    </div>`;
+    html += order.map(cat => {
       const rows = cats[cat].map(entry => {
         if (entry.cloud) {
           const p = entry.cloud;
@@ -12382,6 +12460,12 @@ function initConnecteurModal() {
         e.stopPropagation();
         if (typeof _previewDigiPdf === 'function') _previewDigiPdf(sp.dataset.key);
       });
+    });
+    const dedupeBtn = el.querySelector('#dedupeFilesBtn');
+    if (dedupeBtn) dedupeBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      dedupeBtn.disabled = true; dedupeBtn.textContent = '⟲ …';
+      try { await _dedupeAllFiles(); } finally { dedupeBtn.disabled = false; dedupeBtn.textContent = '⟲ DÉDOUBLONNER'; }
     });
   }
 
@@ -12552,6 +12636,7 @@ function initConnecteurModal() {
         { const listEl = document.getElementById('grossisteFileList');
           if (listEl && listEl.style.display !== 'none') _renderGrossisteList(); }
         if (others.length) await _uploadGrossisteMultiSync(others);
+        _dedupeAllFiles({ silent: true });   // dé-doublonnage après chaque ajout
         return;
       } catch (e) {
         console.warn('[digi-batch] fallback synchrone:', e);
@@ -12561,6 +12646,7 @@ function initConnecteurModal() {
       }
     }
     await _uploadGrossisteMultiSync(list);
+    _dedupeAllFiles({ silent: true });       // dé-doublonnage après chaque ajout
   }
 
   async function _uploadGrossisteMultiSync(files) {
