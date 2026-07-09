@@ -6972,6 +6972,23 @@ function _fseMatchAvoirs(t) {
   });
   return out;
 }
+// N°(s) de document d'un virement (refs backend, sinon jetons du libellé).
+function _fseTransferRefs(t) {
+  if (Array.isArray(t.refs) && t.refs.length) return t.refs.map(String);
+  return String(t.lib || '').toUpperCase().split(/[^A-Z0-9]+/)
+    .filter(w => w.length >= 8 && /\d/.test(w));
+}
+// Justificatif absent : explique quel avoir manque et comment l'importer.
+// (alert : lisible aussi sur mobile, où les infobulles n'existent pas.)
+window._digiAvoirMissing = function(refs) {
+  const r = decodeURIComponent(refs || '');
+  alert("Justificatif introuvable en base.\n\n"
+    + (r ? "L'avoir n° " + r + " qui justifie ce virement n'a pas encore été importé depuis Digipharmacie.\n\n" : "")
+    + "Pour l'importer :\n"
+    + "• ouvre app.digipharmacie.fr et clique « ⇪ Envoyer à break-pharma » (extension), ou\n"
+    + "• dépose le PDF de l'avoir dans CONNECTEURS → DÉPÔT DE FICHIERS.\n\n"
+    + "Le lien apparaîtra automatiquement une fois l'avoir importé.");
+};
 // Type effectif d'un virement :
 //  1. reclassement manuel (override) prioritaire ;
 //  2. sinon l'AVOIR APPARIÉ fait foi : avoir RDP ⇒ r2, avoir presta/coop ⇒ r3 ;
@@ -7171,9 +7188,10 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
       ? ` <span title="virement de ${fmtE(t.montant)} ventilé sur plusieurs périodes" style="color:var(--text-dim);font-size:9px">(part)</span>` : '';
     // Avoir(s) Digi payé(s) par CE virement (jointure par n° de document) → un 📄 par PDF.
     const avoirs = (t.avoirs && t.avoirs.length) ? t.avoirs : _fseMatchAvoirs(t);
+    const _mref  = encodeURIComponent(_fseTransferRefs(t).join(', '));
     const docCell = avoirs.length
       ? avoirs.map(p => `<span onclick="_previewDigiPdf('${p.key}')" title="${escH(p.filename)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;white-space:nowrap">📄${(p.kinds||[]).includes('presta')?'coop':'RDP'}</span>`).join(' ')
-      : '<span style="color:var(--text-dim)" title="Aucun avoir Digi correspondant en base — synchronise le connecteur Digi">—</span>';
+      : `<span onclick="_digiAvoirMissing('${_mref}')" title="Avoir pas encore importé — clic pour la marche à suivre" style="cursor:pointer;color:var(--amber)">📄?</span>`;
     return `<tr>
       <td style="white-space:nowrap">${t.mk||'—'}${viaMark}</td>
       <td style="white-space:nowrap">${fmtD(t.date)}</td>
@@ -7379,14 +7397,21 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   const _pdfList = _pdfMk ? (state._digiPdfIndex?.[_pdfMk] || []) : [];
   // Avoirs justifiant la somme reçue de ce MOIS DE CONTRAT : ceux des virements
   // assignés à cette période (jointure n° de document) — voir _fseAssignMap.
+  // missingRefs : n°(s) de document des virements assignés SANS avoir en base
+  // (le PDF n'a pas encore été importé) → pastille 📄? explicative.
   const _recAvoirs = (wantKind) => {
-    if (!_pdfMk) return [];
+    if (!_pdfMk) return { avoirs: [], missingRefs: [] };
     const wantVt = wantKind === 'presta' ? 'r3' : 'r2';
     const amap = _fseAssignMap(selNorm, labDisplay);
-    const out = [], seen = {};
-    ((amap[_pdfMk] || {})[wantVt] || []).forEach(e =>
-      (e.avoirs || []).forEach(p => { if (!seen[p.key]) { seen[p.key] = 1; out.push(p); } }));
-    return out;
+    const avoirs = [], missingRefs = [], seen = {};
+    ((amap[_pdfMk] || {})[wantVt] || []).forEach(e => {
+      if (e.avoirs && e.avoirs.length) {
+        e.avoirs.forEach(p => { if (!seen[p.key]) { seen[p.key] = 1; avoirs.push(p); } });
+      } else if (e.t) {
+        _fseTransferRefs(e.t).forEach(r => { if (!missingRefs.includes(r)) missingRefs.push(r); });
+      }
+    });
+    return { avoirs, missingRefs };
   };
   // wantKind : 'rdp' pour la colonne RDP, 'presta' pour la colonne coop → ouvre le BON
   // avoir (jamais une facture produit).
@@ -7394,12 +7419,21 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     if (!(val > 0)) return '—';
     const txt = fmtE(val);
     // 1. Exact : avoirs appariés aux virements du mois par n° de document.
-    let cands = _recAvoirs(wantKind);
+    const rec = _recAvoirs(wantKind);
+    let cands = rec.avoirs;
     // 2. Repli : PDF de la bonne catégorie couvrant la PÉRIODE du mois affiché.
     if (!cands.length) cands = _pdfList.filter(p => (p.kinds || []).includes(wantKind));
     // 3. Repli anciens PDF (kinds absents) : un fichier « avoir_… » (jamais une facture produit).
     if (!cands.length) cands = _pdfList.filter(p => !(p.kinds || []).length && /avoir/i.test(p.filename || ''));
-    if (!cands.length) return txt;               // rien d'adapté → non cliquable
+    if (!cands.length) {
+      // Justificatif pas encore importé → pastille explicative (n° d'avoir connu
+      // par le libellé du virement), cliquable aussi sur mobile.
+      if (rec.missingRefs.length) {
+        const enc = encodeURIComponent(rec.missingRefs.join(', '));
+        return `<span onclick="_digiAvoirMissing('${enc}')" title="Avoir n° ${escH(rec.missingRefs.join(', '))} pas encore importé — clic pour la marche à suivre" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${txt} <span style="font-size:9px;color:var(--amber)">📄?</span></span>`;
+      }
+      return txt;                                // rien d'adapté → non cliquable
+    }
     const lbl  = wantKind === 'presta' ? 'coop' : 'RDP';
     if (cands.length === 1) {
       const pick = cands[0];
