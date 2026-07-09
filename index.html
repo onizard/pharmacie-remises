@@ -12385,13 +12385,7 @@ function initConnecteurModal() {
         </div>
         <div class="conn-cat-files" style="display:none">${rowsHtml}</div>
       </div>`;
-    // Barre d'outils : dé-doublonnage manuel (le programme tourne aussi
-    // automatiquement à chaque ajout de fichier).
-    let html = `<div style="display:flex;justify-content:flex-end;padding:2px 0 6px">
-      <button id="dedupeFilesBtn" title="Supprime les fichiers en double (même nom, ou même document sous deux noms avoir_/facture_)"
-        style="font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:3px;padding:2px 8px">⟲ DÉDOUBLONNER</button>
-    </div>`;
-    html += order.map(cat => {
+    let html = order.map(cat => {
       const rows = cats[cat].map(entry => {
         if (entry.cloud) {
           const p = entry.cloud;
@@ -12460,12 +12454,6 @@ function initConnecteurModal() {
         e.stopPropagation();
         if (typeof _previewDigiPdf === 'function') _previewDigiPdf(sp.dataset.key);
       });
-    });
-    const dedupeBtn = el.querySelector('#dedupeFilesBtn');
-    if (dedupeBtn) dedupeBtn.addEventListener('click', async e => {
-      e.stopPropagation();
-      dedupeBtn.disabled = true; dedupeBtn.textContent = '⟲ …';
-      try { await _dedupeAllFiles(); } finally { dedupeBtn.disabled = false; dedupeBtn.textContent = '⟲ DÉDOUBLONNER'; }
     });
   }
 
