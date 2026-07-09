@@ -7389,7 +7389,11 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const r2A = r2pct!=null ? brut*r2pct/100 : 0;
     const r2R = rd ? ((rd.grossiste||0)+(rd.direct||0)) : 0;
     const r2D = (r2pct!=null || r2R>0) ? r2A-r2R : null;
-    const r3pct = isBio ? coopR3 : ((c.remise3!=null && c.remise3!=='') ? parseFloat(c.remise3) : 0);
+    // Prestation/coop attendue : remise3 DU PALIER (conditions labo) — le champ
+    // coopR3 global ne sert que de repli. Biogaran : facturée HT, versée TTC
+    // (×1,20), et pondérée par le coefficient contrat (90 % + réalisation × 10 %
+    // si réalisation ≥ 80 %, sinon coop bloquée → 0).
+    const r3pct = (c.remise3!=null && c.remise3!=='') ? parseFloat(c.remise3) : (isBio ? coopR3 : 0);
     const r3A = r3pct>0 ? brut*r3pct/100*TVA_R3*(isBio?coef:1) : 0;
     T.qty+=qty; T.brut+=brut; T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
     const dRsf = dStyle(rsfD), dR2 = dStyle(r2D);
@@ -7405,7 +7409,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       <td class="verif-r2" style="${G}">${r2R>0?fmtE(r2R):'—'}</td>
       <td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>
       <td class="verif-r3 gsep">${r3pct>0?fmtP(r3pct):'—'}</td>
-      <td class="verif-r3" style="${A}">${r3A>0?fmtE(r3A):'—'}</td>
+      <td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(brut)} × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?fmtE(r3A):(r3pct>0&&isBio&&coef===0?'<span title="Coop bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>
       <td class="verif-r3" style="color:var(--text-dim)">—</td>
       <td class="verif-r3" style="color:var(--text-dim)">—</td>
     </tr>`;
