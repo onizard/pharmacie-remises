@@ -6931,14 +6931,50 @@ function _verifDataDiag(mkList, selNorm, labDisplay, year, monthForCond) {
 function _fseTransferKey(t) {
   return `${t.date||''}|${t.montant||0}|${(t.lib||'').slice(0,40)}`;
 }
+// ── Appariement virement ↔ avoir Digi par NUMÉRO DE DOCUMENT ────────────────
+// Le libellé bancaire contient le n° de l'avoir payé (ex. « VIR BIOGARAN -
+// 9006335480 - … », « VIR CSP - 4M50904490 - … ») et le nom du fichier Digi
+// contient le même numéro (« avoir_…_Biogaran_9006335480_17122025.pdf ») →
+// jointure exacte, sans heuristique de mois (le virement arrive 1 à 2 mois
+// après la période de l'avoir, un lien par mois ouvrirait le mauvais PDF).
+function _digiPdfFlat() {
+  const seen = {}, out = [];
+  Object.values(state._digiPdfIndex || {}).forEach(arr => (arr || []).forEach(p => {
+    if (!p || !p.key || seen[p.key]) return;
+    seen[p.key] = 1;
+    out.push({ key: p.key, filename: p.filename || '', fnU: (p.filename || '').toUpperCase(), kinds: p.kinds || [] });
+  }));
+  return out;
+}
+// Avoirs Digi correspondant à un virement : jetons alphanumériques ≥8 avec au
+// moins un chiffre extraits du libellé, cherchés dans les noms de fichiers.
+// Un jeton = un document → un seul PDF retenu par jeton (« avoir_ » prioritaire
+// sur un doublon « facture_ » du même document).
+function _fseMatchAvoirs(t) {
+  const toks = String(t.lib || '').toUpperCase().split(/[^A-Z0-9]+/)
+    .filter(w => w.length >= 8 && /\d/.test(w));
+  if (!toks.length) return [];
+  const files = _digiPdfFlat(), out = [], used = {};
+  toks.forEach(tok => {
+    const hits = files.filter(p => p.fnU.includes(tok) && !used[p.key]);
+    if (!hits.length) return;
+    const pick = hits.find(p => /^avoir/i.test(p.filename)) || hits[0];
+    used[pick.key] = 1;
+    out.push(pick);
+  });
+  return out;
+}
 // Type effectif d'un virement :
 //  1. reclassement manuel (override) prioritaire ;
-//  2. sinon RÈGLE DU MONTANT — décimales ⇒ RDP (r2), somme ronde ⇒ coop (r3),
+//  2. sinon l'AVOIR APPARIÉ fait foi : avoir RDP ⇒ r2, avoir presta/coop ⇒ r3 ;
+//  3. sinon RÈGLE DU MONTANT — décimales ⇒ RDP (r2), somme ronde ⇒ coop (r3),
 //     sauf si le backend l'a explicitement marqué r2 (mot-clé RDP dans le libellé).
 // Les virements coop Biogaran sont toujours des sommes rondes.
 function _fseVtype(t) {
   const o = (state._fseOverrides||{})[_fseTransferKey(t)];
   if (o && o.vtype) return o.vtype;
+  const kinds = [...new Set(_fseMatchAvoirs(t).flatMap(p => p.kinds))].filter(k => k==='rdp'||k==='presta');
+  if (kinds.length === 1) return kinds[0] === 'rdp' ? 'r2' : 'r3';
   const cents = Math.round(Math.abs(t.montant || 0) * 100) % 100;
   if (cents !== 0) return 'r2';
   return t.vtype === 'r2' ? 'r2' : 'r3';
@@ -7014,11 +7050,17 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
       : '<span style="color:var(--text-dim)">COOP</span>';
     const btn = `<button onclick="_fseReclassify('${encodeURIComponent(key)}')" title="Reclasser RDP↔Coop"
         style="font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:3px;padding:1px 5px">⇄ ${isR2?'→Coop':'→RDP'}</button>`;
+    // Avoir(s) Digi payé(s) par CE virement (jointure par n° de document) → un 📄 par PDF.
+    const avoirs = _fseMatchAvoirs(t);
+    const docCell = avoirs.length
+      ? avoirs.map(p => `<span onclick="_previewDigiPdf('${p.key}')" title="${escH(p.filename)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;white-space:nowrap">📄${(p.kinds||[]).includes('presta')?'coop':'RDP'}</span>`).join(' ')
+      : '<span style="color:var(--text-dim)" title="Aucun avoir Digi correspondant en base — synchronise le connecteur Digi">—</span>';
     return `<tr>
       <td style="white-space:nowrap">${fmtD(t.date)}</td>
       <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(t.lib||'')}">${escH(t.lib||'—')}</td>
       <td style="text-align:right;white-space:nowrap">${fmtE(t.montant)}</td>
       <td style="text-align:center">${badge}${overridden?' <span title="reclassé manuellement" style="color:var(--amber)">✎</span>':''}</td>
+      <td style="text-align:center;white-space:nowrap">${docCell}</td>
       <td style="text-align:center">${btn}</td>
     </tr>`;
   }).join('');
@@ -7036,15 +7078,16 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
       <div style="overflow-x:auto"><table class="verif-tbl" style="font-size:11px">
         <thead><tr>
           <th style="text-align:left">DATE</th><th style="text-align:left">LIBELLÉ</th>
-          <th style="text-align:right">MONTANT</th><th style="text-align:center">TYPE</th><th style="text-align:center">RECLASSER</th>
+          <th style="text-align:right">MONTANT</th><th style="text-align:center">TYPE</th>
+          <th style="text-align:center">AVOIR</th><th style="text-align:center">RECLASSER</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
           <tr style="border-top:2px solid var(--border);font-weight:700">
             <td colspan="2" style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL REÇU</td>
-            <td style="text-align:right">${fmtE(sR2+sR3)}</td><td colspan="2"></td></tr>
-          <tr><td colspan="2" style="color:var(--cyan)">↳ dont RDP (r2)</td><td style="text-align:right;color:var(--cyan)">${fmtE(sR2)}</td><td colspan="2"></td></tr>
-          <tr><td colspan="2" style="color:var(--text-dim)">↳ dont Coop (r3)</td><td style="text-align:right;color:var(--text-dim)">${fmtE(sR3)}</td><td colspan="2"></td></tr>
+            <td style="text-align:right">${fmtE(sR2+sR3)}</td><td colspan="3"></td></tr>
+          <tr><td colspan="2" style="color:var(--cyan)">↳ dont RDP (r2)</td><td style="text-align:right;color:var(--cyan)">${fmtE(sR2)}</td><td colspan="3"></td></tr>
+          <tr><td colspan="2" style="color:var(--text-dim)">↳ dont Coop (r3)</td><td style="text-align:right;color:var(--text-dim)">${fmtE(sR3)}</td><td colspan="3"></td></tr>
         </tfoot>
       </table></div>
       ${flag}
@@ -7196,19 +7239,43 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   // ce mois (vue mensuelle uniquement — en cumul annuel plusieurs PDF se chevauchent).
   const _pdfMk   = cumulYear ? null : `${year}-${String(monthForCond).padStart(2,'0')}`;
   const _pdfList = _pdfMk ? (state._digiPdfIndex?.[_pdfMk] || []) : [];
+  // Avoirs payés par les virements ENCAISSÉS ce mois-ci (jointure n° de document
+  // libellé ↔ nom de fichier) : la somme reçue vient de ces virements → son
+  // justificatif est l'avoir qu'ils paient (période antérieure), PAS l'avoir de
+  // la période du mois affiché.
+  const _recAvoirs = (wantKind) => {
+    if (!_pdfMk) return [];
+    const wantVt = wantKind === 'presta' ? 'r3' : 'r2';
+    const out = [], seen = {};
+    Object.entries(state._fseMonthStats?.[_pdfMk] || {}).forEach(([l, s]) => {
+      if (_verifNormLab(l) !== selNorm) return;
+      (s.transfers || []).forEach(t => {
+        if (_fseVtype(t) !== wantVt) return;
+        _fseMatchAvoirs(t).forEach(p => { if (!seen[p.key]) { seen[p.key] = 1; out.push(p); } });
+      });
+    });
+    return out;
+  };
   // wantKind : 'rdp' pour la colonne RDP, 'presta' pour la colonne coop → ouvre le BON
-  // avoir (jamais une facture produit). Repli : un avoir sans catégorie connue.
+  // avoir (jamais une facture produit).
   const _recCell = (val, wantKind) => {
     if (!(val > 0)) return '—';
     const txt = fmtE(val);
-    // 1. Précis : PDF de la bonne catégorie (kinds renseignés au dépôt).
-    let cands = _pdfList.filter(p => (p.kinds || []).includes(wantKind));
-    // 2. Repli anciens PDF (kinds absents) : un fichier « avoir_… » (jamais une facture produit).
+    // 1. Exact : avoirs appariés aux virements du mois par n° de document.
+    let cands = _recAvoirs(wantKind);
+    // 2. Repli : PDF de la bonne catégorie couvrant la PÉRIODE du mois affiché.
+    if (!cands.length) cands = _pdfList.filter(p => (p.kinds || []).includes(wantKind));
+    // 3. Repli anciens PDF (kinds absents) : un fichier « avoir_… » (jamais une facture produit).
     if (!cands.length) cands = _pdfList.filter(p => !(p.kinds || []).length && /avoir/i.test(p.filename || ''));
     if (!cands.length) return txt;               // rien d'adapté → non cliquable
-    const pick = cands[cands.length - 1];
     const lbl  = wantKind === 'presta' ? 'coop' : 'RDP';
-    return `<span onclick="_previewDigiPdf('${pick.key}')" title="Voir l'avoir ${lbl} du mois : ${escH(pick.filename||'')}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${txt} <span style="font-size:9px">📄</span></span>`;
+    if (cands.length === 1) {
+      const pick = cands[0];
+      return `<span onclick="_previewDigiPdf('${pick.key}')" title="Voir l'avoir ${lbl} : ${escH(pick.filename||'')}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${txt} <span style="font-size:9px">📄</span></span>`;
+    }
+    // Plusieurs avoirs justifient la somme → un 📄 par document.
+    const icons = cands.map(p => `<span onclick="_previewDigiPdf('${p.key}')" title="${escH(p.filename||'')}" style="cursor:pointer;font-size:9px">📄</span>`).join('');
+    return `${txt} ${icons}`;
   };
   const totRow = `<tr style="border-top:2px solid var(--border);font-weight:700;background:rgba(255,255,255,.03)">
     <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
