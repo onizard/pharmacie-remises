@@ -11304,7 +11304,15 @@ async function saveProfile() {
     }
     applyRsfDefaults();
     // Index des avoirs Digi cliquables (léger, sans le PDF) → rafraîchit le vérificateur.
-    _loadDigiPdfIndex().then(() => { if (state.currentPageId === 'verificateur') renderVerificateur(); });
+    _loadDigiPdfIndex().then(() => {
+      if (state.currentPageId === 'verificateur') renderVerificateur();
+      // Explorateur de fichiers : les fichiers connecteurs (☁) sont maintenant connus.
+      try { _updateGrossisteBtn(); } catch(_) {}
+      try {
+        const l = document.getElementById('grossisteFileList');
+        if (l && l.style.display !== 'none') _renderGrossisteList();
+      } catch(_) {}
+    });
     // Reprise du suivi d'un import Digi en fond (si un job tourne encore côté serveur).
     _pollDigiBatchJob({ resumeOnly: true });
     renderLabGrid();
@@ -12122,8 +12130,27 @@ function initConnecteurModal() {
     return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
   }
 
+  // Fichiers Digi récupérés via les connecteurs (base digi_files) qui ne sont pas
+  // déjà dans la liste des dépôts manuels — dédoublonnés par nom.
+  function _connCloudFiles() {
+    if (typeof _digiPdfFlat !== 'function') return [];
+    const manual = new Set((state._grossisteUploads || []).map(f => f.name));
+    (state._digiUploads || []).forEach(f => manual.add(f.name));
+    const seen = new Set();
+    return _digiPdfFlat().filter(p => {
+      const n = p.filename || '';
+      if (!n || manual.has(n) || seen.has(n)) return false;
+      seen.add(n);
+      return true;
+    });
+  }
+
   function _updateGrossisteBtn() {
-    const n = (state._grossisteUploads || []).length + (state._grossisteGmailFiles || []).length;
+    const n = (state._grossisteUploads || []).length
+            + (state._grossisteGmailFiles || []).length
+            + _connCloudFiles().length
+            + (state._monthMeta || []).length
+            + (state._fseUploads || []).length;
     const btn = document.getElementById('grossisteDetailsBtn');
     if (btn) btn.textContent = `Détails (${n} fichier${n !== 1 ? 's' : ''})`;
   }
@@ -12149,13 +12176,25 @@ function initConnecteurModal() {
     if (!el) return;
     const uploads    = state._grossisteUploads    || [];
     const gmailFiles = state._grossisteGmailFiles || [];
-    if (!uploads.length && !gmailFiles.length) {
+    const cloud      = _connCloudFiles();                 // Digi via connecteurs (base)
+    const monthMeta  = state._monthMeta  || [];           // exports mensuels OSPHARM
+    const fseFiles   = state._fseUploads || [];           // exports FSE banque
+    if (!uploads.length && !gmailFiles.length && !cloud.length && !monthMeta.length && !fseFiles.length) {
       el.innerHTML = `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0">// Aucun fichier déposé</div>`;
       return;
     }
-    // Regrouper par catégorie en gardant l'index d'origine (pour la suppression).
+    // Regrouper par catégorie : dépôts manuels (avec index d'origine pour la
+    // suppression) + fichiers récupérés via les connecteurs (☁, aperçu au clic).
+    // Un dépôt manuel dont le PDF est stocké en base devient aussi cliquable.
+    const keyByName = {};
+    if (typeof _digiPdfFlat === 'function')
+      _digiPdfFlat().forEach(p => { if (p.filename) keyByName[p.filename] = p.key; });
     const cats = {};
     uploads.forEach((f, i) => { const c = _fileCategory(f); (cats[c] = cats[c] || []).push({ f, idx: i }); });
+    cloud.forEach(p => {
+      const c = _fileCategory({ name: p.filename });
+      (cats[c] = cats[c] || []).push({ cloud: p });
+    });
     const rank  = x => x === 'Grossiste' ? 0 : x === 'Autres' ? 2 : 1;
     const order = Object.keys(cats).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
     const badge = n => `<span style="background:#0369a1;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;flex-shrink:0">${n}</span>`;
@@ -12170,14 +12209,55 @@ function initConnecteurModal() {
         <div class="conn-cat-files" style="display:none">${rowsHtml}</div>
       </div>`;
     let html = order.map(cat => {
-      const rows = cats[cat].map(({ f, idx }) => `
+      const rows = cats[cat].map(entry => {
+        if (entry.cloud) {
+          const p = entry.cloud;
+          return `
         <div class="conn-file-item">
-          <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
+          <span style="color:var(--cyan);font-size:10px;flex-shrink:0" title="Récupéré via le connecteur — clic pour l'aperçu">☁</span>
+          <span class="conn-file-name conn-file-preview" data-key="${escH(p.key)}" title="${escH(p.filename)} — clic pour l'aperçu" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${escH(p.filename)}</span>
+          <span class="conn-file-meta">${(p.months||[]).join(', ')}</span>
+        </div>`;
+        }
+        const { f, idx } = entry;
+        const k = keyByName[f.name];
+        const nameHtml = k
+          ? `<span class="conn-file-name conn-file-preview" data-key="${escH(k)}" title="${escH(f.name)} — clic pour l'aperçu" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${escH(f.name)}</span>`
+          : `<span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>`;
+        return `
+        <div class="conn-file-item">
+          ${nameHtml}
           <span class="conn-file-meta">${_fmtSize(f.size)} &nbsp;·&nbsp; ${_fmtDate(f.uploaded_at)}</span>
           <button class="conn-file-del" title="Supprimer" data-idx="${idx}">✕</button>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       return section(cat, cats[cat].length, rows);
     }).join('');
+    if (monthMeta.length) {
+      const mois = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+      const rows = [...monthMeta].sort((a,b)=>(b.year-a.year)||(b.month-a.month)).map(m => {
+        const name = `OSPHARM ${mois[(m.month||1)-1]} ${m.year}`;
+        const nameHtml = m.file_url
+          ? `<a class="conn-file-name" href="${escH(m.file_url)}" target="_blank" title="Télécharger l'export ${escH(name)}" style="color:inherit">${escH(name)}</a>`
+          : `<span class="conn-file-name" title="${escH(name)}">${escH(name)}</span>`;
+        return `
+        <div class="conn-file-item">
+          <span style="color:var(--cyan);font-size:10px;flex-shrink:0" title="Export mensuel du connecteur OSPHARM">☁</span>
+          ${nameHtml}
+          <span class="conn-file-meta">${(m.rows||0).toLocaleString('fr')} lignes</span>
+        </div>`;
+      }).join('');
+      html += section('OSPHARM', monthMeta.length, rows);
+    }
+    if (fseFiles.length) {
+      const rows = fseFiles.map(f => `
+        <div class="conn-file-item">
+          <span style="color:var(--cyan);font-size:10px;flex-shrink:0" title="Export FSE banque">☁</span>
+          <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
+          <span class="conn-file-meta">${(f.months||[]).join(', ')}</span>
+        </div>`).join('');
+      html += section('FSE Banque', fseFiles.length, rows);
+    }
     if (gmailFiles.length) {
       const rows = gmailFiles.map(f => `
         <div class="conn-file-item">
@@ -12199,6 +12279,13 @@ function initConnecteurModal() {
     });
     el.querySelectorAll('.conn-file-del').forEach(btn => {
       btn.addEventListener('click', e => { e.stopPropagation(); _deleteGrossiste(parseInt(btn.dataset.idx)); });
+    });
+    // Fichiers connecteurs (☁) : aperçu du PDF stocké au clic.
+    el.querySelectorAll('.conn-file-preview').forEach(sp => {
+      sp.addEventListener('click', e => {
+        e.stopPropagation();
+        if (typeof _previewDigiPdf === 'function') _previewDigiPdf(sp.dataset.key);
+      });
     });
   }
 
