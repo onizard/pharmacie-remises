@@ -157,6 +157,60 @@ def _reindex(user_id: str) -> int:
     return n
 
 
+def _rebuild_avoirs(user_id: str) -> int:
+    """Reconstruit les stats d'AVOIRS (rdp_total, rdp_by_taux, presta_total[_ttc],
+    facture_refs) depuis les PDF stockés — source DÉDOUBLONNÉE. Corrige les stats
+    gonflées par des imports répétés du même avoir (fusion additive). Les champs
+    produits (qty, total_ht) ne sont pas touchés : tous les PDF produits ne sont
+    pas forcément stockés, alors que les avoirs rdp/presta le sont."""
+    key = _supa_key()
+    url = (f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&status=eq.done"
+           f"&kinds=ov.%7Brdp,presta%7D&select=id,filename,content_b64&order=id.asc")
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            rows = json.loads(r.read())
+    except urllib.error.HTTPError:
+        return 0            # colonne kinds absente → rien à reconstruire
+    if not rows:
+        return 0
+    print(f"→ reconstruction des stats d'avoirs depuis {len(rows)} PDF stocké(s)…", flush=True)
+    avoir_lines = []
+    for row in rows:
+        try:
+            pdf   = base64.b64decode(row.get("content_b64") or "")
+            lines = _parse_one(pdf, row.get("filename") or "")
+            avoir_lines += [l for l in lines if l.get("type") in ("rdp", "presta")]
+        except Exception as e:
+            print(f"  [warn] rebuild {str(row.get('filename',''))[:40]} : {e}", flush=True)
+    fresh = _compute_digi_month_stats(avoir_lines)
+
+    state = _get_state_sync(user_id) or {}
+    cur   = state.get("digi_month_stats") or {}
+    # 1) Remise à zéro des champs d'avoirs partout (les refs sont celles des avoirs).
+    for rows_ in cur.values():
+        for r in rows_:
+            r["rdp_total"] = 0; r["rdp_by_taux"] = []
+            r["presta_total"] = 0; r["presta_total_ttc"] = 0
+            r["facture_refs"] = []
+    # 2) Réinjection des valeurs recalculées depuis les PDF.
+    for mk, new_rows in fresh.items():
+        cur.setdefault(mk, [])
+        lm = {r["labo"]: r for r in cur[mk]}
+        for nr in new_rows:
+            if nr["labo"] in lm:
+                r = lm[nr["labo"]]
+                for k in ("rdp_total", "rdp_by_taux", "presta_total", "presta_total_ttc", "facture_refs"):
+                    r[k] = nr[k]
+            else:
+                lm[nr["labo"]] = dict(nr)
+        cur[mk] = sorted(lm.values(), key=lambda r: r["labo"])
+    state["digi_month_stats"] = cur
+    _patch_state_sync(user_id, state)
+    print(f"→ stats d'avoirs reconstruites ({len(fresh)} mois de période)", flush=True)
+    return len(rows)
+
+
 def _dedupe(user_id: str) -> int:
     """Supprime les avoirs en double (même nom de fichier = même document, le nom
     encode le n° de facture). On garde le plus ancien (plus petit id)."""
@@ -257,6 +311,14 @@ def main():
     if ndup:  parts.append(f"{ndup} doublon(s) supprimé(s)")
     _persist(USER_ID, acc, {"status": "done", "done": total, "total": total,
                             "message": "Terminé : " + (", ".join(parts) if parts else "rien à faire")})
+
+    # Reconstruction des stats d'avoirs depuis les PDF stockés (dédoublonnés) —
+    # APRÈS le _persist final : elle relit l'état frais et remplace uniquement
+    # les champs d'avoirs (corrige les cumuls gonflés par les doublons).
+    try:
+        _rebuild_avoirs(USER_ID)
+    except Exception as e:
+        print(f"  [warn] rebuild avoirs : {e}", flush=True)
     print(f"✅ Terminé — {ok} ok, {err} err, {reidx} ré-indexé(s)", flush=True)
 
 

@@ -6939,10 +6939,13 @@ function _fseTransferKey(t) {
 // après la période de l'avoir, un lien par mois ouvrirait le mauvais PDF).
 function _digiPdfFlat() {
   const seen = {}, out = [];
-  Object.values(state._digiPdfIndex || {}).forEach(arr => (arr || []).forEach(p => {
-    if (!p || !p.key || seen[p.key]) return;
-    seen[p.key] = 1;
-    out.push({ key: p.key, filename: p.filename || '', fnU: (p.filename || '').toUpperCase(), kinds: p.kinds || [] });
+  Object.entries(state._digiPdfIndex || {}).forEach(([mk, arr]) => (arr || []).forEach(p => {
+    if (!p || !p.key) return;
+    if (seen[p.key]) { seen[p.key].months.push(mk); return; }
+    const e = { key: p.key, filename: p.filename || '', fnU: (p.filename || '').toUpperCase(),
+                kinds: p.kinds || [], months: [mk] };
+    seen[p.key] = e;
+    out.push(e);
   }));
   return out;
 }
@@ -6979,6 +6982,100 @@ function _fseVtype(t) {
   if (cents !== 0) return 'r2';
   return t.vtype === 'r2' ? 'r2' : 'r3';
 }
+// ── Assignation des virements aux MOIS DE CONTRAT ──────────────────────────
+// Un virement encaissé en M paie une période antérieure (souvent M-1/M-2, avec
+// du retard possible en début de contrat). On rattache donc chaque virement à
+// son mois de CONTRAT (période payée), pas à son mois d'encaissement :
+//  1. EXACT : avoir apparié par n° de document → mois de PÉRIODE de l'avoir.
+//     Un virement payant 2 avoirs est ventilé par le rdp_total de chaque période.
+//  2. CHRONOLOGIQUE : les virements restants, triés par n° d'échéance (F001…)
+//     puis par date, remplissent DANS L'ORDRE les mois de contrat encore libres,
+//     en partant du 1er mois du contrat (date de signature, ex. juin 2025).
+// 1er mois du contrat (labPages.contractDate/contractDate25) → 'YYYY-MM'.
+function _fseContractStart(labDisplay) {
+  const lp = (state.labPages || []).find(p => p.selectedLab === labDisplay);
+  const ds = [lp?.contractDate25, lp?.contractDate].filter(Boolean)
+    .map(d => new Date(d)).filter(d => !isNaN(d)).sort((a,b) => a - b);
+  if (!ds.length) return null;
+  return `${ds[0].getFullYear()}-${String(ds[0].getMonth()+1).padStart(2,'0')}`;
+}
+// N° d'échéance dans le libellé (ex. « 4402295825F003 ») → 3 ; sinon null.
+function _fseSeqNum(t) {
+  const m = /F(\d{3})\b/i.exec(String(t.lib || ''));
+  return m ? parseInt(m[1], 10) : null;
+}
+// rdp_total (Digi) d'une période, pour ventiler un virement multi-avoirs.
+function _digiRdpTotal(mk, selNorm) {
+  const row = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo) === selNorm);
+  return row ? (row.rdp_total || 0) : 0;
+}
+// Carte d'assignation pour un labo : { 'YYYY-MM': { r2:[{t,amount,avoirs,via}], r3:[…] } }.
+// via : 'doc' (n° de document) ou 'chrono' (ordre chronologique depuis le début de contrat).
+function _fseAssignMap(selNorm, labDisplay) {
+  const map = {}, cell = (mk, vt) => ((map[mk] = map[mk] || { r2: [], r3: [] })[vt]);
+  // Tous les virements du labo, tous mois FSE confondus.
+  const all = [];
+  Object.entries(state._fseMonthStats || {}).forEach(([mk, labs]) =>
+    Object.entries(labs || {}).forEach(([l, s]) => {
+      if (_verifNormLab(l) !== selNorm) return;
+      (s.transfers || []).forEach(t => all.push({ ...t, _encMk: mk }));
+    }));
+  if (!all.length) return map;
+  const leftovers = { r2: [], r3: [] };
+  all.forEach(t => {
+    const vt = _fseVtype(t);
+    const avoirs = _fseMatchAvoirs(t).filter(p => p.months && p.months.length);
+    if (avoirs.length) {
+      // Périodes des avoirs appariés ; ventilation par rdp_total si plusieurs.
+      const perMk = {};
+      avoirs.forEach(p => { const mk = p.months[0]; (perMk[mk] = perMk[mk] || []).push(p); });
+      const mks = Object.keys(perMk).sort();
+      if (mks.length === 1) {
+        cell(mks[0], vt).push({ t, amount: t.montant || 0, avoirs, via: 'doc' });
+      } else {
+        const tots = mks.map(mk => _digiRdpTotal(mk, selNorm));
+        const sum  = tots.reduce((a,b) => a+b, 0);
+        mks.forEach((mk, i) => {
+          const part = sum > 0 ? (t.montant || 0) * (tots[i] / sum) : (t.montant || 0) / mks.length;
+          cell(mk, vt).push({ t, amount: Math.round(part*100)/100, avoirs: perMk[mk], via: 'doc' });
+        });
+      }
+    } else {
+      leftovers[vt].push(t);
+    }
+  });
+  // Chronologique : n° d'échéance (F001…) prioritaire, sinon date d'encaissement.
+  const start = _fseContractStart(labDisplay);
+  const now   = new Date();
+  const nowMk = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  ['r2','r3'].forEach(vt => {
+    const rest = leftovers[vt];
+    if (!rest.length) return;
+    rest.sort((a,b) => {
+      const sa = _fseSeqNum(a), sb = _fseSeqNum(b);
+      if (sa != null && sb != null && sa !== sb) return sa - sb;
+      return (a.date || '').localeCompare(b.date || '') || (b.montant || 0) - (a.montant || 0);
+    });
+    if (!start) {   // pas de date de contrat → repli : mois d'encaissement
+      rest.forEach(t => cell(t._encMk, vt).push({ t, amount: t.montant || 0, avoirs: [], via: 'enc' }));
+      return;
+    }
+    // Mois de contrat libres (sans assignation exacte de ce type), du début à maintenant.
+    let [y, m] = start.split('-').map(Number);
+    const free = [];
+    while (true) {
+      const mk = `${y}-${String(m).padStart(2,'0')}`;
+      if (mk > nowMk) break;
+      if (!(map[mk]?.[vt] || []).length) free.push(mk);
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    rest.forEach((t, i) => {
+      const mk = free[i] || t._encMk;   // plus de mois libre → mois d'encaissement
+      cell(mk, vt).push({ t, amount: t.montant || 0, avoirs: [], via: free[i] ? 'chrono' : 'enc' });
+    });
+  });
+  return map;
+}
 // Stats FSE effectives d'un labo/mois : si le détail unitaire est là, recalcule
 // r2/r3 depuis les virements en appliquant les reclassements manuels ; sinon
 // repli sur les agrégats backend (r2_ttc/r3_ttc). Source unique pour tout le front.
@@ -7008,33 +7105,44 @@ function _fseReclassify(enc) {
   try { if (typeof saveCloudState === 'function') saveCloudState(serializeState()); } catch(_) {}
   if (_verifSelMonth) _verifFillMonthDetail(_verifSelMonth);
 }
-// Rassemble les virements unitaires (sur tous les mois de mkList) pour le labo.
-function _verifCollectTransfers(mkList, selNorm) {
-  const out = []; let fseCount = 0, hasTransfers = false;
-  (mkList||[]).forEach(mk => {
-    Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, s]) => {
-      if (_verifNormLab(labo) !== selNorm) return;
-      fseCount += s.count || 0;
-      (s.transfers || []).forEach(t => { hasTransfers = true; out.push({ ...t, mk, labo }); });
-    });
+// Rassemble les virements ASSIGNÉS aux mois de mkList (mois de contrat/période,
+// pas mois d'encaissement) pour le labo — voir _fseAssignMap.
+function _verifCollectTransfers(mkList, selNorm, labDisplay) {
+  const amap = _fseAssignMap(selNorm, labDisplay);
+  const set  = new Set(mkList || []);
+  const out  = []; let fseCount = 0, hasTransfers = false;
+  Object.entries(amap).forEach(([mk, c]) => {
+    if (!set.has(mk)) return;
+    ['r2','r3'].forEach(vt => (c[vt] || []).forEach(e => {
+      hasTransfers = true;
+      out.push({ ...e.t, mk, amount: e.amount, avoirs: e.avoirs, via: e.via });
+    }));
   });
-  out.sort((a,b) => (a.date||'').localeCompare(b.date||'') || (b.montant||0)-(a.montant||0));
+  // Nb de virements agrégés côté backend (pour le message « détail absent »).
+  (mkList||[]).forEach(mk => Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([l, s]) => {
+    if (_verifNormLab(l) === selNorm) fseCount += s.count || 0;
+  }));
+  out.sort((a,b) => (a.mk||'').localeCompare(b.mk||'') || (a.date||'').localeCompare(b.date||'') || (b.montant||0)-(a.montant||0));
   return { transfers: out, fseCount, hasTransfers };
 }
 // Bloc dépliable listant chaque virement, son type (RDP/COOP), un bouton de
 // reclassement manuel, et le rapprochement RDP encaissé ↔ avoir Digi annoncé.
 // r2Avoir = RDP annoncé par l'avoir Digipharmacie (rdp_total) sur la période.
 function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
-  const { transfers, fseCount, hasTransfers } = _verifCollectTransfers(mkList, selNorm);
+  const { transfers, fseCount, hasTransfers } = _verifCollectTransfers(mkList, selNorm, labDisplay);
   if (!fseCount && !transfers.length) return '';
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtD = d => { const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(d||''); return m?`${m[3]}/${m[2]}/${m[1].slice(2)}`:'—'; };
   if (!hasTransfers) {
+    // Le détail unitaire existe-t-il quelque part ? Si oui, ce mois n'a simplement
+    // aucun virement assigné ; sinon il faut resynchroniser le connecteur FSE.
+    const anyDetail = Object.keys(_fseAssignMap(selNorm, labDisplay)).length > 0;
     return `<details style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px">
       <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ VIREMENTS RDP / COOP — ${escH(labDisplay)}</summary>
-      <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px;color:var(--amber)">
-        ${fseCount} virement(s) FSE agrégé(s), mais le détail unitaire n'a pas encore été récupéré.
-        Va dans l'onglet <b>Connecteurs</b> puis clique <b>⟳ SYNCHRONISER LE CONNECTEUR</b> pour obtenir le détail virement par virement.
+      <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px;color:${anyDetail?'var(--text-dim)':'var(--amber)'}">
+        ${anyDetail
+          ? 'Aucun virement assigné à ce mois de contrat (rien reçu pour cette période à ce jour).'
+          : fseCount + ' virement(s) FSE agrégé(s), mais le détail unitaire n\'a pas encore été récupéré. Va dans l\'onglet <b>Connecteurs</b> puis clique <b>⟳ SYNCHRONISER LE CONNECTEUR</b> pour obtenir le détail virement par virement.'}
       </div></details>`;
   }
   window._fseKeyType = window._fseKeyType || {};
@@ -7043,22 +7151,29 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
     const key = _fseTransferKey(t);
     window._fseKeyType[key] = t.vtype || 'r3';       // type backend, pour le toggle
     const isR2 = _fseVtype(t) === 'r2';
-    if (isR2) sR2 += t.montant||0; else sR3 += t.montant||0;
+    const amt  = (t.amount != null ? t.amount : t.montant) || 0;   // part ventilée
+    if (isR2) sR2 += amt; else sR3 += amt;
     const overridden = (state._fseOverrides||{})[key];
     const badge = isR2
       ? '<span style="color:var(--cyan);font-weight:700">RDP</span>'
       : '<span style="color:var(--text-dim)">COOP</span>';
     const btn = `<button onclick="_fseReclassify('${encodeURIComponent(key)}')" title="Reclasser RDP↔Coop"
         style="font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:3px;padding:1px 5px">⇄ ${isR2?'→Coop':'→RDP'}</button>`;
+    // Mois de contrat assigné + méthode : n° de document (sûr), ~ chronologique, ≈ encaissement.
+    const viaMark = t.via === 'chrono' ? ' <span title="assigné par ordre chronologique depuis le début du contrat" style="color:var(--amber)">~</span>'
+                  : t.via === 'enc'    ? ' <span title="rattaché au mois d\'encaissement (aucun mois de contrat libre)" style="color:var(--text-dim)">≈</span>' : '';
+    const split = t.amount != null && Math.abs((t.amount||0) - (t.montant||0)) >= 0.01
+      ? ` <span title="virement de ${fmtE(t.montant)} ventilé sur plusieurs périodes" style="color:var(--text-dim);font-size:9px">(part)</span>` : '';
     // Avoir(s) Digi payé(s) par CE virement (jointure par n° de document) → un 📄 par PDF.
-    const avoirs = _fseMatchAvoirs(t);
+    const avoirs = (t.avoirs && t.avoirs.length) ? t.avoirs : _fseMatchAvoirs(t);
     const docCell = avoirs.length
       ? avoirs.map(p => `<span onclick="_previewDigiPdf('${p.key}')" title="${escH(p.filename)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;white-space:nowrap">📄${(p.kinds||[]).includes('presta')?'coop':'RDP'}</span>`).join(' ')
       : '<span style="color:var(--text-dim)" title="Aucun avoir Digi correspondant en base — synchronise le connecteur Digi">—</span>';
     return `<tr>
+      <td style="white-space:nowrap">${t.mk||'—'}${viaMark}</td>
       <td style="white-space:nowrap">${fmtD(t.date)}</td>
-      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(t.lib||'')}">${escH(t.lib||'—')}</td>
-      <td style="text-align:right;white-space:nowrap">${fmtE(t.montant)}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(t.lib||'')}">${escH(t.lib||'—')}</td>
+      <td style="text-align:right;white-space:nowrap">${fmtE(amt)}${split}</td>
       <td style="text-align:center">${badge}${overridden?' <span title="reclassé manuellement" style="color:var(--amber)">✎</span>':''}</td>
       <td style="text-align:center;white-space:nowrap">${docCell}</td>
       <td style="text-align:center">${btn}</td>
@@ -7077,17 +7192,18 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
     <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px">
       <div style="overflow-x:auto"><table class="verif-tbl" style="font-size:11px">
         <thead><tr>
-          <th style="text-align:left">DATE</th><th style="text-align:left">LIBELLÉ</th>
+          <th style="text-align:left" title="Mois de contrat auquel le virement est assigné">MOIS</th>
+          <th style="text-align:left" title="Date d'encaissement du virement">ENCAISSÉ</th><th style="text-align:left">LIBELLÉ</th>
           <th style="text-align:right">MONTANT</th><th style="text-align:center">TYPE</th>
           <th style="text-align:center">AVOIR</th><th style="text-align:center">RECLASSER</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
           <tr style="border-top:2px solid var(--border);font-weight:700">
-            <td colspan="2" style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL REÇU</td>
+            <td colspan="3" style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL REÇU</td>
             <td style="text-align:right">${fmtE(sR2+sR3)}</td><td colspan="3"></td></tr>
-          <tr><td colspan="2" style="color:var(--cyan)">↳ dont RDP (r2)</td><td style="text-align:right;color:var(--cyan)">${fmtE(sR2)}</td><td colspan="3"></td></tr>
-          <tr><td colspan="2" style="color:var(--text-dim)">↳ dont Coop (r3)</td><td style="text-align:right;color:var(--text-dim)">${fmtE(sR3)}</td><td colspan="3"></td></tr>
+          <tr><td colspan="3" style="color:var(--cyan)">↳ dont RDP (r2)</td><td style="text-align:right;color:var(--cyan)">${fmtE(sR2)}</td><td colspan="3"></td></tr>
+          <tr><td colspan="3" style="color:var(--text-dim)">↳ dont Coop (r3)</td><td style="text-align:right;color:var(--text-dim)">${fmtE(sR3)}</td><td colspan="3"></td></tr>
         </tfoot>
       </table></div>
       ${flag}
@@ -7101,12 +7217,18 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const paliers   = (grosRow && Array.isArray(grosRow.paliers))     ? grosRow.paliers     : [];
   const rdpByTaux = (digiRow && Array.isArray(digiRow.rdp_by_taux)) ? digiRow.rdp_by_taux : [];
   if (!paliers.length && !rdpByTaux.length) return null;
-  // R3/coop reçu = virements FSE classés r3 (fallback : montant total du virement).
-  let fseR3 = 0, fseR2 = 0;
-  Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{
-    if (_verifNormLab(l)!==selNorm) return;
-    const e = _fseEff(s); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
-  });
+  // Reçu = virements ASSIGNÉS à ce mois de contrat (période payée), pas les
+  // virements encaissés ce mois-ci — voir _fseAssignMap.
+  const _amap = _fseAssignMap(selNorm, labDisplay);
+  let fseR2 = (_amap[mk]?.r2 || []).reduce((a,e)=>a+e.amount, 0);
+  let fseR3 = (_amap[mk]?.r3 || []).reduce((a,e)=>a+e.amount, 0);
+  // Repli agrégats backend si aucun détail unitaire n'existe (ancien export FSE).
+  if (!Object.keys(_amap).length) {
+    Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{
+      if (_verifNormLab(l)!==selNorm) return;
+      const e = _fseEff(s); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
+    });
+  }
   // R2 reçu : virements bancaires (FSE r2) = source de vérité ; repli sur l'avoir
   // Digi (rdp_total) seulement s'il n'y a aucun virement RDP encaissé.
   const r2RecTotal = fseR2 > 0 ? fseR2 : (digiRow?.rdp_total || 0);
@@ -7138,13 +7260,22 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
   });
   const paliers = Object.values(gAgg), rdpByTaux = Object.values(rAgg);
   if (!paliers.length && !rdpByTaux.length) return null;
+  // Reçu = virements ASSIGNÉS aux mois de contrat de l'année (un virement encaissé
+  // en janvier N+1 qui paie décembre N compte dans l'année N).
+  const _amap = _fseAssignMap(selNorm, labDisplay);
   let fseR3 = 0, fseR2 = 0;
-  Object.entries(state._fseMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,labMap])=>{
-    Object.entries(labMap||{}).forEach(([l,s])=>{
-      if (_verifNormLab(l)!==selNorm) return;
-      const e = _fseEff(s); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
-    });
+  Object.entries(_amap).filter(([mk])=>mksY(mk)).forEach(([,c])=>{
+    fseR2 += (c.r2||[]).reduce((a,e)=>a+e.amount, 0);
+    fseR3 += (c.r3||[]).reduce((a,e)=>a+e.amount, 0);
   });
+  if (!Object.keys(_amap).length) {   // repli agrégats backend (ancien export FSE)
+    Object.entries(state._fseMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,labMap])=>{
+      Object.entries(labMap||{}).forEach(([l,s])=>{
+        if (_verifNormLab(l)!==selNorm) return;
+        const e = _fseEff(s); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
+      });
+    });
+  }
   // R2 reçu : virements bancaires (FSE r2) = source de vérité ; repli sur Σ avoir
   // Digi (rdp_total) seulement en l'absence de virement RDP encaissé.
   let rdpTotalSum = 0;
@@ -7156,7 +7287,9 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
     Object.keys(state._fseMonthStats||{})).filter(mksY);
   const today = new Date();
   const mRef  = yr < today.getFullYear() ? 12 : today.getMonth()+1;
-  const fseMksY = Object.keys(state._fseMonthStats||{}).filter(mksY);
+  // Vue virements du cumul : les mois de contrat ASSIGNÉS de l'année.
+  const asgMksY = Object.keys(_amap).filter(mksY);
+  const fseMksY = asgMksY.length ? asgMksY : Object.keys(state._fseMonthStats||{}).filter(mksY);
   return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr)
        + _verifRenderVirements(fseMksY, selNorm, labDisplay, rdpTotalSum)
        + _verifDataDiag([...new Set(mkList)], selNorm, labDisplay, yr, mRef);
@@ -7239,21 +7372,15 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   // ce mois (vue mensuelle uniquement — en cumul annuel plusieurs PDF se chevauchent).
   const _pdfMk   = cumulYear ? null : `${year}-${String(monthForCond).padStart(2,'0')}`;
   const _pdfList = _pdfMk ? (state._digiPdfIndex?.[_pdfMk] || []) : [];
-  // Avoirs payés par les virements ENCAISSÉS ce mois-ci (jointure n° de document
-  // libellé ↔ nom de fichier) : la somme reçue vient de ces virements → son
-  // justificatif est l'avoir qu'ils paient (période antérieure), PAS l'avoir de
-  // la période du mois affiché.
+  // Avoirs justifiant la somme reçue de ce MOIS DE CONTRAT : ceux des virements
+  // assignés à cette période (jointure n° de document) — voir _fseAssignMap.
   const _recAvoirs = (wantKind) => {
     if (!_pdfMk) return [];
     const wantVt = wantKind === 'presta' ? 'r3' : 'r2';
+    const amap = _fseAssignMap(selNorm, labDisplay);
     const out = [], seen = {};
-    Object.entries(state._fseMonthStats?.[_pdfMk] || {}).forEach(([l, s]) => {
-      if (_verifNormLab(l) !== selNorm) return;
-      (s.transfers || []).forEach(t => {
-        if (_fseVtype(t) !== wantVt) return;
-        _fseMatchAvoirs(t).forEach(p => { if (!seen[p.key]) { seen[p.key] = 1; out.push(p); } });
-      });
-    });
+    ((amap[_pdfMk] || {})[wantVt] || []).forEach(e =>
+      (e.avoirs || []).forEach(p => { if (!seen[p.key]) { seen[p.key] = 1; out.push(p); } }));
     return out;
   };
   // wantKind : 'rdp' pour la colonne RDP, 'presta' pour la colonne coop → ouvre le BON
