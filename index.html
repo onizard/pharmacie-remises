@@ -12147,7 +12147,6 @@ function initConnecteurModal() {
 
   function _updateGrossisteBtn() {
     const n = (state._grossisteUploads || []).length
-            + (state._grossisteGmailFiles || []).length
             + _connCloudFiles().length
             + (state._monthMeta || []).length
             + (state._fseUploads || []).length;
@@ -12175,11 +12174,10 @@ function initConnecteurModal() {
     const el = document.getElementById('grossisteFileList');
     if (!el) return;
     const uploads    = state._grossisteUploads    || [];
-    const gmailFiles = state._grossisteGmailFiles || [];
     const cloud      = _connCloudFiles();                 // Digi via connecteurs (base)
     const monthMeta  = state._monthMeta  || [];           // exports mensuels OSPHARM
     const fseFiles   = state._fseUploads || [];           // exports FSE banque
-    if (!uploads.length && !gmailFiles.length && !cloud.length && !monthMeta.length && !fseFiles.length) {
+    if (!uploads.length && !cloud.length && !monthMeta.length && !fseFiles.length) {
       el.innerHTML = `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0">// Aucun fichier déposé</div>`;
       return;
     }
@@ -12257,15 +12255,6 @@ function initConnecteurModal() {
           <span class="conn-file-meta">${(f.months||[]).join(', ')}</span>
         </div>`).join('');
       html += section('FSE Banque', fseFiles.length, rows);
-    }
-    if (gmailFiles.length) {
-      const rows = gmailFiles.map(f => `
-        <div class="conn-file-item">
-          <span style="color:var(--cyan);font-size:10px;flex-shrink:0">✉</span>
-          <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
-          <span class="conn-file-meta">${(f.months||[]).join(', ')}</span>
-        </div>`).join('');
-      html += section('✉ Boîte mail', gmailFiles.length, rows);
     }
     el.innerHTML = html;
     // Déplier / replier une catégorie au clic sur son en-tête.
