@@ -1390,34 +1390,39 @@
       <button type="button" id="autoConnToggle" class="conn-auto-toggle">▸ CONNECTEURS AUTOMATIQUES <span style="font-weight:400;letter-spacing:1px;color:var(--text-dim);font-size:9px">(avancé — OSPHARM / DIGI / FSE)</span></button>
       <div id="autoConnectorsWrap" style="display:none">
       <div class="conn-sites">
-        <!-- DIGIPHARMACIE -->
+        <!-- DIGIPHARMACIE — récupération via l'extension navigateur (l'accès serveur
+             est bloqué par l'anti-bot : les factures partent de la session de
+             l'utilisateur, aucun identifiant Digipharmacie n'est demandé). -->
         <div class="conn-site">
           <div id="digiFormView">
-            <form action="javascript:void(0)" onsubmit="return false">
             <div class="conn-site-title">DIGIPHARMACIE</div>
-            <div class="conn-field">
-              <div class="conn-label">Identifiant</div>
-              <input class="conn-input" id="digiUser" type="text" autocomplete="username" placeholder="Login" />
+            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);line-height:1.6;margin:8px 0 10px">
+              La récupération passe par l'extension navigateur
+              <b style="color:var(--cyan)">break-pharma connect</b> : vos factures
+              partent de <b>votre</b> session Digipharmacie, en un clic.
+              Aucun identifiant à confier.
             </div>
-            <div class="conn-field">
-              <div class="conn-label">Mot de passe</div>
-              <div class="conn-input-wrap">
-                <input class="conn-input" id="digiPass" type="password" autocomplete="current-password" placeholder="••••••••" />
-                <button type="button" class="conn-eye" data-target="digiPass" title="Afficher/masquer">👁</button>
-              </div>
-            </div>
+            <ol style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text);line-height:1.7;margin:0 0 12px;padding-left:18px">
+              <li>Télécharge l'extension ci-dessous et <b>dézippe</b>-la (sur ordinateur).</li>
+              <li>Ouvre <span style="color:var(--cyan)">chrome://extensions</span> → active le <b>Mode développeur</b> → <b>« Charger l'extension non empaquetée »</b> → choisis le dossier dézippé.</li>
+              <li>Clique l'icône de l'extension → connecte-toi avec tes identifiants <b>break-pharma</b>.</li>
+              <li>Ouvre <span style="color:var(--cyan)">app.digipharmacie.fr</span> → clique <b>« ⇪ Envoyer à break-pharma »</b> (en bas à droite).</li>
+            </ol>
             <div class="conn-test-row">
-              <button class="conn-test-btn" id="digiTest">CONNECTER</button>
-              <span class="conn-test-result" id="digiTestResult"></span>
+              <a href="/extension.zip" download="break-pharma-connect.zip" class="conn-test-btn" style="text-decoration:none;display:inline-block;text-align:center">⬇ TÉLÉCHARGER L'EXTENSION</a>
             </div>
-            </form>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px">
+              Les fichiers envoyés sont traités en arrière-plan côté serveur — tu peux
+              fermer l'onglet. Ils apparaissent ensuite dans l'explorateur de fichiers.
+            </div>
           </div>
           <div class="conn-connected-view" id="digiConnView" style="display:none">
             <div class="conn-check-big" id="digiCheckBig"><span class="conn-check-tick">✓</span><span class="conn-check-cross">✗</span></div>
             <div class="conn-connected-name">DIGIPHARMACIE</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim)" id="digiExtCount"></div>
             <div class="conn-job-status" id="digiJobStatus"></div>
-            <button class="conn-test-btn" id="digiReconnectBtn">RECONNECTER</button>
-            <button class="conn-test-btn" id="digiSyncBtn" title="Re-scrape complet de l'historique Digi (ré-applique les parsers à jour, ex. RDP par palier)" style="margin-top:6px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff)">⟳ SYNCHRONISER LE CONNECTEUR</button>
+            <button class="conn-test-btn" id="digiSyncBtn" title="Le serveur re-parcourt les PDF stockés : ré-indexation, dé-doublonnage, reconstruction des stats d'avoirs" style="margin-top:6px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff)">⟳ RÉ-ANALYSER LES FICHIERS</button>
+            <a href="/extension.zip" download="break-pharma-connect.zip" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;text-decoration:underline dotted">⬇ re-télécharger l'extension</a>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
           <div class="conn-ring-wrap" id="digiProgBar">
@@ -11556,12 +11561,9 @@ function initConnecteurModal() {
     const c = state.connectors;
     document.getElementById('ospUser').value  = c.ospharm.user;
     document.getElementById('ospPass').value  = '';
-    document.getElementById('digiUser').value = c.digipharmacie.user;
-    document.getElementById('digiPass').value = '';
     document.getElementById('concUser').value  = c.concentrateur?.user || '';
     document.getElementById('concPass').value  = '';
     document.getElementById('ospTestResult').textContent   = '';
-    document.getElementById('digiTestResult').textContent  = '';
     document.getElementById('concTestResult').textContent = '';
     document.getElementById('ospReqStatus').textContent   = '';
     document.getElementById('digiReqStatus').textContent  = '';
@@ -11570,7 +11572,12 @@ function initConnecteurModal() {
     _setConnProgress('osp', 'reset');
     _concRefreshTypeButtons();
     showView('osp',   c.ospharm.connected);
-    showView('digi',  c.digipharmacie.connected);
+    // Digi : « connecté » = des fichiers sont arrivés via l'extension (base digi_files) ;
+    // l'ancien flag credentials reste honoré pour les comptes historiques.
+    const _digiN = (typeof _digiPdfFlat === 'function') ? _digiPdfFlat().length : 0;
+    showView('digi',  _digiN > 0 || c.digipharmacie.connected);
+    const _digiCntEl = document.getElementById('digiExtCount');
+    if (_digiCntEl) _digiCntEl.textContent = _digiN > 0 ? `${_digiN} fichier(s) récupéré(s) via l'extension` : '';
     showView('conc',  c.concentrateur?.connected || false);
     modal.classList.add('open');
     refreshConnJobStatuses();
@@ -11655,7 +11662,6 @@ function initConnecteurModal() {
     document.getElementById(passId)?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById(btnId)?.click(); });
   };
   _connEnter('ospUser',   'ospPass',   'ospTest');
-  _connEnter('digiUser',  'digiPass',  'digiTest');
   _connEnter('concUser',  'concPass',  'concTest');
 
   function _showConnResult(el, html, cls) {
@@ -12901,8 +12907,7 @@ function initConnecteurModal() {
   })();
 
   document.getElementById('ospTest').addEventListener('click',   () => connectConn('ospharm', 'osp'));
-  document.getElementById('digiTest').addEventListener('click',  () => connectConn('digipharmacie', 'digi'));
-  ['ospUser','ospPass','digiUser','digiPass'].forEach(id => {
+  ['ospUser','ospPass'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', function() { this.classList.remove('error'); });
   });
   // RECONNECTER : affiche le form avec identifiant pré-rempli (readonly) + mot de passe vide
@@ -12927,10 +12932,23 @@ function initConnecteurModal() {
     await _triggerWorkflow('ospharm', 'osp');
     if (btn) { btn.disabled = false; btn.textContent = '↺ RELANCER JOB'; }
   });
-  document.getElementById('digiReconnectBtn').addEventListener('click', () => _showReconnectForm('digi', 'digipharmacie'));
+  // Digi : plus de re-scrape serveur (anti-bot) — la ré-analyse re-parcourt les PDF
+  // stockés côté serveur (ré-indexation + dé-doublonnage + reconstruction des stats).
   document.getElementById('digiSyncBtn')?.addEventListener('click', (e) => {
-    if (!confirm('Synchroniser le connecteur Digipharmacie ?\n\nLe cache et les données Digi seront réinitialisés, puis tout l\'historique sera re-scrapé depuis Digipharmacie (quelques minutes).')) return;
-    _syncBtnFeedback(e.currentTarget, () => syncDigiConnector());
+    if (!confirm('Ré-analyser les fichiers Digi ?\n\nLe serveur re-parcourt les PDF stockés : ré-indexation, dé-doublonnage et reconstruction des stats d\'avoirs (1 à 2 minutes).')) return;
+    _syncBtnFeedback(e.currentTarget, async () => {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) { showToast('Session expirée'); return false; }
+      try {
+        const resp = await fetch(`${API_URL}/run/digi-batch`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (typeof _pollDigiBatchJob === 'function') _pollDigiBatchJob();
+        return true;
+      } catch (err) { showToast('Erreur : ' + err.message); return false; }
+    });
   });
 
   // ── Synchroniser le connecteur FSE (concentrateur) : ré-export + ré-appariement ──
