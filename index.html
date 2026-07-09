@@ -7332,25 +7332,47 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   // grossiste/RDP est positif → on indexe par valeur absolue pour les apparier.
   const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)&&!r.excluded) cmap[k]=r; });
   const gmap = {}; paliers.forEach(p => gmap[p.taux]=p);
-  // L'avoir ventile la RDP par TAUX RDP (ex. 2025 : 30 % payé sur les achats du
-  // palier RSF 10 %) ; le tableau est par PALIER RSF → on rattache chaque taux
-  // RDP au palier dont la condition porte ce remise2 (apparié seulement si non
-  // ambigu). Sans ça, « 30 % » apparaissait comme un palier RSF fantôme avec un
-  // RSF attendu inventé (brut × 30 %) qui faussait le total.
-  const _rdpPair = {};   // taux RDP → [taux RSF]
+  // L'avoir ventile la RDP par TAUX VERSÉ, pas par palier RSF. Or un même taux
+  // peut couvrir plusieurs paliers : ex. 2026, « RDP 10 % » = palier RSF 20 %
+  // (condition principale) + les références d'EXCEPTION du palier 30 % (10 %).
+  // On rattache chaque taux RDP au palier dont la condition PRINCIPALE porte ce
+  // remise2 ; les exceptions (remise2Except) sont signalées sur leur palier
+  // d'origine (le montant, agrégé par taux dans l'avoir, reste sur la ligne du
+  // taux). Un taux sans aucun rattachement (ex. « 30 % » d'oct-déc 2025 =
+  // reliquat du barème 2025 pendant la transition) garde sa propre ligne, sans
+  // RDP « attendue » inventée.
+  const emap = {};   // taux RSF → { pct, n } : exception remise2 du palier
+  Object.entries(cond?.remise2Except || {}).forEach(([k, v]) => {
+    const kk = Math.abs(parseFloat(k));
+    const p  = parseFloat(v?.remise2);
+    if (!isNaN(kk) && p > 0) emap[kk] = { pct: p, n: (v?.libelles || []).length };
+  });
+  const _pairMain = {}, _pairExc = {};   // taux RDP → [taux RSF]
   Object.entries(cmap).forEach(([k, r]) => {
     const t2 = parseFloat(r.remise2);
-    if (t2 > 0) (_rdpPair[t2] = _rdpPair[t2] || []).push(parseFloat(k));
+    if (t2 > 0) (_pairMain[t2] = _pairMain[t2] || []).push(parseFloat(k));
+  });
+  Object.entries(emap).forEach(([k, e]) => {
+    (_pairExc[e.pct] = _pairExc[e.pct] || []).push(parseFloat(k));
   });
   const rmap = {};
   rdpByTaux.forEach(e => {
-    const tgt = _rdpPair[e.taux];
-    const key = (tgt && tgt.length === 1) ? tgt[0] : e.taux;
+    const main = _pairMain[e.taux] || [], exc = _pairExc[e.taux] || [];
+    let key, note = '', unpaired = false;
+    if (main.length === 1) {
+      key = main[0];
+      if (exc.length) note = `Inclut aussi les références d'exception du palier ${exc.join(' % / ')} % (RDP ${e.taux} %) — l'avoir agrège par taux versé.`;
+    } else if (!main.length && exc.length === 1) {
+      key = exc[0];
+    } else {
+      key = e.taux; unpaired = true;
+    }
     if (rmap[key]) {   // plusieurs taux RDP sur le même palier → fusion additive
       ['grossiste','direct','ca_grossiste','ca_direct'].forEach(f =>
         rmap[key][f] = (rmap[key][f]||0) + (e[f]||0));
+      if (note) rmap[key]._note = note;
     } else {
-      rmap[key] = { ...e };
+      rmap[key] = { ...e, _note: note, _unpaired: unpaired };
     }
   });
   const allTaux = [...new Set([...paliers.map(p=>p.taux), ...Object.keys(rmap).map(Number)])]
@@ -7388,7 +7410,13 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const r2pct = (c.remise2!=null && c.remise2!=='') ? parseFloat(c.remise2) : null;
     const r2A = r2pct!=null ? brut*r2pct/100 : 0;
     const r2R = rd ? ((rd.grossiste||0)+(rd.direct||0)) : 0;
-    const r2D = (r2pct!=null || r2R>0) ? r2A-r2R : null;
+    // Taux hors barème courant (rd._unpaired, ex. RDP 30 % pendant la transition
+    // 2025→2026) : on montre le versé, sans « attendu » ni écart inventés.
+    const r2Off = !!(rd && rd._unpaired && r2R > 0 && !(r2A > 0));
+    const r2D = r2Off ? null : ((r2pct!=null || r2R>0) ? r2A-r2R : null);
+    // Exceptions du palier (remise2Except) : RDP versée dans la ligne de LEUR
+    // taux — on le signale sur le palier d'origine.
+    const exc = emap[tx];
     // Prestation/coop attendue : remise3 DU PALIER (conditions labo) — le champ
     // coopR3 global ne sert que de repli. Biogaran : facturée HT, versée TTC
     // (×1,20), et pondérée par le coefficient contrat (90 % + réalisation × 10 %
@@ -7404,9 +7432,9 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       <td class="gsep" style="${A}">${fmtE(rsfA)}</td>
       <td style="${G}">${fmtE(rsfR)}</td>
       <td style="${dRsf}">${fmtE(rsfD)}</td>
-      <td class="verif-r2 gsep">${r2pct!=null?fmtP(r2pct):'—'}</td>
-      <td class="verif-r2" style="${A}">${r2pct!=null?fmtE(r2A):'—'}</td>
-      <td class="verif-r2" style="${G}">${r2R>0?fmtE(r2R):'—'}</td>
+      <td class="verif-r2 gsep">${r2pct!=null?fmtP(r2pct):'—'}${exc?` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`:''}</td>
+      <td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:''}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':(r2pct!=null?fmtE(r2A):'—')}</td>
+      <td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span style="color:var(--amber);font-size:9px" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>
       <td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>
       <td class="verif-r3 gsep">${r3pct>0?fmtP(r3pct):'—'}</td>
       <td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(brut)} × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?fmtE(r3A):(r3pct>0&&isBio&&coef===0?'<span title="Coop bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>
