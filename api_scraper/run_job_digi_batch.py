@@ -211,9 +211,17 @@ def _rebuild_avoirs(user_id: str) -> int:
     return len(rows)
 
 
+def _doc_sig(fn: str):
+    """Signature « même document » : n° de document + date extraits du nom Digi
+    (« …_9006335480_17122025.pdf »). None si le nom n'a pas cette forme."""
+    m = re.search(r'_([A-Za-z0-9-]{8,})_(\d{8})\.(pdf|xlsx?)$', fn or '', re.I)
+    return f"{m.group(1)}|{m.group(2)}".upper() if m else None
+
+
 def _dedupe(user_id: str) -> int:
-    """Supprime les avoirs en double (même nom de fichier = même document, le nom
-    encode le n° de facture). On garde le plus ancien (plus petit id)."""
+    """Supprime les fichiers en double : même nom, OU même document sous deux noms
+    (un avoir apparaît parfois aussi en « facture_… » — on garde l'« avoir_ »,
+    sinon le plus ancien id)."""
     key = _supa_key()
     url = f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&select=id,filename&order=id.asc"
     req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
@@ -224,10 +232,29 @@ def _dedupe(user_id: str) -> int:
         fn = (row.get("filename") or "").strip()
         if not fn:
             continue
-        if fn in seen:
-            dele.append(row["id"])          # doublon → à supprimer
+        if fn.lower() in seen:
+            dele.append(row["id"])          # doublon de nom → à supprimer
         else:
-            seen.add(fn)
+            seen.add(fn.lower())
+    # Même document sous deux noms différents (avoir_/facture_).
+    deleted = set(dele)
+    by_sig: dict = {}
+    for row in rows:
+        if row["id"] in deleted:
+            continue
+        sig = _doc_sig(row.get("filename") or "")
+        if not sig:
+            continue
+        prev = by_sig.get(sig)
+        if prev is None:
+            by_sig[sig] = row
+            continue
+        keep_prev = (prev.get("filename") or "").lower().startswith("avoir") \
+                    or not (row.get("filename") or "").lower().startswith("avoir")
+        loser = row if keep_prev else prev
+        if not keep_prev:
+            by_sig[sig] = row
+        dele.append(loser["id"])
     if not dele:
         return 0
     for i in range(0, len(dele), 100):
