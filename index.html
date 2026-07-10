@@ -6890,11 +6890,16 @@ function _verifBiogaranCoef(yr) {
   const condsB= lpB ? (getEffectiveCondsForMonth(lpB, yr, mRef) || []) : [];
   const caMax = Math.max(0, ...condsB.map(c => parseFloat(c.caCondition) || 0));
   if (caMax <= 0) return 1;  // pas de cible → pas de coef
+  // CA réalisé : UNE seule source par mois — grossiste (achats répartiteur) en
+  // priorité, Digi en repli. Les additionner doublerait la réalisation (les deux
+  // mesurent les mêmes achats) et fausserait le seuil des 80 %.
   let tot = 0;
   for (let i = 1; i <= 12; i++) {
     const mk = `${yr}-${String(i).padStart(2,'0')}`;
-    ((state._digiMonthStats||{})[mk]      || []).forEach(r => { if (_verifNormLab(r.labo)==='BIOGARAN') tot += r.total_ht || 0; });
-    ((state._grossisteMonthStats||{})[mk] || []).forEach(r => { if (_verifNormLab(r.labo)==='BIOGARAN') tot += r.total_ht || 0; });
+    let g = 0, d = 0;
+    ((state._grossisteMonthStats||{})[mk] || []).forEach(r => { if (_verifNormLab(r.labo)==='BIOGARAN') g += r.total_ht || 0; });
+    ((state._digiMonthStats||{})[mk]      || []).forEach(r => { if (_verifNormLab(r.labo)==='BIOGARAN') d += r.total_ht || 0; });
+    tot += g > 0 ? g : d;
   }
   const real = caMax > 0 ? (tot / Math.max(1, mRef) * 12) / caMax : 0;
   return real >= 0.8 ? (0.9 + Math.min(real, 1) * 0.1) : 0;
