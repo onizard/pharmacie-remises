@@ -7268,6 +7268,11 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
     const badge = isR2
       ? '<span style="color:var(--cyan);font-weight:700">RDP</span>'
       : '<span style="color:var(--text-dim)">COOP</span>';
+    // Mois de contrat assigné + méthode : n° de document (sûr), ~ chronologique, ≈ encaissement.
+    const viaMark = t.via === 'chrono' ? ' <span title="assigné par ordre chronologique depuis le début du contrat" style="color:var(--amber)">~</span>'
+                  : t.via === 'enc'    ? ' <span title="rattaché au mois d\'encaissement (aucun mois de contrat libre)" style="color:var(--text-dim)">≈</span>' : '';
+    const split = t.amount != null && Math.abs((t.amount||0) - (t.montant||0)) >= 0.01
+      ? ` <span title="virement de ${fmtE(t.montant)} ventilé sur plusieurs périodes" style="color:var(--text-dim);font-size:9px">(part)</span>` : '';
     // Justificatif : un œil par avoir consultable ; œil grisé si le document
     // n'est pas encore importé (clic → explication + marche à suivre).
     const avoirs = (t.avoirs && t.avoirs.length) ? t.avoirs : _fseMatchAvoirs(t);
