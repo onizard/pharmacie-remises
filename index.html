@@ -2191,6 +2191,7 @@ function serializeState() {
     digiUploads:           state._digiUploads           || [],
     fseUploads:            state._fseUploads            || [],
     grossisteMonthStats:   state._grossisteMonthStats   || null,
+    grossisteCipStats:     state._grossisteCipStats     || null,
     fseMonthStats:         state._fseMonthStats         || null,
     escompteStats:         state._escompteStats         || null,
     mdlStats:              state._mdlStats               || null,
@@ -6968,6 +6969,55 @@ function _digiPdfFlat() {
   }));
   return out;
 }
+// ── RDP attendue EXACTE par référence (achats × taux RDP du CIP) ─────────────
+// Source achats : grossiste_cip_stats (feuille « Détail par mois » du justificatif
+// répartiteur — les remises labo portent sur les ACHATS, jamais sur les ventes).
+// Source taux : rsf_history (CIP → rdp_pct, exceptions comprises). Le barème
+// appliqué est celui de l'ANNÉE DU MOIS — vérifié sur les avoirs réels : 2025
+// payé au barème 2025 jusqu'à décembre inclus, 2026 à partir de janvier.
+window._rdpCipMaps = window._rdpCipMaps || {};
+async function _loadRdpCipMap(labo, year) {
+  const key = `${labo}|${year}`;
+  if (window._rdpCipMaps[key] !== undefined) return window._rdpCipMaps[key];
+  window._rdpCipMaps[key] = undefined;
+  if (window._rdpCipMaps['loading:' + key]) return null;
+  window._rdpCipMaps['loading:' + key] = 1;
+  try {
+    const H = { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` };
+    const res = await fetch(`${SUPA_URL}/rest/v1/rsf_history?labo=eq.${encodeURIComponent(labo)}&year=eq.${year}&select=cip13,rdp_pct&limit=6000`, { headers: H });
+    const rows = res.ok ? await res.json() : [];
+    const map = {};
+    rows.forEach(r => { map[r.cip13] = Math.abs(parseFloat(r.rdp_pct || 0)); });
+    window._rdpCipMaps[key] = Object.keys(map).length ? map : null;
+    // La carte vient d'arriver → re-rendu du vérificateur (calcul exact disponible).
+    if (window._rdpCipMaps[key] && state.currentPageId === 'verificateur') {
+      try { renderVerificateur(); } catch(_) {}
+    }
+  } catch(_) { window._rdpCipMaps[key] = null; }
+  delete window._rdpCipMaps['loading:' + key];
+  return window._rdpCipMaps[key] || null;
+}
+// { byTaux: {tauxRSF: attendu}, total } pour un mois — null si détail achats ou
+// carte CIP indisponibles (déclenche le chargement de la carte en asynchrone).
+function _r2ExactForMonth(mk, selNorm, labDisplay) {
+  const labs = (state._grossisteCipStats || {})[mk] || {};
+  const lk = Object.keys(labs).find(l => _verifNormLab(l) === selNorm);
+  const rows = lk ? labs[lk] : null;
+  if (!rows || !rows.length) return null;
+  const year = parseInt(mk.slice(0, 4));
+  const map = window._rdpCipMaps[`${labDisplay}|${year}`];
+  if (!map) { _loadRdpCipMap(labDisplay, year); return null; }
+  const byTaux = {}; let total = 0;
+  rows.forEach(([cip, tx, qty, brut]) => {
+    const pct = map[cip] || 0;
+    if (!(pct > 0)) return;
+    const a = brut * pct / 100;
+    byTaux[tx] = (byTaux[tx] || 0) + a;
+    total += a;
+  });
+  return { byTaux, total };
+}
+
 // Avoirs Digi correspondant à un virement : jetons alphanumériques ≥8 avec au
 // moins un chiffre extraits du libellé, cherchés dans les noms de fichiers.
 // Un jeton = un document → un seul PDF retenu par jeton (« avoir_ » prioritaire
@@ -7394,6 +7444,21 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   const A = 'color:var(--amber)', G = 'color:var(--green)';
   let T = {qty:0, brut:0, rsfA:0, rsfR:0, r2A:0, r2R:0, r3A:0};
 
+  // RDP attendue EXACTE (achats par CIP × taux RDP du CIP, exceptions comprises)
+  // quand le détail du justificatif et la carte rsf_history sont disponibles.
+  const _exact = (() => {
+    if (!cumulYear) return _r2ExactForMonth(`${year}-${String(monthForCond).padStart(2,'0')}`, selNorm, labDisplay);
+    let agg = null;
+    for (let m = 1; m <= 12; m++) {
+      const e = _r2ExactForMonth(`${cumulYear}-${String(m).padStart(2,'0')}`, selNorm, labDisplay);
+      if (!e) continue;
+      agg = agg || { byTaux: {}, total: 0 };
+      Object.entries(e.byTaux).forEach(([t, a]) => agg.byTaux[t] = (agg.byTaux[t] || 0) + a);
+      agg.total += e.total;
+    }
+    return agg;
+  })();
+
   const body = allTaux.map(tx => {
     const g=gmap[tx], rd=rmap[tx], c=cmap[Math.abs(tx)]||{};
     // CA brut RÉALISÉ selon l'avoir Digi (ce sur quoi le labo a calculé la RDP),
@@ -7419,12 +7484,21 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const qty = g?(g.qty||0):0;
     const rsfA = rsfBrut*tx/100, rsfR = g?(g.remise||0):0, rsfD = rsfA-rsfR;
     const r2pct = (c.remise2!=null && c.remise2!=='') ? parseFloat(c.remise2) : null;
-    const r2A = r2pct!=null ? brut*r2pct/100 : 0;
+    // Attendu : calcul EXACT par référence si disponible (Σ achats CIP × taux RDP
+    // du CIP — exceptions et transitions de barème comprises), sinon estimation
+    // palier (CA avoir × remise2 des conditions).
+    const r2Aexact = _exact ? (_exact.byTaux[tx] || 0) : null;
+    const r2A = r2Aexact != null ? r2Aexact : (r2pct!=null ? brut*r2pct/100 : 0);
     const r2R = rd ? ((rd.grossiste||0)+(rd.direct||0)) : 0;
     // Taux hors barème courant (rd._unpaired, ex. RDP 30 % pendant la transition
-    // 2025→2026) : on montre le versé, sans « attendu » ni écart inventés.
+    // 2025→2026) sans calcul exact : versé affiché, sans « attendu » ni écart inventés.
     const r2Off = !!(rd && rd._unpaired && r2R > 0 && !(r2A > 0));
-    const r2D = r2Off ? null : ((r2pct!=null || r2R>0) ? r2A-r2R : null);
+    // Mois hybrides (fin 2025 : achats groupés au barème RSF 2026, RDP payée au
+    // barème 2025) : l'attendu exact et le versé ne se ventilent pas sur les mêmes
+    // lignes → Δ par ligne trompeur, seul le Δ du TOTAL est significatif.
+    const _mixed = !!(_exact && !cumulYear && year === 2025
+      && window._y25cut?.[labDisplay] != null && monthForCond >= window._y25cut[labDisplay]);
+    const r2D = (r2Off || _mixed) ? null : ((r2pct!=null || r2R>0 || r2Aexact!=null) ? r2A-r2R : null);
     // Exceptions du palier (remise2Except) : RDP versée dans la ligne de LEUR
     // taux — on le signale sur le palier d'origine.
     const exc = emap[tx];
@@ -7444,7 +7518,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       <td style="${G}">${fmtE(rsfR)}</td>
       <td style="${dRsf}">${fmtE(rsfD)}</td>
       <td class="verif-r2 gsep">${r2pct!=null?fmtP(r2pct):'—'}${exc?` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`:''}</td>
-      <td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:''}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':(r2pct!=null?fmtE(r2A):'—')}</td>
+      <td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:(r2Aexact!=null?` title="Calcul EXACT par référence : Σ achats (justificatif) × taux RDP du CIP (rsf_history ${cumulYear||year}) — exceptions comprises"`:'')}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':((r2pct!=null||r2Aexact!=null)?`${fmtE(r2A)}${r2Aexact!=null?' <span style="font-size:8px;color:var(--cyan)" title="exact par référence">◎</span>':''}`:'—')}</td>
       <td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span style="color:var(--amber);font-size:9px" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>
       <td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>
       <td class="verif-r3 gsep">${r3pct>0?fmtP(r3pct):'—'}</td>
@@ -10897,6 +10971,11 @@ async function saveProfile() {
     const _digiM = _pick(saved.digi_month_stats, saved.digiMonthStats);
     if (_digiM && Object.keys(_digiM).length) {
       state._digiMonthStats = _digiM;
+    }
+    // Achats par référence (feuille « Détail par mois » du justificatif).
+    const _cipM = _pick(saved.grossiste_cip_stats, saved.grossisteCipStats);
+    if (_cipM && Object.keys(_cipM).length) {
+      state._grossisteCipStats = _cipM;
     }
     const _fseM = _pick(saved.fse_month_stats, saved.fseMonthStats);
     if (_fseM && Object.keys(_fseM).length) {
