@@ -729,7 +729,13 @@
   .verif-tbl tr:hover td { background: var(--bg2); }
   .verif-tbl tfoot td { border-top: 1px solid var(--border); border-bottom: none; font-weight: 700; }
   /* Tableau détaillé par palier : titres centrés, chiffres à droite, bordures de groupe */
-  .verif-tbl.verif-palier { table-layout: fixed; min-width: 1180px; }
+  /* Blocs empilés (≤6 colonnes) : tout tient dans le cadre, pas de scrollbar. */
+  .verif-tbl.verif-palier { table-layout: auto; width: 100%; }
+  @media (max-width: 640px) {
+    .verif-tbl { font-size: 11px; }
+    .verif-tbl th { padding: 6px 4px; letter-spacing: .5px; }
+    .verif-tbl td { padding: 5px 4px; }
+  }
   .verif-tbl.verif-palier th { text-align: center; padding-left: 6px; padding-right: 6px; }
   .verif-tbl.verif-palier td { text-align: right; padding-left: 6px; padding-right: 6px; }
   .verif-tbl.verif-palier th:first-child, .verif-tbl.verif-palier td:first-child { text-align: left; }
@@ -6890,18 +6896,32 @@ function _verifBiogaranCoef(yr) {
   const condsB= lpB ? (getEffectiveCondsForMonth(lpB, yr, mRef) || []) : [];
   const caMax = Math.max(0, ...condsB.map(c => parseFloat(c.caCondition) || 0));
   if (caMax <= 0) return 1;  // pas de cible → pas de coef
-  // CA réalisé : UNE seule source par mois — grossiste (achats répartiteur) en
-  // priorité, Digi en repli. Les additionner doublerait la réalisation (les deux
-  // mesurent les mêmes achats) et fausserait le seuil des 80 %.
-  let tot = 0;
-  for (let i = 1; i <= 12; i++) {
-    const mk = `${yr}-${String(i).padStart(2,'0')}`;
-    let g = 0, d = 0;
-    ((state._grossisteMonthStats||{})[mk] || []).forEach(r => { if (_verifNormLab(r.labo)==='BIOGARAN') g += r.total_ht || 0; });
-    ((state._digiMonthStats||{})[mk]      || []).forEach(r => { if (_verifNormLab(r.labo)==='BIOGARAN') d += r.total_ht || 0; });
-    tot += g > 0 ? g : d;
+  // Réalisation = CA BRUT TARIF (la cible contractuelle s'exprime avant RSF) :
+  // achats répartiteur (ca_brut du justificatif) + achats DIRECTS labo (factures
+  // Digi/CSP — canal complémentaire, pas redondant). Fenêtre : depuis le début
+  // du contrat (date de signature) dans l'année, annualisée sur les mois écoulés.
+  // Vérifié sur les données réelles : contrat 06/2025, juin→déc annualisé ≈ 94 %
+  // → coop débloquée, cohérent avec les versements effectifs.
+  const cs = (typeof _fseContractStart === 'function') ? _fseContractStart('Biogaran') : null;
+  let m0 = 1;
+  if (cs) {
+    const [cy, cm] = cs.split('-').map(Number);
+    if (cy === yr) m0 = cm;
+    else if (cy > yr) return 1;   // contrat pas encore commencé cette année-là
   }
-  const real = caMax > 0 ? (tot / Math.max(1, mRef) * 12) / caMax : 0;
+  let tot = 0, n = 0;
+  for (let i = m0; i <= mRef; i++) {
+    const mk = `${yr}-${String(i).padStart(2,'0')}`;
+    ((state._grossisteMonthStats||{})[mk] || []).forEach(r => {
+      if (_verifNormLab(r.labo)==='BIOGARAN') tot += (r.ca_brut != null && r.ca_brut > 0 ? r.ca_brut : r.total_ht) || 0;
+    });
+    ((state._digiMonthStats||{})[mk] || []).forEach(r => {
+      if (_verifNormLab(r.labo)==='BIOGARAN') tot += r.total_ht || 0;
+    });
+    n++;
+  }
+  if (!n) return 1;
+  const real = (tot / n * 12) / caMax;
   return real >= 0.8 ? (0.9 + Math.min(real, 1) * 0.1) : 0;
 }
 
@@ -7248,19 +7268,13 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
     const badge = isR2
       ? '<span style="color:var(--cyan);font-weight:700">RDP</span>'
       : '<span style="color:var(--text-dim)">COOP</span>';
-    const btn = `<button onclick="_fseReclassify('${encodeURIComponent(key)}')" title="Reclasser RDP↔Coop"
-        style="font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:3px;padding:1px 5px">⇄ ${isR2?'→Coop':'→RDP'}</button>`;
-    // Mois de contrat assigné + méthode : n° de document (sûr), ~ chronologique, ≈ encaissement.
-    const viaMark = t.via === 'chrono' ? ' <span title="assigné par ordre chronologique depuis le début du contrat" style="color:var(--amber)">~</span>'
-                  : t.via === 'enc'    ? ' <span title="rattaché au mois d\'encaissement (aucun mois de contrat libre)" style="color:var(--text-dim)">≈</span>' : '';
-    const split = t.amount != null && Math.abs((t.amount||0) - (t.montant||0)) >= 0.01
-      ? ` <span title="virement de ${fmtE(t.montant)} ventilé sur plusieurs périodes" style="color:var(--text-dim);font-size:9px">(part)</span>` : '';
-    // Avoir(s) Digi payé(s) par CE virement (jointure par n° de document) → un 📄 par PDF.
+    // Justificatif : un œil par avoir consultable ; œil grisé si le document
+    // n'est pas encore importé (clic → explication + marche à suivre).
     const avoirs = (t.avoirs && t.avoirs.length) ? t.avoirs : _fseMatchAvoirs(t);
     const _mref  = encodeURIComponent(_fseTransferRefs(t).join(', '));
     const docCell = avoirs.length
-      ? avoirs.map(p => `<span onclick="_previewDigiPdf('${p.key}')" title="${escH(p.filename)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;white-space:nowrap">📄${(p.kinds||[]).includes('presta')?'coop':'RDP'}</span>`).join(' ')
-      : `<span onclick="_digiAvoirMissing('${_mref}')" title="Avoir pas encore importé — clic pour la marche à suivre" style="cursor:pointer;color:var(--amber)">📄?</span>`;
+      ? avoirs.map(p => `<span onclick="_previewDigiPdf('${p.key}')" title="Voir ${escH(p.filename)}" style="cursor:pointer">👁</span>`).join(' ')
+      : `<span onclick="_digiAvoirMissing('${_mref}')" title="Document pas encore importé — clic pour la marche à suivre" style="cursor:pointer;filter:grayscale(1);opacity:.45">👁</span>`;
     return `<tr>
       <td style="white-space:nowrap">${t.mk||'—'}${viaMark}</td>
       <td style="white-space:nowrap">${fmtD(t.date)}</td>
@@ -7268,7 +7282,6 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
       <td style="text-align:right;white-space:nowrap">${fmtE(amt)}${split}</td>
       <td style="text-align:center">${badge}${overridden?' <span title="reclassé manuellement" style="color:var(--amber)">✎</span>':''}</td>
       <td style="text-align:center;white-space:nowrap">${docCell}</td>
-      <td style="text-align:center">${btn}</td>
     </tr>`;
   }).join('');
   // Rapprochement RDP : virement encaissé (source de vérité) vs avoir annoncé.
@@ -7289,17 +7302,17 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
           <th style="text-align:left" title="Mois de contrat auquel le virement est assigné">MOIS</th>
           <th style="text-align:left" title="Date d'encaissement du virement">ENCAISSÉ</th><th style="text-align:left">LIBELLÉ</th>
           <th style="text-align:right">MONTANT</th><th style="text-align:center">TYPE</th>
-          <th style="text-align:center">AVOIR</th><th style="text-align:center">RECLASSER</th>
+          <th style="text-align:center" title="Justificatif (avoir)">📄</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
           <tr style="border-top:2px solid var(--border);font-weight:700">
             <td colspan="3" style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL REÇU</td>
-            <td style="text-align:right">${fmtE(sR2+sR3)}</td><td colspan="3"></td></tr>
+            <td style="text-align:right">${fmtE(sR2+sR3)}</td><td colspan="2"></td></tr>
         </tfoot>
       </table></div>
       ${flag}
-      <div style="margin-top:6px;color:var(--text-dim);font-size:10px">Un virement mal classé ? Clique <b>⇄</b> pour le basculer RDP↔Coop — le rapprochement se recalcule et se synchronise.</div>
+      
     </div></details>`;
 }
 
