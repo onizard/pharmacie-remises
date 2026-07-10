@@ -506,6 +506,63 @@ def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
     }
 
 
+def _parse_grossiste_detail_bytes(xlsx_bytes: bytes) -> dict:
+    """Feuille 'Détail par mois' du justificatif → achats PAR RÉFÉRENCE :
+    {year-MM: {LABO: [[cip13, taux, qty, brut], …]}} (listes compactes).
+
+    C'est la source de précision ultime pour la vérification RDP : les remises
+    labo s'appliquent aux ACHATS — ce détail permet de calculer l'attendu par
+    référence (exceptions par CIP comprises), là où le récap n'agrège que par
+    palier. Lignes 'Rep G' uniquement (comme le récap)."""
+    import io, re, openpyxl
+
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    if "Détail par mois" not in wb.sheetnames:
+        wb.close()
+        return {}
+    ws = wb["Détail par mois"]
+
+    out: dict[str, dict] = {}
+    cur = None
+    for row in ws.iter_rows(values_only=True):
+        cells = (list(row) + [None] * 11)[:11]
+        m = re.search(r"Mois comptable\s*:\s*(\d{4})\s+(\d{2})", str(cells[0] or ""))
+        if m:
+            cur = f"{m.group(1)}-{m.group(2)}"
+            out.setdefault(cur, {})
+            continue
+        if cur is None:
+            continue
+        # Cols : Cod.Artic | CIP/ACL 13 | Libellé | Rep/Dep | Partenariat | Tx Rem |
+        #        Prix fact ht | qtes | Mt Vente Brut ht | Montant remise | CA net HT
+        cip = str(cells[1] or "").strip()
+        if not re.fullmatch(r"\d{13}", cip) or str(cells[3] or "") != "Rep G":
+            continue
+        labo = _norm_grossiste_labo(cells[4] or "")
+        if not labo:
+            continue
+        try:
+            taux = round(float(cells[5]), 2)
+        except (TypeError, ValueError):
+            continue
+        try:
+            qty  = int(cells[7] or 0)
+            brut = round(float(cells[8] or 0), 2)
+        except (TypeError, ValueError):
+            continue
+        # Agrégat par (cip, taux) dans le mois (une référence peut avoir plusieurs lignes).
+        rows_l = out[cur].setdefault(labo, [])
+        for r in rows_l:
+            if r[0] == cip and r[1] == taux:
+                r[2] += qty
+                r[3] = round(r[3] + brut, 2)
+                break
+        else:
+            rows_l.append([cip, taux, qty, brut])
+    wb.close()
+    return {mk: labos for mk, labos in out.items() if labos}
+
+
 def _merge_paliers(a: list, b: list) -> list:
     """Fusion additive de deux listes de paliers [{taux, qty, brut, remise, net}]."""
     acc: dict = {}
@@ -680,6 +737,19 @@ def _parse_grossiste_xlsx_sync(user_id: str, xlsx_bytes: bytes, user_token: str 
     state = _get_state_sync(user_id, user_token=user_token) or {}
     base  = {} if reset else (state.get("grossiste_month_stats") or {})
     state["grossiste_month_stats"] = _merge_grossiste_stats(base, grossiste_stats)
+
+    # Détail des achats PAR RÉFÉRENCE (feuille « Détail par mois ») : base du calcul
+    # RDP attendu exact (exceptions par CIP). Fusion à la maille MOIS : un justificatif
+    # contient ses mois en entier → le mois re-déposé remplace l'ancien.
+    try:
+        cip_stats = _parse_grossiste_detail_bytes(xlsx_bytes)
+        if cip_stats:
+            cur = {} if reset else (state.get("grossiste_cip_stats") or {})
+            cur.update(cip_stats)
+            state["grossiste_cip_stats"] = cur
+    except Exception as e:
+        print(f"  [warn] détail par CIP : {e}", flush=True)
+
     _patch_state_sync(user_id, state, user_token=user_token)
 
     # Conserver le fichier (non bloquant) — source du futur détail par CIP.
