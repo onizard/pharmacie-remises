@@ -218,6 +218,46 @@ def _doc_sig(fn: str):
     return f"{m.group(1)}|{m.group(2)}".upper() if m else None
 
 
+def _rebuild_grossiste(user_id: str) -> int:
+    """Reconstruit les stats grossiste (récap par palier + détail par CIP) depuis
+    les justificatifs XLSX STOCKÉS (kinds=grossiste-xlsx). Maille MOIS : les mois
+    couverts par les fichiers remplacent l'existant ; les mois sans fichier stocké
+    (imports d'avant la conservation) sont préservés."""
+    from grossiste_parse import _parse_grossiste_bytes, _parse_grossiste_detail_bytes
+    key = _supa_key()
+    url = (f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&status=eq.done"
+           f"&kinds=cs.%7Bgrossiste-xlsx%7D&select=id,filename,content_b64&order=id.asc")
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            rows = json.loads(r.read())
+    except urllib.error.HTTPError:
+        return 0
+    if not rows:
+        return 0
+    print(f"→ reconstruction grossiste depuis {len(rows)} justificatif(s) XLSX…", flush=True)
+    recap, cip = {}, {}
+    for row in rows:
+        try:
+            xlsx = base64.b64decode(row.get("content_b64") or "")
+            recap.update(_parse_grossiste_bytes(xlsx))          # mois → remplacé
+            cip.update(_parse_grossiste_detail_bytes(xlsx))
+        except Exception as e:
+            print(f"  [warn] rebuild grossiste {str(row.get('filename',''))[:40]} : {e}", flush=True)
+    if not recap and not cip:
+        return 0
+    state = _get_state_sync(user_id) or {}
+    cur_r = state.get("grossiste_month_stats") or {}
+    cur_r.update(recap)
+    state["grossiste_month_stats"] = cur_r
+    cur_c = state.get("grossiste_cip_stats") or {}
+    cur_c.update(cip)
+    state["grossiste_cip_stats"] = cur_c
+    _patch_state_sync(user_id, state)
+    print(f"→ grossiste reconstruit : {len(recap)} mois récap, {len(cip)} mois détail CIP", flush=True)
+    return len(rows)
+
+
 def _dedupe(user_id: str) -> int:
     """Supprime les fichiers en double : même nom, OU même document sous deux noms
     (un avoir apparaît parfois aussi en « facture_… » — on garde l'« avoir_ »,
@@ -346,6 +386,12 @@ def main():
         _rebuild_avoirs(USER_ID)
     except Exception as e:
         print(f"  [warn] rebuild avoirs : {e}", flush=True)
+    # Idem pour le grossiste : récap par palier + détail par CIP depuis les
+    # justificatifs XLSX stockés (le bouton « ré-analyser » couvre donc tout).
+    try:
+        _rebuild_grossiste(USER_ID)
+    except Exception as e:
+        print(f"  [warn] rebuild grossiste : {e}", flush=True)
     print(f"✅ Terminé — {ok} ok, {err} err, {reidx} ré-indexé(s)", flush=True)
 
 
