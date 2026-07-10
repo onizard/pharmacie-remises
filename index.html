@@ -7271,9 +7271,11 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
   const ecart = av > 0 && sR2 > 0 ? sR2 - av : null;
   const divergent = ecart != null && Math.abs(ecart) >= 1;
   const flag = av <= 0 ? ''
-    : divergent
-      ? `<div style="margin-top:6px;color:var(--amber)">⚠ RDP encaissé (virements) <b>${fmtE(sR2)}</b> ≠ RDP annoncé par l'avoir Digi <b>${fmtE(av)}</b> — écart <b>${(ecart>0?'+':'')}${fmtE(ecart)}</b>. Le virement bancaire fait foi.</div>`
-      : `<div style="margin-top:6px;color:var(--green)">✓ RDP encaissé (virements) = avoir Digi annoncé (${fmtE(sR2)}).</div>`;
+    : sR2 <= 0
+      ? `<div style="margin-top:6px;color:var(--red);font-weight:700">⚠ L'avoir Digi annonce <b>${fmtE(av)}</b> de RDP pour cette période, mais AUCUN virement RDP correspondant n'a été encaissé dans tes relevés. Paiement en retard ou impayé à réclamer au labo.</div>`
+      : divergent
+        ? `<div style="margin-top:6px;color:var(--amber)">⚠ RDP encaissé (virements) <b>${fmtE(sR2)}</b> ≠ RDP annoncé par l'avoir Digi <b>${fmtE(av)}</b> — écart <b>${(ecart>0?'+':'')}${fmtE(ecart)}</b>. Le virement bancaire fait foi.</div>`
+        : `<div style="margin-top:6px;color:var(--green)">✓ RDP encaissé (virements) = avoir Digi annoncé (${fmtE(sR2)}).</div>`;
   return `<details style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px">
     <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ VIREMENTS RDP / COOP — ${escH(labDisplay)} · ${transfers.length} virement(s)</summary>
     <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px">
@@ -7315,10 +7317,12 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
     });
   }
   // R2 reçu : virements bancaires (FSE r2) = source de vérité ; repli sur l'avoir
-  // Digi (rdp_total) seulement s'il n'y a aucun virement RDP encaissé.
+  // Digi (rdp_total) seulement s'il n'y a aucun virement RDP encaissé — dans ce
+  // cas le montant est ANNONCÉ, pas encaissé → affiché comme tel.
+  const r2RecAnnounced = !(fseR2 > 0) && (digiRow?.rdp_total || 0) > 0;
   const r2RecTotal = fseR2 > 0 ? fseR2 : (digiRow?.rdp_total || 0);
   const [mkY, mkM] = mk.split('-').map(Number);
-  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, mkY, mkM, null)
+  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, mkY, mkM, null, r2RecAnnounced)
        + _verifRenderVirements([mk], selNorm, labDisplay, digiRow?.rdp_total || 0)
        + _verifDataDiag([mk], selNorm, labDisplay, mkY, mkM);
 }
@@ -7367,6 +7371,7 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
   Object.entries(state._digiMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,arr])=>{
     const r = (arr||[]).find(x=>_verifNormLab(x.labo)===selNorm); if (r) rdpTotalSum += r.rdp_total||0;
   });
+  const r2RecAnnounced = !(fseR2 > 0) && rdpTotalSum > 0;
   const r2RecTotal = fseR2 > 0 ? fseR2 : rdpTotalSum;
   const mkList = Object.keys(state._digiMonthStats||{}).concat(Object.keys(state._grossisteMonthStats||{}),
     Object.keys(state._fseMonthStats||{})).filter(mksY);
@@ -7375,14 +7380,14 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
   // Vue virements du cumul : les mois de contrat ASSIGNÉS de l'année.
   const asgMksY = Object.keys(_amap).filter(mksY);
   const fseMksY = asgMksY.length ? asgMksY : Object.keys(state._fseMonthStats||{}).filter(mksY);
-  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr)
+  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr, r2RecAnnounced)
        + _verifRenderVirements(fseMksY, selNorm, labDisplay, rdpTotalSum)
        + _verifDataDiag([...new Set(mkList)], selNorm, labDisplay, yr, mRef);
 }
 
 // Rendu commun du tableau par palier (mensuel ou cumul annuel).
 // cumulYear : null pour un mois donné, l'année pour le cumul Jan→Déc.
-function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, year, monthForCond, cumulYear) {
+function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, year, monthForCond, cumulYear, r2RecAnnounced) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP = v => v != null ? (Math.round(v*100)/100).toString().replace('.',',') + ' %' : '—';
   const TVA_R3 = 1.20, isBio = selNorm === 'BIOGARAN';
@@ -7592,7 +7597,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td>
     <td class="verif-r2 gsep">—</td>
     <td class="verif-r2" style="${A}">${fmtE(T.r2A)}</td>
-    <td class="verif-r2" style="${G}">${_recCell(r2Reff, 'rdp')}</td>
+    <td class="verif-r2" style="${r2RecAnnounced?'color:var(--amber)':G}">${_recCell(r2Reff, 'rdp')}${r2RecAnnounced?` <span onclick="alert('Montant ANNONC\u00c9 par l\\'avoir Digipharmacie \u2014 aucun virement bancaire RDP encaiss\u00e9 pour cette p\u00e9riode dans tes relev\u00e9s FSE.\\n\\nSi le paiement tarde, c\\'est peut-\u00eatre un impay\u00e9 \u00e0 r\u00e9clamer au labo.')" title="Annonc\u00e9 par l'avoir \u2014 aucun virement encaiss\u00e9" style="cursor:pointer;font-size:9px">(annonc\u00e9 \u26a0)</span>`:''}</td>
     <td class="verif-r2" style="${dTr2}">${(T.r2A>0||r2Reff>0)?fmtE(T.r2A-r2Reff):'—'}</td>
     <td class="verif-r3 gsep">—</td>
     <td class="verif-r3" style="${A}">${T.r3A>0?fmtE(T.r3A):'—'}</td>
