@@ -7464,7 +7464,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     return agg;
   })();
 
-  const body = allTaux.map(tx => {
+  const rowsD = allTaux.map(tx => {
     const g=gmap[tx], rd=rmap[tx], c=cmap[Math.abs(tx)]||{};
     // CA brut RÉALISÉ selon l'avoir Digi (ce sur quoi le labo a calculé la RDP),
     // ventilé grossiste / direct labo. Sert de base de repli quand le connecteur
@@ -7515,23 +7515,26 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const r3A = r3pct>0 ? brut*r3pct/100*TVA_R3*(isBio?coef:1) : 0;
     T.qty+=qty; T.brut+=brut; T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
     const dRsf = dStyle(rsfD), dR2 = dStyle(r2D);
-    return `<tr>
-      <td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>
-      <td>${qty?qty.toLocaleString('fr'):'—'}</td>
-      <td title="${escH(brutTitle)}"${brutClick}${caDiv?' style="color:var(--amber);cursor:pointer"':' style="cursor:help"'}>${fmtE(brut)}${caDiv?' ⚠':''}</td>
-      <td class="gsep" style="${A}">${fmtE(rsfA)}</td>
-      <td style="${G}">${fmtE(rsfR)}</td>
-      <td style="${dRsf}">${fmtE(rsfD)}</td>
-      <td class="verif-r2 gsep">${r2pct!=null?fmtP(r2pct):'—'}${exc?` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`:''}</td>
-      <td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:(r2Aexact!=null?` title="Calcul EXACT par référence : Σ achats (justificatif) × taux RDP du CIP (rsf_history ${cumulYear||year}) — exceptions comprises"`:'')}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':((r2pct!=null||r2Aexact!=null)?`${fmtE(r2A)}${r2Aexact!=null?' <span style="font-size:8px;color:var(--cyan)" title="exact par référence">◎</span>':''}`:'—')}</td>
-      <td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span style="color:var(--amber);font-size:9px" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>
-      <td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>
-      <td class="verif-r3 gsep">${r3pct>0?fmtP(r3pct):'—'}</td>
-      <td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(brut)} × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?fmtE(r3A):(r3pct>0&&isBio&&coef===0?'<span title="Coop bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>
-      <td class="verif-r3" style="color:var(--text-dim)">—</td>
-      <td class="verif-r3" style="color:var(--text-dim)">—</td>
-    </tr>`;
-  }).join('');
+    // Fragments par BLOC — tableaux empilés, lisibles sur smartphone sans défilement latéral.
+    return {
+      achats: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
+        `<td>${qty?qty.toLocaleString('fr'):'—'}</td>` +
+        `<td title="${escH(brutTitle)}"${brutClick}${caDiv?' style="color:var(--amber);cursor:pointer"':' style="cursor:help"'}>${fmtE(brut)}${caDiv?' ⚠':''}</td>` +
+        `<td style="${A}">${fmtE(rsfA)}</td>` +
+        `<td style="${G}">${fmtE(rsfR)}</td>` +
+        `<td style="${dRsf}">${fmtE(rsfD)}</td>`,
+      r2: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
+        `<td class="verif-r2">${r2pct!=null?fmtP(r2pct):'—'}${exc?` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`:''}</td>` +
+        `<td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:(r2Aexact!=null?` title="Calcul EXACT par référence : Σ achats (justificatif) × taux RDP du CIP (rsf_history ${cumulYear||year}) — exceptions comprises"`:'')}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':((r2pct!=null||r2Aexact!=null)?`${fmtE(r2A)}${r2Aexact!=null?' <span style="font-size:8px;color:var(--cyan)" title="exact par référence">◎</span>':''}`:'—')}</td>` +
+        `<td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span style="color:var(--amber);font-size:9px" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>` +
+        `<td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>`,
+      r3: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
+        `<td class="verif-r3">${r3pct>0?fmtP(r3pct):'—'}</td>` +
+        `<td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(brut)} × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?fmtE(r3A):(r3pct>0&&isBio&&coef===0?'<span title="Coop bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>` +
+        `<td class="verif-r3" style="color:var(--text-dim)">—</td>` +
+        `<td class="verif-r3" style="color:var(--text-dim)">—</td>`,
+    };
+  });
 
   // R2 reçu : somme des ventilations par taux, ou repli sur le total RDP+FSE.
   const r2Reff = T.r2R > 0 ? T.r2R : (r2RecTotal || 0);
@@ -7588,56 +7591,49 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const icons = cands.map(p => `<span onclick="_previewDigiPdf('${p.key}')" title="${escH(p.filename||'')}" style="cursor:pointer;font-size:9px">📄</span>`).join('');
     return `${txt} ${icons}`;
   };
-  const totRow = `<tr style="border-top:2px solid var(--border);font-weight:700;background:rgba(255,255,255,.03)">
-    <td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>
+  const totLbl = `<td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>`;
+  const totStyle = 'border-top:2px solid var(--border);font-weight:700;background:rgba(255,255,255,.03)';
+  const totAchats = `<tr style="${totStyle}">${totLbl}
     <td>${T.qty?T.qty.toLocaleString('fr'):'—'}</td>
     <td>${fmtE(T.brut)}</td>
-    <td class="gsep" style="${A}">${fmtE(T.rsfA)}</td>
+    <td style="${A}">${fmtE(T.rsfA)}</td>
     <td style="${G}">${fmtE(T.rsfR)}</td>
-    <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td>
-    <td class="verif-r2 gsep">—</td>
+    <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td></tr>`;
+  const totR2 = `<tr style="${totStyle}">${totLbl}
+    <td class="verif-r2">—</td>
     <td class="verif-r2" style="${A}">${fmtE(T.r2A)}</td>
     <td class="verif-r2" style="${r2RecAnnounced?'color:var(--amber)':G}">${_recCell(r2Reff, 'rdp')}${r2RecAnnounced?` <span onclick="alert('Montant ANNONC\u00c9 par l\\'avoir Digipharmacie \u2014 aucun virement bancaire RDP encaiss\u00e9 pour cette p\u00e9riode dans tes relev\u00e9s FSE.\\n\\nSi le paiement tarde, c\\'est peut-\u00eatre un impay\u00e9 \u00e0 r\u00e9clamer au labo.')" title="Annonc\u00e9 par l'avoir \u2014 aucun virement encaiss\u00e9" style="cursor:pointer;font-size:9px">(annonc\u00e9 \u26a0)</span>`:''}</td>
-    <td class="verif-r2" style="${dTr2}">${(T.r2A>0||r2Reff>0)?fmtE(T.r2A-r2Reff):'—'}</td>
-    <td class="verif-r3 gsep">—</td>
+    <td class="verif-r2" style="${dTr2}">${(T.r2A>0||r2Reff>0)?fmtE(T.r2A-r2Reff):'—'}</td></tr>`;
+  const totR3 = `<tr style="${totStyle}">${totLbl}
+    <td class="verif-r3">—</td>
     <td class="verif-r3" style="${A}">${T.r3A>0?fmtE(T.r3A):'—'}</td>
     <td class="verif-r3" style="${G}">${_recCell(fseR3, 'presta')}</td>
-    <td class="verif-r3" style="${dTr3}">${(T.r3A>0||fseR3>0)?fmtE(T.r3A-fseR3):'—'}</td>
-  </tr>`;
+    <td class="verif-r3" style="${dTr3}">${(T.r3A>0||fseR3>0)?fmtE(T.r3A-fseR3):'—'}</td></tr>`;
+
+  // Trois tableaux empilés (≤6 colonnes chacun) : tout tient en largeur d'écran,
+  // y compris sur smartphone — plus de défilement latéral.
+  const _thA = `style="${A}"`, _thG = `style="${G}"`;
+  const bloc = (title, headHtml, rowsHtml, totHtml, note) => `
+    <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--cyan);margin:12px 0 4px">${title}${note?` <span style="font-family:'Share Tech Mono',monospace;font-weight:400;font-size:9px;color:var(--text-dim);letter-spacing:0">${note}</span>`:''}</div>
+    <div style="overflow-x:auto">
+      <table class="verif-tbl verif-palier">
+        <thead><tr>${headHtml}</tr></thead>
+        <tbody>${rowsHtml}${totHtml}</tbody>
+      </table>
+    </div>`;
+  const headAchats = `<th style="text-align:left">CAT. RSF</th><th>QTÉ RÉP.</th><th>PA BRUT</th><th ${_thA}>RSF ATT.</th><th ${_thG}>REC.</th><th>Δ</th>`;
+  const headR2     = `<th style="text-align:left">CAT. RSF</th><th class="verif-r2">%</th><th class="verif-r2" ${_thA}>ATT.</th><th class="verif-r2" ${_thG}>REC.</th><th class="verif-r2">Δ</th>`;
+  const headR3     = `<th style="text-align:left">CAT. RSF</th><th class="verif-r3">%</th><th class="verif-r3" ${_thA}>ATT.</th><th class="verif-r3" ${_thG}>REC.</th><th class="verif-r3">Δ</th>`;
 
   return `
     <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 8px;font-family:'Share Tech Mono',monospace;font-size:10px">
       ${cumulYear ? `<span style="color:var(--cyan);font-weight:700;letter-spacing:1px">CUMUL ${cumulYear} · JAN→DÉC</span>` : ''}
       <span style="color:var(--amber);font-weight:700">▸ Attendue</span>
       <span style="color:var(--green)">▸ Reçue</span>
-      <span style="color:var(--text-dim)">RSF&nbsp;: info · R2/RDP&nbsp;: par palier · R3/Coop&nbsp;: reçu = virement FSE total (au TOTAL)</span>
     </div>
-    <div style="overflow-x:auto">
-      <table class="verif-tbl verif-palier">
-        <colgroup>
-          <col style="width:7.5%"><col style="width:6.5%"><col style="width:8.5%">
-          <col style="width:7%"><col style="width:7%"><col style="width:6%">
-          <col style="width:4.5%"><col style="width:7%"><col style="width:7%"><col style="width:6%">
-          <col style="width:4.5%"><col style="width:7%"><col style="width:7%"><col style="width:6%">
-        </colgroup>
-        <thead>
-          <tr>
-            <th rowspan="2" style="text-align:left">CAT. RSF</th>
-            <th rowspan="2">QTÉ RÉP.</th>
-            <th rowspan="2">PA BRUT</th>
-            <th colspan="3" class="gsep">RSF <span style="font-weight:400;font-size:9px;color:var(--text-dim)">(info)</span></th>
-            <th colspan="4" class="verif-r2 gsep">REMISE 2 / RDP</th>
-            <th colspan="4" class="verif-r3 gsep">REMISE 3 / COOP</th>
-          </tr>
-          <tr>
-            <th class="gsep" style="${A}">ATT.</th><th style="${G}">REC.</th><th>Δ</th>
-            <th class="verif-r2 gsep">%</th><th class="verif-r2" style="${A}">ATT.</th><th class="verif-r2" style="${G}">REC.</th><th class="verif-r2">Δ</th>
-            <th class="verif-r3 gsep">%</th><th class="verif-r3" style="${A}">ATT.</th><th class="verif-r3" style="${G}">REC.</th><th class="verif-r3">Δ</th>
-          </tr>
-        </thead>
-        <tbody>${body}${totRow}</tbody>
-      </table>
-    </div>`;
+    ${bloc('ACHATS & RSF', headAchats, rowsD.map(r=>`<tr>${r.achats}</tr>`).join(''), totAchats, 'info répartiteur')}
+    ${bloc('REMISE 2 / RDP', headR2, rowsD.map(r=>`<tr>${r.r2}</tr>`).join(''), totR2, '')}
+    ${bloc('REMISE 3 / COOP', headR3, rowsD.map(r=>`<tr>${r.r3}</tr>`).join(''), totR3, 'reçu = virements FSE (au TOTAL)')}`;
 }
 
 function _verifFillMonthDetail(mk) {
