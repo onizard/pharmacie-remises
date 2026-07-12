@@ -11474,32 +11474,14 @@ async function saveProfile() {
       setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 5000);
       return;
     }
-    // Reload cache then re-apply to admin's own conditions (round-trip confirmation)
+    // Rafraîchit le CACHE des defaults (pour les LED CGV) mais NE RÉ-APPLIQUE PLUS
+    // le modèle par-dessus les conditions : SAVE mémorise l'état COURANT comme vérité
+    // (réglages par mois, collages COPIER, listes « RSF seule »…) au lieu de l'écraser
+    // avec le modèle générique publié. La publication du modèle (saveRsfDefaults, plus
+    // haut) reste faite depuis les conditions de BASE — inchangée.
     await loadRsfDefaults();
-    state.labPages.forEach(lp => {
-      if (!lp.selectedLab) return;
-      const defs26 = _defsFor(lp.selectedLab, '2026');
-      const defs25 = _defsFor(lp.selectedLab, '2025');
-      const exc26  = getLabExc(lp.selectedLab, '2026');
-      const exc25  = getLabExc(lp.selectedLab, '2025');
-      if (!defs26 && !defs25 && !exc26 && !exc25) return;
-      // Applique les defaults à TOUTES les conditions : actives, base et overrides mensuels.
-      // Sans ça, si l'admin est sur un mois, _baseConds2026 n'est pas mis à jour
-      // et serializeState() y lit remise3='' alors que conditions (mensuel) a remise3 correct.
-      const _seen = new Set();
-      const _applyArr = (arr, exc, defs) => (Array.isArray(arr) ? arr : [arr]).forEach(cond => {
-        if (!cond || _seen.has(cond)) return;
-        _seen.add(cond);
-        if (defs) cond.rsfValues.forEach(r => { const d = defs[String(r.rsf_pct)]; if (d) { if (!r.remise2Manual) r.remise2 = d.remise2; if (!r.remise3Manual) r.remise3 = d.remise3; } });
-        if (exc) { Object.assign(cond.exceptions, exc.exceptions || {}); Object.assign(cond.remise2Except, exc.remise2Except || {}); }
-      });
-      [lp.conditions, lp._baseConds2026, ...Object.values(lp.condsByMonth?.[2026] || {})].filter(Boolean).forEach(arr => _applyArr(arr, exc26, defs26));
-      [lp.conditions2025, lp._baseConds2025, ...Object.values(lp.condsByMonth?.[2025] || {})].filter(Boolean).forEach(arr => _applyArr(arr, exc25, defs25));
-      if (lp._reRenderCondTables)     lp._reRenderCondTables();
-      if (lp._reRenderCondTables2025) lp._reRenderCondTables2025();
-    });
     window.syncAllCgvLeds?.();
-    // Flush labPages (conditions) to user_state immediately — no debounce
+    // Flush l'état courant vers user_state immédiatement (pas de debounce).
     const _data = serializeState();
     try { localStorage.setItem(LS_KEY, JSON.stringify(_data)); } catch(e) {}
     const _ok = await saveCloudState(_data);
