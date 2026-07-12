@@ -1431,7 +1431,7 @@
             <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim)" id="digiExtCount"></div>
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="conn-test-btn" id="digiSyncBtn" title="Le serveur re-parcourt les PDF stockés : ré-indexation, dé-doublonnage, reconstruction des stats d'avoirs" style="margin-top:6px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff)">⟳ RÉ-ANALYSER LES FICHIERS</button>
-            <a href="/extension.zip" download="break-pharma-connect.zip" onclick="setTimeout(_showExtTutorial,300)" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;text-decoration:underline dotted">⬇ re-télécharger l'extension</a>
+            <span onclick="_showExtTutorial()" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;text-decoration:underline dotted;cursor:pointer">⬇ installer l'extension</span>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
           <div class="conn-ring-wrap" id="digiProgBar">
@@ -1785,8 +1785,8 @@ function _showExtTutorial() {
         <button id="extTutoClose" style="background:transparent;border:none;color:${DIM};font-size:26px;cursor:pointer;line-height:1;padding:0 4px">×</button>
       </div>
       <div style="font-size:13.5px;color:${DIM};line-height:1.6;margin-bottom:20px">
-        Le téléchargement a démarré (fichier <b style="color:${TXT}">break-pharma-connect.zip</b>). Suivez ces étapes
-        <b style="color:${TXT}">sur un ordinateur</b> (${_isFx ? 'Firefox' : 'Chrome, Edge ou Brave'}) :
+        Téléchargez le fichier <b style="color:${TXT}">break-pharma-connect.zip</b> avec le bouton en bas,
+        puis suivez ces étapes <b style="color:${TXT}">sur un ordinateur</b> (${_isFx ? 'Firefox' : 'Chrome, Edge ou Brave'}) :
       </div>
       ${step(1, `<b>Dézippez</b> le fichier téléchargé : clic droit → <b>« Extraire tout »</b>. Vous obtenez un dossier <b style="color:${CY}">break-pharma-connect</b> (retenez où il est, ex. Téléchargements).`)}
       ${_isFx
@@ -1802,7 +1802,7 @@ function _showExtTutorial() {
         Aucun identifiant Digipharmacie n'est demandé ni stocké.
       </div>
       <div style="display:flex;gap:10px;margin-top:18px">
-        <a href="/extension.zip" download="break-pharma-connect.zip" style="flex:1;text-decoration:none;text-align:center;padding:11px;border-radius:8px;border:1px solid #2b4a6b;color:${TXT};font-weight:600;font-size:13px;background:#12233b">⬇ RE-TÉLÉCHARGER</a>
+        <a href="/extension.zip" download="break-pharma-connect.zip" style="flex:1;text-decoration:none;text-align:center;padding:11px;border-radius:8px;border:1px solid #2b4a6b;color:${TXT};font-weight:600;font-size:13px;background:#12233b">⬇ TÉLÉCHARGER LE .ZIP</a>
         <button id="extTutoOk" style="flex:1;padding:11px;border-radius:8px;border:none;background:${CY};color:#031018;font-weight:800;font-size:13px;cursor:pointer">J'AI COMPRIS</button>
       </div>
     </div>`;
