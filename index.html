@@ -2056,6 +2056,63 @@ async function _fixBiogaran2025() {
   setTimeout(() => location.reload(), 1500);
 }
 
+// Seed one-shot : pose la liste « RSF seule » (exclusion RDP+coop, seule la RSF
+// s'applique) sur les conditions Biogaran 2025. Liste = exclusions contractuelles
+// (photo pharmacien) + médicaments hybrides du registre ANSM. Construite depuis
+// les VRAIES références du compte (match par mot-clé) → robuste aux variantes de
+// libellé. Réservé au compte admin/assistance ; idempotent (flag localStorage).
+// N'écrit RIEN si rien ne matche. Pas de reload : appliqué à l'état frais, la
+// sauvegarde cloud de l'init le persiste.
+async function _seedBiogaranRsfOnly2025() {
+  const FLAG = 'bp_bio2025_rsfonly_v1';
+  if (localStorage.getItem(FLAG) || !isAdmin) return false;
+  const lp = (state.labPages || []).find(p => p.selectedLab === 'Biogaran');
+  if (!lp) return false;
+  const H = { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` };
+  let refs = [];
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/references_pharmacie?labo=eq.Biogaran&select=libelle&limit=10000`, { headers: H });
+    if (r.ok) refs = await r.json();
+  } catch (_) { return false; }
+  const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9/.%]+/g, ' ').trim();
+  const libs = [...new Set(refs.map(x => x.libelle).filter(Boolean))];
+  // [mot-clé, [garde(s) alternatives]] — garde = sous-chaîne devant être présente.
+  const RULES = [
+    ['MACROGOL'], ['CHOLECALCIFEROL'], ['DICLOFENAC 75MG'], ['LACTULOSE', ['SACH']],
+    ['RACECADOTRIL'], ['BETAMETHASONE', [' CR']], ['TERIPARATIDE'], ['LIDOCAINE/PRILOCAINE', ['PATCH']],
+    ['BROMAZEPAM'], ['NEFOPAM'], ['URAPIDIL'], ['DABIGATRAN'], ['TERIFLUNOMIDE'],
+    ['CEFPODOXIME', ['SUSP']], ['DIMETHYLE'], ['PREDNISOLONE 20MG'], ['PREDNISONE'],
+    // Médicaments hybrides — registre ANSM (13/01/2026 + décision 23/06/2026).
+    ['TIOTROPIUM'], ['BIMATOPROST'], ['FLUTICASONE'], ['TIXOCORTOL'], ['LATANOPROST'], ['TIMOLOL'],
+    ['BRINZOLAMIDE'], ['BRIMONIDINE'], ['GLYCOPYRRONIUM'], ['MINOXIDIL'], ['CICLOPIROX'], ['BIFONAZOLE'],
+    ['CALCIPOTRIOL'], ['CHLORHEXIDINE'], ['HEXAMIDINE'], ['FORMOTEROL'], ['BORAX'], ['BORIQUE'],
+    ['TRIAMCINOLONE'], ['ADAPALENE'], ['CLOBETASOL', ['SHAMP']], ['DICLOFENAC', ['GEL']],
+    ['CIPROFLOXACINE', ['AURIC', 'SUSP']],
+  ];
+  // Combinaisons /timolol NON reprises au registre des hybrides.
+  const FAUX = new Set(['BRIMONIDINE 0.2% 5 COLLYRE', 'DORZOLAMIDE/TIMOLOL 20MG/5MG 5 COLLYRE',
+    'TRAVOPROST/TIMOLOL 40MCG/5MG 5 COLLYRE'].map(norm));
+  const picked = libs.filter(lib => {
+    const n = norm(lib);
+    if (FAUX.has(n)) return false;
+    return RULES.some(([kw, guards]) => n.includes(norm(kw)) && (!guards || guards.some(g => n.includes(g))));
+  }).sort();
+  if (!picked.length) { localStorage.setItem(FLAG, '1'); return false; }
+  const libelles = picked.map((text, i) => ({ id: i + 1, text }));
+  const applyTo = conds => (conds || []).forEach(cond => {
+    cond.rsfOnly = { enabled: true, libelles: libelles.map(l => ({ ...l })) };
+  });
+  applyTo(lp.conditions2025);
+  applyTo(lp._baseConds2025);
+  const m2025 = lp.condsByMonth?.[2025] || lp.condsByMonth?.['2025'];
+  if (m2025) Object.values(m2025).forEach(applyTo);
+  localStorage.setItem(FLAG, '1');
+  // Persistance locale immédiate (le cloud est poussé par l'init juste après).
+  try { const _d = serializeState(); _d.savedAt = Date.now(); localStorage.setItem(LS_KEY, JSON.stringify(_d)); } catch (_) {}
+  console.log(`[BP] Biogaran 2025 : ${picked.length} références posées en « RSF seule »`);
+  return true;
+}
+
 // ── Dates d'effet RSF en cours d'année ──────────────────────────────────────
 // rsf_history ne stocke qu'UN taux RSF par référence et par an. Quand un labo change
 // le groupe RSF d'une réf en cours d'année (ex. Zydus juin 2026 : MACROGOL 10%→2,5%),
@@ -11555,6 +11612,10 @@ async function saveProfile() {
   // Synchro cloud au démarrage seulement si des labs sont présents dans saved.
   // Évite d'écraser le cloud avec [] si l'état était vide (nouvel utilisateur, cloud indisponible…).
   // Le cas "local plus récent que cloud" est déjà couvert : saved = _lsRaw (labs présents).
+  // Seed durable de la liste « RSF seule » Biogaran 2025 AVANT la synchro cloud
+  // → serializeState() ci-dessous l'inclut et la persiste (pas de reload, pas de
+  // course avec l'état du navigateur).
+  try { await _seedBiogaranRsfOnly2025(); } catch (e) { console.warn('[BP] seed rsfOnly Biogaran:', e); }
   if (saved?.labPages?.length) {
     const _initData = serializeState();
     saveCloudState(_initData).catch(() => {});
