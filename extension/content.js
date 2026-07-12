@@ -38,18 +38,66 @@
   }
 
   // ── Lecture paginée des factures Digi ───────────────────────────────────────
+  function _cookie(name) {
+    const m = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  // Découvre le VRAI endpoint des factures : le SPA Digi l'a déjà appelé quand
+  // l'utilisateur a ouvert sa page « Factures » → il est dans les ressources
+  // réseau (Performance API). Évite un chemin codé en dur qui renvoie du HTML.
+  function _discoverEndpoints() {
+    const set = new Set();
+    try {
+      performance.getEntriesByType('resource').forEach(e => {
+        try {
+          const u = new URL(e.name);
+          if (u.origin === location.origin && /\/(invoice|facture|bill)s?\//i.test(u.pathname)) {
+            set.add(u.origin + u.pathname);
+          }
+        } catch (_) {}
+      });
+    } catch (_) {}
+    return [...set];
+  }
+  // fetch JSON avec en-têtes attendus par Django REST (CSRF + XHR). Distingue
+  // page HTML (session/anti-bot) d'une vraie réponse JSON.
+  async function _fetchJson(url) {
+    const csrf = _cookie('csrftoken');
+    const res = await fetch(url, {
+      credentials: 'include',
+      headers: Object.assign(
+        { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        csrf ? { 'X-CSRFToken': csrf } : {},
+      ),
+    });
+    if (res.status === 401 || res.status === 403) { const e = new Error('auth'); e.kind = 'auth'; throw e; }
+    if (!res.ok) { const e = new Error('http ' + res.status); e.kind = 'http'; e.status = res.status; throw e; }
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('json')) {
+      const txt = await res.text();
+      if (/^\s*</.test(txt)) { const e = new Error('html'); e.kind = 'html'; throw e; }
+      try { return JSON.parse(txt); } catch (_) { const e = new Error('html'); e.kind = 'html'; throw e; }
+    }
+    return res.json();
+  }
+
   async function fetchAllInvoices(onProgress) {
+    const q = '?ordering=-billing_date&page_size=100&page=1';
+    // Endpoints candidats : ceux détectés dans le trafic (prioritaires) + le défaut.
+    const candidates = [..._discoverEndpoints().map(b => b + q), '/api/v1/invoices/' + q];
+    let data = null, lastErr = null;
+    for (const cand of candidates) {
+      try { data = await _fetchJson(cand); break; } catch (e) { lastErr = e; }
+    }
+    if (!data) {
+      if (lastErr && lastErr.kind === 'auth') throw new Error('Session Digipharmacie expirée — reconnectez-vous à Digipharmacie, puis réessayez.');
+      if (lastErr && lastErr.kind === 'html') throw new Error("Impossible de lire vos factures. Ouvrez d'abord votre page « Factures » sur Digipharmacie (menu Factures), laissez-la s'afficher, puis re-cliquez ce bouton.");
+      throw new Error('Digipharmacie a répondu de façon inattendue' + (lastErr && lastErr.status ? ' (' + lastErr.status + ')' : ''));
+    }
     const out = [];
-    let url = '/api/v1/invoices/?ordering=-billing_date&page_size=100&page=1';
     let guard = 0;
-    while (url && guard < 500) {
+    while (data && guard < 500) {
       guard++;
-      const res = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } });
-      if (res.status === 401 || res.status === 403) {
-        throw new Error('Session Digipharmacie expirée — reconnectez-vous à Digipharmacie, puis réessayez.');
-      }
-      if (!res.ok) throw new Error('Digipharmacie a répondu ' + res.status);
-      const data = await res.json();
       const results = Array.isArray(data) ? data : (data.results || []);
       for (const inv of results) {
         const file = inv.file || inv.file_url || '';
@@ -62,8 +110,9 @@
         });
       }
       onProgress(out.length);
-      // `next` peut être une URL absolue (http…) — fetch l'accepte telle quelle.
-      url = (!Array.isArray(data) && data.next) ? data.next : null;
+      const next = (!Array.isArray(data) && data.next) ? data.next : null;
+      if (!next) break;
+      data = await _fetchJson(next);
     }
     return out;
   }
