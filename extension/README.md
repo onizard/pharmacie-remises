@@ -19,6 +19,18 @@ côté serveur. Le traitement continue même si vous fermez l'onglet.
 4. Cliquez **« Charger l'extension non empaquetée »** et sélectionnez le dossier `extension/`.
 5. L'icône **break-pharma connect** apparaît dans la barre d'extensions.
 
+## Installation (Firefox — ordinateur)
+
+1. Téléchargez et dézippez le dossier `extension/`.
+2. Ouvrez `about:debugging#/runtime/this-firefox`.
+3. Cliquez **« Charger un module complémentaire temporaire… »** et sélectionnez le
+   fichier **`manifest.json`** du dossier dézippé.
+4. L'extension **break-pharma connect** apparaît.
+
+> Note Firefox : une extension chargée ainsi est **temporaire** (retirée à la
+> fermeture de Firefox) — rechargez-la de la même façon au besoin. Une version
+> signée (installation permanente) pourra être fournie plus tard via addons.mozilla.org.
+
 ## Utilisation
 
 1. Cliquez l'icône de l'extension → **connectez-vous** avec vos identifiants break-pharma.fr.

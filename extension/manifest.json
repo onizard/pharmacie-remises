@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "break-pharma connect",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Envoie vos factures/avoirs Digipharmacie vers break-pharma.fr, en un clic, depuis votre session.",
   "permissions": [
     "storage"
@@ -27,6 +27,15 @@
     }
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "break-pharma-connect@break-pharma.fr",
+      "strict_min_version": "115.0"
+    }
   }
 }
