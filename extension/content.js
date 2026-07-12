@@ -7,6 +7,33 @@
   if (window.__bpConnectInjected) return;
   window.__bpConnectInjected = true;
 
+  // Fournisseurs pertinents : labos génériqueurs + dépositaires (facturent au nom
+  // du labo) + répartiteurs. On ne remonte QUE ces factures (comme le scraper
+  // serveur) au lieu de tout envoyer en brut. Liste = api_scraper/scraper.py.
+  const GENERIC_LABS = [
+    'biogaran', 'teva', 'mylan', 'viatris', 'zydus', 'sandoz', 'zentiva',
+    'arrow', 'cristers', 'eg labo', 'eg labs', 'evolupharm',
+    'ranbaxy', 'ratiopharm', 'actavis', 'hexal', 'aurobindo', 'intas',
+    'sun pharma', 'pharmaki', 'strides', 'qualimed', 'almus', 'ibigen',
+    'substipharm', 'medipha', 'phlorogine',
+    'alloga', 'cegedim', 'movianto',
+    'cerp', 'ocp', 'alliance', 'phoenix',
+    'cooperation pharmaceutique', 'cooperation pharma', 'csp',
+    'centre specialites pharmaceutiques', 'centre spécialités pharmaceutiques',
+  ];
+  // Normalise (minuscules, sans accents, ponctuation/underscores → espaces) et
+  // matche par MOT entier → « Centre_Specialites_Pharmaceutiques » == « csp »/…,
+  // sans faux positifs sur des sous-chaînes.
+  function _norm(s) {
+    return ' ' + (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+  }
+  const _GEN_NORM = GENERIC_LABS.map(_norm);
+  function _isGenericProvider(txt) {
+    const n = _norm(txt);
+    return _GEN_NORM.some(k => n.includes(k));
+  }
+
   // ── UI : bouton + panneau de statut ────────────────────────────────────────
   const btn = document.createElement('button');
   btn.textContent = '⇪ Envoyer à break-pharma';
@@ -95,7 +122,8 @@
   // Pagine une réponse JSON de liste (walk sur `next`) et extrait les factures.
   async function _paginate(firstData, onProgress) {
     const out = [];
-    let data = firstData, guard = 0, rawCount = 0, sampleKeys = null;
+    const sampleProviders = [];
+    let data = firstData, guard = 0, rawCount = 0, withPdf = 0, sampleKeys = null;
     while (data && guard < 500) {
       guard++;
       const results = Array.isArray(data) ? data : (data.results || []);
@@ -104,11 +132,15 @@
         if (!sampleKeys && inv && typeof inv === 'object') sampleKeys = Object.keys(inv);
         const file = _pdfUrl(inv);
         if (!file) continue;
+        withPdf++;
+        const pref = inv.provider_ref  || inv.provider || inv.supplier_ref || '';
+        const pnam = inv.provider_name || inv.supplier_name || inv.supplier || '';
+        if (sampleProviders.length < 6 && (pref || pnam)) sampleProviders.push((pref + ' ' + pnam).trim());
+        // On ne garde QUE les fournisseurs pertinents (labos/dépositaires/répartiteurs).
+        if (!_isGenericProvider(pref + ' ' + pnam)) continue;
         out.push({
-          file,
-          provider_ref:  inv.provider_ref  || inv.provider || inv.supplier_ref || '',
-          provider_name: inv.provider_name || inv.supplier_name || inv.supplier || '',
-          billing_date:  inv.billing_date  || inv.date || inv.created_at || inv.invoice_date || '',
+          file, provider_ref: pref, provider_name: pnam,
+          billing_date: inv.billing_date || inv.date || inv.created_at || inv.invoice_date || '',
         });
       }
       onProgress(out.length);
@@ -116,7 +148,7 @@
       if (!next) break;
       data = await _fetchJson(next);
     }
-    return { invoices: out, rawCount, sampleKeys };
+    return { invoices: out, rawCount, withPdf, sampleKeys, sampleProviders };
   }
 
   async function fetchAllInvoices(onProgress) {
@@ -165,9 +197,14 @@
       const r = await fetchAllInvoices((n) => log('Lecture… ' + n + ' facture(s)', 'info'));
       const invoices = r.invoices;
       if (!invoices.length) {
-        // Diagnostic : distinguer « rien lu » de « lu mais pas de champ PDF reconnu ».
         const ep = (r.endpoint || '').replace(/^https?:\/\/[^/]+/, '').split('?')[0];
-        if (r.rawCount > 0) {
+        if (r.withPdf > 0) {
+          // Des PDF existent mais aucun fournisseur reconnu comme labo/répartiteur.
+          log('DIAG : ' + r.withPdf + ' facture(s) avec PDF sur ' + ep + ', mais aucun fournisseur '
+            + 'reconnu (labo/répartiteur). Exemples de fournisseurs : '
+            + ((r.sampleProviders || []).join(' | ') || '?')
+            + '. Copiez ce message et envoyez-le au support break-pharma.', 'warn');
+        } else if (r.rawCount > 0) {
           log('DIAG : ' + r.rawCount + ' ligne(s) lues sur ' + ep + ' mais aucun lien PDF reconnu. '
             + 'Champs disponibles : ' + (r.sampleKeys ? r.sampleKeys.join(', ') : '?')
             + '. Copiez ce message et envoyez-le au support break-pharma.', 'warn');
@@ -177,6 +214,7 @@
         }
         return;
       }
+      log(invoices.length + ' facture(s) labo/répartiteur retenue(s) sur ' + (r.withPdf || invoices.length) + ' avec PDF.', 'info');
 
       log('Envoi de ' + invoices.length + ' facture(s) à break-pharma…', 'info');
       const resp = await chrome.runtime.sendMessage({ type: 'bp-import', invoices });
