@@ -101,6 +101,24 @@ CLOUDFLARE_API_KEY=...
 
 ## Règle métier spécifique : contrat Biogaran (marché générique)
 
+### Exclusion de palier = RDP uniquement
+Le flag « exclu » d'un palier RSF (ex. 2,5 % / 5 %, exclusion par défaut Biogaran)
+n'exclut QUE la remise 2 (RDP). La RSF et la coop (remise3) restent dues sur ces
+paliers. Ne jamais filtrer remise3 sur `excluded`.
+
+### Autres règles vérifiées sur données réelles (2026-07)
+- Les remises labo portent sur les ACHATS (justificatif répartiteur + factures
+  directes CSP), jamais sur les ventes OSPHARM.
+- Le barème RDP payé suit l'ANNÉE DU MOIS : 2025 payé au barème 2025 jusqu'à
+  décembre inclus, barème 2026 à partir de janvier 2026 (transition indépendante
+  de la bascule d'affichage `_y25cut`).
+- Réalisation du contrat (coef coop) : CA BRUT tarif (répartiteur `ca_brut` +
+  achats directs Digi), fenêtre depuis la date de signature, annualisée sur les
+  mois écoulés.
+- L'avoir RDP agrège par TAUX VERSÉ, pas par palier RSF (les exceptions d'un
+  palier sont versées dans la ligne de leur taux).
+- Les virements coop sont des sommes rondes (sans décimales) ; décimales ⇒ RDP.
+
 ### Principe
 Biogaran impose un CA annuel contractuel. Le seuil de validation du marché est **80%** de ce CA.
 Le CA cible = `caCondition` du palier (condition) avec la remise la plus élevée.
