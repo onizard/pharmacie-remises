@@ -10317,7 +10317,8 @@ async function launchSimulation() {
         let remise2 = '', remise3 = '';
         if (cond) {
           const rv = cond.rsfValues.find(r => String(r.rsf_pct) === String(ref.rsf_pct));
-          if (rv && !rv.excluded) { remise2 = rv.remise2 || ''; remise3 = rv.remise3 || ''; }
+          // Exclusion = RDP uniquement (ex. Biogaran) : la coop (remise3) reste due.
+          if (rv) { remise2 = rv.excluded ? '' : (rv.remise2 || ''); remise3 = rv.remise3 || ''; }
         }
         const puht = row.puht || ref.puht || 0;
         const net = (parseFloat(remise2) || 0) + (parseFloat(remise3) || 0);
