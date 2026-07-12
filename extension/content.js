@@ -53,13 +53,22 @@
       performance.getEntriesByType('resource').forEach(e => {
         try {
           const u = new URL(e.name);
-          if (u.origin === location.origin && /\/(invoice|facture|bill)s?\//i.test(u.pathname)) {
-            set.add(u.origin + u.pathname);
-          }
+          if (u.origin !== location.origin) return;
+          const segs = u.pathname.split('/').filter(Boolean);
+          // Segment EXACTEMENT « invoices/facture/bill » (± s) : on TRONQUE juste
+          // après → la LISTE (/…/invoices/), pas une action (/invoices/spend_by_month/).
+          const i = segs.findIndex(s => /^(invoices?|factures?|bills?)$/i.test(s));
+          if (i >= 0) set.add(u.origin + '/' + segs.slice(0, i + 1).join('/') + '/');
         } catch (_) {}
       });
     } catch (_) {}
     return [...set];
+  }
+  // Une réponse « liste de factures » a des lignes avec un PDF ou des champs
+  // typiques (date/fournisseur) — sinon c'est un agrégat (spend_by_month…).
+  function _looksLikeInvoices(results) {
+    return results.some(inv => inv && typeof inv === 'object' &&
+      (_pdfUrl(inv) || inv.billing_date || inv.provider_ref || inv.provider_name || inv.invoice_date));
   }
   // fetch JSON avec en-têtes attendus par Django REST (CSRF + XHR). Distingue
   // page HTML (session/anti-bot) d'une vraie réponse JSON.
@@ -83,21 +92,10 @@
     return res.json();
   }
 
-  async function fetchAllInvoices(onProgress) {
-    const q = '?ordering=-billing_date&page_size=100&page=1';
-    // Endpoints candidats : ceux détectés dans le trafic (prioritaires) + le défaut.
-    const candidates = [..._discoverEndpoints().map(b => b + q), '/api/v1/invoices/' + q];
-    let data = null, lastErr = null, _okUrl = '';
-    for (const cand of candidates) {
-      try { data = await _fetchJson(cand); _okUrl = cand; break; } catch (e) { lastErr = e; }
-    }
-    if (!data) {
-      if (lastErr && lastErr.kind === 'auth') throw new Error('Session Digipharmacie expirée — reconnectez-vous à Digipharmacie, puis réessayez.');
-      if (lastErr && lastErr.kind === 'html') throw new Error("Impossible de lire vos factures. Ouvrez d'abord votre page « Factures » sur Digipharmacie (menu Factures), laissez-la s'afficher, puis re-cliquez ce bouton.");
-      throw new Error('Digipharmacie a répondu de façon inattendue' + (lastErr && lastErr.status ? ' (' + lastErr.status + ')' : ''));
-    }
+  // Pagine une réponse JSON de liste (walk sur `next`) et extrait les factures.
+  async function _paginate(firstData, onProgress) {
     const out = [];
-    let guard = 0, rawCount = 0, sampleKeys = null;
+    let data = firstData, guard = 0, rawCount = 0, sampleKeys = null;
     while (data && guard < 500) {
       guard++;
       const results = Array.isArray(data) ? data : (data.results || []);
@@ -118,7 +116,33 @@
       if (!next) break;
       data = await _fetchJson(next);
     }
-    return { invoices: out, rawCount, sampleKeys, endpoint: _okUrl };
+    return { invoices: out, rawCount, sampleKeys };
+  }
+
+  async function fetchAllInvoices(onProgress) {
+    const q = '?ordering=-billing_date&page_size=100&page=1';
+    // Candidats : endpoints détectés (tronqués à la liste) + défauts connus.
+    const candidates = [...new Set([..._discoverEndpoints(), '/invoices/', '/api/v1/invoices/'])].map(b => b + q);
+    let lastErr = null, best = null;
+    for (const cand of candidates) {
+      let d;
+      try { d = await _fetchJson(cand); } catch (e) { lastErr = e; continue; }
+      const results = Array.isArray(d) ? d : (d.results || []);
+      // Bon endpoint = celui dont les lignes ressemblent à des factures. Sinon
+      // (agrégat type spend_by_month) on passe au candidat suivant.
+      if (_looksLikeInvoices(results)) {
+        const r = await _paginate(d, onProgress);
+        return Object.assign(r, { endpoint: cand });
+      }
+      if (!best || results.length > best.rawCount) {
+        best = { invoices: [], rawCount: results.length,
+                 sampleKeys: results[0] ? Object.keys(results[0]) : null, endpoint: cand };
+      }
+    }
+    if (best) return best;  // rien de convaincant → diagnostic (voir bouton)
+    if (lastErr && lastErr.kind === 'auth') throw new Error('Session Digipharmacie expirée — reconnectez-vous à Digipharmacie, puis réessayez.');
+    if (lastErr && lastErr.kind === 'html') throw new Error("Impossible de lire vos factures. Ouvrez d'abord votre page « Factures » sur Digipharmacie (menu Factures), laissez-la s'afficher, puis re-cliquez ce bouton.");
+    throw new Error('Digipharmacie a répondu de façon inattendue' + (lastErr && lastErr.status ? ' (' + lastErr.status + ')' : ''));
   }
   // Cherche l'URL du PDF dans une facture, quel que soit le nom du champ.
   function _pdfUrl(inv) {
