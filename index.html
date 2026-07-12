@@ -1418,7 +1418,7 @@
               <li>Ouvre <span style="color:var(--cyan)">app.digipharmacie.fr</span> → clique <b>« ⇪ Envoyer à break-pharma »</b> (en bas à droite).</li>
             </ol>
             <div class="conn-test-row">
-              <a href="/extension.zip" download="break-pharma-connect.zip" class="conn-test-btn" style="text-decoration:none;display:inline-block;text-align:center">⬇ TÉLÉCHARGER L'EXTENSION</a>
+              <a href="/extension.zip" download="break-pharma-connect.zip" onclick="setTimeout(_showExtTutorial,300)" class="conn-test-btn" style="text-decoration:none;display:inline-block;text-align:center">⬇ TÉLÉCHARGER L'EXTENSION</a>
             </div>
             <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px">
               Les fichiers envoyés sont traités en arrière-plan côté serveur — tu peux
@@ -1431,7 +1431,7 @@
             <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim)" id="digiExtCount"></div>
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="conn-test-btn" id="digiSyncBtn" title="Le serveur re-parcourt les PDF stockés : ré-indexation, dé-doublonnage, reconstruction des stats d'avoirs" style="margin-top:6px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff)">⟳ RÉ-ANALYSER LES FICHIERS</button>
-            <a href="/extension.zip" download="break-pharma-connect.zip" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;text-decoration:underline dotted">⬇ re-télécharger l'extension</a>
+            <a href="/extension.zip" download="break-pharma-connect.zip" onclick="setTimeout(_showExtTutorial,300)" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;text-decoration:underline dotted">⬇ re-télécharger l'extension</a>
             <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
           <div class="conn-ring-wrap" id="digiProgBar">
@@ -1757,6 +1757,56 @@ async function _previewDigiPdf(key) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (e) { showToast('Aperçu impossible : ' + (e.message || e)); }
 }
+
+// Bulle info : tutoriel d'installation de l'extension « break-pharma connect »,
+// ouverte au clic sur le lien de téléchargement (le téléchargement se fait en
+// parallèle via l'attribut download du lien).
+function _showExtTutorial() {
+  document.getElementById('extTutoOverlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'extTutoOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(2,4,10,.82);display:flex;'
+    + 'align-items:flex-start;justify-content:center;padding:24px 14px;overflow:auto;backdrop-filter:blur(2px)';
+  const step = (n, html) => `<div style="display:flex;gap:12px;align-items:flex-start;margin:0 0 14px">
+      <span style="flex:0 0 26px;height:26px;border-radius:50%;background:var(--cyan,#00e5ff);color:#04060f;
+        font-family:'Orbitron',monospace;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center">${n}</span>
+      <div style="flex:1;font-size:13px;line-height:1.55;color:var(--text,#e6f7ff)">${html}</div>
+    </div>`;
+  const kbd = t => `<code style="background:#0a1224;border:1px solid #16324a;border-radius:4px;padding:1px 6px;color:var(--cyan,#00e5ff);font-size:12px">${t}</code>`;
+  ov.innerHTML = `
+    <div style="max-width:520px;width:100%;background:#060a16;border:1px solid var(--cyan,#00e5ff);border-radius:14px;
+      box-shadow:0 10px 40px rgba(0,0,0,.6);padding:22px 22px 18px;font-family:'Share Tech Mono',monospace">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-family:'Orbitron',monospace;font-weight:800;letter-spacing:1px;color:var(--cyan,#00e5ff);font-size:15px">📥 INSTALLER L'EXTENSION</div>
+        <button id="extTutoClose" style="background:transparent;border:none;color:var(--text-dim,#8bb8c8);font-size:22px;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-dim,#8bb8c8);line-height:1.5;margin-bottom:16px">
+        Le téléchargement a démarré (fichier <b>break-pharma-connect.zip</b>). Suivez ces étapes,
+        <b>sur un ordinateur</b> (Chrome, Edge ou Brave) :
+      </div>
+      ${step(1, `<b>Dézippez</b> le fichier téléchargé : clic droit → <b>« Extraire tout »</b>. Vous obtenez un dossier <b>break-pharma-connect</b>. Retenez où il est (Téléchargements).`)}
+      ${step(2, `Ouvrez ${kbd('chrome://extensions')} (copiez-collez dans la barre d'adresse). Sur Edge : ${kbd('edge://extensions')}.`)}
+      ${step(3, `En haut à droite, activez le <b>Mode développeur</b>.`)}
+      ${step(4, `Cliquez <b>« Charger l'extension non empaquetée »</b> et sélectionnez le <b>dossier dézippé</b> (pas le .zip). L'icône <b>break-pharma connect</b> apparaît.`)}
+      ${step(5, `Cliquez l'icône de l'extension (puzzle 🧩 en haut à droite) → <b>connectez-vous avec vos identifiants break-pharma.fr</b>.`)}
+      ${step(6, `Ouvrez <b>app.digipharmacie.fr</b> et connectez-vous normalement. Un bouton <b>« ⇪ Envoyer à break-pharma »</b> apparaît en bas à droite — cliquez-le.`)}
+      ${step(7, `C'est fini : vos factures sont analysées côté serveur, vous pouvez fermer l'onglet. Elles apparaissent dans <b>l'explorateur de fichiers</b>.`)}
+      <div style="font-size:11px;color:var(--text-dim,#8bb8c8);line-height:1.5;border-top:1px solid #16324a;margin-top:6px;padding-top:12px">
+        🔒 L'extension ne lit que la liste de vos factures Digipharmacie, dans <b>votre</b> session.
+        Aucun identifiant Digipharmacie n'est demandé ni stocké.
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <a href="/extension.zip" download="break-pharma-connect.zip" class="conn-test-btn" style="flex:1;text-decoration:none;text-align:center">⬇ RE-TÉLÉCHARGER</a>
+        <button id="extTutoOk" class="conn-test-btn" style="flex:1;background:var(--cyan,#00e5ff);color:#04060f;border-color:var(--cyan,#00e5ff)">J'AI COMPRIS</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  document.getElementById('extTutoClose').addEventListener('click', close);
+  document.getElementById('extTutoOk').addEventListener('click', close);
+}
+window._showExtTutorial = _showExtTutorial;
 
 // ── Import Digi EN LOT, traité en fond (GitHub Actions) ────────────────────────
 // Barre de progression flottante, visible sur toutes les pages.
