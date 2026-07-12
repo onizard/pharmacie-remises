@@ -1,8 +1,14 @@
 {
   "manifest_version": 3,
   "name": "break-pharma connect",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Envoie vos factures/avoirs Digipharmacie vers break-pharma.fr, en un clic, depuis votre session.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "storage"
   ],
@@ -13,7 +19,13 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "break-pharma connect"
+    "default_title": "break-pharma connect",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "content_scripts": [
     {
