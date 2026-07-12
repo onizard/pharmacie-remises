@@ -20,9 +20,11 @@
   const panel = document.createElement('div');
   Object.assign(panel.style, {
     position: 'fixed', right: '18px', bottom: '64px', zIndex: 2147483647,
-    maxWidth: '320px', display: 'none', background: '#04060f', color: '#e6f7ff',
+    maxWidth: '360px', maxHeight: '50vh', overflowY: 'auto', display: 'none',
+    background: '#04060f', color: '#e6f7ff',
     border: '1px solid #0369a1', borderRadius: '10px', padding: '10px 12px',
-    font: '13px system-ui,sans-serif', lineHeight: '1.4',
+    font: '13px system-ui,sans-serif', lineHeight: '1.45', whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word', userSelect: 'text',
     boxShadow: '0 4px 14px rgba(0,0,0,.35)',
   });
 
@@ -85,9 +87,9 @@
     const q = '?ordering=-billing_date&page_size=100&page=1';
     // Endpoints candidats : ceux détectés dans le trafic (prioritaires) + le défaut.
     const candidates = [..._discoverEndpoints().map(b => b + q), '/api/v1/invoices/' + q];
-    let data = null, lastErr = null;
+    let data = null, lastErr = null, _okUrl = '';
     for (const cand of candidates) {
-      try { data = await _fetchJson(cand); break; } catch (e) { lastErr = e; }
+      try { data = await _fetchJson(cand); _okUrl = cand; break; } catch (e) { lastErr = e; }
     }
     if (!data) {
       if (lastErr && lastErr.kind === 'auth') throw new Error('Session Digipharmacie expirée — reconnectez-vous à Digipharmacie, puis réessayez.');
@@ -95,18 +97,20 @@
       throw new Error('Digipharmacie a répondu de façon inattendue' + (lastErr && lastErr.status ? ' (' + lastErr.status + ')' : ''));
     }
     const out = [];
-    let guard = 0;
+    let guard = 0, rawCount = 0, sampleKeys = null, usedEndpoint = _lastUrl;
     while (data && guard < 500) {
       guard++;
       const results = Array.isArray(data) ? data : (data.results || []);
       for (const inv of results) {
-        const file = inv.file || inv.file_url || '';
+        rawCount++;
+        if (!sampleKeys && inv && typeof inv === 'object') sampleKeys = Object.keys(inv);
+        const file = _pdfUrl(inv);
         if (!file) continue;
         out.push({
           file,
-          provider_ref:  inv.provider_ref  || '',
-          provider_name: inv.provider_name || '',
-          billing_date:  inv.billing_date  || '',
+          provider_ref:  inv.provider_ref  || inv.provider || inv.supplier_ref || '',
+          provider_name: inv.provider_name || inv.supplier_name || inv.supplier || '',
+          billing_date:  inv.billing_date  || inv.date || inv.created_at || inv.invoice_date || '',
         });
       }
       onProgress(out.length);
@@ -114,7 +118,19 @@
       if (!next) break;
       data = await _fetchJson(next);
     }
-    return out;
+    return { invoices: out, rawCount, sampleKeys, endpoint: _okUrl };
+  }
+  // Cherche l'URL du PDF dans une facture, quel que soit le nom du champ.
+  function _pdfUrl(inv) {
+    if (!inv || typeof inv !== 'object') return '';
+    for (const k of ['file', 'file_url', 'pdf', 'pdf_url', 'document', 'document_url', 'url', 'download_url', 'href']) {
+      if (typeof inv[k] === 'string' && inv[k]) return inv[k];
+    }
+    // Sinon : première valeur ressemblant à une URL de PDF/média.
+    for (const v of Object.values(inv)) {
+      if (typeof v === 'string' && /^https?:\/\/\S+/.test(v) && /\.pdf(\?|$)|\/media\/|\/documents?\//i.test(v)) return v;
+    }
+    return '';
   }
 
   btn.addEventListener('click', async () => {
@@ -122,8 +138,21 @@
     const label = btn.textContent;
     try {
       log('Lecture des factures Digipharmacie…', 'info');
-      const invoices = await fetchAllInvoices((n) => log('Lecture… ' + n + ' facture(s)', 'info'));
-      if (!invoices.length) { log('Aucune facture trouvée sur votre compte Digipharmacie.', 'warn'); return; }
+      const r = await fetchAllInvoices((n) => log('Lecture… ' + n + ' facture(s)', 'info'));
+      const invoices = r.invoices;
+      if (!invoices.length) {
+        // Diagnostic : distinguer « rien lu » de « lu mais pas de champ PDF reconnu ».
+        const ep = (r.endpoint || '').replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+        if (r.rawCount > 0) {
+          log('DIAG : ' + r.rawCount + ' ligne(s) lues sur ' + ep + ' mais aucun lien PDF reconnu. '
+            + 'Champs disponibles : ' + (r.sampleKeys ? r.sampleKeys.join(', ') : '?')
+            + '. Copiez ce message et envoyez-le au support break-pharma.', 'warn');
+        } else {
+          log('DIAG : aucune facture lue (endpoint ' + (ep || 'non trouvé') + '). '
+            + 'Ouvrez d’abord votre page « Factures » sur Digipharmacie, laissez-la s’afficher, puis re-cliquez.', 'warn');
+        }
+        return;
+      }
 
       log('Envoi de ' + invoices.length + ' facture(s) à break-pharma…', 'info');
       const resp = await chrome.runtime.sendMessage({ type: 'bp-import', invoices });
