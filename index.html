@@ -490,8 +490,11 @@
   .mon-btn:hover { border-color:var(--cyan); color:var(--cyan); }
   .mon-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,.13); font-weight:bold; }
   .mon-btn.has-override::after { content:'●'; position:absolute; top:1px; right:2px; font-size:6px; color:var(--amber); line-height:1; }
-  .mon-idem-mois { font-family:'Share Tech Mono',monospace; font-size:10px; padding:3px 9px; background:transparent; border:1px solid rgba(255,171,0,.4); color:var(--amber); border-radius:3px; cursor:pointer; letter-spacing:.5px; transition:all .15s; margin-left:6px; opacity:.8; }
-  .mon-idem-mois:hover { border-color:var(--amber); opacity:1; background:rgba(255,171,0,.1); }
+  .mon-copier { font-family:'Share Tech Mono',monospace; font-size:10px; padding:3px 9px; background:transparent; border:1px solid rgba(255,171,0,.4); color:var(--amber); border-radius:3px; cursor:pointer; letter-spacing:.5px; transition:all .15s; margin-left:6px; opacity:.8; }
+  .mon-copier:hover { border-color:var(--amber); opacity:1; background:rgba(255,171,0,.1); }
+  /* Copie armée : bouton « allumé » jusqu'au collage. */
+  .mon-copier.armed { opacity:1; color:#04060f; background:var(--amber); border-color:var(--amber); box-shadow:0 0 8px rgba(255,171,0,.6); font-weight:700; }
+  .mon-copier.armed::before { content:'📋 '; }
   .rsf-import-drop { display:inline-flex; align-items:center; gap:5px; cursor:pointer; padding:2px 8px; border-radius:4px; border:1px dashed rgba(255,171,0,.35); color:rgba(255,171,0,.55); font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:.5px; transition:all .2s; }
   .rsf-import-drop:hover { border-color:var(--amber); color:var(--amber); background:rgba(255,171,0,.06); }
   .rsf-import-drop.drag-over { background:rgba(255,171,0,.18); border-color:var(--amber); color:var(--amber); }
@@ -4188,7 +4191,7 @@ function createLabContDom(lp) {
       <div style="display:flex;align-items:center">
         <div class="year-label">2026</div>
       </div>
-      <div class="mon-btns" id="monBtns26-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}<button class="mon-idem-mois" title="Appliquer ce palier à tous les mois 2026">IDEM MOIS</button></div>
+      <div class="mon-btns" id="monBtns26-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}<button class="mon-copier" title="Copier les conditions du mois sélectionné, puis cliquer un autre mois pour les y coller">COPIER</button></div>
       <div class="cond-tabs" id="condTabs-${uid}"></div>
       <div id="condPanels-${uid}"></div>
       <div style="margin-top:24px">
@@ -4215,7 +4218,7 @@ function createLabContDom(lp) {
               <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--cyan);letter-spacing:.5px">CONTRAT RÉPARTITEUR</span>
             </label>
           </div>
-          <div class="mon-btns" id="monBtns25-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}<button class="mon-idem-mois" title="Appliquer ce palier à tous les mois 2025">IDEM MOIS</button></div>
+          <div class="mon-btns" id="monBtns25-${uid}">${MONTHS.map((m,i) => `<button class="mon-btn" data-mon="${i+1}">${m}</button>`).join('')}<button class="mon-copier" title="Copier les conditions du mois sélectionné, puis cliquer un autre mois pour les y coller">COPIER</button></div>
           <div class="cond-tabs" id="condTabs25-${uid}"></div>
           <div id="condPanels25-${uid}"></div>
         </div>
@@ -4245,10 +4248,29 @@ function createLabContDom(lp) {
         b.classList.toggle('active', parseInt(b.dataset.mon) === cur);
       });
     }
+    const MNAMES = ['JAN','FÉV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DÉC'];
+    // « COPIER » (façon reproduire la mise en forme) : copie les conditions du mois
+    // sélectionné (le bouton reste allumé), puis le prochain mois cliqué les reçoit.
+    // Clipboard porté par lp._copyArmed<suffix> pour survivre à un re-rendu.
+    const copyBtn = container.querySelector('.mon-copier');
+    const _disarm = () => { lp[`_copyArmed${yearSuffix}`] = null; lp[`_copySrc${yearSuffix}`] = null; copyBtn?.classList.remove('armed'); };
+    if (lp[`_copyArmed${yearSuffix}`]) copyBtn?.classList.add('armed');
+
     container.querySelectorAll('.mon-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        lp[monKey] = parseInt(btn.dataset.mon);
+        const target = parseInt(btn.dataset.mon);
+        const copied = lp[`_copyArmed${yearSuffix}`];
+        // Copie armée + mois différent de la source → on COLLE dans le mois cliqué.
+        if (copied && target !== lp[`_copySrc${yearSuffix}`]) {
+          if (!lp.condsByMonth) lp.condsByMonth = { 2025: {}, 2026: {} };
+          if (!lp.condsByMonth[yearNum]) lp.condsByMonth[yearNum] = {};
+          lp.condsByMonth[yearNum][target] = JSON.parse(JSON.stringify(copied));
+          _disarm();
+          showToast(`Conditions collées sur ${MNAMES[target-1]} ${yearNum}`);
+        }
+        lp[monKey] = target;
         _refreshActive();
+        _refreshDots();
         lp[`_switchCondMon${yearSuffix}`]?.();
         lp[`_reflectContractMonth${yearSuffix}`]?.();
         saveState();
@@ -4258,21 +4280,15 @@ function createLabContDom(lp) {
     _refreshDots();
     lp[`_refreshMonBtns${yearSuffix}`] = () => { _refreshActive(); _refreshDots(); };
 
-    const idemMoisBtn = container.querySelector('.mon-idem-mois');
-    if (idemMoisBtn) {
-      idemMoisBtn.addEventListener('click', () => {
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        if (lp[`_copyArmed${yearSuffix}`]) { _disarm(); showToast('Copie annulée'); return; }
         const activeMon = lp[monKey];
-        if (!activeMon) { showToast('Sélectionnez un mois d\'abord'); return; }
-        const srcConds = getEffectiveCondsForMonth(lp, yearNum, activeMon);
-        if (!lp.condsByMonth) lp.condsByMonth = { 2025: {}, 2026: {} };
-        if (!lp.condsByMonth[yearNum]) lp.condsByMonth[yearNum] = {};
-        for (let m = 1; m <= 12; m++) {
-          lp.condsByMonth[yearNum][m] = JSON.parse(JSON.stringify(srcConds));
-        }
-        lp[`_refreshMonBtns${yearSuffix}`]?.();
-        const MNAMES = ['JAN','FÉV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DÉC'];
-        showToast(`Paliers ${MNAMES[activeMon-1]} → tous les mois ${yearNum}`);
-        saveState();
+        if (!activeMon) { showToast('Sélectionnez d\'abord le mois à copier'); return; }
+        lp[`_copyArmed${yearSuffix}`] = JSON.parse(JSON.stringify(getEffectiveCondsForMonth(lp, yearNum, activeMon)));
+        lp[`_copySrc${yearSuffix}`]   = activeMon;
+        copyBtn.classList.add('armed');
+        showToast(`Conditions de ${MNAMES[activeMon-1]} copiées — cliquez le mois de destination`);
       });
     }
   }
