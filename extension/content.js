@@ -97,7 +97,7 @@
       throw new Error('Digipharmacie a répondu de façon inattendue' + (lastErr && lastErr.status ? ' (' + lastErr.status + ')' : ''));
     }
     const out = [];
-    let guard = 0, rawCount = 0, sampleKeys = null, usedEndpoint = _lastUrl;
+    let guard = 0, rawCount = 0, sampleKeys = null;
     while (data && guard < 500) {
       guard++;
       const results = Array.isArray(data) ? data : (data.results || []);
