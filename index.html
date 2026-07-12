@@ -7420,6 +7420,9 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   // rsf_pct des conditions est souvent stocké NÉGATIF (remise), alors que le taux
   // grossiste/RDP est positif → on indexe par valeur absolue pour les apparier.
   const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)&&!r.excluded) cmap[k]=r; });
+  // La coop (remise3) s'applique aussi aux paliers marqués « exclus » (l'exclusion
+  // ne porte que sur la RSF/RDP) — ex. Biogaran : 12 % de coop sur 2,5 % et 5 %.
+  const cmapAll = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)) cmapAll[k]=r; });
   const gmap = {}; paliers.forEach(p => gmap[p.taux]=p);
   // L'avoir ventile la RDP par TAUX VERSÉ, pas par palier RSF. Or un même taux
   // peut couvrir plusieurs paliers : ex. 2026, « RDP 10 % » = palier RSF 20 %
@@ -7534,7 +7537,8 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     // coopR3 global ne sert que de repli. Biogaran : facturée HT, versée TTC
     // (×1,20), et pondérée par le coefficient contrat (90 % + réalisation × 10 %
     // si réalisation ≥ 80 %, sinon coop bloquée → 0).
-    const r3pct = (c.remise3!=null && c.remise3!=='') ? parseFloat(c.remise3) : (isBio ? coopR3 : 0);
+    const cAll = cmapAll[Math.abs(tx)] || {};
+    const r3pct = (cAll.remise3!=null && cAll.remise3!=='') ? parseFloat(cAll.remise3) : (isBio ? coopR3 : 0);
     const r3A = r3pct>0 ? brut*r3pct/100*TVA_R3*(isBio?coef:1) : 0;
     T.qty+=qty; T.brut+=brut; T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
     const dRsf = dStyle(rsfD), dR2 = dStyle(r2D);
