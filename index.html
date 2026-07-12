@@ -4724,6 +4724,7 @@ function initLabPage(conf) {
             </table>
           </div>
           <div id="excpts-${uid}-${cond.uid}" class="row-except-blocks"></div>
+          <div id="rsfOnlySec-${uid}-${cond.uid}" class="rsf-only-sec"></div>
         </div>
       </div>
     `;
@@ -5047,6 +5048,7 @@ function initLabPage(conf) {
   function wireRsfOnly(cond) {
     const sec = document.getElementById(`rsfOnlySec-${uid}-${cond.uid}`);
     if (!sec) return;
+    cond.rsfOnly = cond.rsfOnly || { enabled: false, libelles: [] };
     sec.innerHTML = '';
 
     const header = document.createElement('div');
@@ -5405,6 +5407,7 @@ function initLabPage(conf) {
     });
 
     renderRowExcepts(cond, excptsEl);
+    wireRsfOnly(cond);   // section « AUTRES RÉFÉRENCES EN RSF UNIQUEMENT »
     rsfSec.classList.add('visible');
     checkDone();
   }
