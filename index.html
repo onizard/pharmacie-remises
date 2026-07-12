@@ -1770,6 +1770,7 @@ function _showExtTutorial() {
   // Couleurs CLAIRES explicites (indépendantes du thème) → toujours lisible sur
   // le fond sombre de la modale.
   const TXT = '#eef4fb', DIM = '#c2d3e2', CY = '#38d6ff';
+  const _isFx = /firefox|fxios/i.test(navigator.userAgent);
   const step = (n, html) => `<div style="display:flex;gap:13px;align-items:flex-start;margin:0 0 16px">
       <span style="flex:0 0 28px;height:28px;border-radius:50%;background:${CY};color:#031018;
         font-family:'Orbitron',monospace;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center">${n}</span>
@@ -1785,15 +1786,17 @@ function _showExtTutorial() {
       </div>
       <div style="font-size:13.5px;color:${DIM};line-height:1.6;margin-bottom:20px">
         Le téléchargement a démarré (fichier <b style="color:${TXT}">break-pharma-connect.zip</b>). Suivez ces étapes
-        <b style="color:${TXT}">sur un ordinateur</b> (Chrome, Edge ou Brave) :
+        <b style="color:${TXT}">sur un ordinateur</b> (${_isFx ? 'Firefox' : 'Chrome, Edge ou Brave'}) :
       </div>
       ${step(1, `<b>Dézippez</b> le fichier téléchargé : clic droit → <b>« Extraire tout »</b>. Vous obtenez un dossier <b style="color:${CY}">break-pharma-connect</b> (retenez où il est, ex. Téléchargements).`)}
-      ${step(2, `Ouvrez ${kbd('chrome://extensions')} — copiez-collez dans la barre d'adresse. Sur Edge : ${kbd('edge://extensions')}.`)}
-      ${step(3, `En haut à droite, activez le <b>Mode développeur</b>.`)}
-      ${step(4, `Cliquez <b>« Charger l'extension non empaquetée »</b> et sélectionnez le <b>dossier dézippé</b> (pas le fichier .zip). L'icône <b style="color:${CY}">break-pharma connect</b> apparaît.`)}
-      ${step(5, `Cliquez l'icône de l'extension (via le puzzle 🧩 en haut à droite) → <b>connectez-vous avec vos identifiants break-pharma.fr</b>.`)}
-      ${step(6, `Ouvrez <b style="color:${CY}">app.digipharmacie.fr</b>, connectez-vous, puis ouvrez votre page <b>« Factures »</b> (laissez la liste s'afficher). Cliquez ensuite le bouton <b>« ⇪ Envoyer à break-pharma »</b> en bas à droite.`)}
-      ${step(7, `C'est fini : vos factures sont analysées côté serveur (vous pouvez fermer l'onglet) et apparaissent dans <b>l'explorateur de fichiers</b>.`)}
+      ${_isFx
+        ? step(2, `Ouvrez ${kbd('about:debugging')} → cliquez <b>« Ce Firefox »</b> (colonne de gauche).`)
+          + step(3, `Cliquez <b>« Charger un module complémentaire temporaire… »</b>, puis, dans le dossier dézippé, sélectionnez le fichier <b style="color:${CY}">manifest.json</b>. L'extension <b>break-pharma connect</b> apparaît.<br><span style="color:${DIM};font-size:12.5px">Note Firefox : l'extension reste jusqu'à la fermeture du navigateur ; re-chargez-la au besoin de la même façon.</span>`)
+        : step(2, `Ouvrez ${kbd('chrome://extensions')} — copiez-collez dans la barre d'adresse. Sur Edge : ${kbd('edge://extensions')}.`)
+          + step(3, `En haut à droite, activez le <b>Mode développeur</b>, puis cliquez <b>« Charger l'extension non empaquetée »</b> et sélectionnez le <b>dossier dézippé</b> (pas le .zip). L'icône <b style="color:${CY}">break-pharma connect</b> apparaît.`)}
+      ${step(4, `Cliquez l'icône de l'extension (via le puzzle 🧩 en haut à droite de la barre) → <b>connectez-vous avec vos identifiants break-pharma.fr</b>.`)}
+      ${step(5, `Ouvrez <b style="color:${CY}">app.digipharmacie.fr</b>, connectez-vous, puis ouvrez votre page <b>« Factures »</b> (laissez la liste s'afficher). Cliquez ensuite le bouton <b>« ⇪ Envoyer à break-pharma »</b> en bas à droite.`)}
+      ${step(6, `C'est fini : vos factures sont analysées côté serveur (vous pouvez fermer l'onglet) et apparaissent dans <b>l'explorateur de fichiers</b>.`)}
       <div style="font-size:12.5px;color:${DIM};line-height:1.6;border-top:1px solid #23405e;margin-top:8px;padding-top:14px">
         🔒 L'extension ne lit que la liste de vos factures Digipharmacie, dans <b style="color:${TXT}">votre</b> session.
         Aucun identifiant Digipharmacie n'est demandé ni stocké.
