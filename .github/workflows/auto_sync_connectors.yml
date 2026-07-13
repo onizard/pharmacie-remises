@@ -1,0 +1,66 @@
+name: Synchro auto connecteurs (OSPHARM + FSE)
+
+# Rafraîchit chaque jour, sans intervention, les connecteurs serveur de tous les
+# utilisateurs qui les ont configurés — indépendamment du navigateur.
+#   1. `discover` interroge user_state (clé service) pour lister les user_id ayant
+#      le connecteur `connected: true`.
+#   2. `ospharm` / `fse` relancent les scrapers réutilisables (workflow_call), un
+#      run par utilisateur (matrix).
+# Déclenchement manuel possible aussi (workflow_dispatch) pour tester.
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # tous les jours ~05:00 UTC (≈ 07:00 Paris)
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      ospharm_users: ${{ steps.q.outputs.ospharm_users }}
+      fse_users:     ${{ steps.q.outputs.fse_users }}
+    steps:
+      - name: Lister les utilisateurs par connecteur connecté
+        id: q
+        env:
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          set -euo pipefail
+          BASE="https://api.break-pharma.fr/rest/v1/user_state?select=user_id"
+          fetch() {
+            curl -sS -G "$BASE" \
+              --data-urlencode "$1" \
+              -H "apikey: ${SUPABASE_SERVICE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}"
+          }
+          OSP=$(fetch "state_json->connectors->ospharm->>connected=eq.true" | jq -c '[.[].user_id]')
+          FSE=$(fetch "state_json->connectors->concentrateur->>connected=eq.true" | jq -c '[.[].user_id]')
+          echo "OSPHARM : $OSP"
+          echo "FSE     : $FSE"
+          echo "ospharm_users=$OSP" >> "$GITHUB_OUTPUT"
+          echo "fse_users=$FSE"     >> "$GITHUB_OUTPUT"
+
+  ospharm:
+    needs: discover
+    if: ${{ needs.discover.outputs.ospharm_users != '' && needs.discover.outputs.ospharm_users != '[]' }}
+    strategy:
+      max-parallel: 1                       # runner self-hosted unique → sérialiser
+      fail-fast: false
+      matrix:
+        user_id: ${{ fromJson(needs.discover.outputs.ospharm_users) }}
+    uses: ./.github/workflows/scraper_ospharm.yml
+    with:
+      user_id: ${{ matrix.user_id }}
+    secrets: inherit
+
+  fse:
+    needs: discover
+    if: ${{ needs.discover.outputs.fse_users != '' && needs.discover.outputs.fse_users != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        user_id: ${{ fromJson(needs.discover.outputs.fse_users) }}
+    uses: ./.github/workflows/scraper_fse.yml
+    with:
+      user_id: ${{ matrix.user_id }}
+    secrets: inherit

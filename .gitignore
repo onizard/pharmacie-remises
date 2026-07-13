@@ -28,3 +28,6 @@ nas_tunnel_key.pub
 *.png
 *.jpg
 .env
+
+# Backups de données de compte (ne pas exposer publiquement)
+backups/*user_state*

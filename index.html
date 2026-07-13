@@ -1816,21 +1816,13 @@ window._showExtTutorial = _showExtTutorial;
 
 // ── Import Digi EN LOT, traité en fond (GitHub Actions) ────────────────────────
 // Barre de progression flottante, visible sur toutes les pages.
-function _digiBatchBar(html, pct) {
-  let bar = document.getElementById('digiBatchBar');
-  if (html == null) { if (bar) bar.remove(); return; }
-  if (!bar) {
-    bar = document.createElement('div');
-    bar.id = 'digiBatchBar';
-    bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#0a1020;'
-      + 'border-top:1px solid var(--cyan,#00e5ff);color:#cfe;font-family:\'Share Tech Mono\',monospace;'
-      + 'font-size:12px;padding:8px 14px 10px;box-shadow:0 -2px 14px rgba(0,0,0,.55)';
-    document.body.appendChild(bar);
-  }
-  bar.innerHTML = `<div>${html}</div>
-    <div style="height:4px;background:#123;border-radius:2px;margin-top:6px;overflow:hidden">
-      <div style="height:100%;width:${Math.max(0,Math.min(100,pct||0))}%;background:var(--cyan,#00e5ff);transition:width .3s"></div>
-    </div>`;
+// Bandeau « traitement en fond » retiré : jugé inutile/bruyant (progression
+// fichier par fichier, échecs d'extraction…). Le traitement continue en
+// silence côté serveur ; les données se rafraîchissent seules à la fin.
+// Fonction conservée en no-op pour ne pas casser les appelants existants.
+function _digiBatchBar(_html, _pct) {
+  const bar = document.getElementById('digiBatchBar');
+  if (bar) bar.remove();
 }
 async function _insertPendingDigi(file, batchId) {
   if (file.size > 8 * 1024 * 1024) throw new Error(`${file.name} > 8 Mo (trop volumineux)`);
@@ -3141,6 +3133,61 @@ async function _postFormProgress(url, token, buildForm, onUploadPct, tries = 4) 
     }
   }
   throw lastErr;
+}
+
+// ── Synchro auto quotidienne des connecteurs serveur (OSPHARM, FSE) ─────────────
+// Digi se rafraîchit via l'extension navigateur. OSPHARM et FSE, eux, tournent
+// côté serveur (GitHub Actions) : on peut donc les relancer sans dépendre du
+// navigateur. À chaque ouverture de l'app, pour chaque connecteur configuré, si
+// plus de ~24 h se sont écoulées depuis la dernière synchro auto ET qu'aucun job
+// n'est déjà en cours, on relance discrètement le scraping — de manière à
+// toujours récupérer les nouvelles données sans action de l'utilisateur.
+// Fire-and-forget, silencieux (une seule ligne de toast à la fin).
+async function _autoSyncConnectors() {
+  const DUE = 22 * 3600 * 1000;   // au plus ~1×/jour, laisse une marge
+  let session = null;
+  try { session = (await window._sbClient.auth.getSession())?.data?.session; } catch (_) {}
+  if (!session) return;
+
+  // État des jobs en cours : lu une seule fois côté cloud (léger).
+  let js = {};
+  try {
+    const { data: row } = await window._sbClient.from('user_state')
+      .select('state_json').eq('user_id', session.user.id).maybeSingle();
+    js = row?.state_json || {};
+  } catch (_) {}
+
+  const jobs = [
+    { ls: 'bp_autosync_ospharm', label: 'OSPHARM',
+      connected: !!state.connectors?.ospharm?.connected,
+      running:  js.ospharm_job?.status === 'running' || !!state._ospJobRunning,
+      url: `${API_URL}/run/ospharm` },
+    { ls: 'bp_autosync_fse', label: 'FSE',
+      connected: !!state.connectors?.concentrateur?.connected,
+      running:  js.fse_job?.status === 'running',
+      url: `${API_URL}/run/fse-export` },
+  ];
+
+  const launched = [];
+  for (const j of jobs) {
+    if (!j.connected || j.running) continue;
+    let last = 0;
+    try { last = parseInt(localStorage.getItem(j.ls) || '0', 10) || 0; } catch (_) {}
+    if (Date.now() - last < DUE) continue;
+    try {
+      const resp = await fetch(j.url, {
+        method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (resp.ok) {
+        try { localStorage.setItem(j.ls, String(Date.now())); } catch (_) {}
+        launched.push(j.label);
+        if (j.label === 'OSPHARM') { state._ospJobRunning = true; state._ospJobStartedAt = Date.now(); }
+      }
+    } catch (_) {}
+  }
+  if (launched.length) {
+    try { showToast('↻ Synchro auto : ' + launched.join(' + ') + ' en cours…'); } catch (_) {}
+  }
 }
 
 async function _pollFseJob() {
@@ -11677,6 +11724,10 @@ async function saveProfile() {
     const _initData = serializeState();
     saveCloudState(_initData).catch(() => {});
   }
+
+  // Synchro auto quotidienne des connecteurs serveur (OSPHARM, FSE) — silencieuse,
+  // différée pour ne pas concurrencer le chargement initial de l'app.
+  setTimeout(() => { _autoSyncConnectors().catch(() => {}); }, 4000);
 
   // Pré-calcul comparateur en arrière-plan dès le login (résultats prêts quand l'user y accède)
   const _canBgCompute = state.connectors?.ospharm?.connected || state.csvData?.length > 0;
