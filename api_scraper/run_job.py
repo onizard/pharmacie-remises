@@ -197,16 +197,26 @@ def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
             for nr in new_rows:
                 labo = nr["labo"]
                 if labo in labo_map:
-                    labo_map[labo]["qty"]              += nr["qty"]
-                    labo_map[labo]["total_ht"]          = round(labo_map[labo]["total_ht"]           + nr["total_ht"],       2)
-                    labo_map[labo]["rdp_total"]         = round(labo_map[labo].get("rdp_total",0)    + nr.get("rdp_total",0),   2)
-                    labo_map[labo]["rdp_by_taux"]       = _merge_rdp_by_taux(labo_map[labo].get("rdp_by_taux"), nr.get("rdp_by_taux"))
-                    labo_map[labo]["presta_total"]      = round(labo_map[labo].get("presta_total",0) + nr.get("presta_total",0), 2)
-                    labo_map[labo]["presta_total_ttc"]  = round(labo_map[labo].get("presta_total_ttc",0) + nr.get("presta_total_ttc",0), 2)
-                    existing_refs = labo_map[labo].get("facture_refs") or []
+                    ex            = labo_map[labo]
+                    existing_refs = ex.get("facture_refs") or []
                     new_refs      = nr.get("facture_refs") or []
-                    merged_refs   = list(dict.fromkeys(existing_refs + new_refs))[:20]
-                    labo_map[labo]["facture_refs"] = merged_refs
+                    # Produits : cumul (pas de clé de dédoublonnage).
+                    ex["qty"]      += nr["qty"]
+                    ex["total_ht"]  = round(ex["total_ht"] + nr["total_ht"], 2)
+                    # Avoirs (rdp / presta) : on n'ADDITIONNE que si de NOUVEAUX n° de
+                    # facture apparaissent. Si tous les n° du nouveau lot sont déjà
+                    # comptés (même avoir réimporté / mois re-scrapé), on ne ré-ajoute
+                    # PAS → évite le doublement de rdp_total / rdp_by_taux / presta.
+                    # Cas sans aucun n° des deux côtés : on ne peut pas dédoublonner,
+                    # on garde l'addition (comportement historique).
+                    has_avoir = bool(nr.get("rdp_total") or nr.get("presta_total") or nr.get("rdp_by_taux"))
+                    new_avoir = bool(set(new_refs) - set(existing_refs)) or (not new_refs and not existing_refs)
+                    if has_avoir and new_avoir:
+                        ex["rdp_total"]        = round(ex.get("rdp_total",0)        + nr.get("rdp_total",0),        2)
+                        ex["rdp_by_taux"]      = _merge_rdp_by_taux(ex.get("rdp_by_taux"), nr.get("rdp_by_taux"))
+                        ex["presta_total"]     = round(ex.get("presta_total",0)     + nr.get("presta_total",0),     2)
+                        ex["presta_total_ttc"] = round(ex.get("presta_total_ttc",0) + nr.get("presta_total_ttc",0), 2)
+                    ex["facture_refs"] = list(dict.fromkeys(existing_refs + new_refs))[:20]
                 else:
                     labo_map[labo] = dict(nr)
             result[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])
