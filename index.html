@@ -5560,6 +5560,12 @@ function initLabPage(conf) {
   function renderRowExcepts(cond, excptsEl) {
     if (!excptsEl) return;
     if (!cond.remise2Except) cond.remise2Except = {};
+    // Un palier a une exception à afficher s'il est coché (hasExcept) OU si des
+    // références sont réellement enregistrées dans remise2Except — ce 2e critère
+    // rattrape un flag hasExcept périmé (exception présente mais masquée à tort).
+    cond.rsfValues.forEach(r => {
+      if ((cond.remise2Except[String(r.rsf_pct)]?.libelles || []).length) r.hasExcept = true;
+    });
     const active = cond.rsfValues.filter(r => r.hasExcept);
     excptsEl.innerHTML = '';
 
@@ -7642,7 +7648,13 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   Object.entries(cond?.remise2Except || {}).forEach(([k, v]) => {
     const kk = Math.abs(parseFloat(k));
     const p  = parseFloat(v?.remise2);
-    if (!isNaN(kk) && p > 0) emap[kk] = { pct: p, n: (v?.libelles || []).length };
+    const n  = (v?.libelles || []).length;
+    // n > 0 uniquement : une exception n'est « réelle » (et visible/éditable dans
+    // les conditions labo) que si elle porte au moins une référence. Une exception
+    // à taux seul, sans référence de la pharmacie (barème diffusé mais aucun produit
+    // concerné), ne doit PAS apparaître en « +exc » ici — sinon elle serait affichée
+    // dans le vérificateur sans jamais apparaître dans les conditions labo.
+    if (!isNaN(kk) && p > 0 && n > 0) emap[kk] = { pct: p, n };
   });
   const _pairMain = {}, _pairExc = {};   // taux RDP → [taux RSF]
   Object.entries(cmap).forEach(([k, r]) => {
