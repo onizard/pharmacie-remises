@@ -96,8 +96,13 @@ def main():
         print("\nDRY-RUN : rien n'a été écrit. Relance avec --apply pour appliquer.")
         return
     state[key] = dms
+    # Horodatage rafraîchi → le cloud corrigé fait foi au prochain chargement du
+    # navigateur (sinon l'état local encore doublé pourrait ré-écraser la base).
+    import time as _t
+    state["savedAt"] = int(_t.time() * 1000)
     _req("PATCH", f"user_state?user_id=eq.{USER_ID}", {"state_json": state})
-    print("\n✓ APPLIQUÉ : état corrigé écrit en base.")
+    print("\n✓ APPLIQUÉ : état corrigé écrit en base (savedAt rafraîchi).")
+    print("  → Sur le navigateur : recharge la page (le cloud corrigé sera adopté).")
 
 
 if __name__ == "__main__":
