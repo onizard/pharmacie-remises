@@ -7753,7 +7753,12 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const brutTitle = `Base RDP = CA brut réalisé (avoir) : ${fmtE(avoirCA)} (grossiste ${fmtE(caGros)} + direct ${fmtE(caDir)}) · CA total grossiste (connecteur) : ${fmtE(gBrutConn)}`
       + (caDiv ? `\n\n⚠ Le CA sur lequel le labo a calculé la RDP (avoir) diffère de tes achats grossiste du mois (périmètres/dates d'arrêté différents). Ce n'est pas une erreur : la RDP est vérifiée sur le CA de l'avoir.` : '');
     // ⚠ cliquable : sur mobile les infobulles n'existent pas.
-    const brutClick = caDiv ? ` onclick="alert(decodeURIComponent('${encodeURIComponent(brutTitle)}'))"` : '';
+    // encodeURIComponent NE protège PAS l'apostrophe ni les parenthèses ; or le
+    // texte FR (« d'arrêté », « n'est »…) en contient → un ' littéral cassait la
+    // chaîne single-quote de l'onclick (« missing ) after argument list »). On les
+    // ré-encode (decodeURIComponent les restitue correctement).
+    const _brutEnc = encodeURIComponent(brutTitle).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
+    const brutClick = caDiv ? ` onclick="alert(decodeURIComponent('${_brutEnc}'))"` : '';
     const qty = g?(g.qty||0):0;
     const rsfA = rsfBrut*tx/100, rsfR = g?(g.remise||0):0, rsfD = rsfA-rsfR;
     const r2pct = (c.remise2!=null && c.remise2!=='') ? parseFloat(c.remise2) : null;
