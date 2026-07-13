@@ -1415,7 +1415,7 @@
               <li>Télécharge l'extension ci-dessous et <b>dézippe</b>-la (sur ordinateur).</li>
               <li>Ouvre <span style="color:var(--cyan)">chrome://extensions</span> → active le <b>Mode développeur</b> → <b>« Charger l'extension non empaquetée »</b> → choisis le dossier dézippé.</li>
               <li>Clique l'icône de l'extension → connecte-toi avec tes identifiants <b>break-pharma</b>.</li>
-              <li>Ouvre <span style="color:var(--cyan)">app.digipharmacie.fr</span> → clique <b>« ⇪ Envoyer à break-pharma »</b> (en bas à droite).</li>
+              <li>C'est tout : quand tu es connecté à <span style="color:var(--cyan)">app.digipharmacie.fr</span>, tes nouvelles factures se <b>synchronisent automatiquement</b> (≈ 1×/jour). Rien à cliquer.</li>
             </ol>
             <div class="conn-test-row">
               <a href="/extension.zip" download="break-pharma-connect.zip" onclick="setTimeout(_showExtTutorial,300)" class="conn-test-btn" style="text-decoration:none;display:inline-block;text-align:center">⬇ TÉLÉCHARGER L'EXTENSION</a>
@@ -1795,8 +1795,8 @@ function _showExtTutorial() {
         : step(2, `Ouvrez ${kbd('chrome://extensions')} — copiez-collez dans la barre d'adresse. Sur Edge : ${kbd('edge://extensions')}.`)
           + step(3, `En haut à droite, activez le <b>Mode développeur</b>, puis cliquez <b>« Charger l'extension non empaquetée »</b> et sélectionnez le <b>dossier dézippé</b> (pas le .zip). L'icône <b style="color:${CY}">break-pharma connect</b> apparaît.`)}
       ${step(4, `Cliquez l'icône de l'extension (via le puzzle 🧩 en haut à droite de la barre) → <b>connectez-vous avec vos identifiants break-pharma.fr</b>.`)}
-      ${step(5, `Ouvrez <b style="color:${CY}">app.digipharmacie.fr</b>, connectez-vous, puis ouvrez votre page <b>« Factures »</b> (laissez la liste s'afficher). Cliquez ensuite le bouton <b>« ⇪ Envoyer à break-pharma »</b> en bas à droite.`)}
-      ${step(6, `C'est fini : vos factures sont analysées côté serveur (vous pouvez fermer l'onglet) et apparaissent dans <b>l'explorateur de fichiers</b>.`)}
+      ${step(5, `C'est tout. Quand vous êtes connecté à <b style="color:${CY}">app.digipharmacie.fr</b>, vos nouvelles factures se <b>synchronisent automatiquement</b> (environ une fois par jour) — aucun bouton à cliquer. Un <b>« ⟳ Synchroniser maintenant »</b> reste dispo dans le popup de l'extension si besoin.`)}
+      ${step(6, `Les factures sont analysées côté serveur et apparaissent dans <b>l'explorateur de fichiers</b> de break-pharma.`)}
       <div style="font-size:12.5px;color:${DIM};line-height:1.6;border-top:1px solid #23405e;margin-top:8px;padding-top:14px">
         🔒 L'extension ne lit que la liste de vos factures Digipharmacie, dans <b style="color:${TXT}">votre</b> session.
         Aucun identifiant Digipharmacie n'est demandé ni stocké.

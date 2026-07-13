@@ -35,9 +35,10 @@ côté serveur. Le traitement continue même si vous fermez l'onglet.
 
 1. Cliquez l'icône de l'extension → **connectez-vous** avec vos identifiants break-pharma.fr.
 2. Ouvrez [app.digipharmacie.fr](https://app.digipharmacie.fr) et connectez-vous normalement.
-3. Un bouton **« ⇪ Envoyer à break-pharma »** apparaît en bas à droite. Cliquez dessus.
-4. C'est fini : les factures partent en file d'attente, break-pharma les analyse en
-   arrière-plan. Vos remises se mettent à jour sur break-pharma.fr.
+3. C'est tout : vos nouvelles factures se **synchronisent automatiquement** (environ une
+   fois par jour), sans aucun bouton à cliquer. Une bulle de confirmation apparaît puis
+   disparaît. Un bouton **« Synchroniser maintenant »** reste disponible dans le popup.
+4. break-pharma analyse les factures en arrière-plan ; vos remises se mettent à jour.
 
 ## Ce que l'extension voit / ne voit pas
 

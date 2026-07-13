@@ -52,10 +52,15 @@
   <div id="logged">
     <div class="row"><span class="dot on"></span><span id="who"></span></div>
     <p class="sub" style="margin-top:10px">
-      Ouvrez <a href="https://app.digipharmacie.fr" target="_blank">app.digipharmacie.fr</a>,
-      connectez-vous, puis cliquez le bouton <b>« Envoyer à break-pharma »</b> en bas à droite.
+      Synchronisation <b>automatique</b> : quand vous êtes connecté à
+      <a href="https://app.digipharmacie.fr" target="_blank">Digipharmacie</a>,
+      vos nouvelles factures partent seules vers break-pharma (≈ 1×/jour).
+      Rien à faire.
     </p>
-    <button id="btnLogout" class="ghost">Se déconnecter</button>
+    <div id="lastSync" class="sub" style="margin:8px 0 4px">Dernière synchro : —</div>
+    <button id="btnSync">⟳ Synchroniser maintenant</button>
+    <div id="syncMsg" style="font-size:12px;margin-top:8px"></div>
+    <button id="btnLogout" class="ghost" style="margin-top:12px">Se déconnecter</button>
   </div>
 
   <div id="msg"></div>
