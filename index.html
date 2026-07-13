@@ -7381,6 +7381,27 @@ function _digiRdpTotal(mk, selNorm) {
   const row = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo) === selNorm);
   return row ? (row.rdp_total || 0) : 0;
 }
+function _digiPrestaTtc(mk, selNorm) {
+  const row = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo) === selNorm);
+  return row ? (row.presta_total_ttc || 0) : 0;
+}
+// Périodes Digi dont les facture_refs contiennent un n° de document du virement.
+// 2e canal d'appariement exact : même sans PDF d'avoir stocké, les stats Digi
+// portent les n° de facture par mois de période (ex. virement « 9006825707 » →
+// avoir de MAI 2026 dès que Digi l'a scrapé). Auto-réparateur : un virement en
+// attente (mois d'encaissement) se recale seul quand l'avoir arrive.
+function _fseDigiRefMonths(t, selNorm) {
+  const refs = _fseTransferRefs(t).map(r => r.toUpperCase());
+  if (!refs.length) return [];
+  const mks = [];
+  Object.entries(state._digiMonthStats || {}).forEach(([mk, arr]) => {
+    const row = (arr || []).find(r => _verifNormLab(r.labo) === selNorm);
+    if (!row) return;
+    const fr = (row.facture_refs || []).map(x => String(x).toUpperCase());
+    if (fr.some(x => refs.includes(x))) mks.push(mk);
+  });
+  return mks.sort();
+}
 // Carte d'assignation pour un labo : { 'YYYY-MM': { r2:[{t,amount,avoirs,via}], r3:[…] } }.
 // via : 'doc' (n° de document) ou 'chrono' (ordre chronologique depuis le début de contrat).
 function _fseAssignMap(selNorm, labDisplay) {
@@ -7413,15 +7434,34 @@ function _fseAssignMap(selNorm, labDisplay) {
         });
       }
     } else {
-      leftovers[vt].push(t);
+      // 2e canal exact : n° de document du virement présent dans les
+      // facture_refs Digi d'une (ou plusieurs) période(s). Ventilation par le
+      // montant annoncé de chaque période (rdp_total pour la RDP, presta TTC
+      // pour la coop) — ex. réel : « 9006008761 9006091024 » (3 701,49 €) se
+      // ventile en juil. 2 746,23 + août 955,26.
+      const refMks = _fseDigiRefMonths(t, selNorm);
+      if (refMks.length === 1) {
+        cell(refMks[0], vt).push({ t, amount: t.montant || 0, avoirs: [], via: 'doc' });
+      } else if (refMks.length > 1) {
+        const wOf  = vt === 'r2' ? _digiRdpTotal : _digiPrestaTtc;
+        const tots = refMks.map(mk => wOf(mk, selNorm));
+        const sum  = tots.reduce((a,b) => a+b, 0);
+        refMks.forEach((mk, i) => {
+          const part = sum > 0 ? (t.montant || 0) * (tots[i] / sum) : (t.montant || 0) / refMks.length;
+          cell(mk, vt).push({ t, amount: Math.round(part*100)/100, avoirs: [], via: 'doc' });
+        });
+      } else {
+        leftovers[vt].push(t);
+      }
     }
   });
-  // Virements SANS avoir apparié : rattachés à LEUR mois d'établissement (la date
-  // du virement) — « traité par chronologie, par date ». On n'utilise PLUS le
-  // remplissage des mois de contrat depuis le début : il rétro-datait à tort un
-  // virement établi en 2026 sur un mois de 2025 (ex. coop F001…F004 de fév.–avr.
-  // 2026 back-fillés sur juin–août 2025). Chaque virement reste donc sur le mois
-  // où il a réellement été encaissé.
+  // Virements SANS aucun appariement (ni PDF, ni facture_refs Digi) : rattachés à
+  // LEUR mois d'encaissement (la date du virement) — « traité par chronologie,
+  // par date ». On n'utilise PLUS le remplissage des mois de contrat depuis le
+  // début : il rétro-datait à tort un virement établi en 2026 sur un mois de 2025
+  // (ex. coop F001…F004 de fév.–avr. 2026 back-fillés sur juin–août 2025). Dès
+  // que l'avoir de la période arrive dans Digi, le canal facture_refs ci-dessus
+  // recale le virement automatiquement sur sa vraie période.
   ['r2','r3'].forEach(vt => {
     leftovers[vt].forEach(t =>
       cell(t._encMk, vt).push({ t, amount: t.montant || 0, avoirs: [], via: 'enc' }));
