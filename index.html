@@ -2422,10 +2422,10 @@ function _showSaveBadge(isError = false, isPending = false) {
     badge.classList.add('pending');
     badge.classList.add('visible');
   } else if (isError) {
-    badge.textContent = ' ✗ erreur sync';
+    badge.textContent = ' ✗ non sauvegardé';
     badge.classList.add('error');
     badge.classList.add('visible');
-    _saveBadgeTimer = setTimeout(() => { badge.classList.remove('visible', 'error'); badge.textContent = ' ✓ sauvegardé'; }, 10000);
+    _saveBadgeTimer = setTimeout(() => { badge.classList.remove('visible', 'error'); }, 12000);
   } else {
     badge.textContent = ' ✓ sauvegardé';
     badge.classList.add('visible');
@@ -2447,8 +2447,21 @@ async function saveCloudState(data) {
   try {
     const sb = window._sbClient;
     if (!sb) { _cloudSavePending = false; return false; }
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) { _cloudSavePending = false; return false; }
+    let { data: { session } } = await sb.auth.getSession();
+    if (!session) {
+      // La session locale est absente : token expiré ou invalidé (ex. rotation du
+      // secret JWT). On tente un rafraîchissement silencieux avant d'abandonner —
+      // ça auto-répare le cas courant (access token expiré, refresh token valide).
+      try { session = (await sb.auth.refreshSession())?.data?.session || null; } catch (_) {}
+      if (!session) {
+        // Session réellement perdue alors qu'on était connecté au démarrage : on
+        // le SIGNALE clairement (bandeau + reconnexion) au lieu de geler le cloud
+        // en silence. Les modifs restent en localStorage → non perdues.
+        _cloudSavePending = false;
+        _notifySaveAuthLost();
+        return false;
+      }
+    }
     _cachedFlushSession = { user_id: session.user.id, token: session.access_token };
     if (_localConfigured > 0) _lastGoodLabPages = data.labPages;
     // ── Garde anti-écrasement multi-appareils (read-before-write) ───────────────
@@ -2519,9 +2532,41 @@ async function saveCloudState(data) {
   } catch(e) {
     console.error('[BP] saveCloudState ERREUR :', e);
     _cloudSavePending = false;
-    _showSaveBadge(true);
+    const msg = String(e?.message || e?.hint || e || '');
+    if (e?.status === 401 || e?.code === 'PGRST301' || /jwt|token|expired|unauthor|401/i.test(msg)) {
+      // Erreur d'authentification → session morte : bandeau de reconnexion.
+      _notifySaveAuthLost();
+    } else {
+      _showSaveBadge(true);
+    }
     return false;
   }
+}
+
+// Bandeau persistant « session expirée » : la sauvegarde cloud échoue faute de
+// session valide (token expiré / rotation du secret JWT). On invite à se
+// reconnecter — les modifications sont conservées en localStorage, donc une
+// reconnexion (rechargement) ne les perd pas ; elles repartent au cloud ensuite.
+let _authLostShown = false;
+function _notifySaveAuthLost() {
+  _showSaveBadge(true);
+  if (_authLostShown) return;
+  _authLostShown = true;
+  const bar = document.createElement('div');
+  bar.id = 'authLostBar';
+  bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:100001;background:#3a0a12;'
+    + 'color:#ffe1e7;border-bottom:1px solid #ff3366;padding:10px 14px;font-family:system-ui,sans-serif;'
+    + 'font-size:13px;line-height:1.4;display:flex;align-items:center;gap:12px;justify-content:center;flex-wrap:wrap;'
+    + 'box-shadow:0 2px 12px rgba(0,0,0,.4)';
+  bar.innerHTML = '<span>⚠ <b>Session expirée</b> — vos modifications ne sont plus enregistrées dans le cloud '
+    + '(elles restent sur cet appareil). Reconnectez-vous pour les sauvegarder.</span>'
+    + '<button id="authLostReconnect" style="background:#ff3366;color:#fff;border:none;border-radius:6px;'
+    + 'padding:7px 14px;font-weight:700;font-size:12px;cursor:pointer">SE RECONNECTER</button>';
+  document.body.appendChild(bar);
+  document.getElementById('authLostReconnect').addEventListener('click', async () => {
+    try { await window._sbClient?.auth.signOut(); } catch (_) {}
+    location.reload();   // l'écran de connexion réapparaît ; les modifs (localStorage) repartent au cloud après login
+  });
 }
 
 // Flush immédiat au cloud quand l'onglet est masqué (fermeture, changement d'onglet)
