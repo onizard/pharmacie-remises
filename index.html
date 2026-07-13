@@ -7385,6 +7385,71 @@ function _digiPrestaTtc(mk, selNorm) {
   const row = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo) === selNorm);
   return row ? (row.presta_total_ttc || 0) : 0;
 }
+// Presta/coop ATTENDUE d'un mois (TTC) : Σ paliers (brut × remise3) × 1,20 × coef
+// contrat — le MÊME calcul que la colonne ATT du bloc REMISE 3 / COOP.
+function _verifCoopAttendue(mk, selNorm, labDisplay) {
+  const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
+  const paliers = (grosRow && Array.isArray(grosRow.paliers)) ? grosRow.paliers : [];
+  if (!paliers.length) return 0;
+  const [y, m] = mk.split('-').map(Number);
+  const cond = _verifGetCond(labDisplay, y, m);
+  if (!cond) return 0;
+  const isBio  = selNorm === 'BIOGARAN';
+  const coef   = isBio ? _verifBiogaranCoef(y) : 1;
+  const coopR3 = parseFloat(cond.coopR3) || 0;
+  const cmapAll = {}; (cond.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)) cmapAll[k]=r; });
+  let tot = 0;
+  paliers.forEach(p => {
+    if (p.taux == null) return;
+    const cAll  = cmapAll[Math.abs(p.taux)] || {};
+    const r3pct = (cAll.remise3!=null && cAll.remise3!=='') ? parseFloat(cAll.remise3) : (isBio ? coopR3 : 0);
+    if (r3pct > 0) tot += (p.brut||0) * r3pct/100 * 1.20 * (isBio ? coef : 1);
+  });
+  return Math.round(tot*100)/100;
+}
+// Règle métier coop : les prestations sont réglées SANS détail → on comble chaque
+// presta attendue (conditions labo) par les virements coop dans l'ORDRE
+// CHRONOLOGIQUE. Virement insuffisant → le suivant complète le mois ; surplus →
+// reporté sur la presta attendue du mois suivant. Le reliquat final (aucune
+// presta attendue restante, ex. mois 2026 sans justificatif grossiste) reste sur
+// le mois d'encaissement du virement.
+function _fseFifoCoop(transfers, selNorm, labDisplay, cell) {
+  if (!transfers.length) return;
+  transfers.sort((a,b) => (a.date||'').localeCompare(b.date||'')
+    || ((_fseSeqNum(a) ?? 0) - (_fseSeqNum(b) ?? 0))
+    || ((a.montant||0) - (b.montant||0)));
+  // Cibles mensuelles : du début du contrat (ou du 1er mois d'achats) à maintenant.
+  const gmks  = Object.keys(state._grossisteMonthStats || {}).sort();
+  const start = _fseContractStart(labDisplay) || gmks[0];
+  const now   = new Date();
+  const nowMk = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const targets = [];
+  if (start) {
+    let [y, m] = start.split('-').map(Number);
+    while (true) {
+      const mk = `${y}-${String(m).padStart(2,'0')}`;
+      if (mk > nowMk) break;
+      const att = _verifCoopAttendue(mk, selNorm, labDisplay);
+      if (att > 0) targets.push({ mk, needC: Math.round(att*100) });
+      m++; if (m > 12) { m = 1; y++; }
+    }
+  }
+  let ti = 0;
+  transfers.forEach(t => {
+    let restC = Math.round((t.montant||0)*100);   // centimes
+    while (restC > 0 && ti < targets.length) {
+      const tg   = targets[ti];
+      const take = Math.min(restC, tg.needC);
+      if (take > 0) {
+        cell(tg.mk, 'r3').push({ t, amount: take/100, avoirs: [], via: 'fifo' });
+        tg.needC -= take;
+        restC    -= take;
+      }
+      if (tg.needC <= 0) ti++;
+    }
+    if (restC > 0) cell(t._encMk, 'r3').push({ t, amount: restC/100, avoirs: [], via: 'enc' });
+  });
+}
 // Périodes Digi dont les facture_refs contiennent un n° de document du virement.
 // 2e canal d'appariement exact : même sans PDF d'avoir stocké, les stats Digi
 // portent les n° de facture par mois de période (ex. virement « 9006825707 » →
@@ -7415,8 +7480,13 @@ function _fseAssignMap(selNorm, labDisplay) {
     }));
   if (!all.length) return map;
   const leftovers = { r2: [], r3: [] };
+  const coop = [];
   all.forEach(t => {
     const vt = _fseVtype(t);
+    // COOP : réglée sans détail → allocation FIFO chronologique sur les prestas
+    // attendues (voir _fseFifoCoop). Le circuit d'appariement par document ne
+    // s'applique qu'à la RDP.
+    if (vt === 'r3') { coop.push(t); return; }
     const avoirs = _fseMatchAvoirs(t).filter(p => p.months && p.months.length);
     if (avoirs.length) {
       // Périodes des avoirs appariés ; ventilation par rdp_total si plusieurs.
@@ -7455,17 +7525,15 @@ function _fseAssignMap(selNorm, labDisplay) {
       }
     }
   });
-  // Virements SANS aucun appariement (ni PDF, ni facture_refs Digi) : rattachés à
-  // LEUR mois d'encaissement (la date du virement) — « traité par chronologie,
-  // par date ». On n'utilise PLUS le remplissage des mois de contrat depuis le
-  // début : il rétro-datait à tort un virement établi en 2026 sur un mois de 2025
-  // (ex. coop F001…F004 de fév.–avr. 2026 back-fillés sur juin–août 2025). Dès
-  // que l'avoir de la période arrive dans Digi, le canal facture_refs ci-dessus
-  // recale le virement automatiquement sur sa vraie période.
-  ['r2','r3'].forEach(vt => {
-    leftovers[vt].forEach(t =>
-      cell(t._encMk, vt).push({ t, amount: t.montant || 0, avoirs: [], via: 'enc' }));
-  });
+  // COOP : allocation FIFO chronologique sur les prestas attendues mensuelles.
+  _fseFifoCoop(coop, selNorm, labDisplay, cell);
+  // RDP sans aucun appariement (ni PDF, ni facture_refs Digi) : rattachée à SON
+  // mois d'encaissement (la date du virement). On n'utilise PLUS le remplissage
+  // des mois de contrat depuis le début (il rétro-datait un virement de 2026 sur
+  // 2025). Dès que l'avoir de la période arrive dans Digi, le canal facture_refs
+  // ci-dessus recale le virement automatiquement sur sa vraie période.
+  leftovers.r2.forEach(t =>
+    cell(t._encMk, 'r2').push({ t, amount: t.montant || 0, avoirs: [], via: 'enc' }));
   return map;
 }
 // Stats FSE effectives d'un labo/mois : si le détail unitaire est là, recalcule
@@ -7549,9 +7617,11 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
     const badge = isR2
       ? '<span style="color:var(--cyan);font-weight:700">RDP</span>'
       : '<span style="color:var(--text-dim)">COOP</span>';
-    // Mois de contrat assigné + méthode : n° de document (sûr), ~ chronologique, ≈ encaissement.
-    const viaMark = t.via === 'chrono' ? ' <span title="assigné par ordre chronologique depuis le début du contrat" style="color:var(--amber)">~</span>'
-                  : t.via === 'enc'    ? ' <span title="rattaché au mois d\'encaissement (aucun mois de contrat libre)" style="color:var(--text-dim)">≈</span>' : '';
+    // Mois de contrat assigné + méthode : n° de document (sûr), ⇢ comblement
+    // chronologique des prestas attendues (coop), ≈ mois d'encaissement.
+    const viaMark = t.via === 'fifo' ? ' <span title="coop réglée sans détail — virement affecté par ordre chronologique sur la presta attendue du mois (manque comblé par le virement suivant, surplus reporté au mois suivant)" style="color:var(--amber)">⇢</span>'
+                  : t.via === 'chrono' ? ' <span title="assigné par ordre chronologique depuis le début du contrat" style="color:var(--amber)">~</span>'
+                  : t.via === 'enc'    ? ' <span title="rattaché au mois d\'encaissement (aucune presta attendue restante à combler)" style="color:var(--text-dim)">≈</span>' : '';
     const split = t.amount != null && Math.abs((t.amount||0) - (t.montant||0)) >= 0.01
       ? ` <span title="virement de ${fmtE(t.montant)} ventilé sur plusieurs périodes" style="color:var(--text-dim);font-size:9px">(part)</span>` : '';
     // Justificatif : un œil par avoir consultable ; œil grisé si le document
