@@ -7347,7 +7347,12 @@ function _fseVtype(t) {
   if (kinds.length === 1) return kinds[0] === 'rdp' ? 'r2' : 'r3';
   const cents = Math.round(Math.abs(t.montant || 0) * 100) % 100;
   if (cents !== 0) return 'r2';
-  return t.vtype === 'r2' ? 'r2' : 'r3';
+  // Somme RONDE = coop (règle métier Biogaran), sauf mot-clé RDP explicite dans
+  // le libellé. On ne suit PLUS le vtype backend ici : son lookup par n° de
+  // facture mélangeait refs RDP et presta d'un même mois (facture_refs) et
+  // classait en r2 des virements coop CSP (ex. 6540/2760/4140/3720 €), gonflant
+  // la RDP reçue et amputant la coop reçue d'autant.
+  return /\bRDP\b/i.test(String(t.lib || '')) ? 'r2' : 'r3';
 }
 // ── Assignation des virements aux MOIS DE CONTRAT ──────────────────────────
 // Un virement encaissé en M paie une période antérieure (souvent M-1/M-2, avec

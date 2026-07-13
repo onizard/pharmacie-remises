@@ -335,6 +335,16 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
                     skipped_lib.append(libelle[:80])
                 continue
 
+            # Garde-fou final (règle métier) : un virement à somme RONDE sans
+            # mot-clé RDP explicite est de la coop (r3), même si un lookup par
+            # n° de facture a dit r2 — facture_refs mélange les refs RDP et
+            # presta d'un même mois, donc son type par ligne est peu fiable
+            # (ex. réel : virements coop CSP 6540/2760/4140/3720 € classés r2).
+            # Décimales ⇒ RDP reste inchangé.
+            if vtype == 'r2' and round(amount * 100) % 100 == 0 \
+                    and 'RDP' not in libelle.upper():
+                vtype = 'r3'
+
             for key, canon in _LABO_KEYS:
                 if key in labo.upper():
                     labo = canon
