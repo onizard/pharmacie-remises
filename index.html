@@ -7192,7 +7192,6 @@ function _verifDataDiag(mkList, selNorm, labDisplay, year, monthForCond) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP = v => (Math.round((v||0)*100)/100).toString().replace('.',',') + ' %';
   let digiRows=0, rdpMonths=0, rdpTotal=0; const rdpTaux=new Set();
-  let fseCount=0, fseR2=0, fseR3=0, fseMont=0;
   (mkList||[]).forEach(mk => {
     ((state._digiMonthStats||{})[mk]||[]).forEach(r => {
       if (_verifNormLab(r.labo)!==selNorm) return;
@@ -7200,28 +7199,43 @@ function _verifDataDiag(mkList, selNorm, labDisplay, year, monthForCond) {
       if ((r.rdp_total||0)>0) { rdpMonths++; rdpTotal += r.rdp_total||0; }
       (r.rdp_by_taux||[]).forEach(e => { if (e.taux!=null) rdpTaux.add(e.taux); });
     });
-    Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{
-      if (_verifNormLab(l)!==selNorm) return;
-      const e = _fseEff(s);
-      fseCount += e.count; fseR2 += e.r2_ttc; fseR3 += e.r3_ttc; fseMont += e.montant_ttc;
-    });
   });
+  // Reçu = virements ASSIGNÉS à ces mois (même source que la colonne REC des
+  // tableaux : _fseAssignMap), et NON les virements encaissés ces mois-ci —
+  // sinon un mois affichait « 0 virement » alors qu'un règlement décalé lui est
+  // bien rattaché (ou l'inverse).
+  const _amap = (typeof _fseAssignMap==='function') ? _fseAssignMap(selNorm, labDisplay) : {};
+  const _set  = new Set(mkList||[]);
+  let fseCount=0, fseR2=0, fseR3=0;
+  Object.entries(_amap).forEach(([mk,c]) => {
+    if (!_set.has(mk)) return;
+    (c.r2||[]).forEach(e => { fseR2 += e.amount||0; fseCount++; });
+    (c.r3||[]).forEach(e => { fseR3 += e.amount||0; fseCount++; });
+  });
+  const fseMont = fseR2 + fseR3;
   const cond  = _verifGetCond(labDisplay, year, monthForCond);
   const rsfV  = (cond?.rsfValues||[]).filter(r=>!r.excluded);
   const r2cfg = rsfV.filter(r=>r.remise2!=null && r.remise2!=='').length;
-  const coop  = cond ? (parseFloat(cond.coopR3)||0) : 0;
+  // Coop configurée : coopR3 (niveau condition) OU remise3 PAR PALIER (c'est le
+  // par-palier que lit la colonne ATT). L'ancien test ne regardait que coopR3
+  // (souvent null) → « ABSENTE » à tort alors que chaque palier porte 12 %.
+  const coopVals = (cond?.rsfValues||[]).map(r=>parseFloat(r.remise3)).filter(v=>v>0);
+  const coopCond = cond ? (parseFloat(cond.coopR3)||0) : 0;
+  const coopShow = coopCond>0 ? coopCond : (coopVals.length ? Math.max(...coopVals) : 0);
   const ok = b => b ? 'var(--green)' : 'var(--red)';
-  const warn = (!rdpTotal && !fseCount)
-    ? `<div style="color:var(--red);margin-top:4px">⚠ Aucune donnée reçue (RDP Digi + virements FSE) pour ${year}. Vérifie que les connecteurs Digipharmacie et FSE ont bien été synchronisés pour cette période.</div>`
+  // Reçu (assigné) OU annoncé par avoir Digi : dans les deux cas il y a de la donnée.
+  const aucunRecu = !rdpTotal && !fseR2 && !fseR3;
+  const warn = aucunRecu
+    ? `<div style="color:var(--amber);margin-top:4px">ⓘ Aucun règlement rattaché à cette période. C'est normal si l'avoir (RDP) ou le virement (coop) n'a pas encore été émis — les remises sont réglées avec du décalage. Ça se recalera seul dès que Digipharmacie/FSE auront la période.</div>`
     : (rdpTotal>0 && !rdpTaux.size)
       ? `<div style="color:var(--amber);margin-top:4px">⚠ RDP reçu (${fmtE(rdpTotal)}) mais sans ventilation par taux → affiché sur la ligne TOTAL uniquement (l'avoir Digi n'a pas été ventilé par groupe RSF).</div>`
       : '';
   return `<details style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px">
     <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ DIAGNOSTIC DONNÉES REÇUES — ${escH(labDisplay)} ${year}</summary>
     <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px;display:flex;flex-direction:column;gap:4px">
-      <div><b style="color:var(--cyan)">DIGI / RDP (R2 reçu)</b> — ${digiRows} ligne(s) labo · RDP : <span style="color:${ok(rdpTotal>0)}">${rdpMonths} mois · ${fmtE(rdpTotal)}</span> · ventilation par taux : <span style="color:${ok(rdpTaux.size>0)}">${rdpTaux.size ? [...rdpTaux].sort((a,b)=>a-b).map(t=>fmtP(t)).join(', ') : 'ABSENTE'}</span></div>
-      <div><b style="color:var(--green)">FSE (R3 / coop reçu)</b> — <span style="color:${ok(fseCount>0)}">${fseCount} virement(s)</span> · R3 : ${fmtE(fseR3)} · R2 : ${fmtE(fseR2)} · total : ${fmtE(fseMont)}</div>
-      <div><b style="color:var(--amber)">CONDITIONS (attendu)</b> — remise 2 : <span style="color:${ok(r2cfg>0)}">${r2cfg}/${rsfV.length} palier(s)</span> · coop R3 : <span style="color:${ok(coop>0)}">${coop>0 ? fmtP(coop) : 'ABSENTE'}</span></div>
+      <div><b style="color:var(--cyan)">DIGI / RDP annoncé</b> — ${digiRows} ligne(s) labo · <span style="color:${ok(rdpTotal>0)}">${rdpMonths} mois · ${fmtE(rdpTotal)}</span> · ventilation par taux : <span style="color:${ok(rdpTaux.size>0 || rdpTotal<=0)}">${rdpTaux.size ? [...rdpTaux].sort((a,b)=>a-b).map(t=>fmtP(t)).join(', ') : (rdpTotal>0?'ABSENTE':'—')}</span></div>
+      <div><b style="color:var(--green)">REÇU (virements assignés)</b> — <span style="color:${ok(fseCount>0)}">${fseCount} part(s)</span> · RDP : ${fmtE(fseR2)} · coop : ${fmtE(fseR3)} · total : ${fmtE(fseMont)}</div>
+      <div><b style="color:var(--amber)">CONDITIONS (attendu)</b> — remise 2 : <span style="color:${ok(r2cfg>0)}">${r2cfg}/${rsfV.length} palier(s)</span> · coop : <span style="color:${ok(coopShow>0)}">${coopShow>0 ? fmtP(coopShow) : 'ABSENTE'}</span></div>
       ${warn}
     </div>
   </details>`;
