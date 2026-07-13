@@ -7366,35 +7366,15 @@ function _fseAssignMap(selNorm, labDisplay) {
       leftovers[vt].push(t);
     }
   });
-  // Chronologique : n° d'échéance (F001…) prioritaire, sinon date d'encaissement.
-  const start = _fseContractStart(labDisplay);
-  const now   = new Date();
-  const nowMk = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  // Virements SANS avoir apparié : rattachés à LEUR mois d'établissement (la date
+  // du virement) — « traité par chronologie, par date ». On n'utilise PLUS le
+  // remplissage des mois de contrat depuis le début : il rétro-datait à tort un
+  // virement établi en 2026 sur un mois de 2025 (ex. coop F001…F004 de fév.–avr.
+  // 2026 back-fillés sur juin–août 2025). Chaque virement reste donc sur le mois
+  // où il a réellement été encaissé.
   ['r2','r3'].forEach(vt => {
-    const rest = leftovers[vt];
-    if (!rest.length) return;
-    rest.sort((a,b) => {
-      const sa = _fseSeqNum(a), sb = _fseSeqNum(b);
-      if (sa != null && sb != null && sa !== sb) return sa - sb;
-      return (a.date || '').localeCompare(b.date || '') || (b.montant || 0) - (a.montant || 0);
-    });
-    if (!start) {   // pas de date de contrat → repli : mois d'encaissement
-      rest.forEach(t => cell(t._encMk, vt).push({ t, amount: t.montant || 0, avoirs: [], via: 'enc' }));
-      return;
-    }
-    // Mois de contrat libres (sans assignation exacte de ce type), du début à maintenant.
-    let [y, m] = start.split('-').map(Number);
-    const free = [];
-    while (true) {
-      const mk = `${y}-${String(m).padStart(2,'0')}`;
-      if (mk > nowMk) break;
-      if (!(map[mk]?.[vt] || []).length) free.push(mk);
-      m++; if (m > 12) { m = 1; y++; }
-    }
-    rest.forEach((t, i) => {
-      const mk = free[i] || t._encMk;   // plus de mois libre → mois d'encaissement
-      cell(mk, vt).push({ t, amount: t.montant || 0, avoirs: [], via: free[i] ? 'chrono' : 'enc' });
-    });
+    leftovers[vt].forEach(t =>
+      cell(t._encMk, vt).push({ t, amount: t.montant || 0, avoirs: [], via: 'enc' }));
   });
   return map;
 }
