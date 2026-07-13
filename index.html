@@ -989,9 +989,6 @@
   .conn-file-meta { color:var(--text-dim); white-space:nowrap; }
   .conn-file-del { background:none; border:none; color:var(--red); cursor:pointer; font-size:13px; padding:0 2px; opacity:.7; flex-shrink:0; }
   .conn-file-del:hover { opacity:1; }
-  .conn-req-status { font-size:10px; font-family:'Share Tech Mono',monospace; margin-top:2px; min-height:14px; }
-  .btn-connecteur { position:relative; }
-  .conn-notif-badge { position:absolute; top:-4px; right:-4px; width:8px; height:8px; background:var(--red); border-radius:50%; display:none; pointer-events:none; }
   .conn-admin-panel { margin-top:18px; border-top:1px solid var(--border); padding-top:14px; }
   /* ── Concentrateur ── */
   .conc-type-row { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
@@ -1014,13 +1011,6 @@
   .univ-file-del { background:none; border:none; color:var(--red); cursor:pointer; font-size:14px; padding:0 2px; opacity:.6; flex-shrink:0; }
   .univ-file-del:hover { opacity:1; }
   .univ-file-status { font-size:10px; color:var(--text-dim); white-space:nowrap; }
-  .conn-req-item { font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text); padding:10px; border:1px solid var(--border); margin-bottom:8px; display:flex; flex-direction:column; gap:5px; }
-  .conn-req-meta { font-size:10px; color:var(--text-dim); }
-  .conn-req-actions { display:flex; gap:8px; margin-top:4px; }
-  .conn-req-approve { border-color:var(--green)!important; color:var(--green)!important; }
-  .conn-req-approve:hover:not(:disabled) { background:var(--green)!important; color:var(--bg)!important; }
-  .conn-req-reject  { border-color:var(--red)!important;   color:var(--red)!important; }
-  .conn-req-reject:hover:not(:disabled)  { background:var(--red)!important;   color:var(--bg)!important; }
   .conn-job-status.done    { color: var(--green); }
   .conn-job-status.error   { color: var(--red); word-break: break-word; white-space: pre-wrap;
     max-height: 110px; overflow-y: auto; padding: 5px 7px;
@@ -1336,7 +1326,7 @@
       <div class="term-line"><span class="prompt">SYS:</span><span class="val">PRÊT</span><span class="cursor"></span><span id="saveBadge" class="save-badge">&nbsp;✓ sauvegardé</span></div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn-cond-labo" id="btnConditionsLabo" style="font-size:11px;padding:6px 14px">⚙ MES CONDITIONS LABO</button>
-        <button id="btnConnecteur" class="btn-connecteur" title="Déposer vos fichiers justificatifs (grossiste, RDP Digi, FSE…)">DÉPÔT DES FICHIERS<span id="connNotifBadge" class="conn-notif-badge"></span></button>
+        <button id="btnConnecteur" class="btn-connecteur" title="Déposer vos fichiers justificatifs (grossiste, RDP Digi, FSE…)">DÉPÔT DES FICHIERS</button>
         <button id="btnTheme" class="btn-theme" title="Thème clair / sombre">☀</button>
 <div class="account-wrap">
   <button class="account-btn" id="btnAccount" title="Mon compte">
@@ -1432,7 +1422,6 @@
             <div class="conn-job-status" id="digiJobStatus"></div>
             <button class="conn-test-btn" id="digiSyncBtn" title="Le serveur re-parcourt les PDF stockés : ré-indexation, dé-doublonnage, reconstruction des stats d'avoirs" style="margin-top:6px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff)">⟳ RÉ-ANALYSER LES FICHIERS</button>
             <span onclick="_showExtTutorial()" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;text-decoration:underline dotted;cursor:pointer">⬇ installer l'extension</span>
-            <div class="conn-req-status" id="digiReqStatus"></div>
           </div>
           <div class="conn-ring-wrap" id="digiProgBar">
             <div class="conn-ring" id="digiProgRing">
@@ -1511,7 +1500,6 @@
             <button class="conn-test-btn" id="ospRelancerBtn" style="display:none">↺ RELANCER JOB</button>
             <button class="conn-test-btn" id="ospReconnectBtn">RECONNECTER</button>
             <button class="conn-test-btn" id="ospSyncBtn" title="Relance le scraping complet des ventes OSPHARM" style="margin-top:6px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff)">⟳ SYNCHRONISER LE CONNECTEUR</button>
-            <div class="conn-req-status" id="ospReqStatus"></div>
           </div>
           <div class="conn-ring-wrap" id="ospProgBar">
             <div class="conn-ring" id="ospProgRing">
@@ -1522,11 +1510,9 @@
         </div>
       </div><!-- /conn-sites : connecteurs auto -->
       </div><!-- /autoConnectorsWrap -->
-      <!-- Admin : demandes de changement de compte -->
+      <!-- Admin : assistance & maintenance -->
       <div id="connAdminPanel" class="conn-admin-panel" style="display:none">
-        <div style="font-size:10px;color:var(--red);letter-spacing:2px;margin-bottom:10px;font-family:'Share Tech Mono',monospace">// DEMANDES DE CHANGEMENT DE COMPTE</div>
-        <div id="connAdminRequests" style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--text-dim)">Chargement…</div>
-        <div style="margin-top:16px;padding:10px 12px;border:1px solid var(--border);border-radius:6px">
+        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:6px">
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text)">
             <input type="checkbox" id="assistToggle">
             <span>🛟 Activer l'assistance <span style="color:var(--text-dim)">— copie mes données (état + avoirs) vers le compte support, pour tests en temps réel</span></span>
@@ -11056,7 +11042,6 @@ async function saveProfile() {
         _simCachedUserId = session.user.id;
         // Mise en cache pour le flush keepalive (accès sync en pagehide)
         _cachedFlushSession = { user_id: session.user.id, token: session.access_token };
-        if (isAdmin && typeof checkAdminNotifications === 'function') checkAdminNotifications();
         if (!isAdmin) await loadRsfDefaults();
         if (!_isPostReset) {
           // Chargement cloud avec fallback fetch direct (contourne les erreurs Supabase JS client)
@@ -11861,119 +11846,6 @@ function initConnecteurModal() {
     await connectConn(connKey, prefix);
   }
 
-  async function requestAccountChange(connKey, prefix) {
-    const { data: { session } } = await window._sbClient.auth.getSession();
-    if (!session) return;
-    const statusEl = document.getElementById(prefix + 'ReqStatus');
-    // Vérifier s'il y a déjà une demande en attente
-    const chk = await fetch(
-      `${SUPA_URL}/rest/v1/connector_requests?user_id=eq.${session.user.id}&connector=eq.${connKey}&status=eq.pending&select=id&limit=1`,
-      { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` } }
-    );
-    const existing = await chk.json();
-    if (existing.length) {
-      if (statusEl) statusEl.textContent = '⏳ Demande déjà en attente de validation';
-      return;
-    }
-    if (!confirm(`Demander le changement de compte ${connKey.toUpperCase()} ?\nL'administrateur sera notifié et devra valider votre demande.`)) return;
-    const res = await fetch(`${SUPA_URL}/rest/v1/connector_requests`, {
-      method: 'POST',
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ user_id: session.user.id, user_email: session.user.email, connector: connKey, status: 'pending' }),
-    });
-    if (res.ok) {
-      if (statusEl) statusEl.textContent = '⏳ Demande envoyée — en attente de validation';
-      showToast('Demande envoyée à l\'administrateur');
-    } else {
-      showToast('Erreur lors de l\'envoi de la demande');
-    }
-  }
-
-  async function checkUserPendingRequests() {
-    const { data: { session } } = await window._sbClient.auth.getSession();
-    if (!session) return;
-    const r = await fetch(
-      `${SUPA_URL}/rest/v1/connector_requests?user_id=eq.${session.user.id}&status=not.eq.acknowledged&order=created_at.desc&limit=10`,
-      { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` } }
-    );
-    const rows = await r.json();
-    if (!Array.isArray(rows)) return;
-    for (const req of rows) {
-      const prefix   = req.connector === 'ospharm' ? 'osp' : 'digi';
-      const statusEl = document.getElementById(prefix + 'ReqStatus');
-      if (req.status === 'pending') {
-        if (statusEl) statusEl.textContent = '⏳ Demande en attente de validation admin';
-      } else if (req.status === 'approved') {
-        // Débloquer l'email — l'admin a autorisé le changement
-        state.connectors[req.connector] = { user: '', pass: '', connected: false };
-        updateConnecteurBtn(); saveState(); showView(prefix, false);
-        if (statusEl) statusEl.textContent = '';
-        showToast('✅ Changement de compte autorisé — entrez vos nouveaux identifiants');
-        await fetch(`${SUPA_URL}/rest/v1/connector_requests?id=eq.${req.id}`, {
-          method: 'PATCH',
-          headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-          body: JSON.stringify({ status: 'acknowledged' }),
-        });
-      } else if (req.status === 'rejected') {
-        if (statusEl) statusEl.textContent = '❌ Demande refusée par l\'administrateur';
-        await fetch(`${SUPA_URL}/rest/v1/connector_requests?id=eq.${req.id}`, {
-          method: 'PATCH',
-          headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-          body: JSON.stringify({ status: 'acknowledged' }),
-        });
-      }
-    }
-  }
-
-  async function loadAdminRequests() {
-    const { data: { session } } = await window._sbClient.auth.getSession();
-    if (!session) return;
-    const r = await fetch(
-      `${SUPA_URL}/rest/v1/connector_requests?status=eq.pending&order=created_at.asc`,
-      { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` } }
-    );
-    const rows = await r.json();
-    const badge = document.getElementById('connNotifBadge');
-    const container = document.getElementById('connAdminRequests');
-    if (!Array.isArray(rows)) return;
-    if (badge) badge.style.display = rows.length ? '' : 'none';
-    if (!container) return;
-    if (!rows.length) { container.innerHTML = '<span style="color:var(--text-dim)">Aucune demande en attente.</span>'; return; }
-    container.innerHTML = rows.map(req => `
-      <div class="conn-req-item">
-        <div><strong style="color:var(--amber)">${req.connector.toUpperCase()}</strong> — ${req.user_email}</div>
-        <div class="conn-req-meta">${new Date(req.created_at).toLocaleString('fr-FR')}</div>
-        <div class="conn-req-actions">
-          <button class="conn-test-btn conn-req-approve" onclick="resolveRequest('${req.id}','approved')">ACCEPTER</button>
-          <button class="conn-test-btn conn-req-reject"  onclick="resolveRequest('${req.id}','rejected')">REFUSER</button>
-        </div>
-      </div>`).join('');
-  }
-
-  async function resolveRequest(id, action) {
-    const { data: { session } } = await window._sbClient.auth.getSession();
-    if (!session) return;
-    await fetch(`${SUPA_URL}/rest/v1/connector_requests?id=eq.${id}`, {
-      method: 'PATCH',
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ status: action, resolved_at: new Date().toISOString() }),
-    });
-    await loadAdminRequests();
-    showToast(action === 'approved' ? '✅ Demande acceptée' : '❌ Demande refusée');
-  }
-
-  async function checkAdminNotifications() {
-    const { data: { session } } = await window._sbClient.auth.getSession();
-    if (!session) return;
-    const r = await fetch(
-      `${SUPA_URL}/rest/v1/connector_requests?status=eq.pending&select=id&limit=1`,
-      { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` } }
-    );
-    const rows = await r.json();
-    const badge = document.getElementById('connNotifBadge');
-    if (badge) badge.style.display = (Array.isArray(rows) && rows.length) ? '' : 'none';
-  }
-
   function openModal() {
     const c = state.connectors;
     document.getElementById('ospUser').value  = c.ospharm.user;
@@ -11982,8 +11854,6 @@ function initConnecteurModal() {
     document.getElementById('concPass').value  = '';
     document.getElementById('ospTestResult').textContent   = '';
     document.getElementById('concTestResult').textContent = '';
-    document.getElementById('ospReqStatus').textContent   = '';
-    document.getElementById('digiReqStatus').textContent  = '';
     _setConnProgress('conc', 'reset');
     _setConnProgress('digi', 'reset');
     _setConnProgress('osp', 'reset');
@@ -11998,11 +11868,8 @@ function initConnecteurModal() {
     showView('conc',  c.concentrateur?.connected || false);
     modal.classList.add('open');
     refreshConnJobStatuses();
-    // Vérifications asynchrones
-    checkUserPendingRequests();
     if (isAdmin) {
       document.getElementById('connAdminPanel').style.display = '';
-      loadAdminRequests();
       _wireAssistToggle();
       // boutons edit/refresh supprimés de l'UI
     }
