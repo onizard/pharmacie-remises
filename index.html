@@ -11069,7 +11069,7 @@ async function saveProfile() {
         // Mode assistance : le compte support passe en admin UNIQUEMENT si l'admin a
         // activé l'assistance (flag _assistAdmin posé côté serveur par assist_sync ;
         // non falsifiable côté client car seul l'admin peut appeler cette fonction).
-        if (!isAdmin && session.user.email === 'claude@test.fr') {
+        if (!isAdmin && ['assist@break-pharma.fr', 'claude@test.fr'].includes(session.user.email)) {
           try {
             const { data: _a } = await sb.from('user_state').select('state_json')
               .eq('user_id', session.user.id).maybeSingle();
