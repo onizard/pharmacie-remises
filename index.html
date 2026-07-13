@@ -1816,21 +1816,13 @@ window._showExtTutorial = _showExtTutorial;
 
 // ── Import Digi EN LOT, traité en fond (GitHub Actions) ────────────────────────
 // Barre de progression flottante, visible sur toutes les pages.
-function _digiBatchBar(html, pct) {
-  let bar = document.getElementById('digiBatchBar');
-  if (html == null) { if (bar) bar.remove(); return; }
-  if (!bar) {
-    bar = document.createElement('div');
-    bar.id = 'digiBatchBar';
-    bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#0a1020;'
-      + 'border-top:1px solid var(--cyan,#00e5ff);color:#cfe;font-family:\'Share Tech Mono\',monospace;'
-      + 'font-size:12px;padding:8px 14px 10px;box-shadow:0 -2px 14px rgba(0,0,0,.55)';
-    document.body.appendChild(bar);
-  }
-  bar.innerHTML = `<div>${html}</div>
-    <div style="height:4px;background:#123;border-radius:2px;margin-top:6px;overflow:hidden">
-      <div style="height:100%;width:${Math.max(0,Math.min(100,pct||0))}%;background:var(--cyan,#00e5ff);transition:width .3s"></div>
-    </div>`;
+// Bandeau « traitement en fond » retiré : jugé inutile/bruyant (progression
+// fichier par fichier, échecs d'extraction…). Le traitement continue en
+// silence côté serveur ; les données se rafraîchissent seules à la fin.
+// Fonction conservée en no-op pour ne pas casser les appelants existants.
+function _digiBatchBar(_html, _pct) {
+  const bar = document.getElementById('digiBatchBar');
+  if (bar) bar.remove();
 }
 async function _insertPendingDigi(file, batchId) {
   if (file.size > 8 * 1024 * 1024) throw new Error(`${file.name} > 8 Mo (trop volumineux)`);

@@ -6,6 +6,12 @@ on:
       user_id:
         description: 'Supabase user ID'
         required: true
+  workflow_call:
+    inputs:
+      user_id:
+        description: 'Supabase user ID'
+        required: true
+        type: string
 
 jobs:
   scrape:
