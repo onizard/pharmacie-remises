@@ -7307,9 +7307,16 @@ function _verifLitigeLetter(key) {
         + `Le rapprochement de nos relevés bancaires, effectué par numéro de document, ne fait apparaître aucun virement correspondant, alors que vos règlements interviennent habituellement dans les deux mois suivant la période.`;
     }
     if (r.nature === 'underbilled') {
+      // Septembre 2025 (Biogaran) : cas documenté — application ANTICIPÉE de
+      // conditions liées à un projet de loi finalement NON ADOPTÉ (taux hors
+      // barème sur ce seul mois), puis retour au barème contractuel dès octobre.
+      // Le revirement du labo lui-même prouve le barème applicable.
+      const _sept25 = r.mk === '2025-09' && /biogaran/i.test(d.labDisplay)
+        ? ` Nous relevons que cet avoir applique des taux étrangers au barème contractuel (20 % au lieu de 30 % sur la catégorie 10 % ; remise calculée sur la catégorie 15 %, qui n'ouvre droit à aucune remise de performance ; catégories 20 % et 30 % omises), vraisemblablement par application anticipée de conditions liées à un projet de loi qui n'a finalement pas été adopté. Une modification unilatérale des conditions contractuelles nous est inopposable — ce que confirment vos propres avoirs d'octobre à décembre, revenus au barème contractuel.`
+        : '';
       return `${n}. Avoir sous-évalué — ${perLbl(r)} : ${fmtE(r.due)}\n`
         + `L'application à nos achats de ${perLbl(r)} — attestés par le relevé détaillé de notre répartiteur, référence par référence — du barème de remise de performance que vos services ont eux-mêmes appliqué sur les périodes voisines (taux vérifiés au centime sur vos propres avoirs) aboutit à ${fmtE(r.attendu)}. `
-        + `Or l'avoir émis${r.refs ? ` (n° ${r.refs})` : ''} ne porte que sur ${fmtE(r.annonce)}, soit un écart de ${fmtE(r.due)} en notre défaveur, dont nous demandons la régularisation.`;
+        + `Or l'avoir émis${r.refs ? ` (n° ${r.refs})` : ''} ne porte que sur ${fmtE(r.annonce)}, soit un écart de ${fmtE(r.due)} en notre défaveur, dont nous demandons la régularisation.${_sept25}`;
     }
     if (r.nature === 'noavoir') {
       return `${n}. Absence d'avoir — ${perLbl(r)} : ${fmtE(r.due)}\n`

@@ -118,6 +118,15 @@ paliers. Ne jamais filtrer remise3 sur `excluded`.
 - L'avoir RDP agrège par TAUX VERSÉ, pas par palier RSF (les exceptions d'un
   palier sont versées dans la ligne de leur taux).
 - Les virements coop sont des sommes rondes (sans décimales) ; décimales ⇒ RDP.
+- SEPT. 2025 (Biogaran) : avoir facturé à des taux HORS barème (20 % au lieu de
+  30 % sur palier 10, remise sur palier 15 sans RDP, paliers 20/30 omis) —
+  application anticipée d'un projet de loi finalement NON VOTÉ. Retour au barème
+  2025 dès octobre (avoirs oct.–déc. à 30/20/10). Sous-facturation à réclamer ;
+  la règle « 2025 payé au barème 2025 » reste valable toute l'année.
+- Transition fin 2025 : dès la bascule catalogue (_y25cut = sept.), le
+  répartiteur regroupe selon la structure 2026 (refs ex-40/15 % → palier 30 %)
+  et le labo paie RDP 10 % sur TOUT le palier 30 (override dans
+  _r2ExactForMonth, mois ≥ bascule uniquement).
 
 ### Principe
 Biogaran impose un CA annuel contractuel. Le seuil de validation du marché est **80%** de ce CA.
