@@ -8100,6 +8100,18 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const _mixed = !!(_exact && !cumulYear && year === 2025
       && window._y25cut?.[labDisplay] != null && monthForCond >= window._y25cut[labDisplay]);
     const r2D = (r2Off || _mixed) ? null : ((r2pct!=null || r2R>0 || r2Aexact!=null) ? r2A-r2R : null);
+    // Mois hybrides fin 2025 : la colonne % doit montrer le taux que l'ATT utilise
+    // réellement (barème 2025 — la RDP suit l'ANNÉE du mois, vérifié sur les
+    // avoirs oct.–déc. payés à 30/20/10), PAS le taux des conditions 2026
+    // remappées pour l'affichage. Sinon l'utilisateur calcule REC = brut × %
+    // affiché et croit l'ATT faux (ex. sept. : % affichait 20 %, ATT à ~30 %).
+    let r2pctDisp = r2pct;
+    if (_mixed) {
+      const _d25 = window._rsfDefaults25?.[labDisplay]?.[String(-Math.abs(tx))];
+      const _v25 = _d25 ? parseFloat(_d25.remise2) : NaN;
+      if (!isNaN(_v25)) r2pctDisp = _v25 > 0 ? _v25 : (Math.abs(tx) === 30 ? 10 : null);
+      else if (Math.abs(tx) === 30) r2pctDisp = 10;   // palier 30 : payé 10 % (transition, cf. _r2ExactForMonth)
+    }
     // Exceptions du palier (remise2Except) : RDP versée dans la ligne de LEUR
     // taux — on le signale sur le palier d'origine.
     const exc = emap[tx];
@@ -8121,7 +8133,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
         `<td style="${G}">${fmtE(rsfR)}</td>` +
         `<td style="${dRsf}">${fmtE(rsfD)}</td>`,
       r2: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
-        `<td class="verif-r2">${r2pct!=null?fmtP(r2pct):'—'}${exc?` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`:''}</td>` +
+        `<td class="verif-r2"${_mixed&&r2pctDisp!==r2pct?` title="Barème 2025 (la RDP suit l'année du mois — vérifié sur les avoirs oct.–déc.). Les conditions affichées 2026 indiquent ${r2pct!=null?fmtP(r2pct):'—'} pour ce palier."`:''}>${r2pctDisp!=null?fmtP(r2pctDisp):'—'}${_mixed&&r2pctDisp!==r2pct?' <span style="color:var(--text-dim);font-size:8px">(barème 2025)</span>':''}${exc&&!_mixed?` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`:''}</td>` +
         `<td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:(r2Aexact!=null?` title="Calcul EXACT par référence : Σ achats (justificatif) × taux RDP du CIP (rsf_history ${cumulYear||year}) — exceptions comprises"`:'')}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':((r2pct!=null||r2Aexact!=null)?`${fmtE(r2A)}${r2Aexact!=null?' <span style="font-size:8px;color:var(--cyan)" title="exact par référence">◎</span>':''}`:'—')}</td>` +
         `<td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span style="color:var(--amber);font-size:9px" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>` +
         `<td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>`,
