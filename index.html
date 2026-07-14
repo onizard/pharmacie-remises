@@ -7973,11 +7973,44 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   Object.entries(emap).forEach(([k, e]) => {
     (_pairExc[e.pct] = _pairExc[e.pct] || []).push(parseFloat(k));
   });
+  // Appariement PRIORITAIRE par BASE D'ACHATS : chaque ligne d'avoir porte le CA
+  // sur lequel son taux a été appliqué ; le palier dont les achats (brut) collent
+  // à ce CA est le bon rattachement. Indispensable pendant une transition de
+  // barème (fin 2025 : payé au barème 2025 mais conditions affichées 2026 →
+  // l'appariement par conditions décalait toutes les lignes REÇU d'un palier :
+  // ATT et REC semblaient « dans le désordre »). Tolérance 35 %, affectation
+  // gloutonne du plus proche, repli sur l'appariement par conditions.
+  const _baseKey = {};   // taux RDP versé → palier RSF apparié par base
+  {
+    const cands = [];
+    rdpByTaux.forEach(e => {
+      const base = (e.ca_grossiste || 0) + (e.ca_direct || 0);
+      if (!(base > 0)) return;
+      paliers.forEach(p => {
+        if (p.taux == null || !(p.brut > 0)) return;
+        const rel = Math.abs(p.brut - base) / Math.max(base, p.brut);
+        if (rel <= 0.35) cands.push({ taux: e.taux, pal: p.taux, rel });
+      });
+    });
+    cands.sort((a, b) => a.rel - b.rel);
+    const usedT = {}, usedP = {};
+    cands.forEach(c => {
+      if (usedT[c.taux] || usedP[c.pal]) return;
+      usedT[c.taux] = 1; usedP[c.pal] = 1;
+      _baseKey[c.taux] = c.pal;
+    });
+  }
   const rmap = {};
   rdpByTaux.forEach(e => {
     const main = _pairMain[e.taux] || [], exc = _pairExc[e.taux] || [];
     let key, note = '', unpaired = false;
-    if (main.length === 1) {
+    if (_baseKey[e.taux] != null) {
+      key = _baseKey[e.taux];
+      const _dispR2 = parseFloat(cmap[Math.abs(key)]?.remise2);
+      if (!isNaN(_dispR2) && _dispR2 !== e.taux) {
+        note = `Payé au taux ${e.taux} % — rattaché au palier ${key} % par la base d'achats de l'avoir (transition de barème : le taux affiché dans les conditions est ${_dispR2} %).`;
+      }
+    } else if (main.length === 1) {
       key = main[0];
       if (exc.length) note = `Inclut aussi les références d'exception du palier ${exc.join(' % / ')} % (RDP ${e.taux} %) — l'avoir agrège par taux versé.`;
     } else if (!main.length && exc.length === 1) {
