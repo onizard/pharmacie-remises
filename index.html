@@ -1608,7 +1608,7 @@
     <button onclick="_verifCloseInfoModal()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;line-height:1">&times;</button>
     <div style="font-family:'Orbitron',monospace;font-size:13px;font-weight:900;color:var(--cyan);letter-spacing:3px;margin-bottom:20px;text-align:center">◈ AIDE &amp; DÉFINITIONS</div>
     <div style="font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.8;color:var(--text)">
-      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">R2 — REMISE DE FIN DE PÉRIODE (RDP)</div>
+      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">R2 — REMISE DE PERFORMANCE (RDP)</div>
       <p style="color:var(--text-dim);margin:0 0 16px">Exonérée de TVA (art. 267-II-1° CGI) : le montant RDP est hors champ TVA → HT = TTC. L'avoir grossiste R2 est directement déductible du PA.</p>
       <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">R3 — PRESTATION DE COOPÉRATION COMMERCIALE</div>
       <p style="color:var(--text-dim);margin:0 0 16px">Soumise à TVA 20% : la facture est émise en HT par le labo, le virement bancaire reçu est en TTC (HT × 1,20). Les colonnes affichent les deux montants pour pointer avec le relevé bancaire.</p>
@@ -7185,60 +7185,104 @@ function _verifBiogaranCoef(yr) {
 // Une seule ligne par palier. Couleur ambre = Attendue, vert = Reçue.
 // R3/Coop : estimatif par palier, total réel FSE dans le bloc récapitulatif.
 // Retourne null si aucune ventilation par palier dispo → fallback ancien tableau.
-// Diagnostic « pourquoi les données reçues ne remontent pas » : pour le labo
-// sélectionné, indique ce que chaque source a réellement livré (Digi RDP, FSE,
-// conditions) sur la période. Affiché sous le tableau, replié par défaut.
-function _verifDataDiag(mkList, selNorm, labDisplay, year, monthForCond) {
+// ── RÉCAP LITIGE (vue TOUT) : ce que le labo doit encore, avec preuves ────────
+// Affiché sous le bloc REMISE 3 / COOP du cumul annuel. Quatre natures :
+//  1. RDP « avoir émis NON RÉGLÉ »  : avoir Digi annoncé, aucun virement bancaire
+//     correspondant (rapprochement par n° de document sur les relevés FSE).
+//  2. RDP « avoir SOUS-FACTURÉ »    : attendu exact (achats justificatif × barème
+//     que le labo applique lui-même les autres mois) >> avoir émis.
+//  3. RDP « aucun avoir émis »      : achats du mois, contrat actif, aucun avoir.
+//  4. COOP « prestations en retard »: attendu annuel (FIFO) > virements affectés.
+// Un bouton copie le récapitulatif en texte (à coller dans un mail au labo).
+window._litigeTxt = window._litigeTxt || {};
+window._verifCopyLitige = function(key) {
+  const t = window._litigeTxt[key] || '';
+  navigator.clipboard.writeText(t).then(() => showToast('✓ Récapitulatif copié — colle-le dans ton mail au labo'))
+    .catch(() => showToast('Copie impossible sur ce navigateur'));
+};
+function _verifRenderLitige(year, selNorm, labDisplay) {
+  const yr = parseInt(year);
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
-  const fmtP = v => (Math.round((v||0)*100)/100).toString().replace('.',',') + ' %';
-  let digiRows=0, rdpMonths=0, rdpTotal=0; const rdpTaux=new Set();
-  (mkList||[]).forEach(mk => {
-    ((state._digiMonthStats||{})[mk]||[]).forEach(r => {
-      if (_verifNormLab(r.labo)!==selNorm) return;
-      digiRows++;
-      if ((r.rdp_total||0)>0) { rdpMonths++; rdpTotal += r.rdp_total||0; }
-      (r.rdp_by_taux||[]).forEach(e => { if (e.taux!=null) rdpTaux.add(e.taux); });
-    });
-  });
-  // Reçu = virements ASSIGNÉS à ces mois (même source que la colonne REC des
-  // tableaux : _fseAssignMap), et NON les virements encaissés ces mois-ci —
-  // sinon un mois affichait « 0 virement » alors qu'un règlement décalé lui est
-  // bien rattaché (ou l'inverse).
-  const _amap = (typeof _fseAssignMap==='function') ? _fseAssignMap(selNorm, labDisplay) : {};
-  const _set  = new Set(mkList||[]);
-  let fseCount=0, fseR2=0, fseR3=0;
-  Object.entries(_amap).forEach(([mk,c]) => {
-    if (!_set.has(mk)) return;
-    (c.r2||[]).forEach(e => { fseR2 += e.amount||0; fseCount++; });
-    (c.r3||[]).forEach(e => { fseR3 += e.amount||0; fseCount++; });
-  });
-  const fseMont = fseR2 + fseR3;
-  const cond  = _verifGetCond(labDisplay, year, monthForCond);
-  const rsfV  = (cond?.rsfValues||[]).filter(r=>!r.excluded);
-  const r2cfg = rsfV.filter(r=>r.remise2!=null && r.remise2!=='').length;
-  // Coop configurée : coopR3 (niveau condition) OU remise3 PAR PALIER (c'est le
-  // par-palier que lit la colonne ATT). L'ancien test ne regardait que coopR3
-  // (souvent null) → « ABSENTE » à tort alors que chaque palier porte 12 %.
-  const coopVals = (cond?.rsfValues||[]).map(r=>parseFloat(r.remise3)).filter(v=>v>0);
-  const coopCond = cond ? (parseFloat(cond.coopR3)||0) : 0;
-  const coopShow = coopCond>0 ? coopCond : (coopVals.length ? Math.max(...coopVals) : 0);
-  const ok = b => b ? 'var(--green)' : 'var(--red)';
-  // Reçu (assigné) OU annoncé par avoir Digi : dans les deux cas il y a de la donnée.
-  const aucunRecu = !rdpTotal && !fseR2 && !fseR3;
-  const warn = aucunRecu
-    ? `<div style="color:var(--amber);margin-top:4px">ⓘ Aucun règlement rattaché à cette période. C'est normal si l'avoir (RDP) ou le virement (coop) n'a pas encore été émis — les remises sont réglées avec du décalage. Ça se recalera seul dès que Digipharmacie/FSE auront la période.</div>`
-    : (rdpTotal>0 && !rdpTaux.size)
-      ? `<div style="color:var(--amber);margin-top:4px">⚠ RDP reçu (${fmtE(rdpTotal)}) mais sans ventilation par taux → affiché sur la ligne TOTAL uniquement (l'avoir Digi n'a pas été ventilé par groupe RSF).</div>`
-      : '';
-  return `<details style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px">
-    <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ DIAGNOSTIC DONNÉES REÇUES — ${escH(labDisplay)} ${year}</summary>
-    <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px;display:flex;flex-direction:column;gap:4px">
-      <div><b style="color:var(--cyan)">DIGI / RDP annoncé</b> — ${digiRows} ligne(s) labo · <span style="color:${ok(rdpTotal>0)}">${rdpMonths} mois · ${fmtE(rdpTotal)}</span> · ventilation par taux : <span style="color:${ok(rdpTaux.size>0 || rdpTotal<=0)}">${rdpTaux.size ? [...rdpTaux].sort((a,b)=>a-b).map(t=>fmtP(t)).join(', ') : (rdpTotal>0?'ABSENTE':'—')}</span></div>
-      <div><b style="color:var(--green)">REÇU (virements assignés)</b> — <span style="color:${ok(fseCount>0)}">${fseCount} part(s)</span> · RDP : ${fmtE(fseR2)} · coop : ${fmtE(fseR3)} · total : ${fmtE(fseMont)}</div>
-      <div><b style="color:var(--amber)">CONDITIONS (attendu)</b> — remise 2 : <span style="color:${ok(r2cfg>0)}">${r2cfg}/${rsfV.length} palier(s)</span> · coop : <span style="color:${ok(coopShow>0)}">${coopShow>0 ? fmtP(coopShow) : 'ABSENTE'}</span></div>
-      ${warn}
-    </div>
-  </details>`;
+  const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const today = new Date();
+  const nowMk = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+  const _mAge = mk => (today.getFullYear()-parseInt(mk.slice(0,4)))*12 + (today.getMonth()+1) - parseInt(mk.slice(5,7));
+  const amap  = _fseAssignMap(selNorm, labDisplay);
+  const cs    = _fseContractStart(labDisplay);
+  const csFr  = cs ? `01/${cs.slice(5,7)}/${cs.slice(0,4)}` : null;
+  const rows  = [];
+  let coopAtt = 0, coopRec = 0;
+  for (let m = 1; m <= 12; m++) {
+    const mk = `${yr}-${String(m).padStart(2,'0')}`;
+    if (mk > nowMk) break;
+    if (cs && mk < cs) continue;                     // avant le début du contrat
+    const digiRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
+    const annonce = digiRow?.rdp_total || 0;
+    // N° d'avoir RDP uniquement (numériques, ex. 9006187702) — les refs presta
+    // (4M5…, SCTT…) du même mois ne justifient pas la ligne RDP.
+    const refs    = (digiRow?.facture_refs || []).filter(x => /^\d{6,}$/.test(String(x))).join(', ');
+    const verse   = ((amap[mk]||{}).r2||[]).reduce((a,e)=>a+e.amount,0);
+    const exact   = (typeof _r2ExactForMonth==='function') ? _r2ExactForMonth(mk, selNorm, labDisplay) : null;
+    const attendu = exact ? exact.total : null;
+    const overdue = _mAge(mk) >= 3;                  // règlement habituel constaté : M+2
+    // 1. Avoir émis mais non réglé
+    if (annonce > 0 && annonce - verse > 1) {
+      rows.push({ mk, type: 'RDP — avoir émis NON RÉGLÉ', due: annonce - verse, urgent: overdue,
+        preuve: `Avoir n° ${refs || '?'} émis par ${labDisplay} pour ${MOIS[m-1]} ${yr} : ${fmtE(annonce)}. `
+              + `Versé : ${verse>0?fmtE(verse):'0 €'}. Aucun virement bancaire correspondant sur les relevés (rapprochement par n° de document). `
+              + (overdue ? 'Échéance largement dépassée (règlement habituel constaté à M+2).' : 'Encore dans le délai habituel (M+2).') });
+    }
+    // 2. Avoir sous-facturé (attendu exact par référence >> annoncé)
+    if (attendu != null && annonce > 0 && attendu - annonce > 50) {
+      rows.push({ mk, type: 'RDP — avoir SOUS-FACTURÉ', due: attendu - annonce, urgent: true,
+        preuve: `Achats de ${MOIS[m-1]} (justificatif répartiteur, détail par référence) × barème RDP que ${labDisplay} applique lui-même `
+              + `les autres mois (taux vérifiés au centime sur les avoirs voisins) = ${fmtE(attendu)} attendus. Avoir émis : ${fmtE(annonce)} seulement.` });
+    }
+    // 3. Aucun avoir émis alors que la RDP est due
+    if (attendu != null && attendu > 50 && annonce <= 0 && overdue) {
+      rows.push({ mk, type: 'RDP — aucun avoir émis', due: attendu, urgent: true,
+        preuve: `Contrat signé, actif depuis le ${csFr || '?'}. Achats de ${MOIS[m-1]} ${yr} au justificatif répartiteur × barème RDP `
+              + `identique aux mois voisins (avoirs émis et vérifiés au centime) = ${fmtE(attendu)} dus. Aucun avoir reçu à ce jour.` });
+    }
+    coopAtt += (typeof _verifCoopAttendue==='function') ? _verifCoopAttendue(mk, selNorm, labDisplay) : 0;
+    coopRec += ((amap[mk]||{}).r3||[]).reduce((a,e)=>a+e.amount,0);
+  }
+  // 4. Coop en retard (année entière, après allocation FIFO chronologique)
+  if (coopAtt - coopRec > 50) {
+    rows.push({ mk: String(yr), type: 'COOP — prestations en retard', due: coopAtt - coopRec, urgent: true,
+      preuve: `Prestations attendues ${yr} (achats justificatif × remise3 contractuelle × 1,20 TTC × coef contrat) : ${fmtE(coopAtt)}. `
+            + `Virements coop affectés chronologiquement : ${fmtE(coopRec)}.` });
+  }
+  const total = rows.reduce((a,r)=>a+r.due, 0);
+  const key   = `${selNorm}|${yr}`;
+  window._litigeTxt[key] = `RÉCAPITULATIF DES SOMMES DUES — ${labDisplay} ${yr}\n`
+    + `(établi le ${today.toLocaleDateString('fr-FR')} sur justificatifs répartiteur, avoirs ${labDisplay} et relevés bancaires)\n\n`
+    + rows.map(r => `• ${r.mk} — ${r.type} : ${fmtE(r.due)}\n  Justification : ${r.preuve}`).join('\n\n')
+    + `\n\nTOTAL À RÉGLER : ${fmtE(total)}`;
+  const title = `<div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:900;letter-spacing:2px;color:var(--red);margin:22px 0 8px">⚖ À RÉCLAMER AU LABO — ${escH(labDisplay)} ${yr}</div>`;
+  if (!rows.length) {
+    return `${title}<div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green)">✓ Rien à réclamer sur ${yr} : tout ce qui est dû (avoirs émis, RDP attendue, coop) est réglé ou dans les délais habituels.</div>`;
+  }
+  const tr = rows.map(r => `<tr>
+      <td style="white-space:nowrap;color:var(--cyan);font-weight:700">${r.mk}</td>
+      <td style="white-space:nowrap;color:${r.urgent?'var(--red)':'var(--amber)'};font-weight:700">${r.type}</td>
+      <td style="text-align:right;white-space:nowrap;font-weight:700;color:${r.urgent?'var(--red)':'var(--amber)'}">${fmtE(r.due)}</td>
+      <td style="color:var(--text-dim);min-width:260px">${escH(r.preuve)}</td>
+    </tr>`).join('');
+  return `${title}
+    <div style="overflow-x:auto"><table class="verif-tbl" style="width:100%">
+      <thead><tr>
+        <th style="text-align:left">PÉRIODE</th><th style="text-align:left">NATURE</th>
+        <th style="text-align:right">À RÉCLAMER</th><th style="text-align:left">PREUVE / ARGUMENT</th>
+      </tr></thead>
+      <tbody>${tr}</tbody>
+      <tfoot><tr style="border-top:2px solid var(--red);font-weight:900">
+        <td colspan="2" style="color:var(--red);letter-spacing:1px">TOTAL À RÉCLAMER</td>
+        <td style="text-align:right;color:var(--red);font-size:14px">${fmtE(total)}</td>
+        <td><button onclick="_verifCopyLitige('${key}')" style="background:transparent;border:1px solid var(--red);color:var(--red);font-family:'Share Tech Mono',monospace;font-size:10px;padding:4px 10px;cursor:pointer;border-radius:3px">📋 COPIER POUR LE MAIL AU LABO</button></td>
+      </tr></tfoot>
+    </table></div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:6px">Preuves : justificatifs répartiteur (achats par référence), avoirs ${escH(labDisplay)} (n° + montants), relevés bancaires FSE (rapprochement par n° de document). Les lignes « dans le délai » ne sont pas comptées.</div>`;
 }
 
 // ── Détail virement par virement (rapprochement RDP) ───────────────────────
@@ -7737,8 +7781,7 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const r2RecTotal = fseR2 > 0 ? fseR2 : (digiRow?.rdp_total || 0);
   const [mkY, mkM] = mk.split('-').map(Number);
   return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, mkY, mkM, null, r2RecAnnounced)
-       + _verifRenderVirements([mk], selNorm, labDisplay, digiRow?.rdp_total || 0)
-       + _verifDataDiag([mk], selNorm, labDisplay, mkY, mkM);
+       + _verifRenderVirements([mk], selNorm, labDisplay, digiRow?.rdp_total || 0);
 }
 
 // Cumul annuel Jan→Déc : agrège paliers (grossiste) + rdp_by_taux (digi) + FSE
@@ -7794,9 +7837,12 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
   // Vue virements du cumul : les mois de contrat ASSIGNÉS de l'année.
   const asgMksY = Object.keys(_amap).filter(mksY);
   const fseMksY = asgMksY.length ? asgMksY : Object.keys(state._fseMonthStats||{}).filter(mksY);
+  // Vue TOUT : le récap litige (à réclamer au labo, avec preuves) vient JUSTE
+  // après le bloc REMISE 3 / COOP (dernier bloc du core), avant le détail des
+  // virements.
   return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr, r2RecAnnounced)
-       + _verifRenderVirements(fseMksY, selNorm, labDisplay, rdpTotalSum)
-       + _verifDataDiag([...new Set(mkList)], selNorm, labDisplay, yr, mRef);
+       + _verifRenderLitige(yr, selNorm, labDisplay)
+       + _verifRenderVirements(fseMksY, selNorm, labDisplay, rdpTotalSum);
 }
 
 // Rendu commun du tableau par palier (mensuel ou cumul annuel).
