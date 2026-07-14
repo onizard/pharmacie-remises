@@ -7227,20 +7227,20 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
     const overdue = _mAge(mk) >= 3;                  // règlement habituel constaté : M+2
     // 1. Avoir émis mais non réglé
     if (annonce > 0 && annonce - verse > 1) {
-      rows.push({ mk, type: 'RDP — avoir émis NON RÉGLÉ', due: annonce - verse, urgent: overdue,
+      rows.push({ mk, m, nature: 'unpaid', refs, annonce, verse, type: 'RDP — avoir émis NON RÉGLÉ', due: annonce - verse, urgent: overdue,
         preuve: `Avoir n° ${refs || '?'} émis par ${labDisplay} pour ${MOIS[m-1]} ${yr} : ${fmtE(annonce)}. `
               + `Versé : ${verse>0?fmtE(verse):'0 €'}. Aucun virement bancaire correspondant sur les relevés (rapprochement par n° de document). `
               + (overdue ? 'Échéance largement dépassée (règlement habituel constaté à M+2).' : 'Encore dans le délai habituel (M+2).') });
     }
     // 2. Avoir sous-facturé (attendu exact par référence >> annoncé)
     if (attendu != null && annonce > 0 && attendu - annonce > 50) {
-      rows.push({ mk, type: 'RDP — avoir SOUS-FACTURÉ', due: attendu - annonce, urgent: true,
+      rows.push({ mk, m, nature: 'underbilled', refs, annonce, attendu, type: 'RDP — avoir SOUS-FACTURÉ', due: attendu - annonce, urgent: true,
         preuve: `Achats de ${MOIS[m-1]} (justificatif répartiteur, détail par référence) × barème RDP que ${labDisplay} applique lui-même `
               + `les autres mois (taux vérifiés au centime sur les avoirs voisins) = ${fmtE(attendu)} attendus. Avoir émis : ${fmtE(annonce)} seulement.` });
     }
     // 3. Aucun avoir émis alors que la RDP est due
     if (attendu != null && attendu > 50 && annonce <= 0 && overdue) {
-      rows.push({ mk, type: 'RDP — aucun avoir émis', due: attendu, urgent: true,
+      rows.push({ mk, m, nature: 'noavoir', attendu, type: 'RDP — aucun avoir émis', due: attendu, urgent: true,
         preuve: `Contrat signé, actif depuis le ${csFr || '?'}. Achats de ${MOIS[m-1]} ${yr} au justificatif répartiteur × barème RDP `
               + `identique aux mois voisins (avoirs émis et vérifiés au centime) = ${fmtE(attendu)} dus. Aucun avoir reçu à ce jour.` });
     }
@@ -7249,12 +7249,14 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
   }
   // 4. Coop en retard (année entière, après allocation FIFO chronologique)
   if (coopAtt - coopRec > 50) {
-    rows.push({ mk: String(yr), type: 'COOP — prestations en retard', due: coopAtt - coopRec, urgent: true,
+    rows.push({ mk: String(yr), nature: 'coop', coopAtt, coopRec, type: 'COOP — prestations en retard', due: coopAtt - coopRec, urgent: true,
       preuve: `Prestations attendues ${yr} (achats justificatif × remise3 contractuelle × 1,20 TTC × coef contrat) : ${fmtE(coopAtt)}. `
             + `Virements coop affectés chronologiquement : ${fmtE(coopRec)}.` });
   }
   const total = rows.reduce((a,r)=>a+r.due, 0);
   const key   = `${selNorm}|${yr}`;
+  window._litigeData = window._litigeData || {};
+  window._litigeData[key] = { rows, total, labDisplay, yr, csFr };
   window._litigeTxt[key] = `RÉCAPITULATIF DES SOMMES DUES — ${labDisplay} ${yr}\n`
     + `(établi le ${today.toLocaleDateString('fr-FR')} sur justificatifs répartiteur, avoirs ${labDisplay} et relevés bancaires)\n\n`
     + rows.map(r => `• ${r.mk} — ${r.type} : ${fmtE(r.due)}\n  Justification : ${r.preuve}`).join('\n\n')
@@ -7279,11 +7281,92 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
       <tfoot><tr style="border-top:2px solid var(--red);font-weight:900">
         <td colspan="2" style="color:var(--red);letter-spacing:1px">TOTAL À RÉCLAMER</td>
         <td style="text-align:right;color:var(--red);font-size:14px">${fmtE(total)}</td>
-        <td><button onclick="_verifCopyLitige('${key}')" style="background:transparent;border:1px solid var(--red);color:var(--red);font-family:'Share Tech Mono',monospace;font-size:10px;padding:4px 10px;cursor:pointer;border-radius:3px">📋 COPIER POUR LE MAIL AU LABO</button></td>
+        <td style="white-space:nowrap"><button onclick="_showLitigeLetter('${key}')" style="background:var(--red);border:none;color:#fff;font-family:'Share Tech Mono',monospace;font-size:10px;font-weight:700;padding:5px 10px;cursor:pointer;border-radius:3px">✉ GÉNÉRER LE COURRIER</button>
+          <button onclick="_verifCopyLitige('${key}')" style="background:transparent;border:1px solid var(--red);color:var(--red);font-family:'Share Tech Mono',monospace;font-size:10px;padding:4px 10px;cursor:pointer;border-radius:3px;margin-left:6px">📋 COPIER LE RÉCAP</button></td>
       </tr></tfoot>
     </table></div>
     <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:6px">Preuves : justificatifs répartiteur (achats par référence), avoirs ${escH(labDisplay)} (n° + montants), relevés bancaires FSE (rapprochement par n° de document). Les lignes « dans le délai » ne sont pas comptées.</div>`;
 }
+
+// ── Générateur de courrier de réclamation (gabarits déterministes) ───────────
+// Normalise les arguments en un courrier formel prêt à envoyer au labo. 100 %
+// côté client, sans IA ni API : les montants viennent des données vérifiées,
+// les tournures sont des gabarits fixes par nature de litige → même qualité
+// d'argumentation pour tous les utilisateurs, zéro risque d'erreur de chiffre.
+function _verifLitigeLetter(key) {
+  const d = (window._litigeData || {})[key];
+  if (!d) return '';
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const perLbl = r => r.m ? `${MOIS[r.m-1]} ${r.mk.slice(0,4)}` : `l'exercice ${r.mk}`;
+  const paras = d.rows.map((r, i) => {
+    const n = i + 1;
+    if (r.nature === 'unpaid') {
+      return `${n}. Avoir non réglé — ${perLbl(r)} : ${fmtE(r.due)}\n`
+        + `L'avoir n° ${r.refs || '(à préciser)'}, émis par vos services au titre de la remise de performance de ${perLbl(r)} pour un montant de ${fmtE(r.annonce)}, demeure impayé à ce jour${r.verse>0 ? ` (règlement partiel constaté : ${fmtE(r.verse)})` : ''}. `
+        + `Le rapprochement de nos relevés bancaires, effectué par numéro de document, ne fait apparaître aucun virement correspondant, alors que vos règlements interviennent habituellement dans les deux mois suivant la période.`;
+    }
+    if (r.nature === 'underbilled') {
+      return `${n}. Avoir sous-évalué — ${perLbl(r)} : ${fmtE(r.due)}\n`
+        + `L'application à nos achats de ${perLbl(r)} — attestés par le relevé détaillé de notre répartiteur, référence par référence — du barème de remise de performance que vos services ont eux-mêmes appliqué sur les périodes voisines (taux vérifiés au centime sur vos propres avoirs) aboutit à ${fmtE(r.attendu)}. `
+        + `Or l'avoir émis${r.refs ? ` (n° ${r.refs})` : ''} ne porte que sur ${fmtE(r.annonce)}, soit un écart de ${fmtE(r.due)} en notre défaveur, dont nous demandons la régularisation.`;
+    }
+    if (r.nature === 'noavoir') {
+      return `${n}. Absence d'avoir — ${perLbl(r)} : ${fmtE(r.due)}\n`
+        + `Aucun avoir de remise de performance n'a été émis au titre de ${perLbl(r)}, alors que notre contrat est actif depuis le ${d.csFr || '(date de signature)'} et que nos achats du mois, attestés par le justificatif répartiteur, ouvrent droit à ${fmtE(r.due)} par application du barème contractuel — barème dont l'application est vérifiée au centime sur les avoirs que vous avez émis pour les mois voisins.`;
+    }
+    if (r.nature === 'coop') {
+      return `${n}. Prestations de coopération commerciale en retard — ${r.mk} : ${fmtE(r.due)}\n`
+        + `Les prestations dues au titre de ${r.mk} s'élèvent à ${fmtE(r.coopAtt)} TTC (assiette d'achats justifiée × taux contractuel × TVA), tandis que les virements reçus et affectés chronologiquement ne couvrent que ${fmtE(r.coopRec)}, laissant un solde de ${fmtE(r.due)}.`;
+    }
+    return '';
+  }).filter(Boolean);
+  const today = new Date().toLocaleDateString('fr-FR');
+  return `Objet : Réclamation — remises de performance et prestations de coopération commerciale (${d.labDisplay}, ${d.yr})\n\n`
+    + `Madame, Monsieur,\n\n`
+    + `Dans le cadre de notre partenariat${d.csFr ? ` (contrat actif depuis le ${d.csFr})` : ''}, nous procédons chaque mois au rapprochement systématique de nos achats (relevés détaillés du répartiteur, référence par référence), des avoirs émis par vos services et de nos relevés bancaires.\n\n`
+    + `Ce rapprochement, arrêté au ${today}, fait apparaître les anomalies suivantes, pour un total de ${fmtE(d.total)} en notre défaveur :\n\n`
+    + paras.join('\n\n')
+    + `\n\nEn conséquence, nous vous remercions de bien vouloir procéder à la régularisation de la somme de ${fmtE(d.total)} sous trente (30) jours, ou, à défaut, de nous communiquer les éléments contradictoires que vous pourriez détenir.\n\n`
+    + `L'ensemble des pièces justificatives (relevés répartiteur, avoirs, relevés bancaires) est tenu à votre disposition.\n\n`
+    + `Sous réserve de tous autres droits.\n\n`
+    + `Nous vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.\n\n`
+    + `[Nom de la pharmacie]\n[Adresse]\n[N° de compte client ${d.labDisplay}]`;
+}
+window._showLitigeLetter = function(key) {
+  document.getElementById('litigeLetterOverlay')?.remove();
+  const txt = _verifLitigeLetter(key);
+  if (!txt) { showToast('Aucun litige à mettre en courrier'); return; }
+  const ov = document.createElement('div');
+  ov.id = 'litigeLetterOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(2,4,10,.85);display:flex;'
+    + 'align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(2px)';
+  ov.innerHTML = `
+    <div style="background:#0c1526;border:1px solid var(--red);border-radius:12px;width:min(720px,96vw);max-height:92vh;display:flex;flex-direction:column;padding:18px 18px 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-family:'Orbitron',monospace;font-size:12px;font-weight:900;letter-spacing:2px;color:var(--red)">✉ COURRIER DE RÉCLAMATION</div>
+        <button id="litigeLetterClose" style="background:none;border:none;color:#c2d3e2;font-size:24px;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="font-size:12px;color:#c2d3e2;font-family:system-ui,sans-serif;margin-bottom:8px">Relis, complète les champs entre crochets (nom, adresse, n° client), puis copie. Les montants et n° d'avoir viennent directement de tes données vérifiées.</div>
+      <textarea id="litigeLetterTxt" style="flex:1;min-height:340px;background:#04060f;color:#eef4fb;border:1px solid #23405e;border-radius:8px;
+        padding:12px;font-family:system-ui,sans-serif;font-size:13px;line-height:1.55;resize:vertical;white-space:pre-wrap"></textarea>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button id="litigeLetterCopy" style="flex:1;background:var(--red);border:none;color:#fff;font-family:'Share Tech Mono',monospace;font-weight:700;font-size:12px;padding:10px;border-radius:6px;cursor:pointer">📋 COPIER LE COURRIER</button>
+        <button id="litigeLetterOk" style="flex:0 0 auto;background:transparent;border:1px solid #23405e;color:#c2d3e2;font-family:'Share Tech Mono',monospace;font-size:12px;padding:10px 16px;border-radius:6px;cursor:pointer">FERMER</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  document.getElementById('litigeLetterTxt').value = txt;
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  document.getElementById('litigeLetterClose').addEventListener('click', close);
+  document.getElementById('litigeLetterOk').addEventListener('click', close);
+  document.getElementById('litigeLetterCopy').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('litigeLetterTxt').value)
+      .then(() => showToast('✓ Courrier copié — prêt à coller dans ton mail'))
+      .catch(() => showToast('Copie impossible — sélectionne le texte manuellement'));
+  });
+};
 
 // ── Détail virement par virement (rapprochement RDP) ───────────────────────
 // Clé stable d'un virement (date + montant + début de libellé) pour l'override.
