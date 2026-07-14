@@ -7312,12 +7312,25 @@ function _r2ExactForMonth(mk, selNorm, labDisplay) {
   const lk = Object.keys(labs).find(l => _verifNormLab(l) === selNorm);
   const rows = lk ? labs[lk] : null;
   if (!rows || !rows.length) return null;
-  const year = parseInt(mk.slice(0, 4));
+  const year  = parseInt(mk.slice(0, 4));
+  const month = parseInt(mk.slice(5, 7));
   const map = window._rdpCipMaps[`${labDisplay}|${year}`];
   if (!map) { _loadRdpCipMap(labDisplay, year); return null; }
+  // Transition Biogaran fin 2025 (dès la bascule catalogue _y25cut, ex. sept.) :
+  // le répartiteur applique le REGROUPEMENT 2026 — des refs ex-40 %/15 % passent
+  // au palier RSF 30 % — et le labo paie RDP 10 % sur TOUT ce palier 30 %.
+  // Vérifié sur les avoirs réels oct./nov. : base de la ligne « RDP 10 % » =
+  // achats du palier 30 au centime (1 426,24 / 1 201,66 €). rsf_history 2025
+  // (carte par année) classe encore ces refs dans leur ancien groupe (RDP 0) et
+  // ne peut pas porter cette règle mensuelle : on l'applique ici, uniquement
+  // pour les mois ≥ bascule (avant la bascule, ces refs étaient palier 40 → 0,
+  // ce qui colle : juillet vérifié à −4,54 €).
+  const _cut = window._y25cut?.[labDisplay];
+  const _p30at10 = selNorm === 'BIOGARAN' && year === 2025 && _cut != null && month >= _cut;
   const byTaux = {}; let total = 0;
   rows.forEach(([cip, tx, qty, brut]) => {
-    const pct = map[cip] || 0;
+    let pct = map[cip] || 0;
+    if (_p30at10 && Math.abs(tx) === 30 && pct < 10) pct = 10;
     if (!(pct > 0)) return;
     const a = brut * pct / 100;
     byTaux[tx] = (byTaux[tx] || 0) + a;
