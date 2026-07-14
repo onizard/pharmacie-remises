@@ -8007,7 +8007,13 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     if (_baseKey[e.taux] != null) {
       key = _baseKey[e.taux];
       const _dispR2 = parseFloat(cmap[Math.abs(key)]?.remise2);
-      if (!isNaN(_dispR2) && _dispR2 !== e.taux) {
+      const _base   = (e.ca_grossiste || 0) + (e.ca_direct || 0);
+      if (isNaN(_dispR2) || _dispR2 <= 0) {
+        // Palier sans RDP au contrat, mais l'avoir y a bien calculé un taux : la
+        // base de la ligne d'avoir colle aux achats de ce palier → anomalie de
+        // facturation du LABO (pas de l'app), à contester.
+        note = `Anomalie de facturation labo : l'avoir applique ${e.taux} % sur une base de ${fmtE(_base)} qui correspond aux achats du palier ${key} % — palier qui ne prévoit AUCUNE RDP au contrat. À contester avec l'avoir à l'appui.`;
+      } else if (_dispR2 !== e.taux) {
         note = `Payé au taux ${e.taux} % — rattaché au palier ${key} % par la base d'achats de l'avoir (transition de barème : le taux affiché dans les conditions est ${_dispR2} %).`;
       }
     } else if (main.length === 1) {
