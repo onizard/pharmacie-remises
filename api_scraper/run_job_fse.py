@@ -289,13 +289,23 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
                 continue
             if amount is None or amount <= 0:
                 continue
-            # Virements uniquement — mais TOLÉRANT sur le préfixe : « VIR  », mais
+            # Virements uniquement — TOLÉRANT sur le préfixe : « VIR  », mais
             # aussi « VIREMENT SEPA … », « VIRT », « VIR. » (cas réel : le virement
             # Biogaran du 29/10/2025 de 1 396,29 € était absent des stats car son
-            # libellé ne commençait pas par « VIR<espace> »). Toujours assez strict
-            # pour exclure prélèvements, chèques et remises.
+            # libellé ne commençait pas par « VIR<espace> »).
             if not libelle.upper().strip().startswith('VIR'):
-                continue
+                # Filet de sécurité PAR SOMME/N° DE DOCUMENT : une ligne au libellé
+                # inhabituel (banque qui met le nom en premier, « SEPA … ») est
+                # quand même gardée si (a) son libellé contient un n° de facture/
+                # avoir Digi connu, ou (b) son montant correspond AU CENTIME à un
+                # avoir connu — uniquement pour les montants À DÉCIMALES (1 396,29 :
+                # collision quasi impossible ; les sommes rondes, plus banales,
+                # exigent le n° de document pour éviter les faux positifs).
+                _nl = _re.sub(r'[^A-Z0-9]', '', libelle.upper())
+                _known_ref = bool(norm_ref_index) and any(_nr in _nl for _nr, _, _ in norm_ref_index)
+                _cents_ok  = round(amount * 100) % 100 != 0 and round(amount * 100) in amount_to_candidates
+                if not _known_ref and not _cents_ok:
+                    continue
 
             # Dédoublonnage inter-fenêtres.
             _key = (date_str, libelle.strip()[:80], round(amount * 100))
