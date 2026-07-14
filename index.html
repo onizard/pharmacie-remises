@@ -7264,6 +7264,19 @@ function _digiPdfFlat() {
   }));
   return out;
 }
+// Signature « même document » d'un avoir : n° de document + date extraits du nom
+// (« avoir_…_9006335480_17122025.pdf » → « 9006335480|17122025 »). Permet de
+// dédoublonner les icônes 📄 quand le même avoir est présent sous plusieurs clés
+// (variante avoir_/facture_, ou indexé sur plusieurs mois de période).
+function _avoirDocSig(p) {
+  const m = String(p && (p.filename || p.key) || '').toUpperCase().match(/([A-Z0-9]{8,})[_-](\d{8})\.(PDF|XLSX?)$/);
+  return m ? `${m[1]}|${m[2]}` : (p && p.key) || '';
+}
+function _dedupAvoirs(list) {
+  const seen = {}, out = [];
+  (list || []).forEach(p => { const s = _avoirDocSig(p); if (!s || seen[s]) return; seen[s] = 1; out.push(p); });
+  return out;
+}
 // ── RDP attendue EXACTE par référence (achats × taux RDP du CIP) ─────────────
 // Source achats : grossiste_cip_stats (feuille « Détail par mois » du justificatif
 // répartiteur — les remises labo portent sur les ACHATS, jamais sur les ventes).
@@ -7640,7 +7653,7 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
       ? ` <span title="virement de ${fmtE(t.montant)} ventilé sur plusieurs périodes" style="color:var(--text-dim);font-size:9px">(part)</span>` : '';
     // Justificatif : un œil par avoir consultable ; œil grisé si le document
     // n'est pas encore importé (clic → explication + marche à suivre).
-    const avoirs = (t.avoirs && t.avoirs.length) ? t.avoirs : _fseMatchAvoirs(t);
+    const avoirs = _dedupAvoirs((t.avoirs && t.avoirs.length) ? t.avoirs : _fseMatchAvoirs(t));
     const _mref  = encodeURIComponent(_fseTransferRefs(t).join(', '));
     const docCell = avoirs.length
       ? avoirs.map(p => `<span onclick="_previewDigiPdf('${p.key}')" title="Voir ${escH(p.filename)}" style="cursor:pointer">👁</span>`).join(' ')
@@ -7976,6 +7989,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     if (!cands.length) cands = _pdfList.filter(p => (p.kinds || []).includes(wantKind));
     // 3. Repli anciens PDF (kinds absents) : un fichier « avoir_… » (jamais une facture produit).
     if (!cands.length) cands = _pdfList.filter(p => !(p.kinds || []).length && /avoir/i.test(p.filename || ''));
+    cands = _dedupAvoirs(cands);   // un seul 📄 par document (pas de doublon avoir_/facture_)
     if (!cands.length) {
       // Justificatif pas encore importé → pastille explicative (n° d'avoir connu
       // par le libellé du virement), cliquable aussi sur mobile.
