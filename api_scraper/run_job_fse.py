@@ -289,7 +289,12 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
                 continue
             if amount is None or amount <= 0:
                 continue
-            if not libelle.upper().strip().startswith('VIR '):
+            # Virements uniquement — mais TOLÉRANT sur le préfixe : « VIR  », mais
+            # aussi « VIREMENT SEPA … », « VIRT », « VIR. » (cas réel : le virement
+            # Biogaran du 29/10/2025 de 1 396,29 € était absent des stats car son
+            # libellé ne commençait pas par « VIR<espace> »). Toujours assez strict
+            # pour exclure prélèvements, chèques et remises.
+            if not libelle.upper().strip().startswith('VIR'):
                 continue
 
             # Dédoublonnage inter-fenêtres.
