@@ -578,6 +578,35 @@ async def _scrape_fse_async(creds: dict, date_from: str, date_to: str) -> list:
             if str(_pick) == 'not-found':
                 await page.keyboard.press("Escape")
             await page.wait_for_timeout(12_000)
+            # Webix VIRTUALISE les lignes du datatable : seules les lignes visibles
+            # sont montées dans le DOM, et l'export (toExcel) ne sérialise parfois
+            # que les données CHARGÉES. Cas réel : un virement Biogaran (1 396,29 €
+            # du 29/10) présent dans l'UI mais absent de l'export. On force le
+            # chargement de TOUTES les lignes en faisant défiler le datatable de
+            # haut en bas (via l'API Webix si dispo, sinon scroll DOM), puis on
+            # revient en haut avant d'exporter.
+            await page.evaluate("""async () => {
+                const sleep = ms => new Promise(r => setTimeout(r, ms));
+                const host = document.querySelector('[view_id="fse_bank_datatable"]');
+                // 1) API Webix : scrollTo sur toute la hauteur du contenu.
+                try {
+                    const w = window.webix, id = host && host.getAttribute('view_id');
+                    const t = (w && id) ? w.$$(id) : null;
+                    if (t && t.count && t.scrollTo) {
+                        const n = t.count();
+                        for (let i = 0; i < n; i += 20) { t.showItemByIndex ? t.showItemByIndex(i) : t.scrollTo(0, i * 34); await sleep(120); }
+                        t.scrollTo(0, 0);
+                        return;
+                    }
+                } catch (_) {}
+                // 2) Repli : scroll DOM du conteneur scrollable.
+                const sc = host ? host.querySelector('.webix_ss_body, .webix_scroll_cont, .webix_dtable') : null;
+                if (sc) {
+                    for (let y = 0; y <= sc.scrollHeight; y += 300) { sc.scrollTop = y; await sleep(90); }
+                    sc.scrollTop = 0;
+                }
+            }""")
+            await page.wait_for_timeout(2_000)
             _diag = await page.evaluate("""() => ({
                 date: (document.querySelector('[view_id="fse_bank_date"]')||{}).innerText,
                 rows: document.querySelectorAll('[view_id="fse_bank_datatable"] .webix_cell').length
