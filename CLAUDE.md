@@ -83,6 +83,7 @@ CLOUDFLARE_API_KEY=...
 - **Page Recap OSPHARM** : tableau mensuel par labo (qty, CA, remise pondérée). Chargement avec barre de progression `osp-bar-*`, puis START button → brick game 10s → résultats
 - **Page Comparaison** : analyse de scénarios. Même pattern de chargement que Recap (barre `osp-bar-*`, START button, brick game 10s)
 - **Connecteur Grossiste** : drop XLSX → upload MinIO → parse auto → `_grossisteMonthStats` → sauvegarde cloud
+- **Virement manuel (filet de sécurité)** : bouton « ＋ virement manquant » dans la barre du vérificateur. Si le scraper FSE rate un virement (ex. 1 396,29 € du 29/10/25, absent de l'export Webix), on le saisit à la main (labo, type RDP/coop, montant, date, mois d'encaissement). Stocké à part dans `state._fseManualVir` (persisté cloud via `fseManualVir`), ré-injecté de façon idempotente dans `_fseMonthStats` par `_fseApplyManual()` au début de `renderVerificateur()`. Type imposé via `t._mvtype` (prioritaire dans `_fseVtype`). Survit aux re-scrapes ; se rapproche automatiquement comme un virement scrapé (avoir / n° facture / montant au centime). `_fseMonthStatsNoManual()` retire les injections avant sérialisation pour éviter le double stockage.
 
 ## Architecture OSPHARM scraper (run_job_ospharm.py)
 - Boucle Jan N-1 → mois courant, scraping incrémental (mois déjà en base réutilisés)
