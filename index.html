@@ -7277,14 +7277,25 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
         preuve: `Contrat signé, actif depuis le ${csFr || '?'}. Achats de ${MOIS[m-1]} ${yr} au justificatif répartiteur × barème RDP `
               + `identique aux mois voisins (avoirs émis et vérifiés au centime) = ${fmtE(attendu)} dus. Aucun avoir reçu à ce jour.` });
     }
-    coopAtt += (typeof _verifCoopAttendue==='function') ? _verifCoopAttendue(mk, selNorm, labDisplay) : 0;
-    coopRec += ((amap[mk]||{}).r3||[]).reduce((a,e)=>a+e.amount,0);
   }
-  // 4. Coop en retard (année entière, après allocation FIFO chronologique)
-  if (coopAtt - coopRec > 50) {
-    rows.push({ mk: String(yr), nature: 'coop', coopAtt, coopRec, type: 'COOP — prestations en retard', due: coopAtt - coopRec, urgent: true,
-      preuve: `Prestations attendues ${yr} (achats justificatif × remise3 contractuelle × 1,20 TTC × coef contrat) : ${fmtE(coopAtt)}. `
-            + `Virements coop affectés chronologiquement : ${fmtE(coopRec)}.` });
+  // 4. Coop en retard — rapprochement en CUMUL DE CONTRAT (du 1er mois du contrat
+  // à aujourd'hui, TOUTES années confondues) : les prestations sont réglées sans
+  // détail et avec décalage, souvent l'année suivante (échéancier F00x de 2026
+  // couvrant 2025) → un rapprochement par année civile crierait au retard à tort.
+  // Affiché uniquement sur l'année en cours (une seule fois).
+  if (yr === today.getFullYear() && cs) {
+    let [cy, cm] = cs.split('-').map(Number);
+    while (cy < today.getFullYear() || (cy === today.getFullYear() && cm <= today.getMonth() + 1)) {
+      const cmk = `${cy}-${String(cm).padStart(2,'0')}`;
+      coopAtt += (typeof _verifCoopAttendue==='function') ? _verifCoopAttendue(cmk, selNorm, labDisplay) : 0;
+      coopRec += ((amap[cmk]||{}).r3||[]).reduce((a,e)=>a+e.amount,0);
+      cm++; if (cm > 12) { cm = 1; cy++; }
+    }
+    if (coopAtt - coopRec > 50) {
+      rows.push({ mk: `depuis ${csFr}`, nature: 'coop', coopAtt, coopRec, type: 'COOP — prestations en retard', due: coopAtt - coopRec, urgent: true,
+        preuve: `Cumul depuis le début du contrat (${csFr}) : prestations attendues ${fmtE(coopAtt)} (achats justificatif × remise3 contractuelle × 1,20 TTC × coef contrat) ; `
+              + `règlements coop reçus, toutes années confondues : ${fmtE(coopRec)}.` });
+    }
   }
   const total = rows.reduce((a,r)=>a+r.due, 0);
   const key   = `${selNorm}|${yr}`;
@@ -7617,49 +7628,6 @@ function _verifCoopAttendue(mk, selNorm, labDisplay) {
   });
   return Math.round(tot*100)/100;
 }
-// Règle métier coop : les prestations sont réglées SANS détail → on comble chaque
-// presta attendue (conditions labo) par les virements coop dans l'ORDRE
-// CHRONOLOGIQUE. Virement insuffisant → le suivant complète le mois ; surplus →
-// reporté sur la presta attendue du mois suivant. Le reliquat final (aucune
-// presta attendue restante, ex. mois 2026 sans justificatif grossiste) reste sur
-// le mois d'encaissement du virement.
-function _fseFifoCoop(transfers, selNorm, labDisplay, cell) {
-  if (!transfers.length) return;
-  transfers.sort((a,b) => (a.date||'').localeCompare(b.date||'')
-    || ((_fseSeqNum(a) ?? 0) - (_fseSeqNum(b) ?? 0))
-    || ((a.montant||0) - (b.montant||0)));
-  // Cibles mensuelles : du début du contrat (ou du 1er mois d'achats) à maintenant.
-  const gmks  = Object.keys(state._grossisteMonthStats || {}).sort();
-  const start = _fseContractStart(labDisplay) || gmks[0];
-  const now   = new Date();
-  const nowMk = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const targets = [];
-  if (start) {
-    let [y, m] = start.split('-').map(Number);
-    while (true) {
-      const mk = `${y}-${String(m).padStart(2,'0')}`;
-      if (mk > nowMk) break;
-      const att = _verifCoopAttendue(mk, selNorm, labDisplay);
-      if (att > 0) targets.push({ mk, needC: Math.round(att*100) });
-      m++; if (m > 12) { m = 1; y++; }
-    }
-  }
-  let ti = 0;
-  transfers.forEach(t => {
-    let restC = Math.round((t.montant||0)*100);   // centimes
-    while (restC > 0 && ti < targets.length) {
-      const tg   = targets[ti];
-      const take = Math.min(restC, tg.needC);
-      if (take > 0) {
-        cell(tg.mk, 'r3').push({ t, amount: take/100, avoirs: [], via: 'fifo' });
-        tg.needC -= take;
-        restC    -= take;
-      }
-      if (tg.needC <= 0) ti++;
-    }
-    if (restC > 0) cell(t._encMk, 'r3').push({ t, amount: restC/100, avoirs: [], via: 'enc' });
-  });
-}
 // Périodes Digi dont les facture_refs contiennent un n° de document du virement.
 // 2e canal d'appariement exact : même sans PDF d'avoir stocké, les stats Digi
 // portent les n° de facture par mois de période (ex. virement « 9006825707 » →
@@ -7690,13 +7658,8 @@ function _fseAssignMap(selNorm, labDisplay) {
     }));
   if (!all.length) return map;
   const leftovers = { r2: [], r3: [] };
-  const coop = [];
   all.forEach(t => {
     const vt = _fseVtype(t);
-    // COOP : réglée sans détail → allocation FIFO chronologique sur les prestas
-    // attendues (voir _fseFifoCoop). Le circuit d'appariement par document ne
-    // s'applique qu'à la RDP.
-    if (vt === 'r3') { coop.push(t); return; }
     const avoirs = _fseMatchAvoirs(t).filter(p => p.months && p.months.length);
     if (avoirs.length) {
       // Périodes des avoirs appariés ; ventilation par rdp_total si plusieurs.
@@ -7735,8 +7698,15 @@ function _fseAssignMap(selNorm, labDisplay) {
       }
     }
   });
-  // COOP : allocation FIFO chronologique sur les prestas attendues mensuelles.
-  _fseFifoCoop(coop, selNorm, labDisplay, cell);
+  // COOP sans appariement (ni PDF, ni facture_refs Digi) : mois d'encaissement —
+  // on affiche les VRAIES valeurs des virements/factures (plus de découpage FIFO
+  // en « parts »). Les virements CSP restent rattachés à leur période par leurs
+  // n° de facture presta (canal facture_refs ci-dessus) ; l'échéancier F00x sans
+  // avoir reste sur son mois d'encaissement. Le rapprochement coop du récap
+  // litige se fait en CUMUL DE CONTRAT (pas par mois), donc les règlements 2026
+  // couvrant 2025 comptent quand même.
+  leftovers.r3.forEach(t =>
+    cell(t._encMk, 'r3').push({ t, amount: t.montant || 0, avoirs: [], via: 'enc' }));
   // RDP sans appariement par document : 3e canal EXACT — MONTANT AU CENTIME égal
   // à la RDP annoncée (rdp_total) d'une période encore sans règlement rattaché.
   // Cas réel : virement du 29/10/2025 de 1 396,29 € = avoir de septembre au
@@ -7978,51 +7948,50 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
   // Vue virements du cumul : les mois de contrat ASSIGNÉS de l'année.
   const asgMksY = Object.keys(_amap).filter(mksY);
   const fseMksY = asgMksY.length ? asgMksY : Object.keys(state._fseMonthStats||{}).filter(mksY);
+  // Appariement REÇU : MOIS PAR MOIS puis somme par palier — le cumul est ainsi
+  // la vraie somme des lignes mensuelles. Apparier sur les agrégats annuels
+  // mélangeait les régimes de barème (fin 2025) : la ligne « taux 30 % » agrégée
+  // se rattachait par base au palier 2,5 % (8 754,35 € affichés à tort dessus).
+  const rmapAgg = {};
+  for (let m = 1; m <= 12; m++) {
+    const mk = `${yr}-${String(m).padStart(2,'0')}`;
+    const dRow = ((state._digiMonthStats||{})[mk]||[]).find(r=>_verifNormLab(r.labo)===selNorm);
+    const rbt  = (dRow && Array.isArray(dRow.rdp_by_taux)) ? dRow.rdp_by_taux : [];
+    if (!rbt.length) continue;
+    const gRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r=>_verifNormLab(r.labo)===selNorm);
+    const palM = (gRow && Array.isArray(gRow.paliers)) ? gRow.paliers : [];
+    const condM = _verifGetCond(labDisplay, yr, m);
+    const cmapM = {}; (condM?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)&&!r.excluded) cmapM[k]=r; });
+    const emapM = {};
+    Object.entries(condM?.remise2Except || {}).forEach(([k, v]) => {
+      const kk = Math.abs(parseFloat(k)), pp = parseFloat(v?.remise2), nn = (v?.libelles||[]).length;
+      if (!isNaN(kk) && pp > 0 && nn > 0) emapM[kk] = { pct: pp, n: nn };
+    });
+    const rm = _rdpPairMap(rbt, palM, cmapM, emapM);
+    Object.entries(rm).forEach(([k, e]) => {
+      const a = rmapAgg[k] = rmapAgg[k] || { taux: e.taux, grossiste:0, direct:0, ca_grossiste:0, ca_direct:0, _note:'', _unpaired:true };
+      ['grossiste','direct','ca_grossiste','ca_direct'].forEach(f => a[f] = (a[f]||0) + (e[f]||0));
+      if (e._note) a._note = e._note;
+      a._unpaired = a._unpaired && !!e._unpaired;
+    });
+  }
   // Vue TOUT : le récap litige (à réclamer au labo, avec preuves) vient JUSTE
   // après le bloc REMISE 3 / COOP (dernier bloc du core), avant le détail des
   // virements.
-  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr, r2RecAnnounced)
+  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr, r2RecAnnounced, rmapAgg)
        + _verifRenderLitige(yr, selNorm, labDisplay)
        + _verifRenderVirements(fseMksY, selNorm, labDisplay, rdpTotalSum);
 }
 
-// Rendu commun du tableau par palier (mensuel ou cumul annuel).
-// cumulYear : null pour un mois donné, l'année pour le cumul Jan→Déc.
-function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, year, monthForCond, cumulYear, r2RecAnnounced) {
+// ── Appariement des lignes d'avoir (taux versé) aux paliers RSF ────────────────
+// 1. par BASE D'ACHATS (le CA de la ligne d'avoir ≈ le brut du palier) ;
+// 2. par conditions (remise2 du palier = taux versé) ;
+// 3. sinon ligne orpheline (unpaired). Retourne { palier: {montants, _note} }.
+// Réutilisé par la vue mensuelle ET par le cumul (qui appaire MOIS PAR MOIS puis
+// somme — apparier sur des agrégats annuels mélangeait les régimes de barème et
+// rattachait p. ex. la ligne « taux 30 % » de 2025 au palier 2,5 %).
+function _rdpPairMap(rdpByTaux, paliers, cmap, emap) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
-  const fmtP = v => v != null ? (Math.round(v*100)/100).toString().replace('.',',') + ' %' : '—';
-  const TVA_R3 = 1.20, isBio = selNorm === 'BIOGARAN';
-  const cond   = _verifGetCond(labDisplay, year, monthForCond);
-  const coopR3 = cond ? (parseFloat(cond.coopR3)||0) : 0;
-  const coef   = isBio ? _verifBiogaranCoef(year) : 1;
-  // rsf_pct des conditions est souvent stocké NÉGATIF (remise), alors que le taux
-  // grossiste/RDP est positif → on indexe par valeur absolue pour les apparier.
-  const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)&&!r.excluded) cmap[k]=r; });
-  // La coop (remise3) s'applique aussi aux paliers marqués « exclus » (l'exclusion
-  // ne porte que sur la RSF/RDP) — ex. Biogaran : 12 % de coop sur 2,5 % et 5 %.
-  const cmapAll = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)) cmapAll[k]=r; });
-  const gmap = {}; paliers.forEach(p => gmap[p.taux]=p);
-  // L'avoir ventile la RDP par TAUX VERSÉ, pas par palier RSF. Or un même taux
-  // peut couvrir plusieurs paliers : ex. 2026, « RDP 10 % » = palier RSF 20 %
-  // (condition principale) + les références d'EXCEPTION du palier 30 % (10 %).
-  // On rattache chaque taux RDP au palier dont la condition PRINCIPALE porte ce
-  // remise2 ; les exceptions (remise2Except) sont signalées sur leur palier
-  // d'origine (le montant, agrégé par taux dans l'avoir, reste sur la ligne du
-  // taux). Un taux sans aucun rattachement (ex. « 30 % » d'oct-déc 2025 =
-  // reliquat du barème 2025 pendant la transition) garde sa propre ligne, sans
-  // RDP « attendue » inventée.
-  const emap = {};   // taux RSF → { pct, n } : exception remise2 du palier
-  Object.entries(cond?.remise2Except || {}).forEach(([k, v]) => {
-    const kk = Math.abs(parseFloat(k));
-    const p  = parseFloat(v?.remise2);
-    const n  = (v?.libelles || []).length;
-    // n > 0 uniquement : une exception n'est « réelle » (et visible/éditable dans
-    // les conditions labo) que si elle porte au moins une référence. Une exception
-    // à taux seul, sans référence de la pharmacie (barème diffusé mais aucun produit
-    // concerné), ne doit PAS apparaître en « +exc » ici — sinon elle serait affichée
-    // dans le vérificateur sans jamais apparaître dans les conditions labo.
-    if (!isNaN(kk) && p > 0 && n > 0) emap[kk] = { pct: p, n };
-  });
   const _pairMain = {}, _pairExc = {};   // taux RDP → [taux RSF]
   Object.entries(cmap).forEach(([k, r]) => {
     const t2 = parseFloat(r.remise2);
@@ -8090,6 +8059,47 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       rmap[key] = { ...e, _note: note, _unpaired: unpaired };
     }
   });
+  return rmap;
+}
+
+// Rendu commun du tableau par palier (mensuel ou cumul annuel).
+// cumulYear : null pour un mois donné, l'année pour le cumul Jan→Déc.
+function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, year, monthForCond, cumulYear, r2RecAnnounced, rmapPre) {
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const fmtP = v => v != null ? (Math.round(v*100)/100).toString().replace('.',',') + ' %' : '—';
+  const TVA_R3 = 1.20, isBio = selNorm === 'BIOGARAN';
+  const cond   = _verifGetCond(labDisplay, year, monthForCond);
+  const coopR3 = cond ? (parseFloat(cond.coopR3)||0) : 0;
+  const coef   = isBio ? _verifBiogaranCoef(year) : 1;
+  // rsf_pct des conditions est souvent stocké NÉGATIF (remise), alors que le taux
+  // grossiste/RDP est positif → on indexe par valeur absolue pour les apparier.
+  const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)&&!r.excluded) cmap[k]=r; });
+  // La coop (remise3) s'applique aussi aux paliers marqués « exclus » (l'exclusion
+  // ne porte que sur la RSF/RDP) — ex. Biogaran : 12 % de coop sur 2,5 % et 5 %.
+  const cmapAll = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)) cmapAll[k]=r; });
+  const gmap = {}; paliers.forEach(p => gmap[p.taux]=p);
+  // L'avoir ventile la RDP par TAUX VERSÉ, pas par palier RSF. Or un même taux
+  // peut couvrir plusieurs paliers : ex. 2026, « RDP 10 % » = palier RSF 20 %
+  // (condition principale) + les références d'EXCEPTION du palier 30 % (10 %).
+  // On rattache chaque taux RDP au palier dont la condition PRINCIPALE porte ce
+  // remise2 ; les exceptions (remise2Except) sont signalées sur leur palier
+  // d'origine (le montant, agrégé par taux dans l'avoir, reste sur la ligne du
+  // taux). Un taux sans aucun rattachement (ex. « 30 % » d'oct-déc 2025 =
+  // reliquat du barème 2025 pendant la transition) garde sa propre ligne, sans
+  // RDP « attendue » inventée.
+  const emap = {};   // taux RSF → { pct, n } : exception remise2 du palier
+  Object.entries(cond?.remise2Except || {}).forEach(([k, v]) => {
+    const kk = Math.abs(parseFloat(k));
+    const p  = parseFloat(v?.remise2);
+    const n  = (v?.libelles || []).length;
+    // n > 0 uniquement : une exception n'est « réelle » (et visible/éditable dans
+    // les conditions labo) que si elle porte au moins une référence. Une exception
+    // à taux seul, sans référence de la pharmacie (barème diffusé mais aucun produit
+    // concerné), ne doit PAS apparaître en « +exc » ici — sinon elle serait affichée
+    // dans le vérificateur sans jamais apparaître dans les conditions labo.
+    if (!isNaN(kk) && p > 0 && n > 0) emap[kk] = { pct: p, n };
+  });
+  const rmap = rmapPre || _rdpPairMap(rdpByTaux, paliers, cmap, emap);
   const allTaux = [...new Set([...paliers.map(p=>p.taux), ...Object.keys(rmap).map(Number)])]
     .filter(t => t!=null && !isNaN(t)).sort((a,b)=>a-b);
 
@@ -8193,7 +8203,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       r2: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
         `<td class="verif-r2"${_mixed&&r2pctDisp!==r2pct?` title="Barème 2025 (la RDP suit l'année du mois — vérifié sur les avoirs oct.–déc.). Les conditions affichées 2026 indiquent ${r2pct!=null?fmtP(r2pct):'—'} pour ce palier."`:''}>${r2pctDisp!=null?fmtP(r2pctDisp):'—'}${_mixed&&r2pctDisp!==r2pct?' <span style="color:var(--text-dim);font-size:8px">(barème 2025)</span>':''}${exc&&!_mixed?` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`:''}</td>` +
         `<td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:(r2Aexact!=null?` title="Calcul EXACT par référence : Σ achats (justificatif) × taux RDP du CIP (rsf_history ${cumulYear||year}) — exceptions comprises"`:'')}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':((r2pct!=null||r2Aexact!=null)?`${fmtE(r2A)}${r2Aexact!=null?' <span style="font-size:8px;color:var(--cyan)" title="exact par référence">◎</span>':''}`:'—')}</td>` +
-        `<td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span style="color:var(--amber);font-size:9px" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>` +
+        `<td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span onclick="alert(decodeURIComponent(\''+encodeURIComponent(rd._note).replace(/'/g,'%27').replace(/\(/g,'%28').replace(/\)/g,'%29')+'\'))" style="color:var(--amber);font-size:9px;cursor:pointer" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>` +
         `<td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>`,
       r3: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
         `<td class="verif-r3">${r3pct>0?fmtP(r3pct):'—'}</td>` +
