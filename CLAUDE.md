@@ -43,6 +43,7 @@ Alias disponible : `git wip` (add + commit "wip" + push en une commande)
 ## Scripts Python
 | Fichier | Rôle |
 |---|---|
+| `api_scraper/grossiste_parse.py` | Parseurs justificatif répartiteur CERP (feuilles « Récap par mois » + « Détail par mois »). **Colonnes lues à l'EN-TÊTE, pas codées en dur** : le gabarit CERP décale ses colonnes d'un cran sur les mois anciens (colonne vide en 3e position, ex. jan.–avr. 2026) → sinon taux=None (paliers ignorés) et ca_brut lu sur la colonne des quantités. `_merge_grossiste_stats` REMPLACE le mois re-déposé (pas d'addition → re-dépôt idempotent). |
 | `scraper_astera.py` | Scrape les PDFs de remises depuis agora.cerp.fr → Excel |
 | `scraper_puht.py` | Scrape les prix PU HT depuis webuy.astera.coop/ART412 |
 | `extraire_excel.py` | Extrait les données de remise des PDFs → Excel normalisé |

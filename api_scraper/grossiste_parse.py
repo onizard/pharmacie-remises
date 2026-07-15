@@ -27,6 +27,24 @@ def _norm_grossiste_labo(raw: str) -> str:
     return m.group(1) if m else (raw or "").upper().split()[0] if raw else "?"
 
 
+def _match_recap_header(row) -> dict | None:
+    """Repère les colonnes d'un en-tête 'Récap par mois' par leur libellé.
+    Renvoie {labo, taux, qty, brut, remise, net} ou None si la ligne n'est pas
+    un en-tête. Robuste au décalage de colonnes du gabarit CERP (cf. ci-dessous)."""
+    cols = {}
+    for i, v in enumerate(row):
+        s = str(v or "").strip().lower()
+        if not s:
+            continue
+        if   s.startswith("nom partenariat"): cols["labo"]   = i
+        elif s.startswith("tx rem"):          cols["taux"]   = i
+        elif s.startswith("qtes"):            cols["qty"]    = i
+        elif s.startswith("mt vente brut"):   cols["brut"]   = i
+        elif s.startswith("montant remise"):  cols["remise"] = i
+        elif s.startswith("ca net"):          cols["net"]    = i
+    return cols if {"labo", "taux", "qty", "brut"} <= set(cols) else None
+
+
 def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
     """Parse feuille 'Récap par mois' → {year-MM: [{labo, qty, total_ht, ca_brut,
     paliers: [{taux, qty, brut, remise, net}]}]}.
@@ -34,7 +52,14 @@ def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
     Le justificatif répartiteur ventile chaque labo par 'Tx Rem' (= palier RSF :
     0 / 2,5 / 5 / 10 / 20 / 25 / 30 / 40). On conserve ce détail par palier
     (montant remise = RSF effectivement obtenu) en plus des totaux par labo.
-    """
+
+    ⚠️ Le gabarit CERP a CHANGÉ en cours d'année 2026 : les mois anciens
+    (jan.–avr.) portent une colonne VIDE en 3e position qui décale toutes les
+    colonnes d'un cran par rapport aux mois récents (mai+). On lit donc la
+    position des colonnes à CHAQUE ligne d'en-tête (« nom partenariat … Tx Rem …
+    ») au lieu de les coder en dur — sinon, pour ces mois, le taux tombe sur une
+    cellule vide (palier ignoré) et le ca_brut est lu sur la colonne des
+    quantités (CA divisé par ~4, réalisation faussée, coop bloquée à tort)."""
     import io, re, openpyxl
 
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
@@ -42,6 +67,9 @@ def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
         return {}
     ws = wb["Récap par mois"]
 
+    # Positions par défaut = gabarit « récent » (mai 2026+). Réécrites à chaque
+    # en-tête rencontré. Repli sûr si un bloc n'a pas d'en-tête.
+    idx = {"labo": 1, "taux": 2, "qty": 3, "brut": 4, "remise": 5, "net": 6}
     month_acc: dict[str, dict] = {}
     current_month = None
     for row in ws.iter_rows(values_only=True):
@@ -54,10 +82,20 @@ def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
                 current_month = f"{m.group(1)}-{m.group(2)}"
                 month_acc.setdefault(current_month, {})
             continue
+        hdr = _match_recap_header(row)
+        if hdr:                       # (re)cale les colonnes pour le bloc courant
+            idx = {**idx, **hdr}
+            continue
         if current_month is None:
             continue
-        # Cols : Rep/Dep | nom | Tx Rem | qtes | Mt Vente Brut HT | Montant remise | CA net HT
-        rep_dep, labo_raw, taux, qty, ca_brut_raw, remise_raw, ca_net = (list(row) + [None]*7)[:7]
+        cell = lambda k: row[idx[k]] if len(row) > idx[k] else None
+        rep_dep     = row[0] if row else None
+        labo_raw    = cell("labo")
+        taux        = cell("taux")
+        qty         = cell("qty")
+        ca_brut_raw = cell("brut")
+        remise_raw  = cell("remise")
+        ca_net      = cell("net")
         if rep_dep == "Rep G" and labo_raw and qty:
             labo = _norm_grossiste_labo(labo_raw)
             acc  = month_acc[current_month].setdefault(
@@ -103,7 +141,11 @@ def _parse_grossiste_detail_bytes(xlsx_bytes: bytes) -> dict:
     C'est la source de précision ultime pour la vérification RDP : les remises
     labo s'appliquent aux ACHATS — ce détail permet de calculer l'attendu par
     référence (exceptions par CIP comprises), là où le récap n'agrège que par
-    palier. Lignes 'Rep G' uniquement (comme le récap)."""
+    palier. Lignes 'Rep G' uniquement (comme le récap).
+
+    Colonnes lues à l'en-tête (« CIP/ACL … Partenariat … Tx Rem … ») et non
+    codées en dur, par prudence : le gabarit CERP décale ses colonnes sur les
+    mois anciens (cf. _parse_grossiste_bytes)."""
     import io, re, openpyxl
 
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
@@ -112,32 +154,51 @@ def _parse_grossiste_detail_bytes(xlsx_bytes: bytes) -> dict:
         return {}
     ws = wb["Détail par mois"]
 
+    def _match_detail_header(row):
+        cols = {}
+        for i, v in enumerate(row):
+            s = str(v or "").strip().lower()
+            if not s:
+                continue
+            if   s.startswith("cip/acl") or s.startswith("cip"): cols["cip"]  = i
+            elif s.startswith("rep/dep"):                        cols["rep"]  = i
+            elif s.startswith("partenariat"):                    cols["part"] = i
+            elif s.startswith("tx rem"):                         cols["taux"] = i
+            elif s.startswith("qtes"):                           cols["qty"]  = i
+            elif s.startswith("mt vente brut"):                  cols["brut"] = i
+        return cols if {"cip", "rep", "part", "taux", "qty", "brut"} <= set(cols) else None
+
+    # Positions par défaut = gabarit habituel ; réécrites à chaque en-tête.
+    idx = {"cip": 1, "rep": 3, "part": 4, "taux": 5, "qty": 7, "brut": 8}
     out: dict[str, dict] = {}
     cur = None
     for row in ws.iter_rows(values_only=True):
-        cells = (list(row) + [None] * 11)[:11]
+        cells = (list(row) + [None] * 12)[:12]
         m = re.search(r"Mois comptable\s*:\s*(\d{4})\s+(\d{2})", str(cells[0] or ""))
         if m:
             cur = f"{m.group(1)}-{m.group(2)}"
             out.setdefault(cur, {})
             continue
+        hdr = _match_detail_header(row)
+        if hdr:
+            idx = {**idx, **hdr}
+            continue
         if cur is None:
             continue
-        # Cols : Cod.Artic | CIP/ACL 13 | Libellé | Rep/Dep | Partenariat | Tx Rem |
-        #        Prix fact ht | qtes | Mt Vente Brut ht | Montant remise | CA net HT
-        cip = str(cells[1] or "").strip()
-        if not re.fullmatch(r"\d{13}", cip) or str(cells[3] or "") != "Rep G":
+        get = lambda k: cells[idx[k]] if len(cells) > idx[k] else None
+        cip = str(get("cip") or "").strip()
+        if not re.fullmatch(r"\d{13}", cip) or str(get("rep") or "") != "Rep G":
             continue
-        labo = _norm_grossiste_labo(cells[4] or "")
+        labo = _norm_grossiste_labo(get("part") or "")
         if not labo:
             continue
         try:
-            taux = round(float(cells[5]), 2)
+            taux = round(float(get("taux")), 2)
         except (TypeError, ValueError):
             continue
         try:
-            qty  = int(cells[7] or 0)
-            brut = round(float(cells[8] or 0), 2)
+            qty  = int(get("qty") or 0)
+            brut = round(float(get("brut") or 0), 2)
         except (TypeError, ValueError):
             continue
         # Agrégat par (cip, taux) dans le mois (une référence peut avoir plusieurs lignes).
@@ -172,22 +233,15 @@ def _merge_paliers(a: list, b: list) -> list:
 
 
 def _merge_grossiste_stats(existing: dict, new_stats: dict) -> dict:
-    """Fusion additive : mois distincts → union ; mois communs → addition par labo
-    (y compris la ventilation par palier)."""
-    merged = dict(existing)
-    for mk, new_rows in new_stats.items():
-        if mk not in merged:
-            merged[mk] = new_rows
-        else:
-            labo_map = {r["labo"]: dict(r) for r in merged[mk]}
-            for nr in new_rows:
-                if nr["labo"] in labo_map:
-                    ex = labo_map[nr["labo"]]
-                    ex["qty"]      += nr["qty"]
-                    ex["total_ht"]  = round(ex["total_ht"] + nr["total_ht"], 2)
-                    ex["ca_brut"]   = round(ex.get("ca_brut", 0) + nr.get("ca_brut", 0), 2)
-                    ex["paliers"]   = _merge_paliers(ex.get("paliers"), nr.get("paliers"))
-                else:
-                    labo_map[nr["labo"]] = dict(nr)
-            merged[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])
+    """Fusion à la maille MOIS : un justificatif « par taux » contient ses mois EN
+    ENTIER → le mois re-déposé REMPLACE l'ancien (mêmes semantics que le détail par
+    CIP, cf. main.py). Les mois absents du nouveau lot sont conservés.
+
+    ⚠️ NE PAS revenir à une addition par labo : re-déposer un fichier qui recouvre
+    des mois déjà en base (cas normal d'une ré-analyse) doublait alors leur CA — et
+    comme le back-end écrit en snake_case (prioritaire au chargement front), le
+    doublon survivait au rechargement. La ventilation par palier est déjà complète
+    dans chaque parse, il n'y a rien à additionner entre deux dépôts."""
+    merged = dict(existing or {})
+    merged.update(new_stats or {})   # mois présents dans le nouveau lot → remplacés
     return merged
