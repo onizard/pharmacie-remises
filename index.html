@@ -7701,13 +7701,27 @@ function _fseAssignMap(selNorm, labDisplay) {
   });
   // COOP : allocation FIFO chronologique sur les prestas attendues mensuelles.
   _fseFifoCoop(coop, selNorm, labDisplay, cell);
-  // RDP sans aucun appariement (ni PDF, ni facture_refs Digi) : rattachée à SON
-  // mois d'encaissement (la date du virement). On n'utilise PLUS le remplissage
-  // des mois de contrat depuis le début (il rétro-datait un virement de 2026 sur
-  // 2025). Dès que l'avoir de la période arrive dans Digi, le canal facture_refs
-  // ci-dessus recale le virement automatiquement sur sa vraie période.
-  leftovers.r2.forEach(t =>
-    cell(t._encMk, 'r2').push({ t, amount: t.montant || 0, avoirs: [], via: 'enc' }));
+  // RDP sans appariement par document : 3e canal EXACT — MONTANT AU CENTIME égal
+  // à la RDP annoncée (rdp_total) d'une période encore sans règlement rattaché.
+  // Cas réel : virement du 29/10/2025 de 1 396,29 € = avoir de septembre au
+  // centime, mais libellé bancaire SANS le n° d'avoir → le canal document ne
+  // l'accrochait pas. Décimales exigées (les sommes rondes sont trop banales) et
+  // correspondance UNIQUE, sinon repli : mois d'encaissement — d'où le virement
+  // se recalera seul si l'avoir de sa période arrive plus tard dans Digi.
+  leftovers.r2.forEach(t => {
+    const cents = Math.round((t.montant || 0) * 100);
+    let hit = null;
+    if (cents % 100 !== 0) {
+      const mks = Object.entries(state._digiMonthStats || {}).filter(([mk, arr]) => {
+        const row = (arr || []).find(r => _verifNormLab(r.labo) === selNorm);
+        return row && Math.round((row.rdp_total || 0) * 100) === cents
+          && !((map[mk] || {}).r2 || []).length;
+      }).map(([mk]) => mk);
+      if (mks.length === 1) hit = mks[0];
+    }
+    if (hit) cell(hit, 'r2').push({ t, amount: t.montant || 0, avoirs: [], via: 'amt' });
+    else cell(t._encMk, 'r2').push({ t, amount: t.montant || 0, avoirs: [], via: 'enc' });
+  });
   return map;
 }
 // Stats FSE effectives d'un labo/mois : si le détail unitaire est là, recalcule
@@ -7794,6 +7808,7 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
     // Mois de contrat assigné + méthode : n° de document (sûr), ⇢ comblement
     // chronologique des prestas attendues (coop), ≈ mois d'encaissement.
     const viaMark = t.via === 'fifo' ? ' <span title="coop réglée sans détail — virement affecté par ordre chronologique sur la presta attendue du mois (manque comblé par le virement suivant, surplus reporté au mois suivant)" style="color:var(--amber)">⇢</span>'
+                  : t.via === 'amt'  ? ' <span title="rattaché par MONTANT au centime (= RDP annoncée de cette période, libellé bancaire sans n° d\'avoir)" style="color:var(--amber)">≡</span>'
                   : t.via === 'chrono' ? ' <span title="assigné par ordre chronologique depuis le début du contrat" style="color:var(--amber)">~</span>'
                   : t.via === 'enc'    ? ' <span title="rattaché au mois d\'encaissement (aucune presta attendue restante à combler)" style="color:var(--text-dim)">≈</span>' : '';
     const split = t.amount != null && Math.abs((t.amount||0) - (t.montant||0)) >= 0.01
