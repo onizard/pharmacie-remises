@@ -7298,27 +7298,30 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
   if (!rows.length) {
     return `${title}<div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green)">✓ Rien à réclamer sur ${yr} : tout ce qui est dû (avoirs émis, RDP attendue, coop) est réglé ou dans les délais habituels.</div>`;
   }
-  const tr = rows.map(r => `<tr>
-      <td style="white-space:nowrap;color:var(--cyan);font-weight:700">${r.mk}</td>
-      <td style="white-space:nowrap;color:${r.urgent?'var(--red)':'var(--amber)'};font-weight:700">${r.type}</td>
-      <td style="text-align:right;white-space:nowrap;font-weight:700;color:${r.urgent?'var(--red)':'var(--amber)'}">${fmtE(r.due)}</td>
-      <td style="color:var(--text-dim);min-width:260px">${escH(r.preuve)}</td>
-    </tr>`).join('');
+  // Cartes empilées (pas de tableau à 4 colonnes) → tout tient dans la largeur
+  // de l'écran, la preuve passe à la ligne automatiquement, aucune scrollbar.
+  const cards = rows.map(r => {
+    const col = r.urgent ? 'var(--red)' : 'var(--amber)';
+    return `<div style="border:1px solid var(--border);border-left:3px solid ${col};border-radius:6px;padding:9px 11px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+        <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:800;color:${col};line-height:1.3">${escH(r.type)}</div>
+        <div style="font-weight:800;color:${col};white-space:nowrap;font-size:14px">${fmtE(r.due)}</div>
+      </div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--cyan);letter-spacing:1px;margin:2px 0 5px">${escH(r.mk)}</div>
+      <div style="font-size:11.5px;line-height:1.5;color:var(--text-dim);overflow-wrap:anywhere">${escH(r.preuve)}</div>
+    </div>`;
+  }).join('');
   return `${title}
-    <div style="overflow-x:auto"><table class="verif-tbl" style="width:100%">
-      <thead><tr>
-        <th style="text-align:left">PÉRIODE</th><th style="text-align:left">NATURE</th>
-        <th style="text-align:right">À RÉCLAMER</th><th style="text-align:left">PREUVE / ARGUMENT</th>
-      </tr></thead>
-      <tbody>${tr}</tbody>
-      <tfoot><tr style="border-top:2px solid var(--red);font-weight:900">
-        <td colspan="2" style="color:var(--red);letter-spacing:1px">TOTAL À RÉCLAMER</td>
-        <td style="text-align:right;color:var(--red);font-size:14px">${fmtE(total)}</td>
-        <td style="white-space:nowrap"><button onclick="_showLitigeLetter('${key}')" style="background:var(--red);border:none;color:#fff;font-family:'Share Tech Mono',monospace;font-size:10px;font-weight:700;padding:5px 10px;cursor:pointer;border-radius:3px">✉ GÉNÉRER LE COURRIER</button>
-          <button onclick="_verifCopyLitige('${key}')" style="background:transparent;border:1px solid var(--red);color:var(--red);font-family:'Share Tech Mono',monospace;font-size:10px;padding:4px 10px;cursor:pointer;border-radius:3px;margin-left:6px">📋 COPIER LE RÉCAP</button></td>
-      </tr></tfoot>
-    </table></div>
-    <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:6px">Preuves : justificatifs répartiteur (achats par référence), avoirs ${escH(labDisplay)} (n° + montants), relevés bancaires FSE (rapprochement par n° de document). Les lignes « dans le délai » ne sont pas comptées.</div>`;
+    ${cards}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;border-top:2px solid var(--red);padding-top:8px;margin-top:2px">
+      <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:900;letter-spacing:2px;color:var(--red)">TOTAL À RÉCLAMER</div>
+      <div style="font-weight:900;color:var(--red);font-size:17px;white-space:nowrap">${fmtE(total)}</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button onclick="_showLitigeLetter('${key}')" style="flex:1;min-width:150px;background:var(--red);border:none;color:#fff;font-family:'Share Tech Mono',monospace;font-size:11px;font-weight:700;padding:9px 8px;cursor:pointer;border-radius:5px">✉ GÉNÉRER LE COURRIER</button>
+      <button onclick="_verifCopyLitige('${key}')" style="flex:1;min-width:150px;background:transparent;border:1px solid var(--red);color:var(--red);font-family:'Share Tech Mono',monospace;font-size:11px;padding:9px 8px;cursor:pointer;border-radius:5px">📋 COPIER LE RÉCAP</button>
+    </div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5;overflow-wrap:anywhere">Preuves : justificatifs répartiteur (achats par référence), avoirs ${escH(labDisplay)} (n° + montants), relevés bancaires FSE (rapprochement par n° de document). Les lignes « dans le délai » ne sont pas comptées.</div>`;
 }
 
 // ── Générateur de courrier de réclamation (gabarits déterministes) ───────────
