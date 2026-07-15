@@ -105,25 +105,36 @@ def _get_creds() -> dict:
 
 
 def _upload_xlsx_to_storage(xlsx_bytes: bytes, filename: str) -> str:
-    """Upload le XLSX vers le bucket 'fse-bank' et retourne le storage_path."""
+    """Archive le XLSX dans la table fse_files (base64, PostgREST) — même pattern
+    que digi_files. L'ancien POST « façon Supabase Storage » vers /storage/v1/
+    échouait TOUJOURS (HTTP 400) : le stockage self-hosted est du MinIO S3 brut,
+    inaccessible avec un JWT et sans clés S3 côté GitHub Actions. Ces relevés
+    sont des pièces du litige labo → archivés en base, visibles dans
+    l'explorateur. Best-effort : un échec n'interrompt pas le job."""
+    import base64 as _b64
     safe_name = filename.replace(" ", "_")
-    path      = f"{USER_ID}/{safe_name}"
-    url       = f"{SUPA_URL}/storage/v1/object/fse-bank/{path}"
-    req = urllib.request.Request(
-        url, data=xlsx_bytes, method="POST",
-        headers={
-            "apikey":        SERVICE_KEY,
-            "Authorization": f"Bearer {SERVICE_KEY}",
-            "Content-Type":  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        },
-    )
+    yyyymm    = "".join(ch for ch in safe_name if ch.isdigit())[:6]
+    body = json.dumps({
+        "user_id":     USER_ID,
+        "storage_key": safe_name,
+        "filename":    safe_name,
+        "yyyymm":      yyyymm,
+        "content_b64": _b64.b64encode(xlsx_bytes).decode(),
+    }).encode()
+    url = f"{SUPA_URL}/rest/v1/fse_files?on_conflict=user_id,storage_key"
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "apikey":        SERVICE_KEY,
+        "Authorization": f"Bearer {SERVICE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "resolution=merge-duplicates,return=minimal",
+    })
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            resp = json.loads(r.read())
-        print(f"  ✓ Uploadé : {path} ({resp})")
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+        print(f"  ✓ Archivé en base : {safe_name}")
     except Exception as e:
-        print(f"  [warn] Upload Storage échoué ({e}) — on parsera quand même localement")
-    return path
+        print(f"  [warn] Archivage fse_files échoué ({e}) — on parsera quand même localement")
+    return safe_name
 
 
 def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
@@ -628,13 +639,16 @@ def main():
         print(f"❌  Scraping échoué : {e}")
         sys.exit(1)
 
-    # Archivage best-effort vers Storage (non bloquant — le tunnel MinIO peut
-    # renvoyer 502 ; le parsing se fait de toute façon localement).
+    # Archivage best-effort en base (table fse_files — non bloquant ; le parsing
+    # se fait de toute façon localement). Un fichier par mois exporté, nommé par
+    # son mois (l'export est mois par mois, dans l'ordre de _month_list).
+    _mois = _month_list(DATE_FROM, DATE_TO)
     for _i, _xb in enumerate(xlsx_list):
         try:
-            _upload_xlsx_to_storage(_xb, f"BanqueOspharmFSE_{_i}.xlsx")
+            _mm = _mois[_i] if _i < len(_mois) else str(_i)
+            _upload_xlsx_to_storage(_xb, f"BanqueOspharmFSE_{_mm}.xlsx")
         except Exception as e:
-            print(f"  [warn] Upload Storage ignoré ({e})")
+            print(f"  [warn] Archivage ignoré ({e})")
 
     # Parser les XLSX LOCALEMENT et sauvegarder fse_month_stats (clé de service).
     _update_job("running", "Parsing des XLSX…")

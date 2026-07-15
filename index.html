@@ -1676,6 +1676,41 @@ async function _loadDigiPdfIndex() {
     state._digiPdfIndex = idx;
   } catch (_) {}
 }
+// Relevés FSE archivés par le connecteur (table fse_files) — liste légère (sans
+// le contenu) pour l'explorateur de fichiers. Silencieux si la table n'existe
+// pas encore (migration non lancée).
+async function _loadFseFilesIndex() {
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) return;
+    const H = { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` };
+    const res = await fetch(`${SUPA_URL}/rest/v1/fse_files?select=filename,yyyymm,uploaded_at&order=yyyymm.desc`, { headers: H });
+    if (!res.ok) return;
+    state._fseCloudFiles = await res.json() || [];
+  } catch (_) {}
+}
+// Télécharge un relevé FSE archivé (content_b64 → fichier .xlsx).
+window._dlFseFile = async function(filename) {
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) { showToast('Session expirée'); return; }
+    showToast('Téléchargement du relevé…');
+    const H = { apikey: SUPA_KEY, Authorization: `Bearer ${session.access_token}` };
+    const res = await fetch(`${SUPA_URL}/rest/v1/fse_files?filename=eq.${encodeURIComponent(filename)}&select=content_b64&limit=1`, { headers: H });
+    const rows = res.ok ? await res.json() : [];
+    const b64 = rows?.[0]?.content_b64;
+    if (!b64) { showToast('Relevé introuvable en base'); return; }
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (e) { showToast('Téléchargement impossible : ' + (e?.message || e)); }
+};
 function _fileToB64(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -12102,6 +12137,13 @@ async function saveProfile() {
       }
     }
     applyRsfDefaults();
+    // Relevés FSE archivés par le connecteur → section « FSE Banque » de l'explorateur.
+    _loadFseFilesIndex().then(() => {
+      try {
+        const l = document.getElementById('grossisteFileList');
+        if (l && l.style.display !== 'none') _renderGrossisteList();
+      } catch(_) {}
+    });
     // Index des avoirs Digi cliquables (léger, sans le PDF) → rafraîchit le vérificateur.
     _loadDigiPdfIndex().then(() => {
       if (state.currentPageId === 'verificateur') renderVerificateur();
@@ -12949,7 +12991,10 @@ function initConnecteurModal() {
     const uploads    = state._grossisteUploads    || [];
     const cloud      = _connCloudFiles();                 // Digi via connecteurs (base)
     const monthMeta  = state._monthMeta  || [];           // exports mensuels OSPHARM
-    const fseFiles   = state._fseUploads || [];           // exports FSE banque
+    // Exports FSE banque : dépôts manuels + relevés archivés par le connecteur
+    // (table fse_files, chargée en asynchrone par _loadFseFilesIndex).
+    const fseFiles   = [...(state._fseUploads || []),
+                        ...(state._fseCloudFiles || []).map(f => ({ ...f, _cloud: true }))];
     if (!uploads.length && !cloud.length && !monthMeta.length && !fseFiles.length) {
       el.innerHTML = `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0">// Aucun fichier déposé</div>`;
       return;
@@ -13021,12 +13066,21 @@ function initConnecteurModal() {
       html += section('OSPHARM', monthMeta.length, rows);
     }
     if (fseFiles.length) {
-      const rows = fseFiles.map(f => `
+      const rows = fseFiles.map(f => {
+        const nm = f.name || f.filename || '';
+        const nameHtml = f._cloud
+          ? `<span class="conn-file-name" onclick="_dlFseFile('${escH(nm)}')" title="${escH(nm)} — clic pour télécharger le relevé" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${escH(nm)}</span>`
+          : `<span class="conn-file-name" title="${escH(nm)}">${escH(nm)}</span>`;
+        const meta = f._cloud
+          ? (f.yyyymm ? `${f.yyyymm.slice(0,4)}-${f.yyyymm.slice(4,6)}` : '')
+          : (f.months||[]).join(', ');
+        return `
         <div class="conn-file-item">
-          <span style="color:var(--cyan);font-size:10px;flex-shrink:0" title="Export FSE banque">☁</span>
-          <span class="conn-file-name" title="${escH(f.name)}">${escH(f.name)}</span>
-          <span class="conn-file-meta">${(f.months||[]).join(', ')}</span>
-        </div>`).join('');
+          <span style="color:var(--cyan);font-size:10px;flex-shrink:0" title="${f._cloud?'Relevé archivé par le connecteur FSE':'Export FSE banque'}">☁</span>
+          ${nameHtml}
+          <span class="conn-file-meta">${escH(meta)}</span>
+        </div>`;
+      }).join('');
       html += section('FSE Banque', fseFiles.length, rows);
     }
     el.innerHTML = html;
