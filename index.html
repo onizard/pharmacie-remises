@@ -1518,8 +1518,6 @@
             <span>🛟 Activer l'assistance <span style="color:var(--text-dim)">— copie mes données (état + avoirs) vers le compte support, pour tests en temps réel</span></span>
           </label>
           <div id="assistStatus" style="font-size:10px;color:var(--text-dim);margin-top:6px;font-family:'Share Tech Mono',monospace"></div>
-          <button id="reindexBtn" style="margin-top:10px;background:transparent;border:1px solid var(--cyan-dim,#0a7);color:var(--cyan,#00e5ff);font-family:'Share Tech Mono',monospace;font-size:11px;padding:5px 10px;border-radius:4px;cursor:pointer">⟳ Ré-indexer les avoirs (période + catégorie)</button>
-          <div id="reindexStatus" style="font-size:10px;color:var(--text-dim);margin-top:6px;font-family:'Share Tech Mono',monospace"></div>
         </div>
       </div>
       <p style="margin-top:20px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;line-height:1.6;letter-spacing:.5px">
@@ -12335,29 +12333,41 @@ function initConnecteurModal() {
         if (error) throw error;
         localStorage.setItem('bp_assist', on ? '1' : '0');
         if (st) { st.style.color = on ? 'var(--green)' : 'var(--text-dim)'; st.textContent = (on ? '● ' : '○ ') + (data || (on ? 'Assistance activée.' : 'Assistance désactivée.')); }
+        // Activation → ré-indexation AUTOMATIQUE des avoirs (période + catégorie)
+        // en fond, pour que le support travaille sur des données propres. Remplace
+        // l'ancien bouton « ⟳ Ré-indexer » (action manuelle facilement oubliée).
+        // Best-effort : un échec n'annule pas l'activation de l'assistance.
+        if (on) {
+          if (st) st.textContent += ' · ⏳ ré-indexation des avoirs lancée en fond…';
+          try {
+            const { data: { session } } = await window._sbClient.auth.getSession();
+            if (typeof _waitApiReady === 'function') await _waitApiReady(90_000);
+            const r = await fetch(`${API_URL}/run/digi-batch`, { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` } });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            // À la FIN du job de ré-indexation, re-copier vers le support : la
+            // copie initiale (assist_sync ci-dessus) a été prise AVANT la
+            // ré-indexation — sans ce rafraîchissement le support recevrait des
+            // avoirs pré-réindexation. Garde : ne rien refaire si l'assistance a
+            // été désactivée entre-temps.
+            if (typeof _pollDigiBatchJob === 'function') {
+              _pollDigiBatchJob().then(async () => {
+                if (localStorage.getItem('bp_assist') !== '1') return;
+                try {
+                  await window._sbClient.rpc('assist_sync', { enable: true });
+                  if (st) { st.style.color = 'var(--green)'; st.textContent = '● Assistance ACTIVE — avoirs ré-indexés, copie support à jour.'; }
+                } catch (_) {}
+              });
+            }
+            if (st) st.textContent = st.textContent.replace(' · ⏳ ré-indexation des avoirs lancée en fond…', ' · ✓ ré-indexation en cours (quelques minutes) — la copie support se rafraîchira toute seule à la fin.');
+          } catch (e2) {
+            if (st) st.textContent = st.textContent.replace(' · ⏳ ré-indexation des avoirs lancée en fond…', ` · ⚠ ré-indexation non lancée (${e2.message || e2}).`);
+          }
+        }
       } catch (e) {
         cb.checked = !on;
         if (st) { st.style.color = 'var(--red)'; st.textContent = '❌ ' + (e.message || e) + (String(e.message||'').includes('assist_sync') ? ' — la fonction SQL n\'est pas installée.' : ''); }
       } finally { cb.disabled = false; }
     });
-    const rb = document.getElementById('reindexBtn'), rs = document.getElementById('reindexStatus');
-    if (rb && !rb._wired) {
-      rb._wired = true;
-      rb.addEventListener('click', async () => {
-        rb.disabled = true;
-        if (rs) { rs.style.color = 'var(--amber)'; rs.textContent = '⏳ Lancement de la ré-indexation en fond…'; }
-        try {
-          const { data: { session } } = await window._sbClient.auth.getSession();
-          if (typeof _waitApiReady === 'function') await _waitApiReady(90_000);
-          const r = await fetch(`${API_URL}/run/digi-batch`, { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` } });
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          if (rs) { rs.style.color = 'var(--green)'; rs.textContent = '✓ Ré-indexation lancée (GitHub Actions) — quelques minutes. Recharge ensuite.'; }
-          if (typeof _pollDigiBatchJob === 'function') _pollDigiBatchJob();
-        } catch (e) {
-          if (rs) { rs.style.color = 'var(--red)'; rs.textContent = '❌ ' + (e.message || e); }
-        } finally { rb.disabled = false; }
-      });
-    }
   }
 
   function closeModal() { modal.classList.remove('open'); }
