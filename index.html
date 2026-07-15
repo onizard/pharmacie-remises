@@ -1510,16 +1510,7 @@
         </div>
       </div><!-- /conn-sites : connecteurs auto -->
       </div><!-- /autoConnectorsWrap -->
-      <!-- Admin : assistance & maintenance -->
-      <div id="connAdminPanel" class="conn-admin-panel" style="display:none">
-        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:6px">
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text)">
-            <input type="checkbox" id="assistToggle">
-            <span>🛟 Activer l'assistance <span style="color:var(--text-dim)">— copie mes données (état + avoirs) vers le compte support, pour tests en temps réel</span></span>
-          </label>
-          <div id="assistStatus" style="font-size:10px;color:var(--text-dim);margin-top:6px;font-family:'Share Tech Mono',monospace"></div>
-        </div>
-      </div>
+      <!-- Assistance déplacée dans MON COMPTE / Paramètres (bloc #assistBox). -->
       <p style="margin-top:20px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;line-height:1.6;letter-spacing:.5px">
         🔒 Vos identifiants sont chiffrés et strictement personnels.<br>
         Aucune donnée n'est divulguée — elles ne sont visibles que par vous.
@@ -11373,6 +11364,12 @@ function openProfileModal() {
   document.getElementById('profileStatus').textContent = '';
   document.getElementById('ribFileName').textContent   = '';
   updateIbanDisplay();
+  // Assistance (admin uniquement) : affichée + câblée à l'ouverture des Paramètres.
+  const _ab = document.getElementById('assistBox');
+  if (_ab) {
+    if (isAdmin) { _ab.style.display = ''; if (typeof window._wireAssistToggle === 'function') window._wireAssistToggle(); }
+    else _ab.style.display = 'none';
+  }
   document.getElementById('profileModal').classList.add('open');
 }
 
@@ -12321,11 +12318,8 @@ function initConnecteurModal() {
     showView('conc',  c.concentrateur?.connected || false);
     modal.classList.add('open');
     refreshConnJobStatuses();
-    if (isAdmin) {
-      document.getElementById('connAdminPanel').style.display = '';
-      _wireAssistToggle();
-      // boutons edit/refresh supprimés de l'UI
-    }
+    // L'assistance a été déplacée dans MON COMPTE / Paramètres (câblée à
+    // l'ouverture de cette modale).
   }
 
   // Toggle « Activer l'assistance » : copie état + avoirs vers le compte support
@@ -12382,6 +12376,9 @@ function initConnecteurModal() {
       } finally { cb.disabled = false; }
     });
   }
+  // Exposée globalement : le toggle vit désormais dans MON COMPTE / Paramètres
+  // (openProfileModal), une fonction top-level qui n'a pas accès à cette portée.
+  window._wireAssistToggle = _wireAssistToggle;
 
   function closeModal() { modal.classList.remove('open'); }
 
@@ -14179,6 +14176,16 @@ document.addEventListener('DOMContentLoaded', function() {
     <div style="margin-top:22px;display:flex;gap:14px;align-items:center">
       <button class="btn btn-primary" id="profileSave">ENREGISTRER</button>
       <span id="profileStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;min-height:16px"></span>
+    </div>
+
+    <!-- Admin : assistance (déplacé depuis la modale connecteurs) -->
+    <div id="assistBox" style="display:none;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
+      <div class="profile-section-title">Assistance technique</div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text)">
+        <input type="checkbox" id="assistToggle">
+        <span>🛟 Activer l'assistance <span style="color:var(--text-dim)">— copie mes données (état + avoirs) vers le compte support + ré-indexe les avoirs, pour tests en temps réel</span></span>
+      </label>
+      <div id="assistStatus" style="font-size:10px;color:var(--text-dim);margin-top:6px;font-family:'Share Tech Mono',monospace"></div>
     </div>
   </div>
 </div>
