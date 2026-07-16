@@ -2494,6 +2494,10 @@ function serializeState() {
       contractDate25: lp.contractDate25 || null,
       contratRepartiteur25: lp.contratRepartiteur25 ?? true,
       refExceptions: lp.refExceptions || [],
+      // Persisté : la migration ancien→nouveau format ne doit tourner QU'UNE fois. Sinon,
+      // au rechargement, elle re-dérivait les exceptions périmées de l'ancien format
+      // (cond.remise2Except) et masquait les exceptions par référence saisies depuis.
+      refExcMigrated: !!lp._refExcMigrated,
     })),
     verifContracts: state.verifContracts || {},
   };
@@ -5857,10 +5861,17 @@ function initLabPage(conf) {
     const lab = savedLabData.selectedLab;
     if (!lab) return;
     s.selectedLab = lab;
-    // Exceptions par référence (nouveau format daté) — restaurées une seule fois.
-    if (Array.isArray(savedLabData.refExceptions) && savedLabData.refExceptions.length) {
+    // Exceptions par référence (nouveau format daté). On restaure TOUJOURS (même vide)
+    // et on respecte le flag de migration persisté : une fois migré, on ne re-dérive
+    // JAMAIS depuis l'ancien format (sinon des exceptions saisies étaient écrasées par
+    // les anciennes au rechargement). Ne pas écraser un tableau déjà restauré non vide
+    // par le 2e appel de restauration (année 2025).
+    if (Array.isArray(savedLabData.refExceptions) &&
+        (savedLabData.refExceptions.length || !(s.refExceptions && s.refExceptions.length))) {
       s.refExceptions = savedLabData.refExceptions;
-      s._refExcMigrated = true;   // déjà au nouveau format → pas de re-migration
+    }
+    if (savedLabData.refExcMigrated || (s.refExceptions && s.refExceptions.length)) {
+      s._refExcMigrated = true;
     }
     // Restore contract signed/date (only on year 2026 to avoid double-write)
     if (year === '2026') {
@@ -6233,7 +6244,12 @@ async function fetchRSF(lab, yr = 2026) {
 
 // Migration idempotente des anciennes exceptions (par palier, libellés texte).
 async function _migrateExceptionsToRefFormat(lp) {
-  if (!lp || lp._refExcMigrated || lp._refExcMigrating) return;
+  // Ne JAMAIS re-migrer si déjà fait OU si des exceptions par référence existent déjà
+  // (ancien format = source périmée qui écraserait la saisie récente).
+  if (!lp || lp._refExcMigrated || lp._refExcMigrating || (lp.refExceptions && lp.refExceptions.length)) {
+    if (lp) lp._refExcMigrated = true;
+    return;
+  }
   lp._refExcMigrating = true;
   try {
     const groups = [];
