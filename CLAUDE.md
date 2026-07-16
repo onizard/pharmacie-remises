@@ -115,6 +115,11 @@ paliers. Ne jamais filtrer remise3 sur `excluded`.
 - Le barème RDP payé suit l'ANNÉE DU MOIS : 2025 payé au barème 2025 jusqu'à
   décembre inclus, barème 2026 à partir de janvier 2026 (transition indépendante
   de la bascule d'affichage `_y25cut`).
+- **RDP vérificateur = hybride** : taux CGV `rsf_history` par CIP par défaut, MAIS si
+  l'admin a modifié à la main la RDP de base d'un palier (`remise2Manual` dans les
+  conditions labo effectives du mois), sa valeur prime pour les réfs de ce palier
+  (`palManual` dans `_r2ExactForMonth`). Les exceptions par référence priment sur tout.
+  Le comparateur utilise déjà les conditions (`getRemise`).
 - Réalisation du contrat (coef coop) : CA BRUT tarif (répartiteur `ca_brut` +
   achats directs Digi), fenêtre depuis la date de signature, annualisée sur les
   mois écoulés.
