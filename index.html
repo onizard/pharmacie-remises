@@ -2290,10 +2290,22 @@ const RSF_MIDYEAR_CHANGES = {
 // permet à getRemise d'appliquer le bon RDP/exception du groupe (≠ simple moyenne du taux,
 // car le RDP peut différer entre les deux groupes — ex. Zydus 10% a RDP 20, 2,5% a RDP 0).
 function _rowRsfOverride(ref, cond, row) {
-  // Map runtime = seed codé en dur + exceptions utilisateur (déplacements de palier).
-  const chg = (window._rsfMidyear || RSF_MIDYEAR_CHANGES)[ref?.cip13];
-  if (!chg || !cond || cond._year !== chg.year || row?.month == null) return null;
-  return parseInt(row.month) < chg.effMonth ? chg.before : chg.after;
+  if (!ref?.cip13 || !cond || cond._year == null || row?.month == null) return null;
+  const month = parseInt(row.month);
+  // 1. Exceptions utilisateur : la PLUS RÉCENTE applicable (effMonth max ≤ mois) donne
+  //    le palier RSF de la réf pour ce mois. Permet plusieurs états successifs (ex.
+  //    RSF 10 de janv. à avril, puis RSF 2,5 dès mai) — chaque onglet mois pose son état.
+  let best = null;
+  (state.labPages || []).forEach(lp => (lp.refExceptions || []).forEach(x => {
+    if (x.cip13 !== ref.cip13 || x.effYear !== cond._year || x.rsfPct == null) return;
+    if (month < (x.effMonth || 1)) return;
+    if (!best || (x.effMonth || 1) >= (best.effMonth || 1)) best = x;
+  }));
+  if (best) return parseFloat(best.rsfPct);
+  // 2. Repli : seed codé en dur (MACROGOL…) si aucune exception utilisateur.
+  const chg = RSF_MIDYEAR_CHANGES[ref.cip13];
+  if (chg && cond._year === chg.year) return month < chg.effMonth ? chg.before : chg.after;
+  return null;
 }
 // Override remise 2 / remise 3 PAR RÉFÉRENCE (comparateur), au mois près, depuis les
 // exceptions du nouveau format. Renvoie {remise2, remise3} (nullables) ou null.
@@ -6431,6 +6443,23 @@ function _renderRefExceptions(lp, cond, box, year) {
   box.appendChild(body);
 }
 
+// Applique une modif à l'exception DU MOIS ACTIF. Si la ligne affichée est héritée
+// d'un mois antérieur (effMonth < activeMon), on crée/complète une exception AU MOIS
+// ACTIF (l'originale reste) → « je change en mai » pose une transition en mai, sans
+// toucher janvier→avril. Renvoie l'exception cible.
+function _refExcApply(lp, e, activeMon, patch) {
+  // Réf sans CIP (libellé non résolu) : pas de dédoublonnage possible → édition directe.
+  if (!e.cip13) { Object.assign(e, patch); return e; }
+  lp.refExceptions = lp.refExceptions || [];
+  let target = lp.refExceptions.find(x => x.cip13 === e.cip13 && x.effYear === e.effYear && (x.effMonth || 1) === activeMon);
+  if (!target) {
+    target = { ...e, id: 'rx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), effMonth: activeMon };
+    lp.refExceptions.push(target);
+  }
+  Object.assign(target, patch);
+  return target;
+}
+
 function _refExcRow(lp, cond, e, paliers, showR3, box, year, activeMon) {
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--border);font-size:11px';
@@ -6456,20 +6485,20 @@ function _refExcRow(lp, cond, e, paliers, showR3, box, year, activeMon) {
     const selR = document.createElement('select'); selR.style.cssText = selCss; selR.title = 'Groupe RSF de la référence';
     paliers.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = `RSF ${Math.abs(p)}%`; if (parseFloat(e.rsfPct) === p) o.selected = true; selR.appendChild(o); });
     if (!isAdmin) selR.disabled = true;
-    selR.addEventListener('change', () => { e.rsfPct = parseFloat(selR.value); _refExcSave(lp); });
+    selR.addEventListener('change', () => { _refExcApply(lp, e, activeMon, { rsfPct: parseFloat(selR.value) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); });
     row.appendChild(selR);
   }
   // Remise 2 (RDP)
   const r2w = document.createElement('div'); r2w.style.cssText = 'display:flex;align-items:center;gap:2px';
   const r2l = document.createElement('span'); r2l.textContent = (lp.contractSigned || lp.contractSigned25 || lp.selectedLab === 'Biogaran') ? 'RDP' : 'R2'; r2l.style.color = 'var(--text-dim)';
   r2w.appendChild(r2l);
-  r2w.appendChild(mkNum(e.remise2, '%', v => { const s = v.replace(',', '.').trim(); e.remise2 = s === '' ? null : parseFloat(s); _refExcSave(lp); }));
+  r2w.appendChild(mkNum(e.remise2, '%', v => { const s = v.replace(',', '.').trim(); _refExcApply(lp, e, activeMon, { remise2: s === '' ? null : parseFloat(s) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); }));
   row.appendChild(r2w);
   // Remise 3 (coop) si active
   if (showR3) {
     const r3w = document.createElement('div'); r3w.style.cssText = 'display:flex;align-items:center;gap:2px';
     const r3l = document.createElement('span'); r3l.textContent = 'R3'; r3l.style.color = 'var(--text-dim)'; r3w.appendChild(r3l);
-    r3w.appendChild(mkNum(e.remise3, '%', v => { const s = v.replace(',', '.').trim(); e.remise3 = s === '' ? null : parseFloat(s); _refExcSave(lp); }));
+    r3w.appendChild(mkNum(e.remise3, '%', v => { const s = v.replace(',', '.').trim(); _refExcApply(lp, e, activeMon, { remise3: s === '' ? null : parseFloat(s) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); }));
     row.appendChild(r3w);
   }
   if (isAdmin) {
