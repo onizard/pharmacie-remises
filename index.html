@@ -6214,6 +6214,17 @@ async function _migrateExceptionsToRefFormat(lp) {
     collect(lp._baseConds2025 || lp.conditions2025, 2025);
     Object.entries(lp.condsByMonth || {}).forEach(([yr, months]) =>
       Object.values(months || {}).forEach(cv => collect(Array.isArray(cv) ? cv : [cv], parseInt(yr))));
+    // Aussi depuis le blob lab_config (labos restaurés via template non-admin, ou
+    // exceptions pas encore reportées dans lp.conditions). Dédupe (cip13, année).
+    const _le = window._labExceptions?.[lp.selectedLab];
+    if (_le) [['2025', 2025], ['2026', 2026]].forEach(([k, yr]) => {
+      const r2e = (_le[k] && _le[k].remise2Except) || {};
+      Object.entries(r2e).forEach(([key, exc]) => {
+        if (!exc || !(exc.libelles || []).length) return;
+        groups.push({ libTexts: exc.libelles.map(l => l.text), remise2: exc.remise2 || null,
+                      remise3: exc.remise3 || null, rsfPct: parseFloat(key), year: yr });
+      });
+    });
     if (!groups.length) { lp._refExcMigrated = true; return; }
     // Résoudre libellés → cip13 + rsf_pct courant via rsf_history du labo.
     const H = { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` };
@@ -6246,6 +6257,21 @@ async function _migrateExceptionsToRefFormat(lp) {
   } catch (e) { console.error('[BP] migration exceptions:', e); }
   finally { lp._refExcMigrating = false; }
 }
+
+// Migre TOUS les labos configurés d'un coup (au chargement), pas seulement à
+// l'ouverture d'un onglet. Idempotent (garde _refExcMigrated par labo).
+async function _migrateAllLabsExceptions() {
+  const pages = (state.labPages || []).filter(lp => lp && lp.selectedLab && !lp._refExcMigrated);
+  for (const lp of pages) {
+    try { await _migrateExceptionsToRefFormat(lp); } catch (_) {}
+  }
+  try { _rebuildRsfMidyear(); } catch (_) {}
+  if (pages.length) {
+    try { if (state.currentPageId === 'verificateur' && typeof renderVerificateur === 'function') renderVerificateur(); } catch (_) {}
+    console.log(`[BP] exceptions → refExceptions : ${pages.length} labo(s) migré(s)`);
+  }
+}
+window._migrateAllLabsExceptions = _migrateAllLabsExceptions;   // relançable à la main si besoin
 
 // Recherche labo-wide (tous paliers) dans rsf_history, repli references_pharmacie.
 async function _refExcSearch(term, dropdown, labName, yr, onPick) {
@@ -12619,6 +12645,9 @@ async function saveProfile() {
       }
     }
     applyRsfDefaults();
+    // Convertit d'emblée les exceptions de TOUS les labos au nouveau format par
+    // référence (en fond) — plus besoin d'ouvrir chaque onglet.
+    _migrateAllLabsExceptions();
     // Relevés FSE archivés par le connecteur → section « FSE Banque » de l'explorateur.
     _loadFseFilesIndex().then(() => {
       try {
