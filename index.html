@@ -7871,12 +7871,25 @@ function _r2ExactForMonth(mk, selNorm, labDisplay) {
   // ce qui colle : juillet vérifié à −4,54 €).
   const _cut = window._y25cut?.[labDisplay];
   const _p30at10 = selNorm === 'BIOGARAN' && year === 2025 && _cut != null && month >= _cut;
+  // Hybride : la RDP de base d'un palier MODIFIÉE À LA MAIN dans « mes conditions
+  // labo » (remise2Manual) prime sur le taux CGV rsf_history pour toutes les réfs de
+  // ce palier — sauf exception par référence. Les paliers non modifiés gardent la
+  // précision CGV par référence.
+  const _cond = _verifGetCond(labDisplay, year, month);
+  const palManual = {};
+  (_cond?.rsfValues || []).forEach(r => {
+    if (r.remise2Manual && r.remise2 !== '' && r.remise2 != null) {
+      const k = Math.abs(parseFloat(r.rsf_pct));
+      if (!isNaN(k)) palManual[k] = Math.abs(parseFloat(r.remise2));
+    }
+  });
   const byTaux = {}; let total = 0;
   rows.forEach(([cip, tx, qty, brut]) => {
     let pct = map[cip] || 0;
+    if (palManual[Math.abs(tx)] != null) pct = palManual[Math.abs(tx)];   // RDP de base éditée
     if (_p30at10 && Math.abs(tx) === 30 && pct < 10) pct = 10;
     // Exception PAR RÉFÉRENCE (nouveau format daté) : la remise 2 saisie à la main
-    // prime sur le taux rsf_history, à partir de son mois d'application.
+    // prime sur tout, à partir de son mois d'application.
     const _ovr = _refExcRdpOverride(selNorm, cip, year, month);
     if (_ovr != null) pct = _ovr;
     if (!(pct > 0)) return;
