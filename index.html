@@ -2298,9 +2298,12 @@ function _rowRsfOverride(ref, cond, row) {
 function _rowExcOverride(lp, ref, cond, row) {
   if (!lp || !ref || !ref.cip13 || !cond || !cond._year) return null;
   const month = (row && row.month != null) ? parseInt(row.month) : 12;
-  const e = (lp.refExceptions || []).find(x => x.cip13 === ref.cip13 && x.effYear === cond._year && month >= (x.effMonth || 1));
-  if (!e) return null;
-  return { remise2: e.remise2, remise3: e.remise3 };
+  let best = null;
+  (lp.refExceptions || []).forEach(x => {
+    if (x.cip13 !== ref.cip13 || x.effYear !== cond._year || month < (x.effMonth || 1)) return;
+    if (!best || (x.effMonth || 1) >= (best.effMonth || 1)) best = x;
+  });
+  return best ? { remise2: best.remise2, remise3: best.remise3 } : null;
 }
 
 function mkLabState(uid) {
@@ -4543,6 +4546,7 @@ function createLabContDom(lp) {
         _refreshActive();
         _refreshDots();
         lp[`_switchCondMon${yearSuffix}`]?.();
+        lp[`_rerenderRefExc${yearSuffix}`]?.();   // panneau exceptions → mois actif
         lp[`_reflectContractMonth${yearSuffix}`]?.();
         saveState();
       });
@@ -6103,6 +6107,15 @@ function initLabPage(conf) {
     renderCondTabs();
   }
   s[`_switchCondMon${year === '2025' ? '25' : '26'}`] = _switchConditionsToMonth;
+  // Re-render des panneaux d'exceptions au changement d'onglet mois : _switchConditionsToMonth
+  // court-circuite si le mois n'a pas d'override propre → le panneau, lui, dépend TOUJOURS du
+  // mois actif (filtre effMonth ≤ mois), on le rafraîchit donc explicitement.
+  s[`_rerenderRefExc${year === '2025' ? '25' : '26'}`] = function () {
+    (s[condKey] || []).forEach(cond => {
+      const box = document.getElementById(`excpts-${uid}-${cond.uid}`);
+      if (box) _renderRefExceptions(s, cond, box, year);
+    });
+  };
 }
 
 // ── Shared functions ───────────────────────────────────────────────────────────
@@ -6314,10 +6327,14 @@ function _refExcSave(lp) {
 // RSF_MIDYEAR_CHANGES + exceptions utilisateur qui DÉPLACENT une réf de palier).
 function _rebuildRsfMidyear() {
   const m = { ...RSF_MIDYEAR_CHANGES };
+  const seen = {};   // cip → effMonth retenu (on garde le déplacement le plus récent)
   (state.labPages || []).forEach(lp => (lp.refExceptions || []).forEach(e => {
     if (!e.cip13 || e.rsfPct == null || e.rsfOrig == null) return;
     if (parseFloat(e.rsfPct) === parseFloat(e.rsfOrig)) return;   // pas de déplacement de palier
-    m[e.cip13] = { year: e.effYear, effMonth: e.effMonth || 1, before: parseFloat(e.rsfOrig), after: parseFloat(e.rsfPct) };
+    const em = e.effMonth || 1;
+    if (seen[e.cip13] != null && em < seen[e.cip13]) return;
+    seen[e.cip13] = em;
+    m[e.cip13] = { year: e.effYear, effMonth: em, before: parseFloat(e.rsfOrig), after: parseFloat(e.rsfPct) };
   }));
   window._rsfMidyear = m;
   return m;
@@ -6327,9 +6344,15 @@ function _rebuildRsfMidyear() {
 function _refExcRdpOverride(laboNorm, cip, year, month) {
   const lp = (state.labPages || []).find(p => _verifNormLab(p.selectedLab) === laboNorm);
   if (!lp || !Array.isArray(lp.refExceptions)) return null;
-  const e = lp.refExceptions.find(x => x.cip13 === cip && x.effYear === year
-    && x.remise2 != null && x.remise2 !== '' && month >= (x.effMonth || 1));
-  return e ? Math.abs(parseFloat(e.remise2)) : null;
+  // Une réf peut changer de valeur selon le mois (une exception par onglet mois) :
+  // on retient la plus RÉCENTE applicable (effMonth le plus élevé ≤ mois demandé).
+  let best = null;
+  lp.refExceptions.forEach(x => {
+    if (x.cip13 !== cip || x.effYear !== year || x.remise2 == null || x.remise2 === '') return;
+    if (month < (x.effMonth || 1)) return;
+    if (!best || (x.effMonth || 1) >= (best.effMonth || 1)) best = x;
+  });
+  return best ? Math.abs(parseFloat(best.remise2)) : null;
 }
 
 // Panneau repliable des exceptions par référence, rendu sous le tableau des remises.
@@ -6343,7 +6366,15 @@ function _renderRefExceptions(lp, cond, box, year) {
   const showR3 = !!cond.showR3;
   const paliers = [...new Set((cond.rsfValues || []).map(r => parseFloat(r.rsf_pct)).filter(v => !isNaN(v)))].sort((a, b) => a - b);
   const open = !!lp._refExcOpen;
-  const nYr = list.filter(e => e.effYear === yr).length;
+  // La date d'application vient de l'ONGLET MOIS actif (avant les paliers) : pas de
+  // sélecteur de date. On affiche les exceptions EN EFFET à ce mois (effMonth ≤ mois
+  // actif), une seule ligne par réf (la plus récente applicable).
+  const activeMon = (yr === 2025 ? lp.activeMon2025 : lp.activeMon2026) ?? (new Date().getMonth() + 1);
+  const byCip = new Map();
+  list.filter(e => e.effYear === yr && (e.effMonth || 1) <= activeMon)
+      .forEach(e => { const k = e.cip13 || e.id; const p = byCip.get(k); if (!p || (e.effMonth || 1) >= (p.effMonth || 1)) byCip.set(k, e); });
+  const displayed = [...byCip.values()];
+  const monLbl = _MONTH_LABELS[activeMon - 1];
   box.className = 'row-except-blocks';
   box.innerHTML = '';
 
@@ -6352,7 +6383,7 @@ function _renderRefExceptions(lp, cond, box, year) {
   const hdr = document.createElement('div');
   hdr.className = 'lab-tag' + (open ? ' rsf-open' : '');
   hdr.style.cssText = 'display:inline-block;margin:12px 0 6px';
-  hdr.textContent = `EXCEPTIONS${nYr ? ` ${year} (${nYr})` : ` ${year}`}`;
+  hdr.textContent = `EXCEPTIONS ${monLbl} ${year}${displayed.length ? ` (${displayed.length})` : ''}`;
   hdr.addEventListener('click', () => { lp._refExcOpen = !lp._refExcOpen; _renderRefExceptions(lp, cond, box, year); });
   box.appendChild(hdr);
   if (!open) return;
@@ -6370,10 +6401,11 @@ function _renderRefExceptions(lp, cond, box, year) {
       clearTimeout(deb);
       deb = setTimeout(() => _refExcSearch(inp.value, dd, lp.selectedLab, yr, (ref) => {
         lp.refExceptions = lp.refExceptions || [];
-        if (lp.refExceptions.some(e => e.cip13 === ref.cip13 && e.effYear === yr)) { inp.value = ''; dd.classList.remove('visible'); return; }
+        // Nouvelle exception rattachée au MOIS de l'onglet actif (effMonth = activeMon).
+        if (lp.refExceptions.some(e => e.cip13 === ref.cip13 && e.effYear === yr && (e.effMonth || 1) === activeMon)) { inp.value = ''; dd.classList.remove('visible'); return; }
         lp.refExceptions.push({ id: 'rx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
           cip13: ref.cip13, libelle: ref.libelle, rsfOrig: ref.rsf_pct, rsfPct: ref.rsf_pct,
-          remise2: null, remise3: null, effYear: yr, effMonth: (new Date().getMonth() + 1) });
+          remise2: null, remise3: null, effYear: yr, effMonth: activeMon });
         inp.value = ''; _refExcSave(lp); _renderRefExceptions(lp, cond, box, year);
       }), 280);
     });
@@ -6381,23 +6413,25 @@ function _renderRefExceptions(lp, cond, box, year) {
     sw.appendChild(inp); sw.appendChild(dd); body.appendChild(sw);
   }
 
-  const yrList = list.filter(e => e.effYear === yr);
-  if (!yrList.length) {
+  if (!displayed.length) {
     const empty = document.createElement('div'); empty.style.cssText = 'color:var(--text-dim);font-size:11px;padding:4px 0';
-    empty.textContent = isAdmin ? `Aucune exception ${yr}. Recherchez une référence ci-dessus pour en ajouter.` : `Aucune exception ${yr}.`;
+    empty.textContent = isAdmin ? `Aucune exception en vigueur en ${monLbl} ${yr}. Recherchez une référence ci-dessus pour en ajouter (elle s'appliquera dès ${monLbl}).` : `Aucune exception en ${monLbl} ${yr}.`;
     body.appendChild(empty);
   }
-  yrList.forEach(e => body.appendChild(_refExcRow(lp, cond, e, paliers, showR3, box, year)));
+  displayed.sort((a, b) => (a.libelle || '').localeCompare(b.libelle || ''))
+           .forEach(e => body.appendChild(_refExcRow(lp, cond, e, paliers, showR3, box, year, activeMon)));
   box.appendChild(body);
 }
 
-function _refExcRow(lp, cond, e, paliers, showR3, box, year) {
+function _refExcRow(lp, cond, e, paliers, showR3, box, year, activeMon) {
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--border);font-size:11px';
   const selCss = 'padding:2px;font-size:11px;background:var(--bg2,#0a0e1a);border:1px solid var(--border);border-radius:4px;color:var(--text)';
   const name = document.createElement('div');
   name.style.cssText = 'flex:1 1 170px;min-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-  name.innerHTML = `${e.libelle || '(réf)'} ${e.cip13 ? `<span style="opacity:.4;font-family:monospace">${e.cip13}</span>` : '<span style="color:var(--amber)">⚠ CIP à repréciser</span>'}`;
+  const inherited = (e.effMonth || 1) < (activeMon || 12);
+  name.innerHTML = `${e.libelle || '(réf)'} ${e.cip13 ? `<span style="opacity:.4;font-family:monospace">${e.cip13}</span>` : '<span style="color:var(--amber)">⚠ CIP à repréciser</span>'}`
+    + (inherited ? ` <span style="opacity:.5;font-size:10px" title="Exception saisie sous l'onglet ${_MONTH_LABELS[(e.effMonth || 1) - 1]}, toujours en vigueur">↳ dès ${_MONTH_LABELS[(e.effMonth || 1) - 1]}</span>` : '');
   row.appendChild(name);
 
   const mkNum = (val, ph, onch) => {
@@ -6408,18 +6442,7 @@ function _refExcRow(lp, cond, e, paliers, showR3, box, year) {
     i.addEventListener('change', () => onch(i.value));
     return i;
   };
-  // Date d'application (mois/année)
-  const selM = document.createElement('select'); selM.style.cssText = selCss; selM.title = "Mois d'application";
-  for (let m = 1; m <= 12; m++) { const o = document.createElement('option'); o.value = m; o.textContent = _MONTH_LABELS[m - 1]; if (m === e.effMonth) o.selected = true; selM.appendChild(o); }
-  if (!isAdmin) selM.disabled = true;
-  selM.addEventListener('change', () => { e.effMonth = parseInt(selM.value); _refExcSave(lp); });
-  const selY = document.createElement('select'); selY.style.cssText = selCss; selY.title = "Année d'application";
-  [2025, 2026].forEach(y => { const o = document.createElement('option'); o.value = y; o.textContent = y; if (y === e.effYear) o.selected = true; selY.appendChild(o); });
-  if (!isAdmin) selY.disabled = true;
-  selY.addEventListener('change', () => { e.effYear = parseInt(selY.value); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); });
-  const dw = document.createElement('div'); dw.style.cssText = 'display:flex;align-items:center;gap:3px';
-  const dl = document.createElement('span'); dl.textContent = 'dès'; dl.style.color = 'var(--text-dim)';
-  dw.appendChild(dl); dw.appendChild(selM); dw.appendChild(selY); row.appendChild(dw);
+  // (Plus de sélecteur de date : le mois vient de l'onglet actif.)
   // Palier RSF (override → déplacement possible)
   if (paliers.length) {
     const selR = document.createElement('select'); selR.style.cssText = selCss; selR.title = 'Groupe RSF de la référence';
