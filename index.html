@@ -7685,6 +7685,31 @@ window._verifCopyLitige = function(key) {
   navigator.clipboard.writeText(t).then(() => showToast('✓ Récapitulatif copié — colle-le dans ton mail au labo'))
     .catch(() => showToast('Copie impossible sur ce navigateur'));
 };
+// RDP attendue d'un mois — MÊME calcul que la colonne ATT du bloc REMISE 2 / RDP :
+// exact par référence (rsf_history) si dispo, sinon repli sur la remise2 du PALIER
+// (conditions labo). Indispensable pour les labos SANS rsf_history (ex. Zydus) : le
+// récap litige doit voir la même RDP attendue que le tableau, sinon il croit à tort
+// qu'il n'y a rien à réclamer.
+function _verifRdpAttendueMonth(mk, selNorm, labDisplay) {
+  const exact = (typeof _r2ExactForMonth === 'function') ? _r2ExactForMonth(mk, selNorm, labDisplay) : null;
+  const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
+  const paliers = (grosRow && Array.isArray(grosRow.paliers)) ? grosRow.paliers : [];
+  if (!paliers.length) return exact ? exact.total : null;
+  const [y, m] = mk.split('-').map(Number);
+  const cond = _verifGetCond(labDisplay, y, m);
+  const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)) cmap[k]=r; });
+  let tot = 0, any = false;
+  paliers.forEach(p => {
+    if (p.taux == null) return;
+    const ex = exact ? (exact.byTaux[p.taux] != null ? exact.byTaux[p.taux] : exact.byTaux[String(p.taux)]) : null;
+    if (ex != null) { tot += ex; any = true; return; }
+    const cAll = cmap[Math.abs(p.taux)] || {};
+    const r2pct = (cAll.remise2!=null && cAll.remise2!=='') ? parseFloat(cAll.remise2) : null;
+    if (r2pct != null) { tot += (p.brut||0) * r2pct/100; any = true; }
+  });
+  return any ? Math.round(tot*100)/100 : (exact ? exact.total : null);
+}
+
 function _verifRenderLitige(year, selNorm, labDisplay) {
   const yr = parseInt(year);
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
@@ -7707,8 +7732,11 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
     // (4M5…, SCTT…) du même mois ne justifient pas la ligne RDP.
     const refs    = (digiRow?.facture_refs || []).filter(x => /^\d{6,}$/.test(String(x))).join(', ');
     const verse   = ((amap[mk]||{}).r2||[]).reduce((a,e)=>a+e.amount,0);
-    const exact   = (typeof _r2ExactForMonth==='function') ? _r2ExactForMonth(mk, selNorm, labDisplay) : null;
-    const attendu = exact ? exact.total : null;
+    // Attendu RDP du mois : exact rsf_history par CIP si dispo, sinon repli sur
+    // le barème des conditions labo × brut par palier (cas Zydus : contrat
+    // direct sans rsf_history → _r2ExactForMonth renvoie null, l'attendu doit
+    // quand même être calculé depuis les paliers du justificatif répartiteur).
+    const attendu = _verifRdpAttendueMonth(mk, selNorm, labDisplay);
     const overdue = _mAge(mk) >= 3;                  // règlement habituel constaté : M+2
     // 1. Avoir émis mais non réglé
     if (annonce > 0 && annonce - verse > 1) {
@@ -7723,11 +7751,12 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
         preuve: `Achats de ${MOIS[m-1]} (justificatif répartiteur, détail par référence) × barème RDP que ${labDisplay} applique lui-même `
               + `les autres mois (taux vérifiés au centime sur les avoirs voisins) = ${fmtE(attendu)} attendus. Avoir émis : ${fmtE(annonce)} seulement.` });
     }
-    // 3. Aucun avoir émis alors que la RDP est due
-    if (attendu != null && attendu > 50 && annonce <= 0 && overdue) {
-      rows.push({ mk, m, nature: 'noavoir', attendu, type: 'RDP — aucun avoir émis', due: attendu, urgent: true,
-        preuve: `Contrat signé, actif depuis le ${csFr || '?'}. Achats de ${MOIS[m-1]} ${yr} au justificatif répartiteur × barème RDP `
-              + `identique aux mois voisins (avoirs émis et vérifiés au centime) = ${fmtE(attendu)} dus. Aucun avoir reçu à ce jour.` });
+    // 3. Aucun avoir émis alors que la RDP est due (rien reçu non plus)
+    if (attendu != null && annonce <= 0 && (attendu - verse) > 2 && overdue) {
+      const due3 = Math.round((attendu - verse) * 100) / 100;
+      rows.push({ mk, m, nature: 'noavoir', attendu, verse, type: 'RDP — aucun avoir émis', due: due3, urgent: true,
+        preuve: `Contrat direct signé, actif depuis le ${csFr || '?'}. Achats de ${MOIS[m-1]} ${yr} au justificatif répartiteur × barème RDP `
+              + `des conditions labo = ${fmtE(attendu)} dus.${verse>0?` Versé : ${fmtE(verse)}.`:''} Aucun avoir reçu à ce jour.` });
     }
   }
   // 4. Coop en retard — rapprochement en CUMUL DE CONTRAT (du 1er mois du contrat
@@ -8920,7 +8949,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     </div>
     ${bloc('ACHATS & RSF', headAchats, rowsD.map(r=>`<tr>${r.achats}</tr>`).join(''), totAchats, 'info répartiteur')}
     ${bloc('REMISE 2 / RDP', headR2, rowsD.map(r=>`<tr>${r.r2}</tr>`).join(''), totR2, '')}
-    ${bloc('REMISE 3 / COOP', headR3, rowsD.map(r=>`<tr>${r.r3}</tr>`).join(''), totR3, 'reçu = virements FSE (au TOTAL)')}`;
+    ${isBio ? bloc('REMISE 3 / COOP', headR3, rowsD.map(r=>`<tr>${r.r3}</tr>`).join(''), totR3, 'reçu = virements FSE (au TOTAL)') : ''}`;
 }
 
 function _verifFillMonthDetail(mk) {
