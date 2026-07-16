@@ -2292,16 +2292,12 @@ const RSF_MIDYEAR_CHANGES = {
 function _rowRsfOverride(ref, cond, row) {
   if (!ref?.cip13 || !cond || cond._year == null || row?.month == null) return null;
   const month = parseInt(row.month);
-  // 1. Exceptions utilisateur : la PLUS RÉCENTE applicable (effMonth max ≤ mois) donne
-  //    le palier RSF de la réf pour ce mois. Permet plusieurs états successifs (ex.
-  //    RSF 10 de janv. à avril, puis RSF 2,5 dès mai) — chaque onglet mois pose son état.
-  let best = null;
-  (state.labPages || []).forEach(lp => (lp.refExceptions || []).forEach(x => {
-    if (x.cip13 !== ref.cip13 || x.effYear !== cond._year || x.rsfPct == null) return;
-    if (month < (x.effMonth || 1)) return;
-    if (!best || (x.effMonth || 1) >= (best.effMonth || 1)) best = x;
-  }));
-  if (best) return parseFloat(best.rsfPct);
+  // 1. Exceptions utilisateur : la liste EN VIGUEUR au mois donne le palier RSF de la
+  //    réf (chaque onglet mois pose son état, ex. RSF 10 janv.–avril puis 2,5 dès mai).
+  for (const lp of (state.labPages || [])) {
+    const e = _refExcEffective(lp, cond._year, month).find(x => x.cip13 === ref.cip13 && x.rsfPct != null);
+    if (e) return parseFloat(e.rsfPct);
+  }
   // 2. Repli : seed codé en dur (MACROGOL…) si aucune exception utilisateur.
   const chg = RSF_MIDYEAR_CHANGES[ref.cip13];
   if (chg && cond._year === chg.year) return month < chg.effMonth ? chg.before : chg.after;
@@ -2312,12 +2308,8 @@ function _rowRsfOverride(ref, cond, row) {
 function _rowExcOverride(lp, ref, cond, row) {
   if (!lp || !ref || !ref.cip13 || !cond || !cond._year) return null;
   const month = (row && row.month != null) ? parseInt(row.month) : 12;
-  let best = null;
-  (lp.refExceptions || []).forEach(x => {
-    if (x.cip13 !== ref.cip13 || x.effYear !== cond._year || month < (x.effMonth || 1)) return;
-    if (!best || (x.effMonth || 1) >= (best.effMonth || 1)) best = x;
-  });
-  return best ? { remise2: best.remise2, remise3: best.remise3 } : null;
+  const e = _refExcEffective(lp, cond._year, month).find(x => x.cip13 === ref.cip13);
+  return e ? { remise2: e.remise2, remise3: e.remise3 } : null;
 }
 
 function mkLabState(uid) {
@@ -2345,9 +2337,12 @@ function mkLabState(uid) {
     contractSigned25: false,
     contractDate25: null,
     contratRepartiteur25: true,
-    // Exceptions PAR RÉFÉRENCE (nouveau format) — datées (mois/année d'application) :
-    // {id, cip13, libelle, rsfPct(nullable), remise2(nullable), remise3(nullable), effYear, effMonth}
-    refExceptions: [],
+    // Exceptions PAR RÉFÉRENCE, PAR MOIS (comme les onglets conditions) :
+    // refExceptionsByMonth[year][month] = liste COMPLÈTE des exceptions en vigueur ce
+    // mois-là ; un mois sans clé hérite du dernier mois antérieur qui en a une.
+    // Entrée : {id, cip13, libelle, rsfOrig, rsfPct, remise2, remise3}.
+    refExceptionsByMonth: {},
+    refExceptions: [],   // ancien format plat (migration → byMonth)
   };
 }
 
@@ -2493,7 +2488,8 @@ function serializeState() {
       contractSigned25: lp.contractSigned25 || false,
       contractDate25: lp.contractDate25 || null,
       contratRepartiteur25: lp.contratRepartiteur25 ?? true,
-      refExceptions: lp.refExceptions || [],
+      refExceptionsByMonth: lp.refExceptionsByMonth || {},
+      refExceptions: lp.refExceptions || [],   // ancien format plat (rétro-compat)
       // Persisté : la migration ancien→nouveau format ne doit tourner QU'UNE fois. Sinon,
       // au rechargement, elle re-dérivait les exceptions périmées de l'ancien format
       // (cond.remise2Except) et masquait les exceptions par référence saisies depuis.
@@ -5861,16 +5857,19 @@ function initLabPage(conf) {
     const lab = savedLabData.selectedLab;
     if (!lab) return;
     s.selectedLab = lab;
-    // Exceptions par référence (nouveau format daté). On restaure TOUJOURS (même vide)
-    // et on respecte le flag de migration persisté : une fois migré, on ne re-dérive
-    // JAMAIS depuis l'ancien format (sinon des exceptions saisies étaient écrasées par
-    // les anciennes au rechargement). Ne pas écraser un tableau déjà restauré non vide
-    // par le 2e appel de restauration (année 2025).
-    if (Array.isArray(savedLabData.refExceptions) &&
-        (savedLabData.refExceptions.length || !(s.refExceptions && s.refExceptions.length))) {
+    // Exceptions par référence PAR MOIS. On restaure TOUJOURS et on respecte le flag de
+    // migration persisté : une fois migré, on ne re-dérive JAMAIS l'ancien format.
+    if (savedLabData.refExceptionsByMonth && Object.keys(savedLabData.refExceptionsByMonth).length
+        && !(s.refExceptionsByMonth && Object.keys(s.refExceptionsByMonth).length)) {
+      s.refExceptionsByMonth = savedLabData.refExceptionsByMonth;
+    }
+    // Rétro-compat : ancien tableau plat → structure par mois.
+    if (Array.isArray(savedLabData.refExceptions) && savedLabData.refExceptions.length
+        && !(s.refExceptionsByMonth && Object.keys(s.refExceptionsByMonth).length)) {
+      s.refExceptionsByMonth = _refExcFlatToByMonth(savedLabData.refExceptions);
       s.refExceptions = savedLabData.refExceptions;
     }
-    if (savedLabData.refExcMigrated || (s.refExceptions && s.refExceptions.length)) {
+    if (savedLabData.refExcMigrated || (s.refExceptionsByMonth && Object.keys(s.refExceptionsByMonth).length)) {
       s._refExcMigrated = true;
     }
     // Restore contract signed/date (only on year 2026 to avoid double-write)
@@ -6242,11 +6241,60 @@ async function fetchRSF(lab, yr = 2026) {
 // superposé (overlay) aux lectures rsf_history du vérificateur et du comparateur, au
 // mois près. Aucune écriture rsf_history (annuel + réécrit à chaque import CGV).
 
+// ── Stockage PAR MOIS (chaque onglet mois = sa liste complète, héritée du mois
+//    précédent tant qu'on ne la modifie pas — comme les onglets conditions). ────
+function _refExcYearMap(lp, year) {
+  lp.refExceptionsByMonth = lp.refExceptionsByMonth || {};
+  const yk = String(year);
+  lp.refExceptionsByMonth[yk] = lp.refExceptionsByMonth[yk] || {};
+  return lp.refExceptionsByMonth[yk];
+}
+// Liste EN VIGUEUR au mois M = dernier mois ≤ M qui a une liste propre (sinon []).
+function _refExcEffective(lp, year, month) {
+  const mm = (lp && lp.refExceptionsByMonth && lp.refExceptionsByMonth[String(year)]) || {};
+  let best = null, bestM = -1;
+  Object.keys(mm).forEach(k => { const m = parseInt(k); if (m <= month && m > bestM) { bestM = m; best = mm[k]; } });
+  return best || [];
+}
+// Liste PROPRE du mois M (la crée en CLONANT l'héritée si absente, pour éditer M
+// sans toucher les mois antérieurs).
+function _refExcOwnList(lp, year, month) {
+  const mm = _refExcYearMap(lp, year);
+  if (!mm[month]) {
+    mm[month] = _refExcEffective(lp, year, month).map(e => ({ ...e, id: 'rx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }));
+  }
+  return mm[month];
+}
+// Conversion ancien tableau plat (entrées datées effMonth) → structure par mois.
+function _refExcFlatToByMonth(flat) {
+  const by = {};
+  (flat || []).forEach(e => {
+    const y = String(e.effYear || 2026), m = e.effMonth || 1;
+    (by[y] = by[y] || {}); (by[y][m] = by[y][m] || []);
+  });
+  // Pour chaque année, chaque mois de départ reçoit la liste EFFECTIVE à ce mois
+  // (dernière valeur par cip parmi les entrées effMonth ≤ m).
+  Object.keys(by).forEach(y => {
+    const yEntries = (flat || []).filter(e => String(e.effYear || 2026) === y);
+    Object.keys(by[y]).forEach(mk => {
+      const m = parseInt(mk);
+      const byCip = new Map();
+      yEntries.filter(e => (e.effMonth || 1) <= m)
+        .forEach(e => { const k = e.cip13 || e.id; const p = byCip.get(k); if (!p || (e.effMonth || 1) >= (p.effMonth || 1)) byCip.set(k, e); });
+      by[y][mk] = [...byCip.values()].map(e => ({ id: e.id, cip13: e.cip13, libelle: e.libelle,
+        rsfOrig: e.rsfOrig, rsfPct: e.rsfPct, remise2: e.remise2, remise3: e.remise3 }));
+    });
+  });
+  return by;
+}
+
 // Migration idempotente des anciennes exceptions (par palier, libellés texte).
 async function _migrateExceptionsToRefFormat(lp) {
   // Ne JAMAIS re-migrer si déjà fait OU si des exceptions par référence existent déjà
   // (ancien format = source périmée qui écraserait la saisie récente).
-  if (!lp || lp._refExcMigrated || lp._refExcMigrating || (lp.refExceptions && lp.refExceptions.length)) {
+  if (!lp || lp._refExcMigrated || lp._refExcMigrating
+      || (lp.refExceptionsByMonth && Object.keys(lp.refExceptionsByMonth).length)
+      || (lp.refExceptions && lp.refExceptions.length)) {
     if (lp) lp._refExcMigrated = true;
     return;
   }
@@ -6299,10 +6347,10 @@ async function _migrateExceptionsToRefFormat(lp) {
                  remise2: g.remise2, remise3: g.remise3, effYear: g.year, effMonth: 1 });
     }));
     lp.refExceptions = out;
+    lp.refExceptionsByMonth = _refExcFlatToByMonth(out);
     lp._refExcMigrated = true;
     saveState();
     try { if (typeof saveCloudState === 'function') saveCloudState(serializeState()); } catch (_) {}
-    try { _rebuildRsfMidyear(); } catch (_) {}
   } catch (e) { console.error('[BP] migration exceptions:', e); }
   finally { lp._refExcMigrating = false; }
 }
@@ -6375,20 +6423,13 @@ function _rebuildRsfMidyear() {
   window._rsfMidyear = m;
   return m;
 }
-// Override RDP par référence (vérificateur), au mois près. Renvoie le % RDP à
-// appliquer pour ce cip à (year, month) si une exception le couvre, sinon null.
+// Override RDP par référence (vérificateur), au mois près : la liste EN VIGUEUR au
+// (year, month) donne la remise 2 de la réf, sinon null.
 function _refExcRdpOverride(laboNorm, cip, year, month) {
   const lp = (state.labPages || []).find(p => _verifNormLab(p.selectedLab) === laboNorm);
-  if (!lp || !Array.isArray(lp.refExceptions)) return null;
-  // Une réf peut changer de valeur selon le mois (une exception par onglet mois) :
-  // on retient la plus RÉCENTE applicable (effMonth le plus élevé ≤ mois demandé).
-  let best = null;
-  lp.refExceptions.forEach(x => {
-    if (x.cip13 !== cip || x.effYear !== year || x.remise2 == null || x.remise2 === '') return;
-    if (month < (x.effMonth || 1)) return;
-    if (!best || (x.effMonth || 1) >= (best.effMonth || 1)) best = x;
-  });
-  return best ? Math.abs(parseFloat(best.remise2)) : null;
+  if (!lp) return null;
+  const e = _refExcEffective(lp, year, month).find(x => x.cip13 === cip && x.remise2 != null && x.remise2 !== '');
+  return e ? Math.abs(parseFloat(e.remise2)) : null;
 }
 
 // Panneau repliable des exceptions par référence, rendu sous le tableau des remises.
@@ -6398,18 +6439,16 @@ function _renderRefExceptions(lp, cond, box, year) {
   if (!lp._refExcMigrated && !lp._refExcMigrating) {
     _migrateExceptionsToRefFormat(lp).then(() => { if (box.isConnected) _renderRefExceptions(lp, cond, box, year); });
   }
-  const list = lp.refExceptions || [];
   const showR3 = !!cond.showR3;
   const paliers = [...new Set((cond.rsfValues || []).map(r => parseFloat(r.rsf_pct)).filter(v => !isNaN(v)))].sort((a, b) => a - b);
   const open = !!lp._refExcOpen;
-  // La date d'application vient de l'ONGLET MOIS actif (avant les paliers) : pas de
-  // sélecteur de date. On affiche les exceptions EN EFFET à ce mois (effMonth ≤ mois
-  // actif), une seule ligne par réf (la plus récente applicable).
+  // Chaque ONGLET MOIS porte sa liste complète (héritée du mois précédent tant qu'on ne
+  // l'a pas modifiée) — pas de sélecteur de date. On affiche la liste EN VIGUEUR au mois.
   const activeMon = (yr === 2025 ? lp.activeMon2025 : lp.activeMon2026) ?? (new Date().getMonth() + 1);
-  const byCip = new Map();
-  list.filter(e => e.effYear === yr && (e.effMonth || 1) <= activeMon)
-      .forEach(e => { const k = e.cip13 || e.id; const p = byCip.get(k); if (!p || (e.effMonth || 1) >= (p.effMonth || 1)) byCip.set(k, e); });
-  const displayed = [...byCip.values()];
+  const mm = (lp.refExceptionsByMonth && lp.refExceptionsByMonth[String(yr)]) || {};
+  let ownMon = -1; Object.keys(mm).forEach(k => { const m = parseInt(k); if (m <= activeMon && m > ownMon) ownMon = m; });
+  const inheritedList = ownMon >= 0 && ownMon < activeMon;   // liste héritée d'un mois antérieur
+  const displayed = _refExcEffective(lp, yr, activeMon).slice();
   const monLbl = _MONTH_LABELS[activeMon - 1];
   box.className = 'row-except-blocks';
   box.innerHTML = '';
@@ -6423,6 +6462,12 @@ function _renderRefExceptions(lp, cond, box, year) {
   hdr.addEventListener('click', () => { lp._refExcOpen = !lp._refExcOpen; _renderRefExceptions(lp, cond, box, year); });
   box.appendChild(hdr);
   if (!open) return;
+  if (inheritedList) {
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:10px;color:var(--text-dim);margin:0 0 6px 2px';
+    note.textContent = `↳ liste héritée de ${_MONTH_LABELS[ownMon - 1]} — la modifier créera la liste propre de ${monLbl}.`;
+    box.appendChild(note);
+  }
 
   const body = document.createElement('div');
   body.style.cssText = 'border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px';
@@ -6436,12 +6481,12 @@ function _renderRefExceptions(lp, cond, box, year) {
     inp.addEventListener('input', () => {
       clearTimeout(deb);
       deb = setTimeout(() => _refExcSearch(inp.value, dd, lp.selectedLab, yr, (ref) => {
-        lp.refExceptions = lp.refExceptions || [];
-        // Nouvelle exception rattachée au MOIS de l'onglet actif (effMonth = activeMon).
-        if (lp.refExceptions.some(e => e.cip13 === ref.cip13 && e.effYear === yr && (e.effMonth || 1) === activeMon)) { inp.value = ''; dd.classList.remove('visible'); return; }
-        lp.refExceptions.push({ id: 'rx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        // Ajout dans la liste PROPRE du mois actif (clonée de l'héritée si besoin).
+        const own = _refExcOwnList(lp, yr, activeMon);
+        if (own.some(e => e.cip13 === ref.cip13)) { inp.value = ''; dd.classList.remove('visible'); return; }
+        own.push({ id: 'rx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
           cip13: ref.cip13, libelle: ref.libelle, rsfOrig: ref.rsf_pct, rsfPct: ref.rsf_pct,
-          remise2: null, remise3: null, effYear: yr, effMonth: activeMon });
+          remise2: null, remise3: null });
         inp.value = ''; _refExcSave(lp); _renderRefExceptions(lp, cond, box, year);
       }), 280);
     });
@@ -6459,32 +6504,24 @@ function _renderRefExceptions(lp, cond, box, year) {
   box.appendChild(body);
 }
 
-// Applique une modif à l'exception DU MOIS ACTIF. Si la ligne affichée est héritée
-// d'un mois antérieur (effMonth < activeMon), on crée/complète une exception AU MOIS
-// ACTIF (l'originale reste) → « je change en mai » pose une transition en mai, sans
-// toucher janvier→avril. Renvoie l'exception cible.
-function _refExcApply(lp, e, activeMon, patch) {
-  // Réf sans CIP (libellé non résolu) : pas de dédoublonnage possible → édition directe.
-  if (!e.cip13) { Object.assign(e, patch); return e; }
-  lp.refExceptions = lp.refExceptions || [];
-  let target = lp.refExceptions.find(x => x.cip13 === e.cip13 && x.effYear === e.effYear && (x.effMonth || 1) === activeMon);
-  if (!target) {
-    target = { ...e, id: 'rx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), effMonth: activeMon };
-    lp.refExceptions.push(target);
-  }
+// Applique une modif dans la liste PROPRE du mois actif (clonée de l'héritée si besoin),
+// sans toucher les mois antérieurs. Renvoie l'exception cible.
+function _refExcApply(lp, e, activeMon, yr, patch) {
+  const own = _refExcOwnList(lp, yr, activeMon);
+  let target = e.cip13 ? own.find(x => x.cip13 === e.cip13) : own.find(x => x.id === e.id);
+  if (!target) { target = { ...e, id: 'rx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }; own.push(target); }
   Object.assign(target, patch);
   return target;
 }
 
 function _refExcRow(lp, cond, e, paliers, showR3, box, year, activeMon) {
+  const yr = parseInt(year) || 2026;
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--border);font-size:11px';
   const selCss = 'padding:2px;font-size:11px;background:var(--bg2,#0a0e1a);border:1px solid var(--border);border-radius:4px;color:var(--text)';
   const name = document.createElement('div');
   name.style.cssText = 'flex:1 1 170px;min-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-  const inherited = (e.effMonth || 1) < (activeMon || 12);
-  name.innerHTML = `${e.libelle || '(réf)'} ${e.cip13 ? `<span style="opacity:.4;font-family:monospace">${e.cip13}</span>` : '<span style="color:var(--amber)">⚠ CIP à repréciser</span>'}`
-    + (inherited ? ` <span style="opacity:.5;font-size:10px" title="Exception saisie sous l'onglet ${_MONTH_LABELS[(e.effMonth || 1) - 1]}, toujours en vigueur">↳ dès ${_MONTH_LABELS[(e.effMonth || 1) - 1]}</span>` : '');
+  name.innerHTML = `${e.libelle || '(réf)'} ${e.cip13 ? `<span style="opacity:.4;font-family:monospace">${e.cip13}</span>` : '<span style="color:var(--amber)">⚠ CIP à repréciser</span>'}`;
   row.appendChild(name);
 
   const mkNum = (val, ph, onch) => {
@@ -6501,26 +6538,33 @@ function _refExcRow(lp, cond, e, paliers, showR3, box, year, activeMon) {
     const selR = document.createElement('select'); selR.style.cssText = selCss; selR.title = 'Groupe RSF de la référence';
     paliers.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = `RSF ${Math.abs(p)}%`; if (parseFloat(e.rsfPct) === p) o.selected = true; selR.appendChild(o); });
     if (!isAdmin) selR.disabled = true;
-    selR.addEventListener('change', () => { _refExcApply(lp, e, activeMon, { rsfPct: parseFloat(selR.value) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); });
+    selR.addEventListener('change', () => { _refExcApply(lp, e, activeMon, yr, { rsfPct: parseFloat(selR.value) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); });
     row.appendChild(selR);
   }
   // Remise 2 (RDP)
   const r2w = document.createElement('div'); r2w.style.cssText = 'display:flex;align-items:center;gap:2px';
   const r2l = document.createElement('span'); r2l.textContent = (lp.contractSigned || lp.contractSigned25 || lp.selectedLab === 'Biogaran') ? 'RDP' : 'R2'; r2l.style.color = 'var(--text-dim)';
   r2w.appendChild(r2l);
-  r2w.appendChild(mkNum(e.remise2, '%', v => { const s = v.replace(',', '.').trim(); _refExcApply(lp, e, activeMon, { remise2: s === '' ? null : parseFloat(s) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); }));
+  r2w.appendChild(mkNum(e.remise2, '%', v => { const s = v.replace(',', '.').trim(); _refExcApply(lp, e, activeMon, yr, { remise2: s === '' ? null : parseFloat(s) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); }));
   row.appendChild(r2w);
   // Remise 3 (coop) si active
   if (showR3) {
     const r3w = document.createElement('div'); r3w.style.cssText = 'display:flex;align-items:center;gap:2px';
     const r3l = document.createElement('span'); r3l.textContent = 'R3'; r3l.style.color = 'var(--text-dim)'; r3w.appendChild(r3l);
-    r3w.appendChild(mkNum(e.remise3, '%', v => { const s = v.replace(',', '.').trim(); _refExcApply(lp, e, activeMon, { remise3: s === '' ? null : parseFloat(s) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); }));
+    r3w.appendChild(mkNum(e.remise3, '%', v => { const s = v.replace(',', '.').trim(); _refExcApply(lp, e, activeMon, yr, { remise3: s === '' ? null : parseFloat(s) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); }));
     row.appendChild(r3w);
   }
   if (isAdmin) {
     const del = document.createElement('button'); del.textContent = '✕'; del.title = 'Supprimer';
     del.style.cssText = 'background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;cursor:pointer;font-size:10px;padding:1px 6px;margin-left:auto';
-    del.addEventListener('click', () => { lp.refExceptions = (lp.refExceptions || []).filter(x => x.id !== e.id); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); });
+    del.addEventListener('click', () => {
+      // Suppression dans la liste PROPRE du mois actif (clonée de l'héritée si besoin) :
+      // retirer une réf en décembre ne touche pas janv.–nov.
+      const own = _refExcOwnList(lp, yr, activeMon);
+      const mm = _refExcYearMap(lp, yr);
+      mm[activeMon] = own.filter(x => (e.cip13 ? x.cip13 !== e.cip13 : x.id !== e.id));
+      _refExcSave(lp); _renderRefExceptions(lp, cond, box, year);
+    });
     row.appendChild(del);
   }
   return row;
