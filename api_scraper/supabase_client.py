@@ -263,6 +263,9 @@ async def patch_job_status(user_id: str, job_key: str, status: str, message: str
         "invoices": data,
         "error":    "" if status != "error" else message,
         "file_url": file_url,
+        # Horodatage (ms) : permet au front de détecter un job « running » figé
+        # (runner mort) et de proposer une relance au lieu d'un spinner éternel.
+        "updated_at": int(time.time() * 1000),
     }
     if period_start:
         job["period_start"] = period_start

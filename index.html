@@ -1874,6 +1874,68 @@ function _digiBatchBar(_html, _pct) {
   const bar = document.getElementById('digiBatchBar');
   if (bar) bar.remove();
 }
+// ── Spinner + progression VIVANTS du connecteur Digi ───────────────────────────
+// Le texte « analyse en cours » venait d'un instantané (refreshConnJobStatuses)
+// lu une seule fois à l'ouverture de la modale : le poller ne rafraîchissait que
+// _digiBatchBar (no-op) → le texte restait figé, même job terminé. Ces helpers
+// (top-level → appelables depuis le poller ET depuis la modale) pilotent la roue
+// digiProg* + le texte digiJobStatus, et les EFFACENT quand le job passe à
+// done/error. Garde d'ancienneté : un job « running » figé (updated_at trop
+// vieux = runner mort) bascule en état récupérable au lieu d'un spinner éternel.
+const _DIGI_STALE_MS = 15 * 60 * 1000;
+function _digiJobStale(job) {
+  if (!job || job.status !== 'running') return false;
+  const ts = job.updated_at || 0;
+  return ts > 0 && (Date.now() - ts) > _DIGI_STALE_MS;
+}
+function _digiRingClear() {
+  document.getElementById('digiProgBar')?.classList.remove('active');
+  document.getElementById('digiProgRing')?.classList.remove('spin');
+  const arc = document.getElementById('digiProgArc');   if (arc)   arc.style.strokeDashoffset = '';
+  const pct = document.getElementById('digiProgPct');   if (pct)   pct.textContent = '';
+}
+function _digiSetStatus(cls, text) {
+  const el = document.getElementById('digiJobStatus');
+  if (!el) return;
+  el.className = 'conn-job-status ' + cls;
+  el.textContent = text || '';
+}
+// Rend l'état du job digi_batch_job (roue + texte). Retourne true tant que le job
+// est en cours (le poller continue), false s'il est terminé/en erreur/périmé.
+function _digiUiProgress(job) {
+  const CIRC = 125.7;
+  if (!job) { _digiRingClear(); return false; }
+  if (_digiJobStale(job)) {
+    _digiRingClear();
+    _digiSetStatus('running', '⚠ analyse interrompue — relance-la avec « ⟳ RÉ-ANALYSER LES FICHIERS »');
+    return false;
+  }
+  if (job.status === 'running') {
+    const done = job.done || 0, total = job.total || 0;
+    document.getElementById('digiProgBar')?.classList.add('active');
+    const ring = document.getElementById('digiProgRing');
+    const arc  = document.getElementById('digiProgArc');
+    const pctE = document.getElementById('digiProgPct');
+    if (total > 0) {
+      const pct = Math.round(done / total * 100);
+      ring?.classList.remove('spin');
+      if (arc)  arc.style.strokeDashoffset = CIRC * (1 - pct / 100);
+      if (pctE) pctE.textContent = pct + '%';
+    } else {
+      ring?.classList.add('spin');
+      if (arc)  arc.style.strokeDashoffset = '';
+      if (pctE) pctE.textContent = '';
+    }
+    const msg = job.message ? ' · ' + job.message : '';
+    _digiSetStatus('running', total > 0 ? `⏳ analyse ${done}/${total}${msg}` : '⏳ analyse en cours…');
+    return true;
+  }
+  // done / error → on efface la roue et (pour done) le texte.
+  _digiRingClear();
+  if (job.status === 'error') _digiSetStatus('error', `❌ ${job.message || 'erreur'}`);
+  else _digiSetStatus('done', '');
+  return false;
+}
 async function _insertPendingDigi(file, batchId) {
   if (file.size > 8 * 1024 * 1024) throw new Error(`${file.name} > 8 Mo (trop volumineux)`);
   const { data: { session } } = await window._sbClient.auth.getSession();
@@ -1931,19 +1993,14 @@ async function _pollDigiBatchJob(opts = {}) {
         job = row?.state_json?.digi_batch_job || null;
       } catch (_) {}
       if (job) {
-        const done = job.done || 0, total = job.total || 0;
-        const pct  = total ? Math.round(done / total * 100) : (job.status === 'running' ? 5 : 100);
+        // Roue + texte du connecteur Digi (s'efface tout seul à la fin).
+        _digiUiProgress(job);
+        if (_digiJobStale(job)) break;   // job figé → état récupérable, on arrête de tourner
         if (job.status === 'done') {
-          _digiBatchBar(`✅ ${job.message || 'Terminé'}`, 100);
           await _refreshAfterDigiBatch();
-          setTimeout(() => _digiBatchBar(null), 6000);
           break;
         } else if (job.status === 'error') {
-          _digiBatchBar(`❌ ${job.message || 'Erreur'}`, 100);
-          setTimeout(() => _digiBatchBar(null), 9000);
           break;
-        } else {
-          _digiBatchBar(`⚙️ Traitement en fond : ${done}/${total} — ${job.message || ''} <span style="opacity:.6">(tu peux fermer la page)</span>`, pct);
         }
       }
       await new Promise(r => setTimeout(r, 5000));
@@ -4931,7 +4988,7 @@ function initLabPage(conf) {
               <thead>
                 <tr>
                   <th>RSF&nbsp;% <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer RSF First" style="display:none;font-size:11px;padding:2px 7px;vertical-align:middle;margin-left:4px"></button></th>
-                  <th id="thR2-${uid}-${cond.uid}">${s.selectedLab === 'Biogaran' ? 'RDP&nbsp;(%)' : 'Remise&nbsp;2&nbsp;(%)'}</th>
+                  <th id="thR2-${uid}-${cond.uid}">${(s.selectedLab === 'Biogaran' || s.contractSigned || s.contractSigned25) ? 'RDP&nbsp;(%)' : 'Remise&nbsp;2&nbsp;(%)'}</th>
                   <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="font-size:11px;padding:2px 7px">+ REMISE 3</button></th>
                   <th style="color:var(--green)">Exception</th>
                 </tr>
@@ -6682,6 +6739,30 @@ function _verifGetCond(labDisplay, year, month) {
   return _applyY25Cutover(cond, labDisplay, year, month);
 }
 
+// ── Généralisation Biogaran → tout labo à contrat direct ──────────────────────
+// Deux notions distinctes remplacent le verrou historique « selNorm === 'BIOGARAN' » :
+//  • CONTRAT DIRECT SIGNÉ (contractSigned) → le labo est analysé à fond dans le
+//    vérificateur (RSF + RDP + récap litige, déjà génériques). Couvre Zydus, puis
+//    automatiquement tout labo à contrat direct (phase 2).
+//  • A UNE COOP (remise 3) → applique EN PLUS la mécanique coop : coefficient de
+//    réalisation 80 %, échéancier plafonné, repli coopR3, « somme ronde = coop ».
+//    Aujourd'hui : Biogaran seul. Un labo à contrat direct RDP (ex. Zydus) n'a PAS
+//    de coop → sa RDP est réconciliée sans être polluée par la logique coop.
+function _verifIsDirectContract(labDisplay, year) {
+  const lp = (state.labPages || []).find(p => p.selectedLab === labDisplay);
+  if (!lp) return false;
+  return !!(parseInt(year) === 2025 ? lp.contractSigned25 : lp.contractSigned);
+}
+function _verifHasCoop(labDisplay, year) {
+  const today = new Date();
+  const yr    = parseInt(year) || today.getFullYear();
+  const mRef  = yr < today.getFullYear() ? 12 : (today.getMonth() + 1);
+  const cond  = _verifGetCond(labDisplay, yr, mRef);
+  if (!cond) return false;
+  if ((parseFloat(cond.coopR3) || 0) > 0) return true;
+  return (cond.rsfValues || []).some(r => r.remise3 != null && r.remise3 !== '' && parseFloat(r.remise3) > 0);
+}
+
 // Bascule mensuelle 2025 : avant le mois __y25cut (ex. Biogaran = 9 → sept), le
 // barème RDP (remise2) / coop (remise3) est celui de 2025 (_rsfDefaults25) ; à
 // partir de la bascule, celui de 2026 (_rsfDefaults). On remappe TOUJOURS depuis
@@ -7062,20 +7143,23 @@ function _verifFillAnnualSummary(year) {
 const BIOGARAN_COOP_CAP = 7000;
 function _verifFillBiogaranCoop(year) {
   const wrap = document.getElementById('verifBiogaranCoop'); if (!wrap) return;
-  if (!_verifSelLab || _verifNormLab(_verifSelLab) !== 'BIOGARAN') { wrap.innerHTML = ''; return; }
+  // Échéancier réservé aux labos à COOP (Biogaran) ; masqué pour un contrat direct
+  // RDP (ex. Zydus) qui n'a pas de coop plafonnée.
+  if (!_verifSelLab || !_verifHasCoop(_verifSelLab, year)) { wrap.innerHTML = ''; return; }
+  const labDisplay = _verifSelLab;
   const yr    = parseInt(year);
   const fmtE  = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const TVA_R3 = 1.20;
   const CAP    = BIOGARAN_COOP_CAP;
-  const norm   = 'BIOGARAN';
+  const norm   = _verifNormLab(labDisplay);
   const today  = new Date();
   const mRef   = yr < today.getFullYear() ? 12 : today.getMonth() + 1;
 
-  const cond  = _verifGetCond('Biogaran', yr, mRef);
+  const cond  = _verifGetCond(labDisplay, yr, mRef);
   const r3pct = cond ? (parseFloat(cond.coopR3) || 0) : 0;
   if (r3pct <= 0) { wrap.innerHTML = ''; return; }
 
-  // Achats Biogaran (Digi direct + répartiteur) par mois — base des remises.
+  // Achats du labo (Digi direct + répartiteur) par mois — base des remises.
   const paByMonth = [];
   let totAchats = 0;
   for (let i = 1; i <= 12; i++) {
@@ -7087,10 +7171,10 @@ function _verifFillBiogaranCoop(year) {
     totAchats += pa;
   }
 
-  // Réalisation du marché Biogaran (règle des 80 %). caCondition_max = CA cible.
+  // Réalisation du marché (règle des 80 %). caCondition_max = CA cible.
   // N-1 : réalisation = achats année / cible. N (année en cours) : on annualise
   // les achats YTD (achats/mois écoulés × 12) pour estimer la trajectoire.
-  const lpB   = (state.labPages || []).find(p => p.selectedLab === 'Biogaran');
+  const lpB   = (state.labPages || []).find(p => p.selectedLab === labDisplay);
   const condsB= lpB ? (getEffectiveCondsForMonth(lpB, yr, mRef) || []) : [];
   const caMax = Math.max(0, ...condsB.map(c => parseFloat(c.caCondition) || 0));
   const monthsElapsed = yr < today.getFullYear() ? 12 : (today.getMonth() + 1);
@@ -7107,7 +7191,7 @@ function _verifFillBiogaranCoop(year) {
     const mk = `${yr}-${String(i).padStart(2,'0')}`;
     let rec = 0;
     Object.entries(state._fseMonthStats?.[mk] || {}).forEach(([labo, s]) => {
-      if (_verifNormLab(labo) === norm) rec += _fseEff(s).r3_ttc || 0;
+      if (_verifNormLab(labo) === norm) rec += _fseEff(s, norm).r3_ttc || 0;
     });
     const due = paByMonth[i-1] * r3pct / 100 * TVA_R3 * coopCoef;
     cumulDue += due; cumulRec += rec;
@@ -7144,10 +7228,10 @@ function _verifFillBiogaranCoop(year) {
     : `<span style="color:var(--amber)">CA cible (caCondition) non renseigné dans MES CONDITIONS LABO → coefficient de réalisation non appliqué.</span>`;
 
   wrap.innerHTML = `
-    <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:2px;margin:20px 0 8px">◈ COOP BIOGARAN — ÉCHÉANCIER (plafond ${fmtE(CAP)}/mois)</div>
+    <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:2px;margin:20px 0 8px">◈ COOP ${labDisplay.toUpperCase()} — ÉCHÉANCIER (plafond ${fmtE(CAP)}/mois)</div>
     <div class="verif-note" style="margin-bottom:8px;font-size:11px;line-height:1.5">
       ${realInfo}<br>
-      Les virements coop (remise 3) Biogaran sont plafonnés à ~${fmtE(CAP)}/mois ; l'excédent d'un mois est reporté sur les suivants jusqu'au solde de l'année. Un <b style="color:var(--amber)">écart positif</b> (dû &gt; reçu) en cours d'année est donc <b>normal</b> (rattrapage étalé), pas une anomalie.
+      Les virements coop (remise 3) sont plafonnés à ~${fmtE(CAP)}/mois ; l'excédent d'un mois est reporté sur les suivants jusqu'au solde de l'année. Un <b style="color:var(--amber)">écart positif</b> (dû &gt; reçu) en cours d'année est donc <b>normal</b> (rattrapage étalé), pas une anomalie.
     </div>
     <div style="overflow-x:auto;margin-bottom:10px">
       <table class="verif-tbl">
@@ -7159,7 +7243,7 @@ function _verifFillBiogaranCoop(year) {
           <th>CUMUL VIRÉ</th>
           <th title="Cumul dû − cumul viré : reste à percevoir (étalé par le plafond)">SOLDE À VIRER</th>
         </tr></thead>
-        <tbody>${rows || `<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">// Aucune donnée coop Biogaran ${yr}</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">// Aucune donnée coop ${labDisplay} ${yr}</td></tr>`}</tbody>
       </table>
     </div>
     <div class="verif-note" style="font-size:11px;line-height:1.5">
@@ -7171,12 +7255,15 @@ function _verifFillBiogaranCoop(year) {
     </div>`;
 }
 
-// Coefficient de réalisation Biogaran (règle 80 %) — réutilisé par l'échéancier
-// et le tableau par palier. Réalisation = achats annualisés / CA cible.
-function _verifBiogaranCoef(yr) {
+// Coefficient de réalisation coop (règle 80 %) — réutilisé par l'échéancier et le
+// tableau par palier. Réalisation = achats annualisés / CA cible. Générique : le
+// labo est passé en paramètre (n'est appelé QUE pour les labos à coop, cf.
+// _verifHasCoop) — plus de littéral « Biogaran » codé en dur.
+function _verifCoopCoef(labDisplay, yr) {
+  const selNorm = _verifNormLab(labDisplay);
   const today = new Date();
   const mRef  = yr < today.getFullYear() ? 12 : (today.getMonth() + 1);
-  const lpB   = (state.labPages || []).find(p => p.selectedLab === 'Biogaran');
+  const lpB   = (state.labPages || []).find(p => p.selectedLab === labDisplay);
   const condsB= lpB ? (getEffectiveCondsForMonth(lpB, yr, mRef) || []) : [];
   const caMax = Math.max(0, ...condsB.map(c => parseFloat(c.caCondition) || 0));
   if (caMax <= 0) return 1;  // pas de cible → pas de coef
@@ -7186,7 +7273,7 @@ function _verifBiogaranCoef(yr) {
   // du contrat (date de signature) dans l'année, annualisée sur les mois écoulés.
   // Vérifié sur les données réelles : contrat 06/2025, juin→déc annualisé ≈ 94 %
   // → coop débloquée, cohérent avec les versements effectifs.
-  const cs = (typeof _fseContractStart === 'function') ? _fseContractStart('Biogaran') : null;
+  const cs = (typeof _fseContractStart === 'function') ? _fseContractStart(labDisplay) : null;
   let m0 = 1;
   if (cs) {
     const [cy, cm] = cs.split('-').map(Number);
@@ -7197,10 +7284,10 @@ function _verifBiogaranCoef(yr) {
   for (let i = m0; i <= mRef; i++) {
     const mk = `${yr}-${String(i).padStart(2,'0')}`;
     ((state._grossisteMonthStats||{})[mk] || []).forEach(r => {
-      if (_verifNormLab(r.labo)==='BIOGARAN') tot += (r.ca_brut != null && r.ca_brut > 0 ? r.ca_brut : r.total_ht) || 0;
+      if (_verifNormLab(r.labo)===selNorm) tot += (r.ca_brut != null && r.ca_brut > 0 ? r.ca_brut : r.total_ht) || 0;
     });
     ((state._digiMonthStats||{})[mk] || []).forEach(r => {
-      if (_verifNormLab(r.labo)==='BIOGARAN') tot += r.total_ht || 0;
+      if (_verifNormLab(r.labo)===selNorm) tot += r.total_ht || 0;
     });
     n++;
   }
@@ -7556,7 +7643,18 @@ window._digiAvoirMissing = function(refs) {
 //  3. sinon RÈGLE DU MONTANT — décimales ⇒ RDP (r2), somme ronde ⇒ coop (r3),
 //     sauf si le backend l'a explicitement marqué r2 (mot-clé RDP dans le libellé).
 // Les virements coop Biogaran sont toujours des sommes rondes.
-function _fseVtype(t) {
+// Un labo (clé normalisée) a-t-il une COOP ? Détermine la classification des sommes
+// RONDES : coop pour un labo à coop (Biogaran), RDP pour un contrat direct RDP
+// (ex. Zydus) — sinon un virement RDP rond de Zydus tomberait en coop (r3) et la
+// RDP reçue afficherait 0. Inconnu → true (comportement historique préservé).
+function _normHasCoop(laboNorm) {
+  if (!laboNorm) return true;
+  const y = new Date().getFullYear();
+  return (state.labPages || []).some(p =>
+    _verifNormLab(p.selectedLab) === laboNorm &&
+    (_verifHasCoop(p.selectedLab, y) || _verifHasCoop(p.selectedLab, 2025)));
+}
+function _fseVtype(t, laboNorm) {
   if (t && t._mvtype) return t._mvtype;   // virement saisi à la main : type imposé
   const o = (state._fseOverrides||{})[_fseTransferKey(t)];
   if (o && o.vtype) return o.vtype;
@@ -7564,12 +7662,14 @@ function _fseVtype(t) {
   if (kinds.length === 1) return kinds[0] === 'rdp' ? 'r2' : 'r3';
   const cents = Math.round(Math.abs(t.montant || 0) * 100) % 100;
   if (cents !== 0) return 'r2';
-  // Somme RONDE = coop (règle métier Biogaran), sauf mot-clé RDP explicite dans
-  // le libellé. On ne suit PLUS le vtype backend ici : son lookup par n° de
-  // facture mélangeait refs RDP et presta d'un même mois (facture_refs) et
-  // classait en r2 des virements coop CSP (ex. 6540/2760/4140/3720 €), gonflant
-  // la RDP reçue et amputant la coop reçue d'autant.
-  return /\bRDP\b/i.test(String(t.lib || '')) ? 'r2' : 'r3';
+  // Somme RONDE = coop (règle métier des labos à coop, ex. Biogaran), sauf mot-clé
+  // RDP explicite dans le libellé, OU labo SANS coop (contrat direct RDP → la somme
+  // ronde est une RDP). On ne suit PLUS le vtype backend ici : son lookup par n° de
+  // facture mélangeait refs RDP et presta d'un même mois (facture_refs) et classait
+  // en r2 des virements coop CSP (ex. 6540/2760/4140/3720 €), gonflant la RDP reçue.
+  if (/\bRDP\b/i.test(String(t.lib || ''))) return 'r2';
+  if (laboNorm && !_normHasCoop(laboNorm)) return 'r2';   // labo à contrat direct RDP (Zydus…)
+  return 'r3';
 }
 // ── Assignation des virements aux MOIS DE CONTRAT ──────────────────────────
 // Un virement encaissé en M paie une période antérieure (souvent M-1/M-2, avec
@@ -7611,16 +7711,16 @@ function _verifCoopAttendue(mk, selNorm, labDisplay) {
   const [y, m] = mk.split('-').map(Number);
   const cond = _verifGetCond(labDisplay, y, m);
   if (!cond) return 0;
-  const isBio  = selNorm === 'BIOGARAN';
-  const coef   = isBio ? _verifBiogaranCoef(y) : 1;
-  const coopR3 = parseFloat(cond.coopR3) || 0;
+  const hasCoop = _verifHasCoop(labDisplay, y);   // ex-« isBio » : labo à coop (Biogaran) vs contrat direct RDP (Zydus)
+  const coef    = hasCoop ? _verifCoopCoef(labDisplay, y) : 1;
+  const coopR3  = parseFloat(cond.coopR3) || 0;
   const cmapAll = {}; (cond.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)) cmapAll[k]=r; });
   let tot = 0;
   paliers.forEach(p => {
     if (p.taux == null) return;
     const cAll  = cmapAll[Math.abs(p.taux)] || {};
-    const r3pct = (cAll.remise3!=null && cAll.remise3!=='') ? parseFloat(cAll.remise3) : (isBio ? coopR3 : 0);
-    if (r3pct > 0) tot += (p.brut||0) * r3pct/100 * 1.20 * (isBio ? coef : 1);
+    const r3pct = (cAll.remise3!=null && cAll.remise3!=='') ? parseFloat(cAll.remise3) : (hasCoop ? coopR3 : 0);
+    if (r3pct > 0) tot += (p.brut||0) * r3pct/100 * 1.20 * (hasCoop ? coef : 1);
   });
   return Math.round(tot*100)/100;
 }
@@ -7670,10 +7770,11 @@ function _fseApplyManual() {
   // 3. Recalage des agrégats de secours (r2_ttc/r3_ttc/montant_ttc/count) sur les
   //    buckets contenant des manuels — utilisés en repli quand le détail transfers
   //    est absent ailleurs.
-  Object.values(ms).forEach(labs => Object.values(labs || {}).forEach(s => {
+  Object.values(ms).forEach(labs => Object.entries(labs || {}).forEach(([labo, s]) => {
     if (!Array.isArray(s.transfers) || !s.transfers.some(t => t._manual)) return;
+    const ln = _verifNormLab(labo);
     let a2 = 0, a3 = 0, tot = 0;
-    s.transfers.forEach(t => { const m = t.montant || 0; tot += m; if (_fseVtype(t) === 'r2') a2 += m; else a3 += m; });
+    s.transfers.forEach(t => { const m = t.montant || 0; tot += m; if (_fseVtype(t, ln) === 'r2') a2 += m; else a3 += m; });
     const r = x => Math.round(x * 100) / 100;
     s.r2_ttc = r(a2); s.r3_ttc = r(a3); s.montant_ttc = r(tot); s.count = s.transfers.length;
   }));
@@ -7780,7 +7881,7 @@ function _fseAssignMap(selNorm, labDisplay) {
   if (!all.length) return map;
   const leftovers = { r2: [], r3: [] };
   all.forEach(t => {
-    const vt = _fseVtype(t);
+    const vt = _fseVtype(t, selNorm);
     const avoirs = _fseMatchAvoirs(t).filter(p => p.months && p.months.length);
     if (avoirs.length) {
       // Périodes des avoirs appariés ; ventilation par rdp_total si plusieurs.
@@ -7854,12 +7955,12 @@ function _fseAssignMap(selNorm, labDisplay) {
 // Stats FSE effectives d'un labo/mois : si le détail unitaire est là, recalcule
 // r2/r3 depuis les virements en appliquant les reclassements manuels ; sinon
 // repli sur les agrégats backend (r2_ttc/r3_ttc). Source unique pour tout le front.
-function _fseEff(stats) {
+function _fseEff(stats, laboNorm) {
   if (!stats) return { montant_ttc: 0, r2_ttc: 0, r3_ttc: 0, count: 0 };
   const tr = stats.transfers, r2 = v => Math.round(v*100)/100;
   if (Array.isArray(tr) && tr.length) {
     let a2 = 0, a3 = 0, tot = 0;
-    tr.forEach(t => { const m = t.montant || 0; tot += m; if (_fseVtype(t) === 'r2') a2 += m; else a3 += m; });
+    tr.forEach(t => { const m = t.montant || 0; tot += m; if (_fseVtype(t, laboNorm) === 'r2') a2 += m; else a3 += m; });
     return { montant_ttc: r2(tot), r2_ttc: r2(a2), r3_ttc: r2(a3), count: stats.count || tr.length };
   }
   const m = stats.montant_ttc || 0;
@@ -7925,7 +8026,7 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
   const rows = transfers.map(t => {
     const key = _fseTransferKey(t);
     window._fseKeyType[key] = t.vtype || 'r3';       // type backend, pour le toggle
-    const isR2 = _fseVtype(t) === 'r2';
+    const isR2 = _fseVtype(t, selNorm) === 'r2';
     const amt  = (t.amount != null ? t.amount : t.montant) || 0;   // part ventilée
     if (isR2) sR2 += amt; else sR3 += amt;
     const overridden = (state._fseOverrides||{})[key];
@@ -8003,7 +8104,7 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   if (!Object.keys(_amap).length) {
     Object.entries(state._fseMonthStats?.[mk]||{}).forEach(([l,s])=>{
       if (_verifNormLab(l)!==selNorm) return;
-      const e = _fseEff(s); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
+      const e = _fseEff(s, selNorm); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
     });
   }
   // R2 reçu : virements bancaires (FSE r2) = source de vérité ; repli sur l'avoir
@@ -8050,7 +8151,7 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
     Object.entries(state._fseMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,labMap])=>{
       Object.entries(labMap||{}).forEach(([l,s])=>{
         if (_verifNormLab(l)!==selNorm) return;
-        const e = _fseEff(s); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
+        const e = _fseEff(s, selNorm); fseR3 += e.r3_ttc; fseR2 += e.r2_ttc;
       });
     });
   }
@@ -8188,10 +8289,10 @@ function _rdpPairMap(rdpByTaux, paliers, cmap, emap) {
 function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, year, monthForCond, cumulYear, r2RecAnnounced, rmapPre) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP = v => v != null ? (Math.round(v*100)/100).toString().replace('.',',') + ' %' : '—';
-  const TVA_R3 = 1.20, isBio = selNorm === 'BIOGARAN';
+  const TVA_R3 = 1.20, isBio = _verifHasCoop(labDisplay, cumulYear || year);   // labo à coop (Biogaran) vs contrat direct RDP (Zydus)
   const cond   = _verifGetCond(labDisplay, year, monthForCond);
   const coopR3 = cond ? (parseFloat(cond.coopR3)||0) : 0;
-  const coef   = isBio ? _verifBiogaranCoef(year) : 1;
+  const coef   = isBio ? _verifCoopCoef(labDisplay, year) : 1;
   // rsf_pct des conditions est souvent stocké NÉGATIF (remise), alors que le taux
   // grossiste/RDP est positif → on indexe par valeur absolue pour les apparier.
   const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)&&!r.excluded) cmap[k]=r; });
@@ -8482,7 +8583,7 @@ function _verifFillMonthDetail(mk) {
     const rsfEst  = rsfData.eur ?? (rsfPct != null ? pa_tot * rsfPct / 100 : null);
     const r2est   = r2pct != null ? pa_tot * r2pct / 100 : null;
     const r3estTTC= r3pct > 0 ? pa_tot * r3pct / 100 * TVA_R3 : null;
-    const _fse    = _fseEff(fseMap[key]);
+    const _fse    = _fseEff(fseMap[key], key);
     // Virement RDP (FSE r2) = source de vérité ; repli sur l'avoir Digi si aucun.
     const r2rec_tot = _fse.r2_ttc > 0 ? _fse.r2_ttc : (digi.rdp_total || 0);
     const r2rec   = r2rec_tot > 0 ? r2rec_tot : null;
@@ -8620,7 +8721,7 @@ function _verifPrestaBlock(mk) {
     const pht  = r.presta_total     || 0;
     if (!pttc && !pht) return;
     const k = _verifNormLab(r.labo);
-    const fse_r3 = _fseEff(fseMap[k]).r3_ttc || 0;
+    const fse_r3 = _fseEff(fseMap[k], k).r3_ttc || 0;
     const ecart  = fse_r3 > 0 ? fse_r3 - pttc : null;
     const ecartCls = ecart == null ? '' : Math.abs(ecart) < 1 ? ' style="color:var(--green)"' : ' style="color:var(--amber)"';
     rows.push(`<tr>
@@ -8791,7 +8892,7 @@ function _verifFillTout(year) {
     Object.entries(labMap || {}).forEach(([labo, stats]) => {
       const k = _verifNormLab(labo);
       if (!fseAcc[k]) fseAcc[k] = { r2: 0, r3: 0 };
-      const e = _fseEff(stats);
+      const e = _fseEff(stats, k);
       fseAcc[k].r2 += e.r2_ttc;
       fseAcc[k].r3 += e.r3_ttc;
     })
@@ -8919,7 +9020,7 @@ function _verifPrestaAnnualBlock(yr) {
     Object.entries(labMap || {}).forEach(([labo, s]) => {
       const k = _verifNormLab(labo);
       if (!fseAcc[k]) fseAcc[k] = 0;
-      fseAcc[k] += _fseEff(s).r3_ttc || 0;
+      fseAcc[k] += _fseEff(s, k).r3_ttc || 0;
     })
   );
   const rows = Object.entries(prestaAcc).sort(([a],[b]) => a.localeCompare(b)).map(([labo, d]) => {
@@ -12991,17 +13092,18 @@ function initConnecteurModal() {
       map.forEach(({ jobKey, elId }) => {
         const job = sj[jobKey];
         if (!job) return;
+        // Digi : roue + progression X/Y VIVANTES, gérées par _digiUiProgress, et
+        // un poller live démarré si le job tourne encore (le spinner s'effacera
+        // tout seul à la fin, plus de texte figé jusqu'à réouverture de la modale).
+        if (jobKey === 'digi_batch_job') {
+          _digiUiProgress(job);
+          if (job.status === 'running' && !_digiJobStale(job)) _pollDigiBatchJob();
+          return;
+        }
         if (job.status === 'done') {
           _setJobStatusEl(elId, 'done', '');
         } else if (job.status === 'running') {
-          // Digi : le message serveur détaille fichier par fichier
-          // (« 497/1474 · Mylan_30052024.pdf ✓ ») — bruit inutile sur la carte
-          // connecteur. On affiche un libellé générique ; le détail reste dans
-          // les logs du job côté serveur.
-          const msg = jobKey === 'digi_batch_job'
-            ? '⏳ analyse des fichiers en cours…'
-            : (job.message || '');
-          _setJobStatusEl(elId, 'running', msg);
+          _setJobStatusEl(elId, 'running', job.message || '');
         } else if (job.status === 'error') {
           _setJobStatusEl(elId, 'error', `❌ ${job.error || job.message || 'erreur'}`);
         }

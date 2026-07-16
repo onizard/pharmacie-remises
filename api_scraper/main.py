@@ -287,9 +287,16 @@ async def _dispatch_gh_digi_batch(user_id: str, user_token: str = ""):
     """Déclenche process_digi_batch.yml : traite les avoirs Digi 'pending' en file."""
     loop = asyncio.get_event_loop()
     cur  = await loop.run_in_executor(None, lambda: _get_state_sync(user_id, user_token))
-    if (cur.get("digi_batch_job") or {}).get("status") == "running":
-        print(f"  [gh-dispatch] digi_batch_job déjà en cours pour {user_id[:8]} — ignoré")
-        return
+    _ex = cur.get("digi_batch_job") or {}
+    if _ex.get("status") == "running":
+        # Un job « running » figé (updated_at > 15 min = runner mort) ne doit PAS
+        # bloquer un nouveau lancement à vie — sinon la relance depuis le front est
+        # impossible. On n'ignore que les jobs RÉCEMMENT actifs.
+        _ts = _ex.get("updated_at") or 0
+        if _ts and (time.time() * 1000 - _ts) < 15 * 60 * 1000:
+            print(f"  [gh-dispatch] digi_batch_job déjà en cours pour {user_id[:8]} — ignoré")
+            return
+        print(f"  [gh-dispatch] digi_batch_job périmé pour {user_id[:8]} — relancement autorisé")
     await patch_job_status(user_id, "digi_batch_job", "running",
                            "File en attente de démarrage…", [], user_token=user_token)
     if not GH_TOKEN:

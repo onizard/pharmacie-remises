@@ -120,6 +120,9 @@ paliers. Ne jamais filtrer remise3 sur `excluded`.
 - L'avoir RDP agrège par TAUX VERSÉ, pas par palier RSF (les exceptions d'un
   palier sont versées dans la ligne de leur taux).
 - Les virements coop sont des sommes rondes (sans décimales) ; décimales ⇒ RDP.
+  ⚠️ Cette règle « somme ronde = coop » ne vaut QUE pour un labo À COOP. `_fseVtype(t, laboNorm)`
+  prend le labo : pour un contrat direct RDP (ex. Zydus, sans coop), une somme ronde est
+  une RDP (sinon la RDP reçue tombait à 0). `_normHasCoop(laboNorm)` tranche.
 - SEPT. 2025 (Biogaran) : avoir facturé à des taux HORS barème (20 % au lieu de
   30 % sur palier 10, remise sur palier 15 sans RDP, paliers 20/30 omis) —
   application anticipée d'un projet de loi finalement NON VOTÉ. Retour au barème
@@ -130,7 +133,21 @@ paliers. Ne jamais filtrer remise3 sur `excluded`.
   et le labo paie RDP 10 % sur TOUT le palier 30 (override dans
   _r2ExactForMonth, mois ≥ bascule uniquement).
 
-### Principe
+### Généralisation vérificateur : Biogaran → tout labo à contrat direct
+Le vérificateur n'est plus verrouillé sur le littéral `'BIOGARAN'`. DEUX notions :
+- **Contrat direct signé** (`labPage.contractSigned`/`contractSigned25`) → le labo est
+  analysé à fond (RSF + RDP + récap litige, déjà génériques). Couvre Zydus, puis tout
+  labo à contrat direct (`_verifIsDirectContract`).
+- **A une coop** (`_verifHasCoop` = `coopR3>0` ou un palier avec `remise3`) → applique EN
+  PLUS la mécanique coop : coefficient 80 % (`_verifCoopCoef`, ex-`_verifBiogaranCoef`),
+  échéancier plafonné (`_verifFillBiogaranCoop`), repli `coopR3`, « somme ronde = coop »
+  (`_fseVtype`). Aujourd'hui : Biogaran seul.
+
+Zydus = contrat direct **RDP, sans coop** → réconciliation RSF+RDP, pas de coefficient ni
+d'échéancier. Reste spécifique Biogaran (événements historiques, NON généralisés) :
+`_p30at10` (transition barème 2025) et l'argument « loi non votée » de septembre 2025.
+
+### Principe (coop — labos à contrat coop, ex. Biogaran)
 Biogaran impose un CA annuel contractuel. Le seuil de validation du marché est **80%** de ce CA.
 Le CA cible = `caCondition` du palier (condition) avec la remise la plus élevée.
 
