@@ -6088,8 +6088,11 @@ function initLabPage(conf) {
       (cond.rsfValues || []).forEach(r => { prev[String(r.rsf_pct)] = r; });
       cond.rsfValues = s[paliersKey].map(v => {
         const sv = prev[String(v)];
+        // Préserver les FLAGS de saisie manuelle (remise2Manual/remise3Manual) — sinon
+        // un changement d'onglet mois faisait perdre le flag et autoFillCond/les défauts
+        // réécrasaient la RDP saisie à la main au re-rendu suivant.
         return sv
-          ? { rsf_pct: v, remise2: sv.excluded && !sv.remise2 ? '0' : sv.remise2, remise3: sv.remise3, excluded: sv.excluded, hasExcept: sv.hasExcept || false }
+          ? { rsf_pct: v, remise2: sv.excluded && !sv.remise2 ? '0' : sv.remise2, remise3: sv.remise3, excluded: sv.excluded, hasExcept: sv.hasExcept || false, remise2Manual: sv.remise2Manual || false, remise3Manual: sv.remise3Manual || false }
           : { rsf_pct: v, remise2: '', remise3: '', excluded: s.selectedLab === 'Biogaran' && BIOGARAN_DEFAULT_EXCL.has(parseFloat(v)), hasExcept: false };
       });
       Object.values(prev).filter(r => r.custom).forEach(cr => {
