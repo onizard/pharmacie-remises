@@ -3070,6 +3070,9 @@ function getPageOrder() {
 
 // ── Navigation ─────────────────────────────────────────────────────────────────
 function goTo(pageId) {
+  // La page « RÉCAP ACHATS » a été retirée : toute navigation vers elle (ex. fin de
+  // job OSPHARM) retombe sur le vérificateur, sinon l'ancienne page réapparaissait.
+  if (pageId === 'recap') pageId = 'verificateur';
   window.scrollTo(0, 0);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const pg = document.getElementById('page-' + pageId);
