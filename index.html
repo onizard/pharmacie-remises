@@ -2288,9 +2288,19 @@ const RSF_MIDYEAR_CHANGES = {
 // permet à getRemise d'appliquer le bon RDP/exception du groupe (≠ simple moyenne du taux,
 // car le RDP peut différer entre les deux groupes — ex. Zydus 10% a RDP 20, 2,5% a RDP 0).
 function _rowRsfOverride(ref, cond, row) {
-  const chg = RSF_MIDYEAR_CHANGES[ref?.cip13];
+  // Map runtime = seed codé en dur + exceptions utilisateur (déplacements de palier).
+  const chg = (window._rsfMidyear || RSF_MIDYEAR_CHANGES)[ref?.cip13];
   if (!chg || !cond || cond._year !== chg.year || row?.month == null) return null;
   return parseInt(row.month) < chg.effMonth ? chg.before : chg.after;
+}
+// Override remise 2 / remise 3 PAR RÉFÉRENCE (comparateur), au mois près, depuis les
+// exceptions du nouveau format. Renvoie {remise2, remise3} (nullables) ou null.
+function _rowExcOverride(lp, ref, cond, row) {
+  if (!lp || !ref || !ref.cip13 || !cond || !cond._year) return null;
+  const month = (row && row.month != null) ? parseInt(row.month) : 12;
+  const e = (lp.refExceptions || []).find(x => x.cip13 === ref.cip13 && x.effYear === cond._year && month >= (x.effMonth || 1));
+  if (!e) return null;
+  return { remise2: e.remise2, remise3: e.remise3 };
 }
 
 function mkLabState(uid) {
@@ -2318,6 +2328,9 @@ function mkLabState(uid) {
     contractSigned25: false,
     contractDate25: null,
     contratRepartiteur25: true,
+    // Exceptions PAR RÉFÉRENCE (nouveau format) — datées (mois/année d'application) :
+    // {id, cip13, libelle, rsfPct(nullable), remise2(nullable), remise3(nullable), effYear, effMonth}
+    refExceptions: [],
   };
 }
 
@@ -2463,6 +2476,7 @@ function serializeState() {
       contractSigned25: lp.contractSigned25 || false,
       contractDate25: lp.contractDate25 || null,
       contratRepartiteur25: lp.contratRepartiteur25 ?? true,
+      refExceptions: lp.refExceptions || [],
     })),
     verifContracts: state.verifContracts || {},
   };
@@ -4990,7 +5004,6 @@ function initLabPage(conf) {
                   <th>RSF&nbsp;% <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer RSF First" style="display:none;font-size:11px;padding:2px 7px;vertical-align:middle;margin-left:4px"></button></th>
                   <th id="thR2-${uid}-${cond.uid}">${(s.selectedLab === 'Biogaran' || s.contractSigned || s.contractSigned25) ? 'RDP&nbsp;(%)' : 'Remise&nbsp;2&nbsp;(%)'}</th>
                   <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="font-size:11px;padding:2px 7px">+ REMISE 3</button></th>
-                  <th style="color:var(--green)">Exception</th>
                 </tr>
               </thead>
               <tbody id="tbody-${uid}-${cond.uid}"></tbody>
@@ -5646,40 +5659,13 @@ function initLabPage(conf) {
         saveState();
       });
       const td3 = document.createElement('td'); td3.className = 'col-r3'; td3.appendChild(inp3); tr.appendChild(td3);
-
-      const cbExcpt = document.createElement('input');
-      cbExcpt.type = 'checkbox'; cbExcpt.className = 'excpt-check'; cbExcpt.checked = row.hasExcept; cbExcpt.name = 'excpt';
-      if (!isAdmin) cbExcpt.disabled = true;
-      cbExcpt.addEventListener('change', () => {
-        if (!isAdmin) return;
-        cond.rsfValues[idx].hasExcept = cbExcpt.checked;
-        if (cbExcpt.checked) {
-          const curKey = String(cond.rsfValues[idx].rsf_pct);
-          if (!cond.remise2Except) cond.remise2Except = {};
-          // Priorité 1 : copier depuis une autre condition du même labo (même clé RSF)
-          if (!cond.remise2Except[curKey]?.libelles?.length) {
-            const srcExc = (s[condKey] || [])
-              .filter(c => c !== cond)
-              .map(c => c.remise2Except?.[curKey])
-              .find(e => e?.libelles?.length > 0);
-            if (srcExc) {
-              cond.remise2Except[curKey] = {
-                libelles: srcExc.libelles.map(l => ({ id: Date.now() + Math.random(), text: l.text })),
-                remise2: cond.remise2Except[curKey]?.remise2 || '',
-                remise3: cond.remise2Except[curKey]?.remise3 || '',
-              };
-            }
-          }
-        }
-        renderRowExcepts(cond, excptsEl);
-        saveState();
-      });
-      const tdExcpt = document.createElement('td'); tdExcpt.appendChild(cbExcpt); tr.appendChild(tdExcpt);
+      // (Colonne « Exception » par palier supprimée : les exceptions sont désormais
+      //  gérées PAR RÉFÉRENCE dans le panneau repliable sous le tableau.)
 
       tbody.appendChild(tr);
     });
 
-    renderRowExcepts(cond, excptsEl);
+    _renderRefExceptions(s, cond, excptsEl, year);   // panneau exceptions par référence
     wireRsfOnly(cond);   // section « AUTRES RÉFÉRENCES EN RSF UNIQUEMENT »
     rsfSec.classList.add('visible');
     checkDone();
@@ -5850,6 +5836,11 @@ function initLabPage(conf) {
     const lab = savedLabData.selectedLab;
     if (!lab) return;
     s.selectedLab = lab;
+    // Exceptions par référence (nouveau format daté) — restaurées une seule fois.
+    if (Array.isArray(savedLabData.refExceptions) && savedLabData.refExceptions.length) {
+      s.refExceptions = savedLabData.refExceptions;
+      s._refExcMigrated = true;   // déjà au nouveau format → pas de re-migration
+    }
     // Restore contract signed/date (only on year 2026 to avoid double-write)
     if (year === '2026') {
       s.contractSigned = !!savedLabData.contractSigned;
@@ -6199,6 +6190,238 @@ async function fetchRSF(lab, yr = 2026) {
   return _buildMaps(await res.json(), false);
 }
 
+
+// ══ Exceptions PAR RÉFÉRENCE (nouveau format daté) ════════════════════════════
+// Remplace la case « exception » par palier : un panneau repliable sous le tableau,
+// une recherche labo-wide (tous paliers), et par réf une remise 2 / remise 3 / palier
+// RSF override + une DATE D'APPLICATION (mois/année). Stocké dans lp.refExceptions,
+// superposé (overlay) aux lectures rsf_history du vérificateur et du comparateur, au
+// mois près. Aucune écriture rsf_history (annuel + réécrit à chaque import CGV).
+
+// Migration idempotente des anciennes exceptions (par palier, libellés texte).
+async function _migrateExceptionsToRefFormat(lp) {
+  if (!lp || lp._refExcMigrated || lp._refExcMigrating) return;
+  lp._refExcMigrating = true;
+  try {
+    const groups = [];
+    const collect = (conds, yr) => (conds || []).forEach(c =>
+      Object.entries((c && (c.remise2Except || c.exceptions)) || {}).forEach(([key, exc]) => {
+        if (!exc || !(exc.libelles || []).length) return;
+        groups.push({ libTexts: exc.libelles.map(l => l.text), remise2: exc.remise2 || null,
+                      remise3: exc.remise3 || null, rsfPct: parseFloat(key), year: yr });
+      }));
+    collect(lp._baseConds2026 || lp.conditions, 2026);
+    collect(lp._baseConds2025 || lp.conditions2025, 2025);
+    Object.entries(lp.condsByMonth || {}).forEach(([yr, months]) =>
+      Object.values(months || {}).forEach(cv => collect(Array.isArray(cv) ? cv : [cv], parseInt(yr))));
+    if (!groups.length) { lp._refExcMigrated = true; return; }
+    // Résoudre libellés → cip13 + rsf_pct courant via rsf_history du labo.
+    const H = { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` };
+    const lib2 = new Map();
+    for (const yr of [2025, 2026]) {
+      try {
+        const r = await fetch(`${SUPA_URL}/rest/v1/rsf_history?labo=eq.${encodeURIComponent(lp.selectedLab)}&year=eq.${yr}&select=cip13,libelle,rsf_pct&limit=8000`, { headers: H });
+        if (r.ok) (await r.json()).forEach(row => { if (row.libelle) lib2.set(String(row.libelle).trim().toUpperCase(), { cip13: row.cip13, rsf_pct: row.rsf_pct }); });
+      } catch (_) {}
+    }
+    const out = lp.refExceptions || [];
+    const seen = new Set(out.map(e => `${e.cip13}|${e.effYear}`));
+    groups.forEach(g => (g.libTexts || []).forEach(txt => {
+      const t = String(txt || '').trim();
+      const hit = /^\d{13}$/.test(t) ? { cip13: t, rsf_pct: g.rsfPct } : lib2.get(t.toUpperCase());
+      const cip = (hit && hit.cip13) || '';
+      const key = `${cip}|${g.year}`;
+      if (cip && seen.has(key)) return;
+      if (cip) seen.add(key);
+      const rsfOrig = (hit && hit.rsf_pct != null) ? hit.rsf_pct : (g.rsfPct != null ? g.rsfPct : null);
+      out.push({ id: 'rx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                 cip13: cip, libelle: t, rsfOrig, rsfPct: rsfOrig,
+                 remise2: g.remise2, remise3: g.remise3, effYear: g.year, effMonth: 1 });
+    }));
+    lp.refExceptions = out;
+    lp._refExcMigrated = true;
+    saveState();
+    try { if (typeof saveCloudState === 'function') saveCloudState(serializeState()); } catch (_) {}
+    try { _rebuildRsfMidyear(); } catch (_) {}
+  } catch (e) { console.error('[BP] migration exceptions:', e); }
+  finally { lp._refExcMigrating = false; }
+}
+
+// Recherche labo-wide (tous paliers) dans rsf_history, repli references_pharmacie.
+async function _refExcSearch(term, dropdown, labName, yr, onPick) {
+  term = String(term || '').trim();
+  if (term.length < 2) { dropdown.classList.remove('visible'); dropdown.innerHTML = ''; return; }
+  const t = encodeURIComponent(term);
+  const H = { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` };
+  try {
+    let rows = [];
+    const res = await fetch(`${SUPA_URL}/rest/v1/rsf_history?select=cip13,libelle,rsf_pct&labo=eq.${encodeURIComponent(labName)}&year=eq.${yr}&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)&order=libelle.asc&limit=60`, { headers: H });
+    if (res.ok) rows = await res.json();
+    if (!rows.length) {
+      const r2 = await fetch(`${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,libelle,rsf_pct&labo=eq.${encodeURIComponent(labName)}&or=(libelle.ilike.*${t}*,cip13.ilike.*${t}*)&order=libelle.asc&limit=60`, { headers: H });
+      if (r2.ok) rows = await r2.json();
+    }
+    const seen = new Set(); const uniq = [];
+    for (const r of rows) { if (seen.has(r.cip13)) continue; seen.add(r.cip13); uniq.push(r); if (uniq.length >= 10) break; }
+    dropdown.innerHTML = '';
+    if (!uniq.length) { dropdown.classList.remove('visible'); return; }
+    uniq.forEach(r => {
+      const opt = document.createElement('div'); opt.className = 'libelle-option';
+      const n = document.createElement('span'); n.textContent = (r.libelle || r.cip13) + (r.rsf_pct != null ? ` · RSF ${Math.abs(r.rsf_pct)}%` : '');
+      const c = document.createElement('span'); c.style.cssText = 'float:right;opacity:.45;font-size:12px;font-family:monospace'; c.textContent = r.cip13;
+      opt.appendChild(n); opt.appendChild(c);
+      opt.addEventListener('mousedown', e => { e.preventDefault(); onPick({ cip13: r.cip13, libelle: r.libelle || r.cip13, rsf_pct: r.rsf_pct != null ? r.rsf_pct : null }); dropdown.classList.remove('visible'); });
+      dropdown.appendChild(opt);
+    });
+    dropdown.classList.add('visible');
+  } catch (e) { console.error(e); }
+}
+
+function _refExcSave(lp) {
+  saveState();
+  try { if (typeof saveCloudState === 'function') saveCloudState(serializeState()); } catch (_) {}
+  try { _rebuildRsfMidyear(); } catch (_) {}
+  try { if (state.currentPageId === 'verificateur' && typeof renderVerificateur === 'function') renderVerificateur(); } catch (_) {}
+}
+
+// Reconstruit la map runtime des changements RSF en cours d'année (seed codé en dur
+// RSF_MIDYEAR_CHANGES + exceptions utilisateur qui DÉPLACENT une réf de palier).
+function _rebuildRsfMidyear() {
+  const m = { ...RSF_MIDYEAR_CHANGES };
+  (state.labPages || []).forEach(lp => (lp.refExceptions || []).forEach(e => {
+    if (!e.cip13 || e.rsfPct == null || e.rsfOrig == null) return;
+    if (parseFloat(e.rsfPct) === parseFloat(e.rsfOrig)) return;   // pas de déplacement de palier
+    m[e.cip13] = { year: e.effYear, effMonth: e.effMonth || 1, before: parseFloat(e.rsfOrig), after: parseFloat(e.rsfPct) };
+  }));
+  window._rsfMidyear = m;
+  return m;
+}
+// Override RDP par référence (vérificateur), au mois près. Renvoie le % RDP à
+// appliquer pour ce cip à (year, month) si une exception le couvre, sinon null.
+function _refExcRdpOverride(laboNorm, cip, year, month) {
+  const lp = (state.labPages || []).find(p => _verifNormLab(p.selectedLab) === laboNorm);
+  if (!lp || !Array.isArray(lp.refExceptions)) return null;
+  const e = lp.refExceptions.find(x => x.cip13 === cip && x.effYear === year
+    && x.remise2 != null && x.remise2 !== '' && month >= (x.effMonth || 1));
+  return e ? Math.abs(parseFloat(e.remise2)) : null;
+}
+
+// Panneau repliable des exceptions par référence, rendu sous le tableau des remises.
+function _renderRefExceptions(lp, cond, box, year) {
+  if (!box) return;
+  const yr = parseInt(year) || 2026;
+  if (!lp._refExcMigrated && !lp._refExcMigrating) {
+    _migrateExceptionsToRefFormat(lp).then(() => { if (box.isConnected) _renderRefExceptions(lp, cond, box, year); });
+  }
+  const list = lp.refExceptions || [];
+  const showR3 = !!cond.showR3;
+  const paliers = [...new Set((cond.rsfValues || []).map(r => parseFloat(r.rsf_pct)).filter(v => !isNaN(v)))].sort((a, b) => a - b);
+  const open = !!lp._refExcOpen;
+  const nYr = list.filter(e => e.effYear === yr).length;
+  box.className = 'row-except-blocks';
+  box.innerHTML = '';
+
+  const hdr = document.createElement('label');
+  hdr.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;margin:12px 0 4px;font-size:12px;color:var(--green);font-weight:600';
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = open; if (!isAdmin) cb.disabled = true;
+  cb.addEventListener('change', () => { lp._refExcOpen = cb.checked; _renderRefExceptions(lp, cond, box, year); });
+  const lbl = document.createElement('span');
+  lbl.innerHTML = `${open ? '▾' : '▸'} Exceptions${nYr ? ` (${nYr})` : ''} <span style="color:var(--text-dim);font-weight:400">— remise spécifique par référence</span>`;
+  hdr.appendChild(cb); hdr.appendChild(lbl); box.appendChild(hdr);
+  if (!open) return;
+
+  const body = document.createElement('div');
+  body.style.cssText = 'border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px';
+
+  if (isAdmin) {
+    const sw = document.createElement('div'); sw.style.cssText = 'position:relative;margin-bottom:8px';
+    const inp = document.createElement('input'); inp.className = 'libelle-input'; inp.type = 'text'; inp.style.width = '100%';
+    inp.placeholder = 'Rechercher une référence (libellé ou CIP13) — tous paliers…';
+    const dd = document.createElement('div'); dd.className = 'libelle-dropdown';
+    let deb;
+    inp.addEventListener('input', () => {
+      clearTimeout(deb);
+      deb = setTimeout(() => _refExcSearch(inp.value, dd, lp.selectedLab, yr, (ref) => {
+        lp.refExceptions = lp.refExceptions || [];
+        if (lp.refExceptions.some(e => e.cip13 === ref.cip13 && e.effYear === yr)) { inp.value = ''; dd.classList.remove('visible'); return; }
+        lp.refExceptions.push({ id: 'rx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          cip13: ref.cip13, libelle: ref.libelle, rsfOrig: ref.rsf_pct, rsfPct: ref.rsf_pct,
+          remise2: null, remise3: null, effYear: yr, effMonth: (new Date().getMonth() + 1) });
+        inp.value = ''; _refExcSave(lp); _renderRefExceptions(lp, cond, box, year);
+      }), 280);
+    });
+    inp.addEventListener('blur', () => setTimeout(() => dd.classList.remove('visible'), 160));
+    sw.appendChild(inp); sw.appendChild(dd); body.appendChild(sw);
+  }
+
+  const yrList = list.filter(e => e.effYear === yr);
+  if (!yrList.length) {
+    const empty = document.createElement('div'); empty.style.cssText = 'color:var(--text-dim);font-size:11px;padding:4px 0';
+    empty.textContent = isAdmin ? `Aucune exception ${yr}. Recherchez une référence ci-dessus pour en ajouter.` : `Aucune exception ${yr}.`;
+    body.appendChild(empty);
+  }
+  yrList.forEach(e => body.appendChild(_refExcRow(lp, cond, e, paliers, showR3, box, year)));
+  box.appendChild(body);
+}
+
+function _refExcRow(lp, cond, e, paliers, showR3, box, year) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--border);font-size:11px';
+  const selCss = 'padding:2px;font-size:11px;background:var(--bg2,#0a0e1a);border:1px solid var(--border);border-radius:4px;color:var(--text)';
+  const name = document.createElement('div');
+  name.style.cssText = 'flex:1 1 170px;min-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  name.innerHTML = `${e.libelle || '(réf)'} ${e.cip13 ? `<span style="opacity:.4;font-family:monospace">${e.cip13}</span>` : '<span style="color:var(--amber)">⚠ CIP à repréciser</span>'}`;
+  row.appendChild(name);
+
+  const mkNum = (val, ph, onch) => {
+    const i = document.createElement('input'); i.type = 'text'; i.inputMode = 'decimal';
+    i.value = (val == null ? '' : val); i.placeholder = ph;
+    i.style.cssText = 'width:50px;padding:2px 4px;background:var(--bg2,#0a0e1a);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px';
+    if (!isAdmin) i.disabled = true;
+    i.addEventListener('change', () => onch(i.value));
+    return i;
+  };
+  // Date d'application (mois/année)
+  const selM = document.createElement('select'); selM.style.cssText = selCss; selM.title = "Mois d'application";
+  for (let m = 1; m <= 12; m++) { const o = document.createElement('option'); o.value = m; o.textContent = _MONTH_LABELS[m - 1]; if (m === e.effMonth) o.selected = true; selM.appendChild(o); }
+  if (!isAdmin) selM.disabled = true;
+  selM.addEventListener('change', () => { e.effMonth = parseInt(selM.value); _refExcSave(lp); });
+  const selY = document.createElement('select'); selY.style.cssText = selCss; selY.title = "Année d'application";
+  [2025, 2026].forEach(y => { const o = document.createElement('option'); o.value = y; o.textContent = y; if (y === e.effYear) o.selected = true; selY.appendChild(o); });
+  if (!isAdmin) selY.disabled = true;
+  selY.addEventListener('change', () => { e.effYear = parseInt(selY.value); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); });
+  const dw = document.createElement('div'); dw.style.cssText = 'display:flex;align-items:center;gap:3px';
+  const dl = document.createElement('span'); dl.textContent = 'dès'; dl.style.color = 'var(--text-dim)';
+  dw.appendChild(dl); dw.appendChild(selM); dw.appendChild(selY); row.appendChild(dw);
+  // Palier RSF (override → déplacement possible)
+  if (paliers.length) {
+    const selR = document.createElement('select'); selR.style.cssText = selCss; selR.title = 'Groupe RSF de la référence';
+    paliers.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = `RSF ${Math.abs(p)}%`; if (parseFloat(e.rsfPct) === p) o.selected = true; selR.appendChild(o); });
+    if (!isAdmin) selR.disabled = true;
+    selR.addEventListener('change', () => { e.rsfPct = parseFloat(selR.value); _refExcSave(lp); });
+    row.appendChild(selR);
+  }
+  // Remise 2 (RDP)
+  const r2w = document.createElement('div'); r2w.style.cssText = 'display:flex;align-items:center;gap:2px';
+  const r2l = document.createElement('span'); r2l.textContent = (lp.contractSigned || lp.contractSigned25 || lp.selectedLab === 'Biogaran') ? 'RDP' : 'R2'; r2l.style.color = 'var(--text-dim)';
+  r2w.appendChild(r2l);
+  r2w.appendChild(mkNum(e.remise2, '%', v => { const s = v.replace(',', '.').trim(); e.remise2 = s === '' ? null : parseFloat(s); _refExcSave(lp); }));
+  row.appendChild(r2w);
+  // Remise 3 (coop) si active
+  if (showR3) {
+    const r3w = document.createElement('div'); r3w.style.cssText = 'display:flex;align-items:center;gap:2px';
+    const r3l = document.createElement('span'); r3l.textContent = 'R3'; r3l.style.color = 'var(--text-dim)'; r3w.appendChild(r3l);
+    r3w.appendChild(mkNum(e.remise3, '%', v => { const s = v.replace(',', '.').trim(); e.remise3 = s === '' ? null : parseFloat(s); _refExcSave(lp); }));
+    row.appendChild(r3w);
+  }
+  if (isAdmin) {
+    const del = document.createElement('button'); del.textContent = '✕'; del.title = 'Supprimer';
+    del.style.cssText = 'background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;cursor:pointer;font-size:10px;padding:1px 6px;margin-left:auto';
+    del.addEventListener('click', () => { lp.refExceptions = (lp.refExceptions || []).filter(x => x.id !== e.id); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); });
+    row.appendChild(del);
+  }
+  return row;
+}
 
 function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onLibellesChange = null, labYear = '2026') {
   const block = document.createElement('div');
@@ -7594,6 +7817,10 @@ function _r2ExactForMonth(mk, selNorm, labDisplay) {
   rows.forEach(([cip, tx, qty, brut]) => {
     let pct = map[cip] || 0;
     if (_p30at10 && Math.abs(tx) === 30 && pct < 10) pct = 10;
+    // Exception PAR RÉFÉRENCE (nouveau format daté) : la remise 2 saisie à la main
+    // prime sur le taux rsf_history, à partir de son mois d'application.
+    const _ovr = _refExcRdpOverride(selNorm, cip, year, month);
+    if (_ovr != null) pct = _ovr;
     if (!(pct > 0)) return;
     const a = brut * pct / 100;
     byTaux[tx] = (byTaux[tx] || 0) + a;
@@ -9637,6 +9864,9 @@ async function launchSimulation() {
     // NB : les dates d'effet en cours d'année (RSF_MIDYEAR_CHANGES) sont appliquées par ligne
     // d'achat via _rowRsfOverride dans le calcul de remise (groupe correct selon le mois), pour
     // que le RDP du bon groupe soit pris en compte. rsf_pct_by_year reste l'état courant.
+    // Rebâtir la map runtime des changements RSF (seed + exceptions PAR RÉFÉRENCE datées) pour
+    // que les déplacements de palier saisis à la main soient pris en compte au bon mois.
+    try { _rebuildRsfMidyear(); } catch (_) {}
 
     // Marquer l'année sur chaque condition pour que getRemise choisisse le bon rsf_pct_by_year
     state.labPages.forEach(lp => {
@@ -9973,7 +10203,7 @@ async function launchSimulation() {
     // Passer cond=null signifie "aucun palier atteint" → RSF uniquement.
     // useRsf=false (contrat répartiteur non coché) → RSF = 0
     // bioCoeff={skipR2, r3Mult} → règle Biogaran (réalisation marché)
-    function getRemise(ref, cond, firstMet = false, useRsf = true, bioCoeff = null, overrideRsf = null) {
+    function getRemise(ref, cond, firstMet = false, useRsf = true, bioCoeff = null, overrideRsf = null, overrideR2 = null, overrideR3 = null) {
       const yearRsf = overrideRsf != null ? overrideRsf
         : (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
         ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
@@ -9984,6 +10214,13 @@ async function launchSimulation() {
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(yearRsf));
       if (!rsfRow) return baseRSF;
       if (bioCoeff?.skipR2) return baseRSF;
+      // Exception PAR RÉFÉRENCE (nouveau format daté) — prioritaire sur le palier et
+      // sur l'ancien modèle par libellé.
+      if (overrideR2 != null || overrideR3 != null) {
+        const _r2o = overrideR2 != null ? (parseFloat(overrideR2) || 0) : (parseFloat(rsfRow.remise2) || 0);
+        const _r3o = overrideR3 != null ? (parseFloat(overrideR3) || 0) : (parseFloat(rsfRow.remise3) || 0);
+        return baseRSF + _r2o + _r3o * (bioCoeff?.r3Mult ?? 1);
+      }
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
         if (exc && exc.libelles.some(l => l.text === ref.libelle)) {
@@ -10000,7 +10237,7 @@ async function launchSimulation() {
       return baseRSF + _r2 + (parseFloat(rsfRow.remise3) || 0) * (bioCoeff?.r3Mult ?? 1);
     }
 
-    function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true, bioCoeff = null, overrideRsf = null) {
+    function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true, bioCoeff = null, overrideRsf = null, overrideR2 = null) {
       const yearRsf = overrideRsf != null ? overrideRsf
         : (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
         ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
@@ -10011,6 +10248,8 @@ async function launchSimulation() {
       const rsfRow = cond.rsfValues.find(r => String(r.rsf_pct) === String(yearRsf));
       if (!rsfRow) return baseRSF;
       if (bioCoeff?.skipR2) return baseRSF;
+      // Exception PAR RÉFÉRENCE : « sans R3 » = RSF + remise 2 surchargée.
+      if (overrideR2 != null) return baseRSF + (parseFloat(overrideR2) || 0);
       if (rsfRow.hasExcept && cond.remise2Except) {
         const exc = cond.remise2Except[String(rsfRow.rsf_pct)];
         if (exc && exc.libelles.some(l => l.text === ref.libelle)) {
@@ -10085,11 +10324,13 @@ async function launchSimulation() {
           e.rows.forEach(({ row, ref, price }) => {
             const _ovr25 = _rowRsfOverride(ref, cond25, row);
             const _ovr26 = _rowRsfOverride(ref, cond26, row);
-            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25, _bioCoeff, _ovr25) : 0;
-            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26, _bioCoeff, _ovr26) : 0;
+            const _ex25 = _rowExcOverride(e.lp, ref, cond25, row);
+            const _ex26 = _rowExcOverride(e.lp, ref, cond26, row);
+            const r25 = ratio2025 > 0 ? ratio2025 * getRemise(ref, cond25, fm25, _useRsf25, _bioCoeff, _ovr25, _ex25 ? _ex25.remise2 : null, _ex25 ? _ex25.remise3 : null) : 0;
+            const r26 = ratio2026 > 0 ? ratio2026 * getRemise(ref, cond26, fm26, _useRsf26, _bioCoeff, _ovr26, _ex26 ? _ex26.remise2 : null, _ex26 ? _ex26.remise3 : null) : 0;
             e.remise += row.qty * price * (r25 + r26) / 100;
-            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25, _bioCoeff, _ovr25) : 0;
-            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26, _bioCoeff, _ovr26) : 0;
+            const s25 = ratio2025 > 0 ? ratio2025 * getRemiseSansR3(ref, cond25, fm25, _useRsf25, _bioCoeff, _ovr25, _ex25 ? _ex25.remise2 : null) : 0;
+            const s26 = ratio2026 > 0 ? ratio2026 * getRemiseSansR3(ref, cond26, fm26, _useRsf26, _bioCoeff, _ovr26, _ex26 ? _ex26.remise2 : null) : 0;
             e.remiseSansR3 += row.qty * price * (s25 + s26) / 100;
           });
           e.bestCond    = cond26 || cond25;
@@ -10173,13 +10414,14 @@ async function launchSimulation() {
           const _bioCoeff = _getBiogCoeff(e.lp, pr ? e.ca / pr : e.ca);
           e.rows.forEach(({ row, ref, price }) => {
             const _ovr = _rowRsfOverride(ref, effectiveCond, row);
+            const _ex = _rowExcOverride(e.lp, ref, effectiveCond, row);
             const remisePct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemise(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff, _ovr);
+              : getRemise(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff, _ovr, _ex ? _ex.remise2 : null, _ex ? _ex.remise3 : null);
             e.remise += row.qty * price * remisePct / 100;
             const remiseSansR3Pct = (rsfOnly || !e.isSelected)
               ? (_useRsf2 ? getRSFBase(ref, firstMet) : 0)
-              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff, _ovr);
+              : getRemiseSansR3(ref, effectiveCond, firstMet, _useRsf2, _bioCoeff, _ovr, _ex ? _ex.remise2 : null);
             e.remiseSansR3 += row.qty * price * remiseSansR3Pct / 100;
           });
         }

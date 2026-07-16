@@ -75,6 +75,7 @@ CLOUDFLARE_API_KEY=...
 - Lignes 2060+ : Résultats de simulation, export
 
 ## Fonctionnalités clés
+- **Exceptions par référence** : dans « mes conditions labo », un panneau repliable sous le tableau des remises (`_renderRefExceptions`) remplace l'ancienne case « exception » par palier. Recherche labo-wide (tous paliers, `_refExcSearch`) → par réf on saisit remise 2 (RDP), remise 3 (si coop), un **override de palier RSF**, et une **date d'application (mois/année)**. Stocké dans `labPage.refExceptions` (sérialisé via `user_state`, PAS écrit dans `rsf_history` qui est annuel + réécrit à chaque import CGV). Superposé AU MOIS PRÈS : vérificateur (`_refExcRdpOverride` dans `_r2ExactForMonth`) et comparateur (déplacement de palier via `_rebuildRsfMidyear`→`window._rsfMidyear`→`_rowRsfOverride` ; RDP via `_rowExcOverride`→`getRemise`). Migration idempotente des anciennes exceptions (`_migrateExceptionsToRefFormat`, résout libellé→cip13 via rsf_history). L'ancien modèle `cond.remise2Except` reste lu en repli (comparateur, réfs à cip13 non résolu).
 - **Simulation** : import CSV d'achats, calcul de remise optimale par labo
 - **RSF** : tableau de paliers de remise par laboratoire, avec RSF First
 - **Remise 3** : colonne optionnelle (toggle bouton dans le thead)
