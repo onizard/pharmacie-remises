@@ -485,12 +485,13 @@
   .year-label-toggle:hover { text-shadow: var(--glow-a); }
   [data-theme="light"] .year-label { color: #0066cc; }
   [data-theme="light"] .year-label-toggle { color: #b07000; }
-  .mon-btns { display:flex; flex-wrap:wrap; gap:3px; margin:4px 0 10px; }
-  .mon-btn { font-family:'Share Tech Mono',monospace; font-size:10px; padding:3px 7px; background:transparent; border:1px solid rgba(0,229,255,.22); color:var(--text-dim); border-radius:3px; cursor:pointer; letter-spacing:.5px; transition:all .15s; min-width:34px; text-align:center; position:relative; }
-  .mon-btn:hover { border-color:var(--cyan); color:var(--cyan); }
-  .mon-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,.13); font-weight:bold; }
-  .mon-btn.has-override::after { content:'●'; position:absolute; top:1px; right:2px; font-size:6px; color:var(--amber); line-height:1; }
-  .mon-copier { font-family:'Share Tech Mono',monospace; font-size:10px; padding:3px 9px; background:transparent; border:1px solid rgba(255,171,0,.4); color:var(--amber); border-radius:3px; cursor:pointer; letter-spacing:.5px; transition:all .15s; margin-left:6px; opacity:.8; }
+  .mon-btns { display:flex; flex-wrap:wrap; gap:5px; margin:8px 0 16px; padding-bottom:9px; border-bottom:1px solid rgba(0,229,255,.12); align-items:center; }
+  .mon-btn { font-family:'Orbitron',monospace; font-size:12px; font-weight:600; padding:9px 15px; background:rgba(0,229,255,.05); border:1px solid rgba(0,229,255,.22); color:var(--text-dim); border-radius:8px; cursor:pointer; letter-spacing:1px; transition:all .15s; min-width:48px; text-align:center; position:relative; }
+  .mon-btn:hover { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,.1); }
+  .mon-btn.active { border-color:var(--cyan); color:#04060f; background:var(--cyan); font-weight:700; box-shadow:0 0 12px rgba(0,229,255,.4); }
+  .mon-btn.has-override::after { content:'●'; position:absolute; top:3px; right:5px; font-size:8px; color:var(--amber); line-height:1; }
+  .mon-btn.active.has-override::after { color:#04060f; }
+  .mon-copier { font-family:'Orbitron',monospace; font-size:11px; font-weight:600; padding:9px 14px; background:transparent; border:1px solid rgba(255,171,0,.4); color:var(--amber); border-radius:8px; cursor:pointer; letter-spacing:1px; transition:all .15s; margin-left:8px; opacity:.85; }
   .mon-copier:hover { border-color:var(--amber); opacity:1; background:rgba(255,171,0,.1); }
   /* Copie armée : bouton « allumé » jusqu'au collage. */
   .mon-copier.armed { opacity:1; color:#04060f; background:var(--amber); border-color:var(--amber); box-shadow:0 0 8px rgba(255,171,0,.6); font-weight:700; }
@@ -511,8 +512,9 @@
   .rsf-send-btn:hover { background:rgba(255,171,0,.22); box-shadow:0 0 7px rgba(255,171,0,.45); }
   .rsf-send-btn.visible { display:inline-flex; }
   @keyframes rsf-spin { to { transform:rotate(360deg); } }
-  [data-theme="light"] .mon-btn { border-color:rgba(0,100,200,.25); color:#888; }
-  [data-theme="light"] .mon-btn.active { border-color:#0066cc; color:#0066cc; background:rgba(0,100,200,.08); }
+  [data-theme="light"] .mon-btn { border-color:rgba(0,100,200,.25); color:#888; background:rgba(0,100,200,.04); }
+  [data-theme="light"] .mon-btn.active { border-color:#0066cc; color:#fff; background:#0066cc; box-shadow:0 0 10px rgba(0,100,200,.3); }
+  [data-theme="light"] .mon-btn.active.has-override::after { color:#fff; }
   [data-theme="light"] .mon-btn.has-override::after { color:#b07000; }
   .cgv-led { display:inline-block; width:8px; height:8px; border-radius:50%; background:transparent; margin-left:8px; vertical-align:middle; cursor:default; transition:background .3s,box-shadow .3s; flex-shrink:0; }
   .cgv-led.on { background:var(--green); box-shadow:0 0 6px var(--green); }
