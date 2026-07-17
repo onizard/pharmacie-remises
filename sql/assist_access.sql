@@ -26,5 +26,14 @@ create index if not exists assist_access_email_idx on public.assist_access (lowe
 alter table public.assist_access enable row level security;
 -- Volontairement AUCUNE policy : seul le service_role (qui bypass RLS) accède.
 
+-- L'API Render lit/écrit avec la clé service_role → il lui faut les privilèges
+-- table (le bypass RLS ne dispense pas des GRANT). anon/authenticated : rien
+-- (et de toute façon RLS sans policy les bloque).
+grant all on public.assist_access to service_role;
+
+-- PostgREST met en cache le schéma : sans rechargement, la nouvelle table n'est
+-- pas exposée sur /rest/v1 tout de suite.
+notify pgrst, 'reload schema';
+
 comment on table public.assist_access is
   'Accès assistance (2e mot de passe) au compte admin — géré exclusivement par l''API Render via la clé de service. pw_hash = PBKDF2, jamais de plaintext.';
