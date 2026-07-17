@@ -315,7 +315,15 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
                 _nl = _re.sub(r'[^A-Z0-9]', '', libelle.upper())
                 _known_ref = bool(norm_ref_index) and any(_nr in _nl for _nr, _, _ in norm_ref_index)
                 _cents_ok  = round(amount * 100) % 100 != 0 and round(amount * 100) in amount_to_candidates
-                if not _known_ref and not _cents_ok:
+                # Filet 3 : un CRÉDIT à DÉCIMALES dont le libellé NOMME un labo
+                # génériqueur connu est quasi certainement une RDP labo, même si la
+                # banque a formaté le libellé sans préfixe « VIR » (ex. réel :
+                # Biogaran 1 396,29 € du 29/10/2025, jusque-là saisi à la main).
+                # Décimales exigées → collision quasi impossible ; ce filet ne
+                # dépend PAS de la présence de données Digi, contrairement aux
+                # filets 1 (n° connu) et 2 (montant = avoir Digi au centime).
+                _lab_ok = round(amount * 100) % 100 != 0 and _identify_labo(libelle) is not None
+                if not _known_ref and not _cents_ok and not _lab_ok:
                     continue
 
             # Dédoublonnage inter-fenêtres.

@@ -1679,8 +1679,19 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes
             continue
         if amount is None or amount <= 0:
             continue
-        if not libelle.upper().strip().startswith('VIR '):
-            continue
+        # Virements : tolérant sur le préfixe (« VIR », « VIREMENT SEPA … »). Une
+        # ligne au libellé inhabituel (nom de la banque en tête, pas de « VIR »)
+        # est quand même gardée si (1) elle contient un n° de facture/avoir Digi
+        # connu, (2) son montant à décimales = un avoir Digi au centime, ou (3)
+        # c'est un CRÉDIT à décimales nommant un labo génériqueur connu (ex. réel :
+        # Biogaran 1 396,29 € du 29/10/2025). Miroir de run_job_fse.py.
+        if not libelle.upper().strip().startswith('VIR'):
+            _nl = _re.sub(r'[^A-Z0-9]', '', libelle.upper())
+            _known_ref = bool(norm_ref_index) and any(_nr in _nl for _nr, _, _ in norm_ref_index)
+            _cents_ok  = round(amount * 100) % 100 != 0 and round(amount * 100) in amount_to_candidates
+            _lab_ok    = round(amount * 100) % 100 != 0 and _identify_labo(libelle) is not None
+            if not _known_ref and not _cents_ok and not _lab_ok:
+                continue
 
         labo  = _identify_labo(libelle)
         refs  = _extract_all_refs(libelle)
