@@ -252,10 +252,24 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
     skipped_lib: list = []
     _last_sample: list = []
 
-    for _xlsx in xlsx_bytes_list:
+    for _wi, _xlsx in enumerate(xlsx_bytes_list):
         wb = openpyxl.load_workbook(io.BytesIO(_xlsx), read_only=True, data_only=True)
         ws = wb.active
         all_rows = list(ws.iter_rows(max_row=5000, values_only=True))
+
+        # DEBUG temporaire (diag virement Biogaran 1 396,29 €) : repère, colonne
+        # AGNOSTIQUE, toute ligne brute nommant BIOGARAN ou portant 1396,29 — où
+        # qu'elle soit dans l'export. Si rien ne s'affiche pour le mois d'octobre,
+        # la ligne est absente de l'export Webix (problème côté scraping, pas
+        # parsing). À retirer une fois la cause identifiée.
+        _dbg_hits = 0
+        for _ri, _row in enumerate(all_rows):
+            _joined = " | ".join(str(c) for c in _row if c is not None)
+            _norm   = _joined.replace(" ", "").replace("\xa0", "")
+            if "BIOGARAN" in _joined.upper() or "1396,29" in _norm or "1396.29" in _norm:
+                print(f"  [DEBUG biog win#{_wi} row{_ri}] {_joined[:240]}")
+                _dbg_hits += 1
+        print(f"  [DEBUG biog win#{_wi}] {len(all_rows)} lignes brutes · {_dbg_hits} hit(s) Biogaran/1396")
 
         # Détection des colonnes (par fichier).
         hdr_idx = -1
