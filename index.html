@@ -8830,22 +8830,29 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const r3A = r3pct>0 ? brut*r3pct/100*TVA_R3*(isBio?coef:1) : 0;
     T.qty+=qty; T.brut+=brut; T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
     const dRsf = dStyle(rsfD), dR2 = dStyle(r2D);
+    // Colonne « % » supprimée → le taux appliqué s'affiche À LA SUITE du montant
+    // attendu : « 1 699,33 € (30 %) ». Suffixe gris, compact, avec la note barème
+    // 2025 le cas échéant et le badge d'exception du palier.
+    const _r2PctTag = r2pctDisp!=null
+      ? ` <span style="color:var(--text-dim);font-size:9px"${_mixed&&r2pctDisp!==r2pct?` title="Barème 2025 (la RDP suit l'année du mois — vérifié sur les avoirs oct.–déc.). Conditions 2026 : ${r2pct!=null?fmtP(r2pct):'—'}."`:''}>(${fmtP(r2pctDisp)}${_mixed&&r2pctDisp!==r2pct?' · barème 2025':''})</span>`
+      : '';
+    const _r2ExcTag = (exc&&!_mixed)
+      ? ` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`
+      : '';
+    const _r3PctTag = r3pct>0 ? ` <span style="color:var(--text-dim);font-size:9px">(${fmtP(r3pct)})</span>` : '';
     // Fragments par BLOC — tableaux empilés, lisibles sur smartphone sans défilement latéral.
     return {
       achats: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
-        `<td>${qty?qty.toLocaleString('fr'):'—'}</td>` +
         `<td title="${escH(brutTitle)}"${brutClick}${caDiv?' style="color:var(--amber);cursor:pointer"':' style="cursor:help"'}>${fmtE(brut)}${caDiv?' ⚠':''}</td>` +
         `<td style="${A}">${fmtE(rsfA)}</td>` +
         `<td style="${G}">${fmtE(rsfR)}</td>` +
         `<td style="${dRsf}">${fmtE(rsfD)}</td>`,
       r2: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
-        `<td class="verif-r2"${_mixed&&r2pctDisp!==r2pct?` title="Barème 2025 (la RDP suit l'année du mois — vérifié sur les avoirs oct.–déc.). Les conditions affichées 2026 indiquent ${r2pct!=null?fmtP(r2pct):'—'} pour ce palier."`:''}>${r2pctDisp!=null?fmtP(r2pctDisp):'—'}${_mixed&&r2pctDisp!==r2pct?' <span style="color:var(--text-dim);font-size:8px">(barème 2025)</span>':''}${exc&&!_mixed?` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`:''}</td>` +
-        `<td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:(r2Aexact!=null?` title="Calcul EXACT par référence : Σ achats (justificatif) × taux RDP du CIP (rsf_history ${cumulYear||year}) — exceptions comprises"`:'')}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':((r2pct!=null||r2Aexact!=null)?`${fmtE(r2A)}${r2Aexact!=null?' <span style="font-size:8px;color:var(--cyan)" title="exact par référence">◎</span>':''}`:'—')}</td>` +
+        `<td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:(r2Aexact!=null?` title="Calcul EXACT par référence : Σ achats (justificatif) × taux RDP du CIP (rsf_history ${cumulYear||year}) — exceptions comprises"`:'')}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':((r2pct!=null||r2Aexact!=null)?`${fmtE(r2A)}${r2Aexact!=null?' <span style="font-size:8px;color:var(--cyan)" title="exact par référence">◎</span>':''}${_r2PctTag}${_r2ExcTag}`:'—')}</td>` +
         `<td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span onclick="alert(decodeURIComponent(\''+encodeURIComponent(rd._note).replace(/'/g,'%27').replace(/\(/g,'%28').replace(/\)/g,'%29')+'\'))" style="color:var(--amber);font-size:9px;cursor:pointer" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>` +
         `<td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>`,
       r3: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
-        `<td class="verif-r3">${r3pct>0?fmtP(r3pct):'—'}</td>` +
-        `<td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(brut)} × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?fmtE(r3A):(r3pct>0&&isBio&&coef===0?'<span title="Coop bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>` +
+        `<td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(brut)} × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?`${fmtE(r3A)}${_r3PctTag}`:(r3pct>0&&isBio&&coef===0?'<span title="Coop bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>` +
         `<td class="verif-r3" style="color:var(--text-dim)">—</td>` +
         `<td class="verif-r3" style="color:var(--text-dim)">—</td>`,
     };
@@ -8910,18 +8917,15 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   const totLbl = `<td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>`;
   const totStyle = 'border-top:2px solid var(--border);font-weight:700;background:rgba(255,255,255,.03)';
   const totAchats = `<tr style="${totStyle}">${totLbl}
-    <td>${T.qty?T.qty.toLocaleString('fr'):'—'}</td>
     <td>${fmtE(T.brut)}</td>
     <td style="${A}">${fmtE(T.rsfA)}</td>
     <td style="${G}">${fmtE(T.rsfR)}</td>
     <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td></tr>`;
   const totR2 = `<tr style="${totStyle}">${totLbl}
-    <td class="verif-r2">—</td>
     <td class="verif-r2" style="${A}">${fmtE(T.r2A)}</td>
     <td class="verif-r2" style="${r2RecAnnounced?'color:var(--amber)':G}">${_recCell(r2Reff, 'rdp')}${r2RecAnnounced?` <span onclick="alert('Montant ANNONC\u00c9 par l\\'avoir Digipharmacie \u2014 aucun virement bancaire RDP encaiss\u00e9 pour cette p\u00e9riode dans tes relev\u00e9s FSE.\\n\\nSi le paiement tarde, c\\'est peut-\u00eatre un impay\u00e9 \u00e0 r\u00e9clamer au labo.')" title="Annonc\u00e9 par l'avoir \u2014 aucun virement encaiss\u00e9" style="cursor:pointer;font-size:9px">(annonc\u00e9 \u26a0)</span>`:''}</td>
     <td class="verif-r2" style="${dTr2}">${(T.r2A>0||r2Reff>0)?fmtE(T.r2A-r2Reff):'—'}</td></tr>`;
   const totR3 = `<tr style="${totStyle}">${totLbl}
-    <td class="verif-r3">—</td>
     <td class="verif-r3" style="${A}">${T.r3A>0?fmtE(T.r3A):'—'}</td>
     <td class="verif-r3" style="${G}">${_recCell(fseR3, 'presta')}</td>
     <td class="verif-r3" style="${dTr3}">${(T.r3A>0||fseR3>0)?fmtE(T.r3A-fseR3):'—'}</td></tr>`;
@@ -8937,9 +8941,9 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
         <tbody>${rowsHtml}${totHtml}</tbody>
       </table>
     </div>`;
-  const headAchats = `<th style="text-align:left">CAT. RSF</th><th>QTÉ RÉP.</th><th>PA BRUT</th><th ${_thA}>RSF ATT.</th><th ${_thG}>REC.</th><th>Δ</th>`;
-  const headR2     = `<th style="text-align:left">CAT. RSF</th><th class="verif-r2">%</th><th class="verif-r2" ${_thA}>ATT.</th><th class="verif-r2" ${_thG}>REC.</th><th class="verif-r2">Δ</th>`;
-  const headR3     = `<th style="text-align:left">CAT. RSF</th><th class="verif-r3">%</th><th class="verif-r3" ${_thA}>ATT.</th><th class="verif-r3" ${_thG}>REC.</th><th class="verif-r3">Δ</th>`;
+  const headAchats = `<th style="text-align:left">CAT. RSF</th><th>CA BRUT</th><th ${_thA}>RSF ATT.</th><th ${_thG}>REC.</th><th>Δ</th>`;
+  const headR2     = `<th style="text-align:left">CAT. RSF</th><th class="verif-r2" ${_thA}>ATT.</th><th class="verif-r2" ${_thG}>REC.</th><th class="verif-r2">Δ</th>`;
+  const headR3     = `<th style="text-align:left">CAT. RSF</th><th class="verif-r3" ${_thA}>ATT.</th><th class="verif-r3" ${_thG}>REC.</th><th class="verif-r3">Δ</th>`;
 
   return `
     <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 8px;font-family:'Share Tech Mono',monospace;font-size:10px">
