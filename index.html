@@ -12483,9 +12483,15 @@ async function saveProfile() {
           const { data: row } = await window._sbClient.from('user_state')
             .select('state_json').eq('user_id', session.user.id).maybeSingle();
           const sj = row?.state_json || {};
-          // Charger les données FSE cloud si absentes localement
-          if (sj.fseMonthStats && Object.keys(sj.fseMonthStats).length) {
-            state._fseMonthStats = sj.fseMonthStats;
+          // Charger les données FSE cloud. PRIORITÉ au snake_case fse_month_stats
+          // (écrit par le scraper GitHub Actions = source de vérité, toujours frais)
+          // sur le camelCase fseMonthStats (cache dérivé du front, potentiellement
+          // périmé). Sans ça, ce refresh écrasait 3 s après le chargement les
+          // virements fraîchement scrapés par un cache antérieur — ex. réel : le
+          // virement Biogaran 1 396,29 € du 29/10 restait invisible après re-scrape.
+          const _sjFse2 = sj.fse_month_stats || sj.fseMonthStats;
+          if (_sjFse2 && Object.keys(_sjFse2).length) {
+            state._fseMonthStats = _sjFse2;
             const cloudTs = sj.fse_job?.completed_at
               ? new Date(sj.fse_job.completed_at).getTime() : null;
             if (cloudTs && (!state._fseSavedAt || cloudTs > state._fseSavedAt)) {
