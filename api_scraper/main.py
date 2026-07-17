@@ -52,6 +52,16 @@ class ConnectBody(BaseModel):
     user: str
     password: str
 
+
+class AssistConfigBody(BaseModel):
+    enabled: Optional[bool] = None
+    password: Optional[str] = None
+
+
+class AssistLoginBody(BaseModel):
+    email: str
+    password: str
+
 # ── App ────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(title="Break-Pharma Scraper API")
@@ -103,6 +113,201 @@ def _extract_token(authorization: str) -> str:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ── Assistance : 2e mot de passe d'accès au compte admin ───────────────────────
+# L'admin active « l'assistance » (toggle) et définit un mot de passe d'assistance.
+# Tant que le toggle est ON (colonne enabled côté serveur), ce mot de passe ouvre
+# une VRAIE session GoTrue sur SON compte (magiclink admin → échange de jeton) →
+# support/debug en direct. Le mot de passe n'est stocké QUE haché (PBKDF2) dans la
+# table assist_access ; le plaintext ne transite jamais par le dépôt ni un commit.
+# Le contrôle du toggle est fait CÔTÉ SERVEUR : sans enabled=true, le mot de passe
+# est inopérant. Table requise (voir sql/assist_access.sql), accès service_role.
+
+_assist_fail: dict = {}   # email → [timestamps] : anti-brute-force basique
+
+
+def _assist_svc_key() -> str:
+    from supabase_client import SERVICE_KEY
+    if not (SERVICE_KEY and SERVICE_KEY.startswith("eyJ")):
+        raise HTTPException(status_code=503, detail="Clé de service indisponible côté serveur")
+    return SERVICE_KEY
+
+
+def _assist_hash(pw: str) -> str:
+    import hashlib
+    salt, iters = os.urandom(16), 200_000
+    dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, iters)
+    return f"pbkdf2_sha256${iters}${salt.hex()}${dk.hex()}"
+
+
+def _assist_verify(pw: str, stored: str) -> bool:
+    import hashlib, hmac
+    try:
+        algo, iters, salt_hex, hash_hex = (stored or "").split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(salt_hex), int(iters))
+        return hmac.compare_digest(dk.hex(), hash_hex)
+    except Exception:
+        return False
+
+
+def _jwt_email(token: str) -> str:
+    import base64
+    try:
+        p = token.split(".")[1]; p += "=" * (-len(p) % 4)
+        return (json.loads(base64.urlsafe_b64decode(p)) or {}).get("email", "") or ""
+    except Exception:
+        return ""
+
+
+def _assist_upsert(user_id: str, email: str = "", enabled=None, pw_hash=None):
+    key = _assist_svc_key()
+    from supabase_client import SUPA_URL
+    payload = {"user_id": user_id}
+    if email:               payload["email"]   = email.lower()
+    if enabled is not None:  payload["enabled"] = bool(enabled)
+    if pw_hash is not None:   payload["pw_hash"] = pw_hash
+    req = urllib.request.Request(
+        f"{SUPA_URL}/rest/v1/assist_access?on_conflict=user_id",
+        data=json.dumps(payload).encode(), method="POST",
+        headers={"apikey": key, "Authorization": f"Bearer {key}",
+                 "Content-Type": "application/json",
+                 "Prefer": "resolution=merge-duplicates,return=minimal"})
+    with urllib.request.urlopen(req, timeout=15):
+        pass
+
+
+def _assist_get_row(user_id: str) -> dict:
+    key = _assist_svc_key()
+    from supabase_client import SUPA_URL
+    url = f"{SUPA_URL}/rest/v1/assist_access?user_id=eq.{user_id}&select=enabled,pw_hash&limit=1"
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        rows = json.loads(r.read())
+    return rows[0] if rows else {}
+
+
+def _assist_lookup(email: str) -> dict:
+    """Ligne assist_access d'un email SI l'assistance est activée — service_role."""
+    key = _assist_svc_key()
+    from supabase_client import SUPA_URL
+    import urllib.parse
+    q = urllib.parse.quote(email.lower())
+    url = f"{SUPA_URL}/rest/v1/assist_access?email=eq.{q}&enabled=is.true&select=user_id,pw_hash&limit=1"
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        rows = json.loads(r.read())
+    return rows[0] if rows else {}
+
+
+def _assist_mint_session(email: str) -> dict:
+    """magiclink admin (AUCUN email envoyé) → échange → {access_token, refresh_token}."""
+    key = _assist_svc_key()
+    from supabase_client import SUPA_URL
+    import urllib.error, urllib.parse
+    # 1. Générer le lien magique (renvoie hashed_token ; l'API admin n'envoie pas d'email).
+    body = json.dumps({"type": "magiclink", "email": email}).encode()
+    req = urllib.request.Request(f"{SUPA_URL}/auth/v1/admin/generate_link", data=body, method="POST",
+        headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        link = json.loads(r.read())
+    hashed = link.get("hashed_token") or (link.get("properties") or {}).get("hashed_token", "")
+    if not hashed:
+        raise HTTPException(status_code=502, detail="generate_link : hashed_token absent")
+    # 2. Consommer le lien → session. Essai JSON (GoTrue récent) puis repli redirection.
+    vbody = json.dumps({"type": "magiclink", "token_hash": hashed}).encode()
+    vreq = urllib.request.Request(f"{SUPA_URL}/auth/v1/verify", data=vbody, method="POST",
+        headers={"apikey": key, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(vreq, timeout=15) as r:
+            sess = json.loads(r.read())
+        if sess.get("access_token"):
+            return {"access_token": sess["access_token"], "refresh_token": sess.get("refresh_token", ""),
+                    "expires_in": sess.get("expires_in", 3600), "token_type": "bearer"}
+    except Exception:
+        pass
+    gurl = (f"{SUPA_URL}/auth/v1/verify?token={urllib.parse.quote(hashed)}"
+            f"&type=magiclink&redirect_to=https://break-pharma.fr/")
+
+    class _NoRedir(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+
+    opener = urllib.request.build_opener(_NoRedir)
+    loc = ""
+    try:
+        with opener.open(urllib.request.Request(gurl, headers={"apikey": key}), timeout=15) as r:
+            loc = r.headers.get("Location", "")
+    except urllib.error.HTTPError as e:
+        loc = e.headers.get("Location", "")
+    frag = loc.split("#", 1)[1] if "#" in loc else (loc.split("?", 1)[1] if "?" in loc else "")
+    params = urllib.parse.parse_qs(frag)
+    at = (params.get("access_token") or [""])[0]
+    if not at:
+        raise HTTPException(status_code=502, detail="Échange magiclink échoué")
+    return {"access_token": at, "refresh_token": (params.get("refresh_token") or [""])[0],
+            "expires_in": int((params.get("expires_in") or ["3600"])[0]), "token_type": "bearer"}
+
+
+@app.get("/assist/config")
+async def assist_config_get(authorization: str = Header(default="")):
+    """Admin (JWT) : état courant de l'assistance (toggle + mot de passe défini ?)."""
+    token = _extract_token(authorization)
+    try:
+        uid = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    row = await asyncio.get_event_loop().run_in_executor(None, lambda: _assist_get_row(uid))
+    return {"enabled": bool(row.get("enabled")), "has_password": bool(row.get("pw_hash"))}
+
+
+@app.post("/assist/config")
+async def assist_config(body: AssistConfigBody, authorization: str = Header(default="")):
+    """Admin (JWT) : active/désactive l'assistance et/ou (re)définit le mot de passe."""
+    token = _extract_token(authorization)
+    try:
+        uid = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    email = _jwt_email(token)
+    enabled = body.enabled if body.enabled is not None else None
+    pw_hash = None
+    if body.password is not None:
+        pw = (body.password or "").strip()
+        if pw:
+            if len(pw) < 10:
+                raise HTTPException(status_code=400, detail="Mot de passe d'assistance trop court (10 caractères minimum)")
+            pw_hash = _assist_hash(pw)
+    if enabled is None and pw_hash is None:
+        raise HTTPException(status_code=400, detail="Rien à mettre à jour")
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: _assist_upsert(uid, email, enabled, pw_hash))
+    row = await loop.run_in_executor(None, lambda: _assist_get_row(uid))
+    return {"enabled": bool(row.get("enabled")), "has_password": bool(row.get("pw_hash"))}
+
+
+@app.post("/assist/login")
+async def assist_login(body: AssistLoginBody):
+    """Public : ouvre une session sur le compte de `email` si l'assistance est ON
+    et le mot de passe d'assistance correct. Renvoie les jetons GoTrue."""
+    email = (body.email or "").strip().lower()
+    pw    = body.password or ""
+    if not email or not pw:
+        raise HTTPException(status_code=400, detail="Email et mot de passe requis")
+    now = time.time()
+    fails = [t for t in _assist_fail.get(email, []) if now - t < 300]
+    _assist_fail[email] = fails
+    if len(fails) >= 8:
+        raise HTTPException(status_code=429, detail="Trop de tentatives — réessayez dans quelques minutes")
+    loop = asyncio.get_event_loop()
+    row = await loop.run_in_executor(None, lambda: _assist_lookup(email))
+    if not (row and _assist_verify(pw, row.get("pw_hash", ""))):
+        _assist_fail.setdefault(email, []).append(now)
+        raise HTTPException(status_code=401, detail="Accès assistance refusé")
+    _assist_fail[email] = []
+    return await loop.run_in_executor(None, lambda: _assist_mint_session(email))
 
 
 @app.post("/client-log")

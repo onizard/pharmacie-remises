@@ -88,6 +88,20 @@ CLOUDFLARE_API_KEY=...
 - **Parsing FSE — rattrapage des virements au libellé inhabituel** : dans `run_job_fse.py::_parse_and_save_fse` (chemin actif, GitHub Actions) et son miroir `main.py::_parse_fse_bank_sync`, une ligne bancaire qui NE commence PAS par « VIR » est quand même gardée si elle passe l'un des 3 filets : (1) son libellé contient un n° de facture/avoir Digi connu ; (2) son montant À DÉCIMALES = un avoir Digi au centime ; (3) c'est un **CRÉDIT à décimales nommant un labo génériqueur connu** (`_identify_labo` ≠ None) — filet indépendant de la présence de données Digi, ajouté pour le virement Biogaran 1 396,29 € du 29/10/25 (jusque-là saisi à la main). Décimales exigées → collision quasi impossible ; les sommes RONDES (coop) restent exclues de ce filet (trop banales → exigent un n° de document).
 - **Virement manuel (filet de sécurité)** : bouton « ＋ virement manquant » dans la barre du vérificateur. Si le scraper FSE rate un virement (absent de l'export Webix ou libellé non reconnu), on le saisit à la main (labo, type RDP/coop, montant, date, mois d'encaissement). Stocké à part dans `state._fseManualVir` (persisté cloud via `fseManualVir`), ré-injecté de façon idempotente dans `_fseMonthStats` par `_fseApplyManual()` au début de `renderVerificateur()`. Type imposé via `t._mvtype` (prioritaire dans `_fseVtype`). Survit aux re-scrapes ; se rapproche automatiquement comme un virement scrapé (avoir / n° facture / montant au centime). `_fseMonthStatsNoManual()` retire les injections avant sérialisation pour éviter le double stockage.
 
+## Assistance — 2e mot de passe d'accès au compte admin
+Modèle actuel (remplace l'ancienne copie de données vers `assist@` via `assist_sync`).
+L'admin, dans MON COMPTE / Paramètres (`#assistBox`), définit un **mot de passe d'assistance**
+et coche « Activer l'assistance ». Tant que le toggle est ON, ce mot de passe ouvre une **vraie
+session GoTrue sur SON compte** (support/debug en direct) via l'écran de login normal (même champ) :
+`doLogin()` tente le login normal puis, en repli, `POST /assist/login`.
+- **Stockage** : table `public.assist_access(user_id, email, enabled, pw_hash)` — RLS activé SANS
+  policy → accès **service_role uniquement** (API Render). `pw_hash` = PBKDF2 (jamais de plaintext,
+  jamais dans le dépôt). SQL : `sql/assist_access.sql` (à exécuter une fois).
+- **Endpoints Render** (`main.py`) : `GET/POST /assist/config` (admin JWT → lit/écrit enabled +
+  hash) ; `POST /assist/login` (public → vérifie `enabled=true` + PBKDF2, puis `admin/generate_link`
+  magiclink → échange → renvoie les jetons ; anti-brute-force basique en mémoire). Le **gate est
+  serveur** : sans `enabled`, le mot de passe est inopérant.
+
 ## Architecture OSPHARM scraper (run_job_ospharm.py)
 - Boucle Jan N-1 → mois courant, scraping incrémental (mois déjà en base réutilisés)
 - Interface Webix 6 — pas d'inputs texte dans le date picker → navigation par clic cellules calendrier (Approche A2)
