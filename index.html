@@ -8647,6 +8647,11 @@ function _rdpPairMap(rdpByTaux, paliers, cmap, emap) {
   // gloutonne du plus proche, repli sur l'appariement par conditions.
   const _baseKey = {};   // taux RDP versé → palier RSF apparié par base
   {
+    // Un versement RDP se rattache à un palier qui GAGNE une RDP au contrat
+    // (condition remise2 > 0 ou exception de palier). Les paliers à 0 % ne peuvent
+    // pas être la cible d'une RDP : on les DÉPRIORISE (sans les exclure, pour garder
+    // la détection d'anomalie de facturation labo quand c'est le SEUL rattachement).
+    const _palRdpOk = pt => (parseFloat(cmap[Math.abs(pt)]?.remise2) > 0) || (emap[Math.abs(pt)] != null);
     const cands = [];
     rdpByTaux.forEach(e => {
       const base = (e.ca_grossiste || 0) + (e.ca_direct || 0);
@@ -8654,10 +8659,14 @@ function _rdpPairMap(rdpByTaux, paliers, cmap, emap) {
       paliers.forEach(p => {
         if (p.taux == null || !(p.brut > 0)) return;
         const rel = Math.abs(p.brut - base) / Math.max(base, p.brut);
-        if (rel <= 0.35) cands.push({ taux: e.taux, pal: p.taux, rel });
+        if (rel <= 0.35) cands.push({ taux: e.taux, pal: p.taux, rel, rdpOk: _palRdpOk(p.taux) });
       });
     });
-    cands.sort((a, b) => a.rel - b.rel);
+    // À proximité de base équivalente, le palier « à RDP » prime sur un palier à
+    // 0 % — sinon, sept. 2025 Biogaran (barème décalé : rsf10→RDP20, rsf20→RDP10),
+    // le 10 % versé pour le palier 20 (base ~2 421 €) tombait sur le palier 15
+    // voisin (2 420 € de brut) qui ne prévoit AUCUNE RDP.
+    cands.sort((a, b) => (Number(b.rdpOk) - Number(a.rdpOk)) || (a.rel - b.rel));
     const usedT = {}, usedP = {};
     cands.forEach(c => {
       if (usedT[c.taux] || usedP[c.pal]) return;
