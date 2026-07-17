@@ -16,6 +16,7 @@ import json
 import os
 import re as _re
 import time
+import urllib.error
 import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -162,6 +163,12 @@ def _jwt_email(token: str) -> str:
         return ""
 
 
+def _assist_table_missing(body: bytes) -> bool:
+    b = (body or b"").lower()
+    return b"assist_access" in b and (b"does not exist" in b or b"undefined_table" in b
+                                      or b"pgrst205" in b or b"could not find the table" in b)
+
+
 def _assist_upsert(user_id: str, email: str = "", enabled=None, pw_hash=None):
     key = _assist_svc_key()
     from supabase_client import SUPA_URL
@@ -175,8 +182,14 @@ def _assist_upsert(user_id: str, email: str = "", enabled=None, pw_hash=None):
         headers={"apikey": key, "Authorization": f"Bearer {key}",
                  "Content-Type": "application/json",
                  "Prefer": "resolution=merge-duplicates,return=minimal"})
-    with urllib.request.urlopen(req, timeout=15):
-        pass
+    try:
+        with urllib.request.urlopen(req, timeout=15):
+            pass
+    except urllib.error.HTTPError as e:
+        if _assist_table_missing(e.read()):
+            raise HTTPException(status_code=503,
+                detail="Table assist_access absente — exécute sql/assist_access.sql dans la base.")
+        raise HTTPException(status_code=502, detail="Écriture assist_access échouée")
 
 
 def _assist_get_row(user_id: str) -> dict:
@@ -184,22 +197,33 @@ def _assist_get_row(user_id: str) -> dict:
     from supabase_client import SUPA_URL
     url = f"{SUPA_URL}/rest/v1/assist_access?user_id=eq.{user_id}&select=enabled,pw_hash&limit=1"
     req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        rows = json.loads(r.read())
-    return rows[0] if rows else {}
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            rows = json.loads(r.read())
+        return rows[0] if rows else {}
+    except urllib.error.HTTPError as e:
+        if _assist_table_missing(e.read()):
+            raise HTTPException(status_code=503,
+                detail="Table assist_access absente — exécute sql/assist_access.sql dans la base.")
+        raise HTTPException(status_code=502, detail="Lecture assist_access échouée")
 
 
 def _assist_lookup(email: str) -> dict:
-    """Ligne assist_access d'un email SI l'assistance est activée — service_role."""
-    key = _assist_svc_key()
+    """Ligne assist_access d'un email SI l'assistance est activée — service_role.
+    Toute erreur (table absente, réseau) → {} : la connexion assistance est
+    simplement refusée (401), sans détail exposé au public."""
     from supabase_client import SUPA_URL
     import urllib.parse
-    q = urllib.parse.quote(email.lower())
-    url = f"{SUPA_URL}/rest/v1/assist_access?email=eq.{q}&enabled=is.true&select=user_id,pw_hash&limit=1"
-    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        rows = json.loads(r.read())
-    return rows[0] if rows else {}
+    try:
+        key = _assist_svc_key()
+        q = urllib.parse.quote(email.lower())
+        url = f"{SUPA_URL}/rest/v1/assist_access?email=eq.{q}&enabled=is.true&select=user_id,pw_hash&limit=1"
+        req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            rows = json.loads(r.read())
+        return rows[0] if rows else {}
+    except Exception:
+        return {}
 
 
 def _assist_mint_session(email: str) -> dict:
