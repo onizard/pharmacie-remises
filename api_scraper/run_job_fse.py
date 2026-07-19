@@ -287,7 +287,12 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
         _last_sample = [[str(c)[:25] for c in r if c]
                         for r in all_rows[max(0, hdr_idx):hdr_idx + 5] if any(c for c in r)]
 
-        for row in all_rows[hdr_idx + 2:]:
+        # Données dès la ligne SUIVANT l'en-tête (hdr_idx + 1). L'ancien « + 2 »
+        # sautait systématiquement la PREMIÈRE ligne de données de chaque export
+        # mensuel — cas réel : le virement Biogaran 1 396,29 € du 29/10/2025,
+        # première ligne du fichier d'octobre, jamais parsé. Les lignes vides ou
+        # de sous-en-tête sont de toute façon écartées par les gardes ci-dessous.
+        for row in all_rows[hdr_idx + 1:]:
             if not any(c for c in row):
                 continue
             n = len(row)

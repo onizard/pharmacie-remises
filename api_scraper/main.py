@@ -1839,7 +1839,12 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes
             if hdr_idx >= 0:
                 break
 
-    data_start = hdr_idx + 2  # 0-indexed; openpyxl min_row est 1-indexed donc +1
+    # Données dès la ligne SUIVANT l'en-tête. L'ancien « + 2 » sautait la PREMIÈRE
+    # ligne de données de chaque export (cas réel : virement Biogaran 1 396,29 € du
+    # 29/10/2025, première ligne du fichier d'octobre, jamais parsé). Les lignes
+    # vides/sous-en-têtes sont écartées par les gardes du parcours. Miroir de
+    # run_job_fse.py.
+    data_start = hdr_idx + 1
 
     # ── Table ref→labo depuis digi_month_stats ──────────────────────────────────
     # Les numéros de factures RDP/presta extraits des PDFs Digi sont les mêmes
