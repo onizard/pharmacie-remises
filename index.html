@@ -7794,8 +7794,10 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
   // à aujourd'hui, TOUTES années confondues) : les prestations sont réglées sans
   // détail et avec décalage, souvent l'année suivante (échéancier F00x de 2026
   // couvrant 2025) → un rapprochement par année civile crierait au retard à tort.
-  // Affiché uniquement sur l'année en cours (une seule fois).
-  if (yr === today.getFullYear() && cs) {
+  // OFFICIEUSE : affichée sur toutes les années du contrat (suivi), mais EXCLUE du
+  // total officiel et du courrier de réclamation (la coop ne se réclame pas par
+  // écrit). rows.officieux = true la distingue.
+  if (cs) {
     let [cy, cm] = cs.split('-').map(Number);
     while (cy < today.getFullYear() || (cy === today.getFullYear() && cm <= today.getMonth() + 1)) {
       const cmk = `${cy}-${String(cm).padStart(2,'0')}`;
@@ -7804,26 +7806,42 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
       cm++; if (cm > 12) { cm = 1; cy++; }
     }
     if (coopAtt - coopRec > 50) {
-      rows.push({ mk: `depuis ${csFr}`, nature: 'coop', coopAtt, coopRec, type: 'COOP — prestations en retard', due: coopAtt - coopRec, urgent: true,
+      rows.push({ mk: `depuis ${csFr}`, nature: 'coop', officieux: true, coopAtt, coopRec, type: 'COOP — prestations en retard', due: coopAtt - coopRec, urgent: false,
         preuve: `Cumul depuis le début du contrat (${csFr}) : prestations attendues ${fmtE(coopAtt)} (achats justificatif × remise3 contractuelle × 1,20 TTC × coef contrat) ; `
-              + `règlements coop reçus, toutes années confondues : ${fmtE(coopRec)}.` });
+              + `règlements coop reçus, toutes années confondues : ${fmtE(coopRec)}. Suivi OFFICIEUX — à évoquer avec le délégué, ne figure pas dans le courrier de réclamation.` });
     }
   }
-  const total = rows.reduce((a,r)=>a+r.due, 0);
+  const offRows   = rows.filter(r => !r.officieux);   // réclamations OFFICIELLES (courrier)
+  const coopRows  = rows.filter(r =>  r.officieux);   // suivi officieux (affiché seulement)
+  const total     = offRows.reduce((a,r)=>a+r.due, 0);
   const key   = `${selNorm}|${yr}`;
   window._litigeData = window._litigeData || {};
   window._litigeData[key] = { rows, total, labDisplay, yr, csFr };
   window._litigeTxt[key] = `RÉCAPITULATIF DES SOMMES DUES — ${labDisplay} ${yr}\n`
     + `(établi le ${today.toLocaleDateString('fr-FR')} sur justificatifs répartiteur, avoirs ${labDisplay} et relevés bancaires)\n\n`
-    + rows.map(r => `• ${r.mk} — ${r.type} : ${fmtE(r.due)}\n  Justification : ${r.preuve}`).join('\n\n')
-    + `\n\nTOTAL À RÉGLER : ${fmtE(total)}`;
+    + offRows.map(r => `• ${r.mk} — ${r.type} : ${fmtE(r.due)}\n  Justification : ${r.preuve}`).join('\n\n')
+    + `\n\nTOTAL À RÉGLER : ${fmtE(total)}`
+    + (coopRows.length ? `\n\n— Suivi officieux (non inclus dans le courrier) —\n`
+      + coopRows.map(r => `• ${r.mk} — ${r.type} : ${fmtE(r.due)}\n  ${r.preuve}`).join('\n\n') : '');
   const title = `<div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:900;letter-spacing:2px;color:var(--red);margin:22px 0 8px">⚖ À RÉCLAMER AU LABO — ${escH(labDisplay)} ${yr}</div>`;
-  if (!rows.length) {
-    return `${title}<div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green)">✓ Rien à réclamer sur ${yr} : tout ce qui est dû (avoirs émis, RDP attendue, coop) est réglé ou dans les délais habituels.</div>`;
+  // Carte coop « officieuse » : ambre, badge explicite, affichée même quand il n'y
+  // a rien à réclamer officiellement.
+  const coopCards = coopRows.map(r => `
+    <div style="border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:6px;padding:9px 11px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:800;color:var(--amber);line-height:1.3">${escH(r.type)}
+          <span style="font-family:'Share Tech Mono',monospace;font-weight:400;font-size:9px;color:var(--text-dim);letter-spacing:1px"> SUIVI OFFICIEUX — hors courrier</span></div>
+        <div style="font-weight:800;color:var(--amber);white-space:nowrap;font-size:14px">${fmtE(r.due)}</div>
+      </div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--cyan);letter-spacing:1px;margin:2px 0 5px">${escH(r.mk)}</div>
+      <div style="font-size:11.5px;line-height:1.5;color:var(--text-dim);overflow-wrap:anywhere">${escH(r.preuve)}</div>
+    </div>`).join('');
+  if (!offRows.length) {
+    return `${title}<div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green);margin-bottom:${coopRows.length?'10px':'0'}">✓ Rien à réclamer officiellement sur ${yr} : avoirs émis et RDP attendue réglés ou dans les délais habituels.</div>${coopCards}`;
   }
   // Cartes empilées (pas de tableau à 4 colonnes) → tout tient dans la largeur
   // de l'écran, la preuve passe à la ligne automatiquement, aucune scrollbar.
-  const cards = rows.map(r => {
+  const cards = offRows.map(r => {
     const col = r.urgent ? 'var(--red)' : 'var(--amber)';
     return `<div style="border:1px solid var(--border);border-left:3px solid ${col};border-radius:6px;padding:9px 11px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
@@ -7840,11 +7858,12 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
       <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:900;letter-spacing:2px;color:var(--red)">TOTAL À RÉCLAMER</div>
       <div style="font-weight:900;color:var(--red);font-size:17px;white-space:nowrap">${fmtE(total)}</div>
     </div>
+    ${coopCards ? `<div style="margin-top:12px">${coopCards}</div>` : ''}
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       <button onclick="_showLitigeLetter('${key}')" style="flex:1;min-width:150px;background:var(--red);border:none;color:#fff;font-family:'Share Tech Mono',monospace;font-size:11px;font-weight:700;padding:9px 8px;cursor:pointer;border-radius:5px">✉ GÉNÉRER LE COURRIER</button>
       <button onclick="_verifCopyLitige('${key}')" style="flex:1;min-width:150px;background:transparent;border:1px solid var(--red);color:var(--red);font-family:'Share Tech Mono',monospace;font-size:11px;padding:9px 8px;cursor:pointer;border-radius:5px">📋 COPIER LE RÉCAP</button>
     </div>
-    <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5;overflow-wrap:anywhere">Preuves : justificatifs répartiteur (achats par référence), avoirs ${escH(labDisplay)} (n° + montants), relevés bancaires FSE (rapprochement par n° de document). Les lignes « dans le délai » ne sont pas comptées.</div>`;
+    <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5;overflow-wrap:anywhere">Preuves : justificatifs répartiteur (achats par référence), avoirs ${escH(labDisplay)} (n° + montants), relevés bancaires FSE (rapprochement par n° de document). Les lignes « dans le délai » ne sont pas comptées. La coop (officieuse) n'entre ni dans le total ni dans le courrier.</div>`;
 }
 
 // ── Générateur de courrier de réclamation (gabarits déterministes) ───────────
@@ -7858,7 +7877,9 @@ function _verifLitigeLetter(key) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   const perLbl = r => r.m ? `${MOIS[r.m-1]} ${r.mk.slice(0,4)}` : `l'exercice ${r.mk}`;
-  const paras = d.rows.map((r, i) => {
+  // La coop est OFFICIEUSE : suivie à l'écran, jamais dans le courrier (d.total
+  // n'inclut déjà que les lignes officielles).
+  const paras = d.rows.filter(r => !r.officieux && r.nature !== 'coop').map((r, i) => {
     const n = i + 1;
     if (r.nature === 'unpaid') {
       return `${n}. Avoir non réglé — ${perLbl(r)} : ${fmtE(r.due)}\n`
@@ -7881,14 +7902,10 @@ function _verifLitigeLetter(key) {
       return `${n}. Absence d'avoir — ${perLbl(r)} : ${fmtE(r.due)}\n`
         + `Aucun avoir de remise de performance n'a été émis au titre de ${perLbl(r)}, alors que notre contrat est actif depuis le ${d.csFr || '(date de signature)'} et que nos achats du mois, attestés par le justificatif répartiteur, ouvrent droit à ${fmtE(r.due)} par application du barème contractuel — barème dont l'application est vérifiée au centime sur les avoirs que vous avez émis pour les mois voisins.`;
     }
-    if (r.nature === 'coop') {
-      return `${n}. Prestations de coopération commerciale en retard — ${r.mk} : ${fmtE(r.due)}\n`
-        + `Les prestations dues au titre de ${r.mk} s'élèvent à ${fmtE(r.coopAtt)} TTC (assiette d'achats justifiée × taux contractuel × TVA), tandis que les virements reçus et affectés chronologiquement ne couvrent que ${fmtE(r.coopRec)}, laissant un solde de ${fmtE(r.due)}.`;
-    }
     return '';
   }).filter(Boolean);
   const today = new Date().toLocaleDateString('fr-FR');
-  return `Objet : Réclamation — remises de performance et prestations de coopération commerciale (${d.labDisplay}, ${d.yr})\n\n`
+  return `Objet : Réclamation — remises de performance (${d.labDisplay}, ${d.yr})\n\n`
     + `Madame, Monsieur,\n\n`
     + `Dans le cadre de notre partenariat${d.csFr ? ` (contrat actif depuis le ${d.csFr})` : ''}, nous procédons chaque mois au rapprochement systématique de nos achats (relevés détaillés du répartiteur, référence par référence), des avoirs émis par vos services et de nos relevés bancaires.\n\n`
     + `Ce rapprochement, arrêté au ${today}, fait apparaître les anomalies suivantes, pour un total de ${fmtE(d.total)} en notre défaveur :\n\n`
