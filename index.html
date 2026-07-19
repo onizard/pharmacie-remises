@@ -1363,7 +1363,6 @@
   </button>
   <div class="account-dropdown" id="accountDropdown">
     <div class="account-menu-item" id="menuParams">⚙&nbsp; Paramètres</div>
-    <div class="account-menu-item" id="menuForceSync">↑&nbsp; Forcer sync cloud</div>
     <div class="account-menu-item danger" id="menuLogout">⏻&nbsp; Déconnexion</div>
   </div>
 </div>
@@ -12019,27 +12018,6 @@ document.addEventListener('input', saveState);
     openProfileModal();
   });
 
-  document.getElementById('menuForceSync')?.addEventListener('click', async () => {
-    dropdown.classList.remove('open');
-    const btn = document.getElementById('menuForceSync');
-    btn.textContent = '↑ Sync en cours…';
-    btn.style.opacity = '0.5';
-    btn.style.pointerEvents = 'none';
-    try {
-      const ok = await saveCloudState(serializeState());
-      btn.textContent = ok ? '✓ Sync réussie' : '✗ Erreur sync';
-      btn.style.color = ok ? 'var(--green)' : 'var(--red)';
-    } catch(e) {
-      btn.textContent = '✗ Erreur sync';
-      btn.style.color = 'var(--red)';
-    }
-    setTimeout(() => {
-      btn.textContent = '↑ Forcer sync cloud';
-      btn.style.opacity = '';
-      btn.style.pointerEvents = '';
-      btn.style.color = '';
-    }, 3000);
-  });
 })();
 // ── Profile modal (éléments hors script, câblés dans DOMContentLoaded) ──
 
@@ -13045,40 +13023,66 @@ function initConnecteurModal() {
     if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
     return j;
   }
+  // Code d'assistance ALÉATOIRE : généré côté client à chaque activation, envoyé
+  // au serveur (haché, jamais stocké en clair), affiché UNE SEULE FOIS (cliquer =
+  // copier). Décocher révoque l'accès (gate serveur) et efface le code affiché ;
+  // recocher génère un code NEUF (l'ancien hash est remplacé).
+  function _assistGenCode() {
+    const AB = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';   // sans 0/O/1/l/I
+    const buf = new Uint32Array(12);
+    (window.crypto || {}).getRandomValues ? crypto.getRandomValues(buf)
+      : buf.forEach((_, i) => buf[i] = Math.floor(Math.random() * 1e9));
+    return Array.from(buf, v => AB[v % AB.length]).join('');
+  }
+  function _assistShowCode(code) {
+    const wrap = document.getElementById('assistCodeWrap'), el = document.getElementById('assistCode');
+    if (!wrap || !el) return;
+    if (!code) { wrap.style.display = 'none'; el.textContent = ''; return; }
+    el.textContent = code;
+    wrap.style.display = '';
+  }
   function _assistStatus(s, st) {
     if (!st) return;
-    const on = !!(s && s.enabled), hasPw = !!(s && s.has_password);
+    const on = !!(s && s.enabled);
     st.style.color = on ? 'var(--green)' : 'var(--text-dim)';
-    st.textContent = (on ? '● Assistance ACTIVE — connexion à ton compte autorisée via le mot de passe d\'assistance.'
-                         : '○ Assistance inactive — le mot de passe d\'assistance est inopérant.')
-      + (hasPw ? '' : ' ⚠ Aucun mot de passe défini : définis-en un ci-dessus.');
+    st.textContent = on ? '● Assistance ACTIVE — le support peut se connecter à ton compte avec le code.'
+                        : '○ Assistance inactive — aucun accès possible.';
   }
   function _wireAssistToggle() {
     const cb = document.getElementById('assistToggle'), st = document.getElementById('assistStatus');
-    const pw = document.getElementById('assistPwd'), sv = document.getElementById('assistPwdSave');
     if (!cb) return;
-    // État courant depuis le serveur (source de vérité).
-    _assistApi('GET').then(s => { cb.checked = !!s.enabled; _assistStatus(s, st); }).catch(() => {});
+    // État courant depuis le serveur (source de vérité). Le code, lui, n'est
+    // affichable qu'au moment de sa génération (seul le hash est stocké).
+    _assistApi('GET').then(s => {
+      cb.checked = !!s.enabled;
+      _assistStatus(s, st);
+      if (s.enabled && st) st.textContent += ' (code affiché uniquement à l\'activation — décoche puis recoche pour en générer un nouveau)';
+    }).catch(() => {});
     if (_assistWired) return; _assistWired = true;
     cb.addEventListener('change', async () => {
       const on = cb.checked; cb.disabled = true;
       if (st) { st.style.color = 'var(--amber)'; st.textContent = '⏳…'; }
-      try { _assistStatus(await _assistApi('POST', { enabled: on }), st); }
-      catch (e) { cb.checked = !on; if (st) { st.style.color = 'var(--red)'; st.textContent = '❌ ' + (e.message || e); } }
-      finally { cb.disabled = false; }
-    });
-    sv?.addEventListener('click', async () => {
-      const val = (pw?.value || '').trim();
-      if (val.length < 10) { if (st) { st.style.color = 'var(--red)'; st.textContent = '⚠ Mot de passe trop court (10 caractères minimum).'; } return; }
-      sv.disabled = true;
-      if (st) { st.style.color = 'var(--amber)'; st.textContent = '⏳ Enregistrement…'; }
       try {
-        const s = await _assistApi('POST', { password: val });
-        if (pw) pw.value = '';
-        _assistStatus(s, st);
-        if (st) st.textContent = '✓ Mot de passe d\'assistance enregistré. ' + st.textContent;
-      } catch (e) { if (st) { st.style.color = 'var(--red)'; st.textContent = '❌ ' + (e.message || e); } }
-      finally { sv.disabled = false; }
+        if (on) {
+          const code = _assistGenCode();
+          _assistStatus(await _assistApi('POST', { enabled: true, password: code }), st);
+          _assistShowCode(code);
+        } else {
+          _assistStatus(await _assistApi('POST', { enabled: false }), st);
+          _assistShowCode(null);
+        }
+      } catch (e) {
+        cb.checked = !on;
+        _assistShowCode(null);
+        if (st) { st.style.color = 'var(--red)'; st.textContent = '❌ ' + (e.message || e); }
+      } finally { cb.disabled = false; }
+    });
+    document.getElementById('assistCode')?.addEventListener('click', async function () {
+      const code = this.textContent || '';
+      if (!code) return;
+      try { await navigator.clipboard.writeText(code); }
+      catch (_) { const r = document.createRange(); r.selectNodeContents(this); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand('copy'); }
+      if (st) { st.style.color = 'var(--green)'; st.textContent = '✓ Code copié dans le presse-papier.'; }
     });
   }
   // Exposée globalement : le toggle vit désormais dans MON COMPTE / Paramètres
@@ -14890,12 +14894,12 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="profile-section-title">Assistance technique</div>
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text)">
         <input type="checkbox" id="assistToggle">
-        <span>🛟 Activer l'assistance <span style="color:var(--text-dim)">— autorise la connexion à MON compte via le mot de passe d'assistance ci-dessous, pour du support en direct. Décoche pour couper l'accès.</span></span>
+        <span>🛟 Activer l'assistance <span style="color:var(--text-dim)">— génère un code d'accès à MON compte pour du support en direct. Décoche pour couper l'accès (le code est révoqué).</span></span>
       </label>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
-        <input type="password" id="assistPwd" autocomplete="new-password" placeholder="Mot de passe d'assistance (10+ car.)"
-               style="flex:1;min-width:220px;background:var(--panel);border:1px solid var(--border);color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;padding:8px 10px;border-radius:5px">
-        <button class="btn" id="assistPwdSave" style="white-space:nowrap">Définir le mot de passe</button>
+      <div id="assistCodeWrap" style="display:none;margin-top:12px">
+        <div id="assistCode" title="Cliquer pour copier"
+             style="display:inline-block;cursor:pointer;background:var(--panel);border:1px dashed var(--cyan);color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:16px;letter-spacing:3px;padding:10px 16px;border-radius:6px;user-select:all"></div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:6px;font-family:'Share Tech Mono',monospace">Code d'assistance — cliquer pour copier. Transmets-le au support : il se connecte avec ton email + ce code. Visible uniquement maintenant ; recocher l'assistance en génère un nouveau.</div>
       </div>
       <div id="assistStatus" style="font-size:10px;color:var(--text-dim);margin-top:8px;font-family:'Share Tech Mono',monospace;line-height:1.5"></div>
     </div>
