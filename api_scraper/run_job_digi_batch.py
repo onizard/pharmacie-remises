@@ -33,7 +33,7 @@ from supabase_client import SUPA_URL, _supa_key, _get_state_sync, _patch_state_s
 from pdf_extractor import extract_invoice_lines
 from run_job import (_compute_digi_month_stats, _merge_digi_stats,
                      _compute_escompte_stats, _merge_escompte_stats,
-                     _compute_mdl_stats, _merge_mdl_stats)
+                     _compute_mdl_stats, _merge_mdl_stats, _norm_labo)
 
 USER_ID = os.environ.get("USER_ID", "").strip()
 
@@ -193,9 +193,14 @@ def _rebuild_avoirs(user_id: str) -> int:
             av    = [l for l in lines if l.get("type") in ("rdp", "presta")]
             if not av:
                 continue
+            # Labo NORMALISÉ dans la signature : les copies d'un même avoir parsent
+            # des labos bruts différents selon le nom de fichier (« Biogaran » /
+            # « CSP » / « Centre-Specialites-Pharmaceutiques ») → sans
+            # normalisation, la copie CSP de sept. 2025 échappait au rapprochement
+            # (presta restait à 13 080 = 2 × 6 540).
             sig = tuple(sorted(
                 (str(l.get("type")), str(l.get("period_month") or l.get("billing_date", ""))[:7],
-                 str(l.get("labo") or ""), str(l.get("facture_num") or ""),
+                 _norm_labo(l.get("labo") or ""), str(l.get("facture_num") or ""),
                  round(abs(float(l.get("montant") or l.get("total_ht") or 0)), 2))
                 for l in av))
             if sig in seen_sigs:
