@@ -2461,7 +2461,13 @@ function serializeState() {
     // du front SUPPRIMAIT la sortie du scraper (un virement fraîchement scrapé ne
     // « tenait » pas jusqu'au rechargement). On ré-émet donc la même donnée sous la
     // clé snake pour ne plus l'effacer. Le chargement préfère déjà le snake (_pick).
+    // Même principe pour les avoirs Digi et le grossiste : les jumeaux snake gardent
+    // les deux copies IDENTIQUES — sinon la camel divergeait après un rebuild backend
+    // (cas réel : avoirs dédoublonnés côté snake, camel encore aux stats DOUBLÉES).
     fse_month_stats:       _fseMonthStatsNoManual()      || null,
+    digi_month_stats:      state._digiMonthStats         || null,
+    grossiste_month_stats: state._grossisteMonthStats    || null,
+    grossiste_cip_stats:   state._grossisteCipStats      || null,
     escompteStats:         state._escompteStats         || null,
     mdlStats:              state._mdlStats               || null,
     digiSavedAt:           state._digiSavedAt            || null,
@@ -2650,6 +2656,9 @@ async function saveCloudState(data) {
       delete _slim.monthStats;          delete _slim.monthMeta;     delete _slim.monthSavedAt;
       delete _slim.digiMonthStats;      delete _slim.grossisteMonthStats;
       delete _slim.fseMonthStats;       delete _slim.escompteStats; delete _slim.mdlStats;
+      delete _slim.digi_month_stats;    delete _slim.grossiste_month_stats;
+      delete _slim.fse_month_stats;     delete _slim.grossiste_cip_stats;
+      delete _slim.grossisteCipStats;
       ({ error } = await sb.rpc('merge_user_state', {
         p_user_id: session.user.id,
         p_state:   _slim,
@@ -12436,7 +12445,8 @@ async function saveProfile() {
           if (_sjGross && Object.keys(_sjGross).length) {
             state._grossisteMonthStats = _sjGross;
           }
-          const _sjDigi = sj.digiMonthStats || sj.digi_month_stats;
+          // snake d'abord : digi_month_stats (backend/rebuild) prime sur le cache camel.
+          const _sjDigi = sj.digi_month_stats || sj.digiMonthStats;
           if (_sjDigi && Object.keys(_sjDigi).length && !(state._digiMonthStats && Object.keys(state._digiMonthStats).length)) {
             state._digiMonthStats = _sjDigi;
           }
@@ -12453,9 +12463,10 @@ async function saveProfile() {
             autoRunDigi().catch(() => {});
             return;
           }
-          // Charger les données cloud si absentes localement
-          if (!hasDigi && sj.digiMonthStats && Object.keys(sj.digiMonthStats).length) {
-            state._digiMonthStats = sj.digiMonthStats;
+          // Charger les données cloud si absentes localement (snake = source de vérité)
+          const _sjDigi2 = sj.digi_month_stats || sj.digiMonthStats;
+          if (!hasDigi && _sjDigi2 && Object.keys(_sjDigi2).length) {
+            state._digiMonthStats = _sjDigi2;
             if (sj.escompteStats) state._escompteStats = sj.escompteStats;
             if (sj.mdlStats)      state._mdlStats      = sj.mdlStats;
             saveState();
@@ -12468,7 +12479,7 @@ async function saveProfile() {
             ? Date.now() - cloudCompletedAt
             : digiAge;
           // Re-lancer uniquement si aucune donnée locale et aucune en base
-          if (!hasDigi && !Object.keys(sj.digiMonthStats || {}).length) {
+          if (!hasDigi && !Object.keys(sj.digi_month_stats || sj.digiMonthStats || {}).length) {
             autoRunDigi().catch(() => {});
           }
         } catch(_) {
