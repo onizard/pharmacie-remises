@@ -7280,12 +7280,79 @@ function _verifRenderLabGrid() {
   const wrap = document.getElementById('verifLabGrid'); if (!wrap) return;
   wrap.innerHTML = LABS_ALL.map(lab => {
     const lp_g  = (state.labPages || []).find(p => p.selectedLab === lab);
-    const isOn  = !!lp_g?.contractSigned;
+    const isOn  = !!(lp_g?.contractSigned || lp_g?.contractSigned25);
     const isSel = _verifSelLab === lab;
     return `<button class="verif-lab-btn${isOn ? ' active' : ''}${isSel ? ' selected' : ''}"
       onclick="_verifSelectLab('${escH(lab)}')"
     >${escH(lab)}</button>`;
   }).join('');
+}
+
+// ── Synthèse : réconciliation de TOUS les labos à contrat signé ──────────────
+// Une ligne par labo sous contrat (l'année sélectionnée) : RDP attendue (Σ
+// _verifRdpAttendueMonth — exact par CIP quand dispo, sinon barème des conditions
+// × paliers répartiteur), RDP reçue et coop reçue (virements assignés à leur mois
+// de CONTRAT via _fseAssignMap), et total officiel « à réclamer » (litige, coop
+// exclue). Cliquer une ligne ouvre le détail du labo — même moteur, aucun calcul
+// spécifique : la synthèse appelle les fonctions du détail pour chaque labo.
+function _verifFillContractsSummary(year) {
+  const wrap = document.getElementById('verifContractsSummary'); if (!wrap) return;
+  const yr   = parseInt(year);
+  const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const labs = (state.labPages || [])
+    .filter(p => p.selectedLab && (yr === 2025 ? p.contractSigned25 : p.contractSigned))
+    .map(p => p.selectedLab);
+  if (!labs.length) { wrap.innerHTML = ''; return; }
+  const today = new Date();
+  const mMax  = yr < today.getFullYear() ? 12 : (yr > today.getFullYear() ? 0 : today.getMonth() + 1);
+  const dStyle = v => v==null ? '' : v>0.5 ? 'color:var(--red);font-weight:700' : v<-0.5 ? 'color:var(--green)' : '';
+  const rows = labs.map(lab => {
+    const norm = _verifNormLab(lab);
+    let att = 0, hasAtt = false;
+    for (let m = 1; m <= mMax; m++) {
+      const a = _verifRdpAttendueMonth(`${yr}-${String(m).padStart(2,'0')}`, norm, lab);
+      if (a != null) { att += a; hasAtt = true; }
+    }
+    let rec2 = 0, rec3 = 0;
+    Object.entries(_fseAssignMap(norm, lab)).forEach(([mk, c]) => {
+      if (!mk.startsWith(yr + '-')) return;
+      rec2 += (c.r2||[]).reduce((x,e)=>x+e.amount,0);
+      rec3 += (c.r3||[]).reduce((x,e)=>x+e.amount,0);
+    });
+    // Le litige range son résultat dans window._litigeData (HTML ignoré ici).
+    try { _verifRenderLitige(yr, norm, lab); } catch(_) {}
+    const ld = (window._litigeData || {})[`${norm}|${yr}`] || {};
+    const nClaims = (ld.rows || []).filter(r => !r.officieux).length;
+    return { lab, att: hasAtt ? Math.round(att*100)/100 : null, rec2, rec3, due: ld.total || 0, nClaims };
+  });
+  const hasCoopCol = rows.some(r => r.rec3 > 0);
+  const trs = rows.map(r => {
+    const delta = r.att != null ? r.att - r.rec2 : null;
+    return `<tr onclick="_verifSelectLab('${escH(r.lab)}')" style="cursor:pointer"
+        title="Cliquer pour ouvrir le détail ${escH(r.lab)}">
+      <td style="text-align:left;font-weight:700;color:var(--cyan);white-space:nowrap">${escH(r.lab)}</td>
+      <td style="color:var(--amber)">${r.att!=null?fmtE(r.att):'—'}</td>
+      <td style="color:var(--green)">${r.rec2>0?fmtE(r.rec2):'—'}</td>
+      <td style="${dStyle(delta)}">${delta!=null?fmtE(delta):'—'}</td>
+      ${hasCoopCol?`<td style="color:var(--green)">${r.rec3>0?fmtE(r.rec3):'—'}</td>`:''}
+      <td style="${r.due>0.5?'color:var(--red);font-weight:700':'color:var(--green)'}">${r.due>0.5?`${fmtE(r.due)} (${r.nClaims})`:'✓ rien'}</td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `
+    <div class="verif-contract-label" style="margin:2px 0 6px;letter-spacing:2px">RÉCONCILIATION ${yr} — CONTRATS SIGNÉS</div>
+    <div style="overflow-x:auto;margin-bottom:14px">
+      <table class="verif-tbl verif-palier">
+        <thead><tr>
+          <th style="text-align:left">LABO</th>
+          <th style="color:var(--amber)" title="Σ RDP attendue jan→mois courant (exact par CIP, sinon barème conditions × paliers répartiteur)">RDP ATT.</th>
+          <th style="color:var(--green)" title="Virements RDP assignés aux mois de contrat de l'année">REC.</th>
+          <th>Δ</th>
+          ${hasCoopCol?`<th style="color:var(--green)" title="Virements coop assignés aux mois de contrat de l'année">COOP REC.</th>`:''}
+          <th title="Total officiel du récap « à réclamer » (coop exclue) — (n) = nombre de réclamations">À RÉCLAMER</th>
+        </tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>`;
 }
 
 function _verifRenderLabPanel() {
@@ -7339,6 +7406,7 @@ function renderVerificateur() {
   cnt.innerHTML = `
     <div id="verifDigiBanner"></div>
     <div style="display:flex;gap:8px;margin-bottom:16px">${yearBtns}</div>
+    <div id="verifContractsSummary"></div>
     <div style="margin-bottom:8px">
       <div class="verif-contract-label" style="margin-bottom:7px">LABOS — sélectionner un labo pour configurer &amp; analyser</div>
       <div class="verif-lab-grid" id="verifLabGrid"></div>
@@ -7348,6 +7416,7 @@ function renderVerificateur() {
   `;
   _renderVerifDigiBanner(document.getElementById('verifDigiBanner'));
   if (state._digiJobRunning && !_verifDigiTimer) _startVerifDigiTimer();
+  try { _verifFillContractsSummary(_verifSelYear); } catch (e) { console.warn('[BP] synthèse contrats:', e); }
   _verifRenderLabGrid();
   _verifRenderLabPanel();
   _verifRenderYear(_verifSelYear);
