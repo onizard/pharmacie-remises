@@ -1732,17 +1732,17 @@ def _parse_fse_bank_sync(user_id: str, storage_path: str = "", xlsx_bytes: bytes
         ("CERP", "CERP"), ("COOPERATION PHARMACEUTIQUE", "CERP"), ("CPF", "CERP"),
     ]
 
-    # Intermédiaires de paiement : règlent POUR LE COMPTE d'un labo (Pharmadigroupe
+    # Intermédiaires de paiement : règlent POUR LE COMPTE d'un labo (Pharmedigroupe
     # paie Zydus et Mylan/Viatris). Gardés sous leur nom ; ré-attribués au labo par
     # n° de document côté front. Miroir de run_job_fse.py.
-    _PAYER_KEYS = [("PHARMADI", "PHARMADI")]
+    _PAYER_KEYS = [("PHARMEDI", "PHARMEDI"), ("PHARMADI", "PHARMEDI")]
 
     def _identify_labo(libelle: str) -> str | None:
         """Extrait le labo depuis le libellé VIR {NOM} - {REF} - ..."""
         lib = libelle.upper().strip()
         m = _re.match(r'VIR\s+(.+?)\s+-\s', lib)
         # Labos réels d'abord : bénéficiaire, puis libellé ENTIER (le labo payé
-        # apparaît parfois après le nom du payeur, ex. « VIR PHARMADIGROUPE - ZYDUS … »).
+        # apparaît parfois après le nom du payeur, ex. « VIR PHARMEDIGROUPE - ZYDUS … »).
         for scope in ([m.group(1), lib] if m else [lib]):
             for key, canon in _LABO_KEYS:
                 if key in scope:
