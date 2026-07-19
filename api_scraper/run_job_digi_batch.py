@@ -183,33 +183,45 @@ def _rebuild_avoirs(user_id: str) -> int:
     # au lieu de 1 396,29, presta 19 620 au lieu de 6 540 → toutes les
     # réconciliations semblaient sous-payées). Deux fichiers dont les lignes
     # d'avoir parsées sont identiques = même document → une seule prise en compte.
-    avoir_lines = []
-    seen_sigs: set = set()
-    dup_files = 0
+    parsed = []
     for row in rows:
         try:
             pdf   = base64.b64decode(row.get("content_b64") or "")
             lines = _parse_one(pdf, row.get("filename") or "")
             av    = [l for l in lines if l.get("type") in ("rdp", "presta")]
-            if not av:
-                continue
-            # Labo NORMALISÉ dans la signature : les copies d'un même avoir parsent
-            # des labos bruts différents selon le nom de fichier (« Biogaran » /
-            # « CSP » / « Centre-Specialites-Pharmaceutiques ») → sans
-            # normalisation, la copie CSP de sept. 2025 échappait au rapprochement
-            # (presta restait à 13 080 = 2 × 6 540).
-            sig = tuple(sorted(
-                (str(l.get("type")), str(l.get("period_month") or l.get("billing_date", ""))[:7],
-                 _norm_labo(l.get("labo") or ""), str(l.get("facture_num") or ""),
-                 round(abs(float(l.get("montant") or l.get("total_ht") or 0)), 2))
-                for l in av))
-            if sig in seen_sigs:
-                dup_files += 1
-                continue
-            seen_sigs.add(sig)
-            avoir_lines += av
+            if av:
+                parsed.append((row, av))
         except Exception as e:
             print(f"  [warn] rebuild {str(row.get('filename',''))[:40]} : {e}", flush=True)
+
+    # Signature de contenu : labo NORMALISÉ (les copies d'un même avoir parsent des
+    # labos bruts différents selon le nom de fichier : « Biogaran » / « CSP » /
+    # « Centre-Specialites-Pharmaceutiques »), et DEUX niveaux pour le n° de
+    # facture : la version longue/scannée d'un avoir parse parfois un facture_num
+    # VIDE (cas réel : presta CSP sept. 2025 en 3 exemplaires dont un sans n° →
+    # presta restait à 13 080 = 2 × 6 540). On garde d'abord les fichiers AVEC n°
+    # (dédoublonnés sur la signature complète), puis un fichier SANS n° est écarté
+    # si sa signature SANS n° (type, période, labo, montant) correspond à un
+    # document déjà retenu. Deux documents distincts gardent des n° distincts →
+    # jamais fusionnés à tort.
+    def _sig(av, with_ref):
+        return tuple(sorted(
+            (str(l.get("type")), str(l.get("period_month") or l.get("billing_date", ""))[:7],
+             _norm_labo(l.get("labo") or ""),
+             str(l.get("facture_num") or "") if with_ref else "",
+             round(abs(float(l.get("montant") or l.get("total_ht") or 0)), 2))
+            for l in av))
+    def _has_ref(av):
+        return any(l.get("facture_num") for l in av)
+
+    avoir_lines, seen_full, seen_noref, dup_files = [], set(), set(), 0
+    for row, av in sorted(parsed, key=lambda t: not _has_ref(t[1])):   # avec n° d'abord
+        fs, ns = _sig(av, True), _sig(av, False)
+        if fs in seen_full or (not _has_ref(av) and ns in seen_noref):
+            dup_files += 1
+            continue
+        seen_full.add(fs); seen_noref.add(ns)
+        avoir_lines += av
     if dup_files:
         print(f"→ {dup_files} copie(s) du même avoir ignorée(s) (dédoublonnage par contenu)", flush=True)
     fresh = _compute_digi_month_stats(avoir_lines)
