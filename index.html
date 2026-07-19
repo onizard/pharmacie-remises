@@ -8080,7 +8080,13 @@ async function _loadRdpCipMap(labo, year) {
     const rows = res.ok ? await res.json() : [];
     const map = {};
     rows.forEach(r => { map[r.cip13] = Math.abs(parseFloat(r.rdp_pct || 0)); });
-    window._rdpCipMaps[key] = Object.keys(map).length ? map : null;
+    // Carte sans AUCUN taux > 0 (CGV importées sans info RDP — cas réel :
+    // Teva/Viatris/Sandoz, rdp_pct=0 sur toutes les refs) : inutilisable pour
+    // l'attendu exact → null, pour que tous les consommateurs retombent sur le
+    // barème remise2 des conditions labo. Sinon l'« exact » à 0 écrasait le
+    // barème et l'attendu par palier s'affichait à 0,00 €.
+    const _usable = Object.keys(map).length && Object.values(map).some(v => v > 0);
+    window._rdpCipMaps[key] = _usable ? map : null;
     // La carte vient d'arriver → re-rendu du vérificateur (calcul exact disponible).
     if (window._rdpCipMaps[key] && state.currentPageId === 'verificateur') {
       try { renderVerificateur(); } catch(_) {}
