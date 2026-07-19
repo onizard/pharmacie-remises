@@ -7808,7 +7808,7 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
     if (coopAtt - coopRec > 50) {
       rows.push({ mk: `depuis ${csFr}`, nature: 'coop', officieux: true, coopAtt, coopRec, type: 'COOP — prestations en retard', due: coopAtt - coopRec, urgent: false,
         preuve: `Cumul depuis le début du contrat (${csFr}) : prestations attendues ${fmtE(coopAtt)} (achats justificatif × remise3 contractuelle × 1,20 TTC × coef contrat) ; `
-              + `règlements coop reçus, toutes années confondues : ${fmtE(coopRec)}. Suivi OFFICIEUX — à évoquer avec le délégué, ne figure pas dans le courrier de réclamation.` });
+              + `règlements coop reçus, toutes années confondues : ${fmtE(coopRec)}. À évoquer avec le délégué — ne figure pas dans le courrier de réclamation.` });
     }
   }
   const offRows   = rows.filter(r => !r.officieux);   // réclamations OFFICIELLES (courrier)
@@ -7821,7 +7821,7 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
     + `(établi le ${today.toLocaleDateString('fr-FR')} sur justificatifs répartiteur, avoirs ${labDisplay} et relevés bancaires)\n\n`
     + offRows.map(r => `• ${r.mk} — ${r.type} : ${fmtE(r.due)}\n  Justification : ${r.preuve}`).join('\n\n')
     + `\n\nTOTAL À RÉGLER : ${fmtE(total)}`
-    + (coopRows.length ? `\n\n— Suivi officieux (non inclus dans le courrier) —\n`
+    + (coopRows.length ? `\n\n— Suivi coop (non inclus dans le courrier) —\n`
       + coopRows.map(r => `• ${r.mk} — ${r.type} : ${fmtE(r.due)}\n  ${r.preuve}`).join('\n\n') : '');
   const title = `<div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:900;letter-spacing:2px;color:var(--red);margin:22px 0 8px">⚖ À RÉCLAMER AU LABO — ${escH(labDisplay)} ${yr}</div>`;
   // Carte coop « officieuse » : ambre, badge explicite, affichée même quand il n'y
@@ -7830,7 +7830,7 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
     <div style="border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:6px;padding:9px 11px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
         <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:800;color:var(--amber);line-height:1.3">${escH(r.type)}
-          <span style="font-family:'Share Tech Mono',monospace;font-weight:400;font-size:9px;color:var(--text-dim);letter-spacing:1px"> SUIVI OFFICIEUX — hors courrier</span></div>
+          <span style="font-family:'Share Tech Mono',monospace;font-weight:400;font-size:9px;color:var(--text-dim);letter-spacing:1px"> HORS COURRIER</span></div>
         <div style="font-weight:800;color:var(--amber);white-space:nowrap;font-size:14px">${fmtE(r.due)}</div>
       </div>
       <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--cyan);letter-spacing:1px;margin:2px 0 5px">${escH(r.mk)}</div>
@@ -7863,7 +7863,7 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
       <button onclick="_showLitigeLetter('${key}')" style="flex:1;min-width:150px;background:var(--red);border:none;color:#fff;font-family:'Share Tech Mono',monospace;font-size:11px;font-weight:700;padding:9px 8px;cursor:pointer;border-radius:5px">✉ GÉNÉRER LE COURRIER</button>
       <button onclick="_verifCopyLitige('${key}')" style="flex:1;min-width:150px;background:transparent;border:1px solid var(--red);color:var(--red);font-family:'Share Tech Mono',monospace;font-size:11px;padding:9px 8px;cursor:pointer;border-radius:5px">📋 COPIER LE RÉCAP</button>
     </div>
-    <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5;overflow-wrap:anywhere">Preuves : justificatifs répartiteur (achats par référence), avoirs ${escH(labDisplay)} (n° + montants), relevés bancaires FSE (rapprochement par n° de document). Les lignes « dans le délai » ne sont pas comptées. La coop (officieuse) n'entre ni dans le total ni dans le courrier.</div>`;
+    <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5;overflow-wrap:anywhere">Preuves : justificatifs répartiteur (achats par référence), avoirs ${escH(labDisplay)} (n° + montants), relevés bancaires FSE (rapprochement par n° de document). Les lignes « dans le délai » ne sont pas comptées. La coop n'entre ni dans le total ni dans le courrier.</div>`;
 }
 
 // ── Générateur de courrier de réclamation (gabarits déterministes) ───────────
