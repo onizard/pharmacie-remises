@@ -175,14 +175,38 @@ def _rebuild_avoirs(user_id: str) -> int:
     if not rows:
         return 0
     print(f"→ reconstruction des stats d'avoirs depuis {len(rows)} PDF stocké(s)…", flush=True)
+    # Dédoublonnage PAR CONTENU PARSÉ : le même avoir existe souvent sous PLUSIEURS
+    # noms (dépôt manuel « avoir_…_9006187702_… » + extension « BIOGARAN_22102025 »,
+    # presta CSP sous 3 noms) que ni le dédoublonnage par nom ni la signature
+    # nom+date (_doc_sig) ne peuvent rapprocher. Additionner ces copies doublait /
+    # triplait rdp_total, rdp_by_taux et presta (cas réel : sept. 2025 rdp 2 792,58
+    # au lieu de 1 396,29, presta 19 620 au lieu de 6 540 → toutes les
+    # réconciliations semblaient sous-payées). Deux fichiers dont les lignes
+    # d'avoir parsées sont identiques = même document → une seule prise en compte.
     avoir_lines = []
+    seen_sigs: set = set()
+    dup_files = 0
     for row in rows:
         try:
             pdf   = base64.b64decode(row.get("content_b64") or "")
             lines = _parse_one(pdf, row.get("filename") or "")
-            avoir_lines += [l for l in lines if l.get("type") in ("rdp", "presta")]
+            av    = [l for l in lines if l.get("type") in ("rdp", "presta")]
+            if not av:
+                continue
+            sig = tuple(sorted(
+                (str(l.get("type")), str(l.get("period_month") or l.get("billing_date", ""))[:7],
+                 str(l.get("labo") or ""), str(l.get("facture_num") or ""),
+                 round(abs(float(l.get("montant") or l.get("total_ht") or 0)), 2))
+                for l in av))
+            if sig in seen_sigs:
+                dup_files += 1
+                continue
+            seen_sigs.add(sig)
+            avoir_lines += av
         except Exception as e:
             print(f"  [warn] rebuild {str(row.get('filename',''))[:40]} : {e}", flush=True)
+    if dup_files:
+        print(f"→ {dup_files} copie(s) du même avoir ignorée(s) (dédoublonnage par contenu)", flush=True)
     fresh = _compute_digi_month_stats(avoir_lines)
 
     state = _get_state_sync(user_id) or {}
