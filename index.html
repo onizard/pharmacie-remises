@@ -7112,10 +7112,15 @@ const _verifNormLab = n => {
   n = (n || '').toUpperCase();
   const MAP = { BIOGARAN:'BIOGARAN', TEVA:'TEVA', MYLAN:'MYLAN', VIATRIS:'VIATRIS', ZYDUS:'ZYDUS',
                 SANDOZ:'SANDOZ', ZENTIVA:'ZENTIVA', ARROW:'ARROW', CRISTERS:'CRISTERS',
-                'EG LABO':'EG LABO', 'EG LABS':'EG LABO', EVOLUPHARM:'EVOLUPHARM' };
+                'EG LABO':'EG LABO', 'EG LABS':'EG LABO', EVOLUPHARM:'EVOLUPHARM',
+                PHARMADI:'PHARMADI' };   // intermédiaire de paiement (Zydus, Mylan/Viatris)
   for (const [kw, canon] of Object.entries(MAP)) if (n.includes(kw)) return canon;
   return n;
 };
+// Intermédiaires de paiement : payeur → labos qu'il règle. Un virement du payeur
+// n'est attribué à un labo QUE par n° de document (avoir/facture) — jamais par
+// défaut, le même payeur couvrant plusieurs labos.
+const _FSE_PAYERS = { PHARMADI: ['ZYDUS', 'VIATRIS'] };
 
 // Condition active pour un labo, en tenant compte du contrat configuré
 function _verifGetCond(labDisplay, year, month) {
@@ -8404,12 +8409,17 @@ function _renderManualVirList() {
 
 function _fseAssignMap(selNorm, labDisplay) {
   const map = {}, cell = (mk, vt) => ((map[mk] = map[mk] || { r2: [], r3: [] })[vt]);
-  // Tous les virements du labo, tous mois FSE confondus.
+  // Tous les virements du labo, tous mois FSE confondus — PLUS ceux de ses
+  // intermédiaires de paiement (ex. Pharmadigroupe pour Zydus/Viatris), marqués
+  // _payer : ils ne s'attribuent QUE par n° de document, jamais en repli.
   const all = [];
   Object.entries(state._fseMonthStats || {}).forEach(([mk, labs]) =>
     Object.entries(labs || {}).forEach(([l, s]) => {
-      if (_verifNormLab(l) !== selNorm) return;
-      (s.transfers || []).forEach(t => all.push({ ...t, _encMk: mk }));
+      const ln = _verifNormLab(l);
+      const direct = ln === selNorm;
+      const viaPayer = !direct && Array.isArray(_FSE_PAYERS[ln]) && _FSE_PAYERS[ln].includes(selNorm);
+      if (!direct && !viaPayer) return;
+      (s.transfers || []).forEach(t => all.push({ ...t, _encMk: mk, _payer: viaPayer }));
     }));
   if (!all.length) return map;
   const leftovers = { r2: [], r3: [] };
@@ -8448,7 +8458,10 @@ function _fseAssignMap(selNorm, labDisplay) {
           const part = sum > 0 ? (t.montant || 0) * (tots[i] / sum) : (t.montant || 0) / refMks.length;
           cell(mk, vt).push({ t, amount: Math.round(part*100)/100, avoirs: [], via: 'doc' });
         });
-      } else {
+      } else if (!t._payer) {
+        // Virement d'un intermédiaire de paiement SANS n° de document rattachable
+        // à CE labo : on ne l'attribue pas (il appartient peut-être à un autre
+        // labo du même payeur) — il réapparaîtra dès que l'avoir sera importé.
         leftovers[vt].push(t);
       }
     }

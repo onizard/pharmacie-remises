@@ -161,18 +161,26 @@ def _parse_and_save_fse(xlsx_bytes_list: list) -> dict:
         ("MOVIANTO", "MOVIANTO"), ("ALLOGA", "ALLOGA"), ("CEGEDIM", "CEGEDIM"),
         ("CERP", "CERP"), ("COOPERATION PHARMACEUTIQUE", "CERP"), ("CPF", "CERP"),
     ]
+    # Intermédiaires de paiement : règlent les avoirs POUR LE COMPTE d'un labo
+    # (Pharmadigroupe paie Zydus et Mylan/Viatris). Gardés sous leur propre nom ;
+    # le front les ré-attribue au labo par n° de document (jamais au hasard, un
+    # même payeur couvrant plusieurs labos). Mot-clé volontairement court
+    # (« PHARMADI ») : couvre PHARMADIGROUPE / PHARMADIS / variantes de libellé.
+    _PAYER_KEYS = [("PHARMADI", "PHARMADI")]
 
     def _identify_labo(libelle):
         lib = libelle.upper().strip()
         m = _re.match(r'VIR\s+(.+?)\s+-\s', lib)
-        if not m:
+        # Labos réels d'abord : nom du bénéficiaire (avant le 1er « - »), puis
+        # libellé ENTIER (le labo payé apparaît parfois après le nom du payeur,
+        # ex. « VIR PHARMADIGROUPE - ZYDUS … »).
+        for scope in ([m.group(1), lib] if m else [lib]):
             for key, canon in _LABO_KEYS:
-                if key in lib:
+                if key in scope:
                     return canon
-            return None
-        name_part = m.group(1)
-        for key, canon in _LABO_KEYS:
-            if name_part.startswith(key) or key in name_part:
+        # Puis intermédiaires de paiement (libellé entier).
+        for key, canon in _PAYER_KEYS:
+            if key in lib:
                 return canon
         return None
 
