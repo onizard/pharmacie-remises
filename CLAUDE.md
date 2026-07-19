@@ -160,6 +160,14 @@ paliers. Ne jamais filtrer remise3 sur `excluded`.
   et le labo paie RDP 10 % sur TOUT le palier 30 (override dans
   _r2ExactForMonth, mois ≥ bascule uniquement).
 
+### Synthèse multi-labos (vérificateur)
+En tête du vérificateur, `_verifFillContractsSummary(year)` affiche une ligne par labo à
+contrat signé (`contractSigned`/`contractSigned25` selon l'année) : RDP attendue
+(Σ `_verifRdpAttendueMonth`), RDP/coop reçues (virements assignés au mois de contrat,
+`_fseAssignMap`), total « à réclamer » (lu dans `window._litigeData` après appel de
+`_verifRenderLitige`, coop exclue). Clic sur une ligne → `_verifSelectLab`. Aucun moteur
+propre : mêmes fonctions que le détail, appelées labo par labo.
+
 ### Généralisation vérificateur : Biogaran → tout labo à contrat direct
 Le vérificateur n'est plus verrouillé sur le littéral `'BIOGARAN'`. DEUX notions :
 - **Contrat direct signé** (`labPage.contractSigned`/`contractSigned25`) → le labo est
