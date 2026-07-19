@@ -93,10 +93,13 @@ CLOUDFLARE_API_KEY=...
 
 ## Assistance — 2e mot de passe d'accès au compte admin
 Modèle actuel (remplace l'ancienne copie de données vers `assist@` via `assist_sync`).
-L'admin, dans MON COMPTE / Paramètres (`#assistBox`), définit un **mot de passe d'assistance**
-et coche « Activer l'assistance ». Tant que le toggle est ON, ce mot de passe ouvre une **vraie
-session GoTrue sur SON compte** (support/debug en direct) via l'écran de login normal (même champ) :
-`doLogin()` tente le login normal puis, en repli, `POST /assist/login`.
+L'admin, dans MON COMPTE / Paramètres (`#assistBox`), coche « Activer l'assistance » : le front
+**génère un code aléatoire** (12 car., `_assistGenCode`, crypto.getRandomValues), l'envoie comme
+mot de passe à `/assist/config` (haché serveur) et l'affiche UNE FOIS (clic = copie). Décocher
+révoque l'accès (gate serveur) et efface le code ; recocher génère un code NEUF. Tant que le
+toggle est ON, ce code ouvre une **vraie session GoTrue sur SON compte** (support/debug en
+direct) via l'écran de login normal (même champ) : `doLogin()` tente le login normal puis, en
+repli, `POST /assist/login`.
 - **Stockage** : table `public.assist_access(user_id, email, enabled, pw_hash)` — RLS activé SANS
   policy → accès **service_role uniquement** (API Render). `pw_hash` = PBKDF2 (jamais de plaintext,
   jamais dans le dépôt). SQL : `sql/assist_access.sql` (à exécuter une fois).
