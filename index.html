@@ -2457,6 +2457,12 @@ function serializeState() {
     grossisteMonthStats:   state._grossisteMonthStats   || null,
     grossisteCipStats:     state._grossisteCipStats     || null,
     fseMonthStats:         _fseMonthStatsNoManual()      || null,
+    // AUSSI en snake_case : le back-end (scraper FSE) écrit `fse_month_stats`, et
+    // saveCloudState REMPLACE tout `state_json` → sans cette clé, chaque sauvegarde
+    // du front SUPPRIMAIT la sortie du scraper (un virement fraîchement scrapé ne
+    // « tenait » pas jusqu'au rechargement). On ré-émet donc la même donnée sous la
+    // clé snake pour ne plus l'effacer. Le chargement préfère déjà le snake (_pick).
+    fse_month_stats:       _fseMonthStatsNoManual()      || null,
     escompteStats:         state._escompteStats         || null,
     mdlStats:              state._mdlStats               || null,
     digiSavedAt:           state._digiSavedAt            || null,
