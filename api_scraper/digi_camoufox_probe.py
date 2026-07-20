@@ -25,7 +25,8 @@ URL   = "https://app.digipharmacie.fr/login/"
 
 async def main():
     from camoufox.async_api import AsyncCamoufox
-    kw = {"headless": True}
+    # VIRTUAL=1 → écran virtuel Xvfb (moins détectable qu'un vrai headless).
+    kw = {"headless": "virtual" if os.environ.get("VIRTUAL") == "1" else True}
     if PROXY:
         kw["proxy"] = {"server": PROXY}
         # geoip=True : aligne fuseau horaire / locale / coordonnées du navigateur
