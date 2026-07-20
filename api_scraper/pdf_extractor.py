@@ -271,7 +271,7 @@ def _extract_teva_product(text: str, provider: str, billing_date: str) -> list[d
                 continue
             out.append({
                 "cip": cip, "libelle": desc or "TEVA", "labo": "TEVA",
-                "qty": qty, "pu_ht": pu_net, "total_ht": round(total_ht, 2),
+                "quantite": qty, "pu_ht": pu_net, "total_ht": round(total_ht, 2),
                 "remise_pct": remise,
                 "fournisseur": provider, "billing_date": billing_date,
             })
