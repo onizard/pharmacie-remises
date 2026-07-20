@@ -124,8 +124,11 @@ def _detect_format(text: str) -> str:
     # CPF / CERP — facture produit sur relevé mensuel (pas une presta)
     if "facture payable sur releve" in t800 or "avoir deduit sur releve" in t800:
         return "cpf_product"
-    # Teva — facture produit standard (distinct des avoirs RSF/presta)
-    if "teva sant" in t400 and "votre commande" in t1500:
+    # Teva — facture produit standard (distinct des avoirs RSF/presta). Détection
+    # élargie à l'en-tête de colonnes « P.U Brut » : certaines factures Teva n'ont
+    # pas « votre commande » dans les 1 500 premiers caractères et tombaient en
+    # « unknown » (aucune ligne extraite).
+    if "teva sant" in t400 and ("votre commande" in t1500 or "p.u brut" in text.lower()):
         return "teva_product"
     # RDP (Remise de performance) / Avoir récapitulatif — avant alloga pour éviter faux-positif
     # NB : le texte PDF est souvent en capitales SANS accent ("RECAPITULATIF DES REMISES")
@@ -229,6 +232,53 @@ def _extract_alloga(text: str, provider: str, billing_date: str) -> list[dict]:
             "total_ht": round(total_ht, 2) if total_ht else None,
         })
     return lines
+
+
+# ── 1b. Format TEVA SANTÉ (facture produit directe) ───────────────────────────
+# Structure réelle (pdfplumber) : la désignation s'étale sur plusieurs lignes, le
+# CIP13 est SEUL sur sa ligne, et les valeurs arrivent plus bas sur une ligne
+# numérique « qté PU_brut remise% PU_net TVA% montant_HT », ex. :
+#   AJOVY® 225 mg, solution injectable en seringue
+#   3400930174593
+#   préremplie, bte de 1 30049000
+#   1 270,00 18,50% 220,05 2.10 % 220,05
+# La ligne « Total … » a une autre forme (TVA% en tête) → non capturée.
+RE_TEVA_NUM = re.compile(
+    r'^(\d{1,4})\s+([\d\s.,]+?)\s+([\d.,]+)\s*%\s+([\d\s.,]+?)\s+([\d.,]+)\s*%\s+([\d\s.,]+)$'
+)
+
+def _extract_teva_product(text: str, provider: str, billing_date: str) -> list[dict]:
+    lines_txt = text.split('\n')
+    out: list[dict] = []
+    pending_cips: list[tuple[str, str]] = []   # [(cip, désignation approx.)]
+    last_desc = ""
+    for raw in lines_txt:
+        line = raw.strip()
+        if not line:
+            continue
+        mcip = RE_CIP13.search(line)
+        if mcip and len(line) <= 20:            # CIP seul sur sa ligne
+            pending_cips.append((mcip.group(1), last_desc[:80]))
+            continue
+        mnum = RE_TEVA_NUM.match(line)
+        if mnum and pending_cips:
+            cip, desc = pending_cips.pop(0)
+            qty      = int(mnum.group(1))
+            total_ht = _fr_num(mnum.group(6))
+            pu_net   = _fr_num(mnum.group(4))
+            remise   = _parse_remise_str(mnum.group(3))
+            if total_ht <= 0 or qty <= 0:
+                continue
+            out.append({
+                "cip": cip, "libelle": desc or "TEVA", "labo": "TEVA",
+                "qty": qty, "pu_ht": pu_net, "total_ht": round(total_ht, 2),
+                "remise_pct": remise,
+                "fournisseur": provider, "billing_date": billing_date,
+            })
+            continue
+        if not mcip:
+            last_desc = line
+    return out
 
 
 # ── 2. Format VIATRIS / MYLAN ─────────────────────────────────────────────────
@@ -932,8 +982,15 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
                 full_text = _ocr_pdf(pdf_path)
             fmt = _detect_format(full_text)
 
-            if fmt in ("lcr_releve", "cpf_product", "teva_product"):
+            # lcr_releve : bordereau de paiement (pas une facture). cpf_product :
+            # facture CPF payable sur relevé — déjà comptée via le justificatif
+            # répartiteur (la parser doublerait les achats). teva_product, lui,
+            # EST un achat direct labo → parsé (longtemps jeté ici à tort : les
+            # achats directs Teva restaient invisibles du vérificateur).
+            if fmt in ("lcr_releve", "cpf_product"):
                 return []
+            elif fmt == "teva_product":
+                lines = _extract_teva_product(full_text, provider, billing_date)
             elif fmt == "mdl_cerp":
                 return _extract_mdl_cerp(full_text, provider, billing_date)
             elif fmt == "escompte_cerp":
