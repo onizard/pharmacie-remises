@@ -109,6 +109,20 @@ repli, `POST /assist/login`.
   magiclink → échange → renvoie les jetons ; anti-brute-force basique en mémoire). Le **gate est
   serveur** : sans `enabled`, le mot de passe est inopérant.
 
+## Batch Digi — pièges
+- **Lignes PRODUITS additives, PAS idempotentes** : `_merge_digi_stats` CUMULE qty/total_ht
+  sans clé de dédoublonnage (contrairement aux avoirs, reconstruits par `_rebuild_avoirs`
+  avec dédoublonnage par contenu). **Ne JAMAIS rebasculer en `pending` un fichier `done`**
+  → ses produits seraient comptés en double. Les fichiers `error` (jamais comptés) peuvent
+  être rebasculés sans risque après une amélioration de parseur.
+- **Formats factures** : `_extract_teva_product` (facture Teva directe — désignation
+  multi-lignes, CIP13 seul sur sa ligne, valeurs « qté PU_brut remise% PU_net TVA% montant »).
+  `cpf_product`/`lcr_releve` exclus à raison (déjà comptés via répartiteur / bordereau).
+  Beaucoup d'« erreurs » du batch = documents SANS produits génériqueurs (parapharmacie,
+  Biocodex/Merck/Saugella, formations CERP) — comportement correct, pas des bugs.
+- **205 fichiers au contenu perdu** (URL signée Google expirée avant traitement, surtout
+  Mylan 2024-2026) : irrécupérables côté serveur → ré-envoi via l'extension requis.
+
 ## Architecture OSPHARM scraper (run_job_ospharm.py)
 - Boucle Jan N-1 → mois courant, scraping incrémental (mois déjà en base réutilisés)
 - Interface Webix 6 — pas d'inputs texte dans le date picker → navigation par clic cellules calendrier (Approche A2)
