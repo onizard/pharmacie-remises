@@ -28,6 +28,10 @@ async def main():
     kw = {"headless": True}
     if PROXY:
         kw["proxy"] = {"server": PROXY}
+        # geoip=True : aligne fuseau horaire / locale / coordonnées du navigateur
+        # sur la géolocalisation de l'IP du proxy (résidentielle) → empreinte
+        # cohérente, essentiel pour passer les défis Cloudflare.
+        kw["geoip"] = True
     print(f"→ Lancement camoufox (proxy={PROXY or 'aucun — sortie directe VPS'})…")
     async with AsyncCamoufox(**kw) as browser:
         page = await browser.new_page()
