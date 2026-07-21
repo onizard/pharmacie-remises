@@ -448,10 +448,33 @@ RE_CSP_LINE = re.compile(
 
 
 def _extract_csp_lab(text: str) -> str:
-    """Détecte le labo depuis l'en-tête CSP (le nom du labo précède l'adresse)."""
-    header = text[:800].upper()
-    for kw in sorted(LABOS_CIBLES, key=len, reverse=True):
+    """Détecte le labo d'une facture CSP (dépositaire facturant pour plusieurs labos).
+
+    CSP facture « d'ordre et pour compte » de labos différents : Biogaran l'indique
+    EN TÊTE (« AU NOM ET POUR LE COMPTE DE BIOGARAN »), Zydus EN PIED, juste avant
+    les lignes produits (« D'ORDRE ET POUR COMPTE DES LABORATOIRES ZYDUS FRANCE »).
+    Lire seulement l'en-tête (800 c.) ratait donc Zydus → labo=nom de fichier →
+    lignes jetées (non-cible) → achats directs Zydus invisibles. On cherche le
+    donneur d'ordre PARTOUT, avec plusieurs filets.
+    """
+    up = text.upper()
+    labos_sorted = sorted(LABOS_CIBLES, key=len, reverse=True)
+    # 1. Mention explicite du donneur d'ordre : « POUR (LE) COMPTE (DES LABORATOIRES) X ».
+    for m in re.finditer(
+            r"POUR\s+(?:LE\s+)?COMPTE\s+(?:DES\s+LABORATOIRES?\s+|DU\s+|DE\s+|D['’]\s*)?"
+            r"([A-Z][A-Z0-9\s\.\-/]{2,40})", up):
+        seg = m.group(1)
+        for kw in labos_sorted:
+            if kw.upper() in seg:
+                return kw.upper()
+    # 2. En-tête (nom du labo avant l'adresse — format Biogaran classique).
+    header = up[:800]
+    for kw in labos_sorted:
         if re.search(r'\b' + re.escape(kw.upper()) + r'\b', header):
+            return kw.upper()
+    # 3. Repli : un labo cible nommé n'importe où (facture CSP = un seul labo).
+    for kw in labos_sorted:
+        if re.search(r'\b' + re.escape(kw.upper()) + r'\b', up):
             return kw.upper()
     return ""
 
@@ -462,6 +485,15 @@ def _extract_csp(text: str, provider: str, billing_date: str) -> list[dict]:
     Ex : Biogaran, Teva, Arrow via Centre Spécialités Pharmaceutiques / Movianto.
     """
     lab_name = _extract_csp_lab(text) or _extract_lab_from_header(text) or provider
+    # Date de rattachement : le nom de fichier prime (« …_19022026.pdf »), mais les
+    # factures CSP nommées par n° de facture (« csp_W460206168.pdf », typiquement
+    # Zydus) n'ont PAS de date dans le nom → billing_date vide → lignes ignorées
+    # (pas de mois). Repli : 1re date JJ/MM/AAAA du contenu (facture/livraison/
+    # commande sont à quelques jours → même mois, ce qui suffit à la clé mensuelle).
+    if not billing_date:
+        md = re.search(r'\b(\d{2})/(\d{2})/(20\d{2})\b', text)
+        if md:
+            billing_date = f"{md.group(3)}-{md.group(2)}-{md.group(1)}"
     lines = []
     for m in RE_CSP_LINE.finditer(text):
         cip13   = m.group(1)

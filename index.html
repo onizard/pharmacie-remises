@@ -13746,15 +13746,20 @@ function initConnecteurModal() {
   // « Grossiste » ; sinon le labo détecté dans le nom ; sinon « Autres ».
   function _fileCategory(f) {
     const n = f.name || '', low = n.toLowerCase();
+    // Tag « labo:<NORM> » posé par le parser (dans kinds) = source de vérité. Seul
+    // moyen fiable de ranger une facture CSP, qui facture « pour compte » de labos
+    // différents (Biogaran, Zydus…) : le nom de fichier « csp_… » ne le dit pas.
+    const labTag = (f.kinds || []).map(String).find(k => k.startsWith('labo:'));
+    if (labTag) {
+      const norm = labTag.slice(5).trim().toUpperCase();
+      const disp = { BIOGARAN:'Biogaran', ZYDUS:'Zydus', MYLAN:'Mylan', TEVA:'Teva',
+        VIATRIS:'Viatris', SANDOZ:'Sandoz', ZENTIVA:'Zentiva', ARROW:'Arrow',
+        CRISTERS:'Cristers', 'EG LABO':'EG', EVOLUPHARM:'Evolupharm' }[norm];
+      if (disp) return disp;            // labo:? (inconnu) → on retombe sur le nom
+    }
     if (/\.xlsx?$/i.test(n) || low.includes('justificatif') || low.includes('generique')
         || low.includes('générique') || low.includes('partenariat'))
       return 'Grossiste';
-    // CSP (Centre Spécialités Pharmaceutiques) facture « au nom et pour le compte
-    // de Biogaran » → achats directs Biogaran. Les noms de fichiers sont
-    // « Centre-Specialites-Pharmaceutiques_*.pdf » ou « CSP_*.pdf ».
-    if (/centre[-_ ]?specialites/i.test(low)
-        || /(?:^|[^a-z0-9])csp(?:[^a-z0-9]|$)/i.test(low))
-      return 'Biogaran';
     const labos = ['Biogaran','Viatris','Sandoz','Teva','Cristers','Zentiva','Zydus','Arrow','Mylan','Krka','EG'];
     // Frontière personnalisée : « _ » (caractère de mot pour \b) doit compter comme
     // séparateur → on borne par début/fin ou tout caractère non alphanumérique.
@@ -13867,7 +13872,7 @@ function initConnecteurModal() {
     const cats = {};
     uploads.forEach((f, i) => { const c = _fileCategory(f); (cats[c] = cats[c] || []).push({ f, idx: i }); });
     cloud.forEach(p => {
-      const c = _fileCategory({ name: p.filename });
+      const c = _fileCategory({ name: p.filename, kinds: p.kinds });
       (cats[c] = cats[c] || []).push({ cloud: p });
     });
     const rank  = x => x === 'Grossiste' ? 0 : x === 'Autres' ? 2 : 1;

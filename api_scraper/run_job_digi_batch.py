@@ -98,6 +98,13 @@ def _derive_months_kinds(lines: list):
     if any(l.get("type") == "mdl" for l in lines):      kinds.append("mdl")
     if any(l.get("type") not in ("rdp", "presta", "escompte", "mdl") for l in lines):
         kinds.append("product")
+    # Tag du/des labo(s) présents (« labo:ZYDUS ») → permet au front de ranger la
+    # facture sous le bon labo. Indispensable pour les factures CSP, qui facturent
+    # « d'ordre et pour compte » de labos différents (Biogaran, Zydus…) : le nom de
+    # fichier « csp_… » ne dit pas duquel il s'agit, seul le contenu le révèle.
+    for lab in sorted({_norm_labo(l.get("labo") or l.get("fournisseur") or "") for l in lines}):
+        if lab:
+            kinds.append("labo:" + lab)
     return months, (kinds or ["product"])
 
 
@@ -154,6 +161,52 @@ def _reindex(user_id: str) -> int:
             _digi_update(row["id"], {"kinds": ["product"]})
             print(f"  [warn] réindex {str(row.get('filename',''))[:40]} : {e}", flush=True)
     print(f"→ ré-indexation terminée : {n}", flush=True)
+    return n
+
+
+def _backfill_labo_kinds(user_id: str) -> int:
+    """Ajoute le tag « labo:<NORM> » aux fichiers 'done' qui ne l'ont pas encore,
+    pour que le front range chaque facture (notamment CSP) sous le bon labo.
+    MÉTADONNÉES SEULEMENT — ne recalcule JAMAIS les stats (déjà faites au 1er dépôt,
+    additives) : aucun risque de double comptage. Idempotent : un fichier déjà taggé
+    est ignoré ; s'il ne révèle aucun labo cible on pose un sentinel « labo:? » pour
+    ne pas le re-parser indéfiniment. Liste légère d'abord (sans contenu) → contenu
+    récupéré seulement pour le sous-ensemble à compléter."""
+    key = _supa_key()
+    url = (f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&status=eq.done"
+           f"&select=id,filename,kinds&order=id.asc")
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            rows = json.loads(r.read())
+    except urllib.error.HTTPError:
+        return 0            # colonne kinds absente → rien à faire
+    todo = [r for r in rows
+            if not any(str(k).startswith("labo:") for k in (r.get("kinds") or []))]
+    if not todo:
+        return 0
+    print(f"→ tag labo : {len(todo)} fichier(s) à compléter…", flush=True)
+    n = 0
+    for r in todo:
+        existing = [k for k in (r.get("kinds") or []) if not str(k).startswith("labo:")]
+        try:
+            curl = (f"{SUPA_URL}/rest/v1/digi_files?id=eq.{r['id']}"
+                    f"&select=content_b64,filename")
+            creq = urllib.request.Request(curl, headers={"apikey": key,
+                                          "Authorization": f"Bearer {key}"})
+            with urllib.request.urlopen(creq, timeout=60) as cr:
+                crows = json.loads(cr.read())
+            pdf   = base64.b64decode((crows[0] if crows else {}).get("content_b64") or "")
+            lines = _parse_one(pdf, r.get("filename") or "")
+            labos = sorted({_norm_labo(l.get("labo") or l.get("fournisseur") or "")
+                            for l in lines})
+            tags  = ["labo:" + l for l in labos if l]
+            _digi_update(r["id"], {"kinds": existing + (tags or ["labo:?"])})
+            n += 1
+        except Exception as e:
+            _digi_update(r["id"], {"kinds": existing + ["labo:?"]})   # sentinel anti-boucle
+            print(f"  [warn] tag labo {str(r.get('filename',''))[:40]} : {e}", flush=True)
+    print(f"→ tag labo terminé : {n}", flush=True)
     return n
 
 
@@ -410,12 +463,14 @@ def main():
 
     # Ré-indexation des avoirs existants mal datés / sans catégorie, puis dé-doublonnage.
     reidx = _reindex(USER_ID)
+    nlabo = _backfill_labo_kinds(USER_ID)
     ndup  = _dedupe(USER_ID)
 
     parts = []
     if total: parts.append(f"{ok} importé(s)")
     if err:   parts.append(f"{err} en erreur")
     if reidx: parts.append(f"{reidx} ré-indexé(s)")
+    if nlabo: parts.append(f"{nlabo} labo(s) taggé(s)")
     if ndup:  parts.append(f"{ndup} doublon(s) supprimé(s)")
     _persist(USER_ID, acc, {"status": "done", "done": total, "total": total,
                             "message": "Terminé : " + (", ".join(parts) if parts else "rien à faire")})

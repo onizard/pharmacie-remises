@@ -122,6 +122,21 @@ repli, `POST /assist/login`.
   Biocodex/Merck/Saugella, formations CERP) — comportement correct, pas des bugs.
 - **205 fichiers au contenu perdu** (URL signée Google expirée avant traitement, surtout
   Mylan 2024-2026) : irrécupérables côté serveur → ré-envoi via l'extension requis.
+- **CSP multi-labos (cause RÉELLE du « aucune donnée Zydus jan.–avr. »)** : CSP (Centre
+  Spécialités Pharmaceutiques) facture « d'ordre et pour compte » de labos DIFFÉRENTS.
+  Deux pièges dans `_extract_csp` (`pdf_extractor.py`) : (1) `_extract_csp_lab` ne lisait
+  que les 800 premiers car. → le donneur d'ordre Biogaran (en-tête) passait, mais Zydus
+  (« D'ORDRE ET POUR COMPTE DES LABORATOIRES ZYDUS FRANCE » EN PIED, avant les lignes)
+  était raté → labo = nom de fichier → lignes jetées (non-cible, filtre `_is_keepable`).
+  Corrigé : recherche « POUR (LE) COMPTE (DES LABORATOIRES) X » dans TOUT le texte + repli
+  labo cible partout. (2) `billing_date` vient du nom (`_DDMMYYYY`) ; les CSP Zydus sont
+  nommées par n° de facture (`csp_W460206168.pdf`, PAS de date) → billing_date vide →
+  lignes ignorées (pas de mois). Repli : 1re date JJ/MM/AAAA du contenu (même mois).
+- **Tag `labo:<NORM>` dans `digi_files.kinds`** (`_derive_months_kinds`) : le front range
+  chaque facture sous le bon labo dans le modal DÉPÔT DES FICHIERS (`_fileCategory` lit ce
+  tag — le nom `csp_…` ne dit pas le labo). Backfill idempotent `_backfill_labo_kinds`
+  (métadonnées SEULES, jamais les stats) pour les `done` existants ; sentinel `labo:?` si
+  aucun labo cible, anti-boucle.
 
 ## Architecture OSPHARM scraper (run_job_ospharm.py)
 - Boucle Jan N-1 → mois courant, scraping incrémental (mois déjà en base réutilisés)
