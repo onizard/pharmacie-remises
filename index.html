@@ -13749,6 +13749,12 @@ function initConnecteurModal() {
     if (/\.xlsx?$/i.test(n) || low.includes('justificatif') || low.includes('generique')
         || low.includes('générique') || low.includes('partenariat'))
       return 'Grossiste';
+    // CSP (Centre Spécialités Pharmaceutiques) facture « au nom et pour le compte
+    // de Biogaran » → achats directs Biogaran. Les noms de fichiers sont
+    // « Centre-Specialites-Pharmaceutiques_*.pdf » ou « CSP_*.pdf ».
+    if (/centre[-_ ]?specialites/i.test(low)
+        || /(?:^|[^a-z0-9])csp(?:[^a-z0-9]|$)/i.test(low))
+      return 'Biogaran';
     const labos = ['Biogaran','Viatris','Sandoz','Teva','Cristers','Zentiva','Zydus','Arrow','Mylan','Krka','EG'];
     // Frontière personnalisée : « _ » (caractère de mot pour \b) doit compter comme
     // séparateur → on borne par début/fin ou tout caractère non alphanumérique.
