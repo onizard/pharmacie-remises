@@ -79,47 +79,80 @@ async def main():
                 print(f"  (repli submit form) URL={page.url}")
             except Exception as e:
                 print(f"  (repli submit form impossible : {e})")
-        print("  → on tente l'API factures pour vérifier la session…")
-
-        # Récupérer le csrftoken + interroger l'API factures depuis le navigateur.
-        # Auth par TOKEN → header Authorization: Token <key> (le cookie ne suffit pas).
         csrf = next((c["value"] for c in await page.context.cookies() if c["name"] == "csrftoken"), "")
+
+        # ── DÉCOUVERTE PAR CAPTURE RÉSEAU ────────────────────────────────────
+        # /api/v1/invoices/ renvoie le HTML de la SPA (route fourre-tout) : ce
+        # n'est pas la vraie route. On écoute donc TOUTES les requêtes /api que
+        # l'app émet en naviguant, pour révéler les vrais endpoints JSON.
+        seen = {}  # url -> {method, status, ctype}
+        def _on_resp(resp):
+            try:
+                u = resp.url
+                if "/api" in u and "digipharmacie" in u:
+                    ct = (resp.headers or {}).get("content-type", "")
+                    seen[u.split("?")[0] + ("?…" if "?" in u else "")] = {
+                        "method": resp.request.method, "status": resp.status, "ctype": ct[:40]}
+            except Exception:
+                pass
+        page.on("response", _on_resp)
+
+        print("\n→ Chargement de l'app (capture des appels /api)…")
+        # Injecter le token pour que la SPA se croie authentifiée (localStorage courant).
+        try:
+            await page.evaluate("""(tok) => {
+                try { localStorage.setItem('token', tok);
+                      localStorage.setItem('key', tok);
+                      localStorage.setItem('auth_token', tok); } catch(e){}
+            }""", token)
+        except Exception:
+            pass
+        for path in ("/", "/factures", "/invoices", "/dashboard", "/documents"):
+            try:
+                await page.goto(f"{BASE}{path}", wait_until="networkidle", timeout=45_000)
+                await page.wait_for_timeout(2_500)
+            except Exception as e:
+                print(f"  (nav {path} : {e})")
+
+        print("\n===== Endpoints /api observés =====")
+        inv_url = ""
+        for u, meta in sorted(seen.items()):
+            mark = "  ← PISTE FACTURES" if any(k in u.lower() for k in (
+                "invoice", "facture", "document", "bill")) else ""
+            print(f"  [{meta['status']}] {meta['method']:4s} {u}  ({meta['ctype']}){mark}")
+            if mark and "json" in meta["ctype"] and not inv_url:
+                inv_url = u.split("?")[0]
+        if not seen:
+            print("  (aucun appel /api capturé — la SPA n'a peut-être pas chargé)")
+
+        # Si on a repéré une piste factures, on la rejoue avec le token et on dumpe.
+        target = inv_url or f"{BASE}/api/v1/invoices/"
+        print(f"\n→ Dump de : {target}")
         result = await page.evaluate("""async ([url, csrf, token]) => {
             const h = {'Accept':'application/json','X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'};
             if (token) h['Authorization'] = 'Token ' + token;
-            const r = await fetch(url, {credentials:'include', headers:h});
+            const sep = url.includes('?') ? '&' : '?';
+            const r = await fetch(url + sep + 'page_size=5', {credentials:'include', headers:h});
             return {status: r.status, text: await r.text()};
-        }""", [f"{BASE}/api/v1/invoices/?ordering=-billing_date&page_size=5&page=1", csrf, token])
-        print(f"→ /api/v1/invoices/ → HTTP {result['status']}")
-        if result["status"] != 200:
-            print(result["text"][:500]); sys.exit(1)
-
+        }""", [target, csrf, token])
+        print(f"  HTTP {result['status']}")
         try:
             data = json.loads(result["text"])
         except Exception:
-            # Corps non-JSON (probable HTML SPA) → on dump pour diagnostic.
-            print("  ⚠️ réponse non-JSON — aperçu du corps brut :")
-            print(result["text"][:800])
-            sys.exit(1)
-        total = data.get("count", "?") if isinstance(data, dict) else "?"
-        rows  = data.get("results") if isinstance(data, dict) else data
-        print(f"\n===== {total} factures au total. Clés de la réponse : {list(data.keys()) if isinstance(data, dict) else 'liste'} =====")
+            print("  ⚠️ non-JSON — aperçu :"); print(result["text"][:400]); return
+        rows = data.get("results") if isinstance(data, dict) else data
+        total = data.get("count", "?") if isinstance(data, dict) else (len(rows) if rows else "?")
+        print(f"  {total} éléments. Clés réponse : {list(data.keys()) if isinstance(data, dict) else 'liste'}")
         if rows:
-            print("\n--- CHAMPS de la 1re facture ---")
+            print("\n--- CHAMPS du 1er élément ---")
             for k, v in rows[0].items():
-                sv = json.dumps(v, ensure_ascii=False)
-                print(f"  {k:24s} = {sv[:90]}")
-            print("\n--- champs contenant url/pdf/file/document (piste PDF) ---")
+                print(f"  {k:24s} = {json.dumps(v, ensure_ascii=False)[:90]}")
+            print("\n--- champs piste PDF (url/pdf/file/document/path) ---")
             for k, v in rows[0].items():
                 if any(t in k.lower() for t in ("url", "pdf", "file", "document", "path", "href")):
                     print(f"  {k} = {v}")
-            print("\n--- aperçu 3 factures (fournisseur/date/montant) ---")
-            for r in rows[:3]:
-                print("  ", {k: r.get(k) for k in ("id", "supplier", "fournisseur", "issuer",
-                      "billing_date", "date", "amount_ht", "total_ht", "amount")})
-        # Dump complet de la 1re facture pour analyse fine.
-        print("\n===== JSON COMPLET 1re facture =====")
-        print(json.dumps(rows[0] if rows else {}, ensure_ascii=False, indent=2)[:2500])
+            print("\n===== JSON COMPLET 1er élément =====")
+            print(json.dumps(rows[0], ensure_ascii=False, indent=2)[:2500])
 
 
 if __name__ == "__main__":
