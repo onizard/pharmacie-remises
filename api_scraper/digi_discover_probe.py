@@ -45,22 +45,32 @@ async def main():
         await page.locator(sel).first.fill(USER)
         await page.locator("input[type='password']").first.fill(PASS)
         # Login direct via l'endpoint (comme discover_digi), repli sur le bouton.
-        res = await page.evaluate("""async ({email, password}) => {
-            const r = await fetch('/auth/login/', {method:'POST',
-                headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({email, password}), credentials:'include'});
-            return {status: r.status, body: (await r.text()).slice(0,200)};
-        }""", {"email": USER, "password": PASS})
-        print(f"  /auth/login/ → {res['status']}")
-        if res["status"] != 200:
+        # On teste plusieurs endpoints de login connus. Un login AJAX ne fait PAS
+        # naviguer la page (elle reste sur /login/) → on ne se fie PAS à l'URL :
+        # le seul juge de paix est l'appel /api/v1/invoices/ plus bas.
+        login_ok = False
+        for ep in ("/auth/login/", "/api/v1/auth/login/", "/api/auth/login/", "/login/"):
+            res = await page.evaluate("""async ([ep, email, password]) => {
+                try {
+                    const r = await fetch(ep, {method:'POST',
+                        headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+                        body: JSON.stringify({email, password}), credentials:'include'});
+                    return {status: r.status, body: (await r.text()).slice(0,300)};
+                } catch (e) { return {status: -1, body: String(e)}; }
+            }""", [ep, USER, PASS])
+            print(f"  POST {ep} → {res['status']}  {res['body'][:160]!r}")
+            if res["status"] in (200, 201, 204):
+                login_ok = True
+                break
+        # Repli formulaire classique (submit) si aucun endpoint JSON n'a répondu 200.
+        if not login_ok:
             try:
                 await page.locator("button[type='submit'], input[type='submit']").first.click(timeout=3_000)
-            except Exception:
-                await page.keyboard.press("Enter")
-            await page.wait_for_timeout(8_000)
-        if "/login" in page.url:
-            print(f"  ❌ login échoué — URL {page.url}"); sys.exit(1)
-        print("  ✓ connecté")
+                await page.wait_for_timeout(8_000)
+                print(f"  (repli submit form) URL={page.url}")
+            except Exception as e:
+                print(f"  (repli submit form impossible : {e})")
+        print("  → on tente l'API factures pour vérifier la session…")
 
         # Récupérer le csrftoken + interroger l'API factures depuis le navigateur.
         csrf = next((c["value"] for c in await page.context.cookies() if c["name"] == "csrftoken"), "")
