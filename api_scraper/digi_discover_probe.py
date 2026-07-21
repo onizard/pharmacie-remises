@@ -49,6 +49,7 @@ async def main():
         # naviguer la page (elle reste sur /login/) → on ne se fie PAS à l'URL :
         # le seul juge de paix est l'appel /api/v1/invoices/ plus bas.
         login_ok = False
+        token = ""
         for ep in ("/auth/login/", "/api/v1/auth/login/", "/api/auth/login/", "/login/"):
             res = await page.evaluate("""async ([ep, email, password]) => {
                 try {
@@ -61,6 +62,14 @@ async def main():
             print(f"  POST {ep} → {res['status']}  {res['body'][:160]!r}")
             if res["status"] in (200, 201, 204):
                 login_ok = True
+                # Auth par token (dj-rest-auth) : la réponse contient {"key": "..."}.
+                try:
+                    token = (json.loads(res["body"]) or {}).get("key", "") or \
+                            (json.loads(res["body"]) or {}).get("token", "")
+                except Exception:
+                    token = ""
+                if token:
+                    print(f"  ✓ token récupéré : {token[:12]}…")
                 break
         # Repli formulaire classique (submit) si aucun endpoint JSON n'a répondu 200.
         if not login_ok:
@@ -73,17 +82,25 @@ async def main():
         print("  → on tente l'API factures pour vérifier la session…")
 
         # Récupérer le csrftoken + interroger l'API factures depuis le navigateur.
+        # Auth par TOKEN → header Authorization: Token <key> (le cookie ne suffit pas).
         csrf = next((c["value"] for c in await page.context.cookies() if c["name"] == "csrftoken"), "")
-        result = await page.evaluate("""async ([url, csrf]) => {
-            const r = await fetch(url, {credentials:'include',
-                headers:{'Accept':'application/json','X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'}});
+        result = await page.evaluate("""async ([url, csrf, token]) => {
+            const h = {'Accept':'application/json','X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'};
+            if (token) h['Authorization'] = 'Token ' + token;
+            const r = await fetch(url, {credentials:'include', headers:h});
             return {status: r.status, text: await r.text()};
-        }""", [f"{BASE}/api/v1/invoices/?ordering=-billing_date&page_size=5&page=1", csrf])
+        }""", [f"{BASE}/api/v1/invoices/?ordering=-billing_date&page_size=5&page=1", csrf, token])
         print(f"→ /api/v1/invoices/ → HTTP {result['status']}")
         if result["status"] != 200:
             print(result["text"][:500]); sys.exit(1)
 
-        data = json.loads(result["text"])
+        try:
+            data = json.loads(result["text"])
+        except Exception:
+            # Corps non-JSON (probable HTML SPA) → on dump pour diagnostic.
+            print("  ⚠️ réponse non-JSON — aperçu du corps brut :")
+            print(result["text"][:800])
+            sys.exit(1)
         total = data.get("count", "?") if isinstance(data, dict) else "?"
         rows  = data.get("results") if isinstance(data, dict) else data
         print(f"\n===== {total} factures au total. Clés de la réponse : {list(data.keys()) if isinstance(data, dict) else 'liste'} =====")
