@@ -1656,6 +1656,61 @@ const ADMIN_UID   = '371894cb-aaf9-4018-a29d-1aeda340493b';
 const API_URL     = 'https://pharmacie-remises.onrender.com';
 let   isAdmin     = false;
 
+// ── Récepteur « bookmarklet mobile » Digi → break-pharma ─────────────────────
+// Équivalent mobile de l'extension : un bookmarklet lancé sur app.digipharmacie.fr
+// lit les factures DANS la session Digi (même origine — seul contexte qui franchit
+// Cloudflare), ouvre CET onglet (#digi-import) et nous transmet la liste par
+// postMessage. On l'envoie ici à l'API Render (origine break-pharma, autorisée par
+// le CORS), avec le jeton de session de l'utilisateur. Pas d'appel cross-origin
+// depuis la page Digi (bloqué par CORS/CSP) : c'est break-pharma qui poste.
+(function () {
+  const DIGI_ORIGIN = 'https://app.digipharmacie.fr';
+  async function _bpDigiToken() {
+    try {
+      let { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session?.access_token) {
+        const { data } = await window._sbClient.auth.refreshSession();
+        session = data?.session;
+      }
+      return session?.access_token || '';
+    } catch (_) { return ''; }
+  }
+  async function _bpDigiImport(invoices) {
+    const tok = await _bpDigiToken();
+    if (!tok) return { ok: false, needLogin: true };
+    try {
+      const res = await fetch(`${API_URL}/import/digi-json`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoices }),
+      });
+      if (res.status === 401) return { ok: false, needLogin: true };
+      if (!res.ok) return { ok: false, error: 'API ' + res.status };
+      const d = await res.json();
+      return { ok: true, queued: d.queued, received: d.received };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+  window.addEventListener('message', async (ev) => {
+    if (ev.origin !== DIGI_ORIGIN) return;
+    const m = ev.data;
+    if (!m || m.type !== 'bp-digi-invoices' || !Array.isArray(m.invoices)) return;
+    if (typeof showToast === 'function') showToast(`Réception de ${m.invoices.length} facture(s) Digi…`);
+    const r = await _bpDigiImport(m.invoices);
+    try { ev.source && ev.source.postMessage({ type: 'bp-digi-result', ...r }, DIGI_ORIGIN); } catch (_) {}
+    if (typeof showToast === 'function') {
+      if (r.ok) showToast(`✓ ${r.queued} facture(s) Digi envoyée(s) — traitement en cours`);
+      else if (r.needLogin) showToast('Connectez-vous à break-pharma, puis relancez le bookmarklet');
+      else showToast('Échec import Digi : ' + (r.error || '?'));
+    }
+  });
+  // Ouvert par le bookmarklet (#digi-import) → signaler qu'on est prêt à recevoir.
+  try {
+    if (window.opener && /digi-import/.test(location.hash)) {
+      window.opener.postMessage({ type: 'bp-digi-ready' }, DIGI_ORIGIN);
+    }
+  } catch (_) {}
+})();
+
 // ── Avoirs Digi (PDF) : stockage base64 dans la table digi_files + aperçu ──────
 // Le stockage self-hosted est du MinIO S3 brut (inaccessible via JWT), donc on
 // conserve les PDF dans Postgres (base64) via PostgREST avec le token utilisateur.
