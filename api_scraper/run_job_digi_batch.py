@@ -164,6 +164,70 @@ def _reindex(user_id: str) -> int:
     return n
 
 
+def _digi_errored(user_id: str) -> list:
+    """Fichiers 'error' potentiellement récupérables — on EXCLUT les échecs permanents
+    (contenu perdu / URL expirée, marqués « PDF indisponible »). Léger : sans contenu."""
+    key = _supa_key()
+    url = (f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&status=eq.error"
+           f"&error=not.ilike.*indisponible*&select=id,filename,source_url&order=id.asc")
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError:
+        return []
+
+
+def _retry_errored(user_id: str, acc: dict) -> int:
+    """Re-parse les fichiers 'error' récupérables avec le parseur COURANT.
+    SÛR : un fichier 'error' n'a jamais contribué aux stats (le statut est posé AVANT
+    tout merge), donc le retraiter n'ajoute qu'UNE fois → aucun double comptage.
+    Répare automatiquement les factures que d'anciennes versions du parseur rataient
+    (ex. CSP Zydus : donneur d'ordre en pied de page → labo non reconnu → 0 ligne).
+    Échec de téléchargement → sentinel « PDF indisponible » (exclu des tentatives
+    suivantes, anti-boucle sur les contenus perdus)."""
+    rows = _digi_errored(user_id)
+    if not rows:
+        return 0
+    print(f"→ nouvelle tentative sur {len(rows)} fichier(s) en erreur…", flush=True)
+    key, fixed = _supa_key(), 0
+    for r in rows:
+        try:
+            curl = f"{SUPA_URL}/rest/v1/digi_files?id=eq.{r['id']}&select=content_b64"
+            creq = urllib.request.Request(curl, headers={"apikey": key,
+                                          "Authorization": f"Bearer {key}"})
+            with urllib.request.urlopen(creq, timeout=60) as cr:
+                crows = json.loads(cr.read())
+            pdf_bytes = base64.b64decode((crows[0] if crows else {}).get("content_b64") or "")
+            if not pdf_bytes and r.get("source_url"):
+                try:
+                    pdf_bytes = _download(r["source_url"])
+                    if pdf_bytes:
+                        _digi_update(r["id"], {"content_b64": base64.b64encode(pdf_bytes).decode()})
+                except Exception:
+                    pdf_bytes = b""
+            if not pdf_bytes:
+                _digi_update(r["id"], {"error": "PDF indisponible"})   # permanent → exclu ensuite
+                continue
+            lines = _parse_one(pdf_bytes, r.get("filename") or "")
+            if not lines:
+                continue   # toujours 0 ligne → reste 'error' (parapharmacie, etc.)
+            esc  = [l for l in lines if l.get("type") == "escompte"]
+            mdl  = [l for l in lines if l.get("type") == "mdl"]
+            digi = [l for l in lines if l.get("type") not in ("escompte", "mdl")]
+            if digi: acc["digi"] = _merge_digi_stats(acc["digi"], _compute_digi_month_stats(digi))
+            if esc:  acc["esc"]  = _merge_escompte_stats(acc["esc"], _compute_escompte_stats(esc))
+            if mdl:  acc["mdl"]  = _merge_mdl_stats(acc["mdl"], _compute_mdl_stats(mdl))
+            months, kinds = _derive_months_kinds(lines)
+            _digi_update(r["id"], {"status": "done", "months": months, "kinds": kinds, "error": None})
+            fixed += 1
+            print(f"  ✓ réparé : {str(r.get('filename',''))[:50]}", flush=True)
+        except Exception as e:
+            print(f"  [warn] retry {str(r.get('filename',''))[:40]} : {e}", flush=True)
+    print(f"→ tentatives terminées : {fixed} réparé(s)", flush=True)
+    return fixed
+
+
 def _backfill_labo_kinds(user_id: str) -> int:
     """Ajoute le tag « labo:<NORM> » aux fichiers 'done' qui ne l'ont pas encore,
     pour que le front range chaque facture (notamment CSP) sous le bon labo.
@@ -461,6 +525,9 @@ def main():
         _persist(USER_ID, acc, {"status": "running", "done": i + 1, "total": total, "message": msg})
         print(f"  {msg}", flush=True)
 
+    # Nouvelle tentative sur les fichiers 'error' avec le parseur courant (répare
+    # ce que d'anciennes versions rataient, ex. CSP Zydus).
+    nfix  = _retry_errored(USER_ID, acc)
     # Ré-indexation des avoirs existants mal datés / sans catégorie, puis dé-doublonnage.
     reidx = _reindex(USER_ID)
     nlabo = _backfill_labo_kinds(USER_ID)
@@ -469,6 +536,7 @@ def main():
     parts = []
     if total: parts.append(f"{ok} importé(s)")
     if err:   parts.append(f"{err} en erreur")
+    if nfix:  parts.append(f"{nfix} réparé(s)")
     if reidx: parts.append(f"{reidx} ré-indexé(s)")
     if nlabo: parts.append(f"{nlabo} labo(s) taggé(s)")
     if ndup:  parts.append(f"{ndup} doublon(s) supprimé(s)")
