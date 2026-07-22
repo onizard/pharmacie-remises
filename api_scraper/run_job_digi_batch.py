@@ -274,6 +274,65 @@ def _backfill_labo_kinds(user_id: str) -> int:
     return n
 
 
+def _rebuild_digi_all(user_id: str) -> int:
+    """Reconstruit digi_month_stats DE ZÉRO (produits + avoirs) depuis TOUS les
+    fichiers 'done' stockés. Corrige :
+      - la divergence snake/camel (le front lit `digiMonthStats`, le batch écrivait
+        `digi_month_stats` → certains achats n'apparaissaient jamais) ;
+      - les stats PRODUITS manquantes ou mal attribuées (ex. achats directs Zydus via
+        CSP : fichier 'done', taggé labo:ZYDUS, mais absent des stats affichées).
+    SÛR : recompute une seule fois par fichier → aucun double comptage. À n'exécuter
+    que si TOUS les 'done' ont leur contenu (sinon on perdrait les non-stockés) — ce
+    qui est le cas ici. Écrit snake ET camel pour un affichage garanti côté front.
+    Les avoirs sont ensuite raffinés (dédoublonnés) par _rebuild_avoirs."""
+    key = _supa_key()
+    url = (f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&status=eq.done"
+           f"&select=id,filename,content_b64&order=id.asc")
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=180) as r:
+        rows = json.loads(r.read())
+    if not rows:
+        return 0
+    # GARDE : n'exécute le rebuild QUE si tous les 'done' ont leur contenu, sinon on
+    # perdrait les stats des non-stockés (le contenu vide est "" côté insert).
+    missing = sum(1 for r in rows if not (r.get("content_b64") or "").strip())
+    if missing:
+        print(f"→ rebuild complet ABANDONNÉ : {missing} 'done' sans contenu (risque de perte)", flush=True)
+        return 0
+    print(f"→ reconstruction COMPLÈTE digi (produits+avoirs) depuis {len(rows)} fichier(s)…", flush=True)
+    acc, n = {}, 0
+    for row in rows:
+        try:
+            pdf = base64.b64decode(row.get("content_b64") or "")
+            if not pdf:
+                continue
+            lines = _parse_one(pdf, row.get("filename") or "")
+            digi  = [l for l in lines if l.get("type") not in ("escompte", "mdl")]
+            if digi:
+                acc = _merge_digi_stats(acc, _compute_digi_month_stats(digi))
+                n += 1
+        except Exception as e:
+            print(f"  [warn] rebuild-all {str(row.get('filename',''))[:40]} : {e}", flush=True)
+    fresh = _get_state_sync(user_id) or {}
+    fresh["digi_month_stats"] = acc          # snake (source de vérité backend)
+    fresh["digiMonthStats"]   = acc          # camel (ce que le front affiche) → synchronisé
+    _patch_state_sync(user_id, fresh)
+    print(f"→ reconstruction complète : {len(acc)} mois depuis {n} fichier(s)", flush=True)
+    return n
+
+
+def _sync_digi_camel(user_id: str) -> None:
+    """Aligne le camel `digiMonthStats` sur le snake `digi_month_stats` (source de
+    vérité backend) APRÈS tous les rebuilds — garantit que le front affiche les
+    valeurs recalculées quel que soit son chemin de chargement (snake vs camel)."""
+    fresh = _get_state_sync(user_id) or {}
+    snake = fresh.get("digi_month_stats")
+    if snake is not None and fresh.get("digiMonthStats") != snake:
+        fresh["digiMonthStats"] = snake
+        _patch_state_sync(user_id, fresh)
+        print("→ camel digiMonthStats aligné sur snake digi_month_stats", flush=True)
+
+
 def _rebuild_avoirs(user_id: str) -> int:
     """Reconstruit les stats d'AVOIRS (rdp_total, rdp_by_taux, presta_total[_ttc],
     facture_refs) depuis les PDF stockés — source DÉDOUBLONNÉE. Corrige les stats
@@ -543,6 +602,13 @@ def main():
     _persist(USER_ID, acc, {"status": "done", "done": total, "total": total,
                             "message": "Terminé : " + (", ".join(parts) if parts else "rien à faire")})
 
+    # Reconstruction COMPLÈTE des stats produits+avoirs depuis TOUS les PDF 'done'
+    # stockés (corrige la divergence snake/camel + les achats directs manquants,
+    # ex. Zydus via CSP). AVANT _rebuild_avoirs, qui raffine ensuite les avoirs.
+    try:
+        _rebuild_digi_all(USER_ID)
+    except Exception as e:
+        print(f"  [warn] rebuild digi complet : {e}", flush=True)
     # Reconstruction des stats d'avoirs depuis les PDF stockés (dédoublonnés) —
     # APRÈS le _persist final : elle relit l'état frais et remplace uniquement
     # les champs d'avoirs (corrige les cumuls gonflés par les doublons).
@@ -556,6 +622,11 @@ def main():
         _rebuild_grossiste(USER_ID)
     except Exception as e:
         print(f"  [warn] rebuild grossiste : {e}", flush=True)
+    # Aligner le camel sur le snake APRÈS tous les rebuilds → affichage front garanti.
+    try:
+        _sync_digi_camel(USER_ID)
+    except Exception as e:
+        print(f"  [warn] sync camel : {e}", flush=True)
     print(f"✅ Terminé — {ok} ok, {err} err, {reidx} ré-indexé(s)", flush=True)
 
 
