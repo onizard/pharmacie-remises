@@ -530,10 +530,18 @@ def main():
         print("!! USER_ID manquant — abandon", flush=True)
         sys.exit(1)
 
+    # Mode « reconstruction seule » : saute le traitement des fichiers en attente
+    # (utile quand la file est énorme et lente) et reconstruit directement les stats
+    # depuis les fichiers déjà 'done' → les achats déjà traités remontent aussitôt.
+    rebuild_only = os.environ.get("REBUILD_ONLY", "").lower() in ("1", "true", "yes")
+
     state = _get_state_sync(USER_ID) or {}
-    rows  = _digi_pending(USER_ID)
+    rows  = [] if rebuild_only else _digi_pending(USER_ID)
     total = len(rows)
-    print(f"→ {total} avoir(s) en attente pour {USER_ID[:8]}", flush=True)
+    if rebuild_only:
+        print(f"→ MODE RECONSTRUCTION SEULE (pending ignoré) pour {USER_ID[:8]}", flush=True)
+    else:
+        print(f"→ {total} avoir(s) en attente pour {USER_ID[:8]}", flush=True)
 
     # Accumulateurs des stats Digi (partent de l'existant, la base du runner).
     acc = {"digi": state.get("digi_month_stats") or {},
@@ -585,8 +593,8 @@ def main():
         print(f"  {msg}", flush=True)
 
     # Nouvelle tentative sur les fichiers 'error' avec le parseur courant (répare
-    # ce que d'anciennes versions rataient, ex. CSP Zydus).
-    nfix  = _retry_errored(USER_ID, acc)
+    # ce que d'anciennes versions rataient, ex. CSP Zydus). Sauté en reconstruction seule.
+    nfix  = 0 if rebuild_only else _retry_errored(USER_ID, acc)
     # Ré-indexation des avoirs existants mal datés / sans catégorie, puis dé-doublonnage.
     reidx = _reindex(USER_ID)
     nlabo = _backfill_labo_kinds(USER_ID)

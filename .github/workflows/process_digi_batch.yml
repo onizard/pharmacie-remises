@@ -10,6 +10,10 @@ on:
       user_id:
         description: 'Supabase user ID'
         required: true
+      rebuild_only:
+        description: 'Reconstruire les stats depuis les done, sans traiter la file pending'
+        required: false
+        default: 'false'
 
 jobs:
   process:
@@ -31,5 +35,6 @@ jobs:
       - name: Traiter la file d'avoirs Digi
         env:
           USER_ID: ${{ inputs.user_id }}
+          REBUILD_ONLY: ${{ inputs.rebuild_only }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python3 api_scraper/run_job_digi_batch.py
