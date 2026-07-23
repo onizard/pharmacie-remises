@@ -106,9 +106,13 @@
   }
   // full=false : 1re page seulement (synchro quotidienne des récentes ; le serveur
   // dédoublonne). full=true : tout l'historique (synchro manuelle complète).
-  async function _paginate(firstData, onProgress, full) {
+  // onBatch(list) : envoyé au fur et à mesure (une fois par page) → la synchro est
+  // INCRÉMENTALE. Si l'utilisateur ferme l'onglet en cours de route, tout ce qui a
+  // déjà été lu est déjà parti au serveur (qui dédoublonne). Retourne le total mis
+  // en file (queued) cumulé sur toutes les pages.
+  async function _paginate(firstData, onProgress, full, onBatch) {
     const out = [], sampleProviders = [];
-    let data = firstData, guard = 0, rawCount = 0, withPdf = 0, sampleKeys = null;
+    let data = firstData, guard = 0, rawCount = 0, withPdf = 0, sampleKeys = null, flushed = 0, queued = 0;
     while (data && guard < 500) {
       guard++;
       const results = Array.isArray(data) ? data : (data.results || []);
@@ -126,13 +130,19 @@
           billing_date: inv.billing_date || inv.date || inv.created_at || inv.invoice_date || '' });
       }
       if (onProgress) onProgress(out.length);
+      // Flush incrémental : envoie les nouvelles factures de cette page.
+      if (onBatch && out.length > flushed) {
+        const q = await onBatch(out.slice(flushed));
+        if (typeof q === 'number') queued += q;
+        flushed = out.length;
+      }
       const next = (!full) ? null : ((!Array.isArray(data) && data.next) ? data.next : null);
       if (!next) break;
       data = await _fetchJson(next);
     }
-    return { invoices: out, rawCount, withPdf, sampleKeys, sampleProviders };
+    return { invoices: out, rawCount, withPdf, sampleKeys, sampleProviders, queued };
   }
-  async function fetchInvoices(onProgress, full) {
+  async function fetchInvoices(onProgress, full, onBatch) {
     const q = '?ordering=-billing_date&page_size=100&page=1';
     const candidates = [...new Set([..._discoverEndpoints(), '/invoices/', '/api/v1/invoices/'])].map(b => b + q);
     let lastErr = null, best = null;
@@ -141,7 +151,7 @@
       try { d = await _fetchJson(cand); } catch (e) { lastErr = e; continue; }
       const results = Array.isArray(d) ? d : (d.results || []);
       if (_looksLikeInvoices(results)) {
-        const r = await _paginate(d, onProgress, full);
+        const r = await _paginate(d, onProgress, full, onBatch);
         return Object.assign(r, { endpoint: cand });
       }
       if (!best || results.length > best.rawCount) {
@@ -169,15 +179,28 @@
         return { ok: false, needLogin: true };
       }
       if (manual) status('Synchronisation des factures…', 'info');
+      // Envoi INCRÉMENTAL page par page (survit à la fermeture de l'onglet).
+      let needLogin = false, importErr = null;
+      const onBatch = async (batch) => {
+        if (!batch || !batch.length) return 0;
+        if (manual) status('Envoi… ' + batch.length + ' facture(s)', 'info');
+        const resp = await chrome.runtime.sendMessage({ type: 'bp-import', invoices: batch });
+        if (resp && resp.ok) return resp.queued || 0;
+        if (resp && resp.needLogin) needLogin = true;
+        else importErr = (resp && resp.error) || 'erreur inconnue';
+        return 0;
+      };
       let r;
       try {
-        r = await fetchInvoices(n => { if (manual && n) status('Lecture… ' + n + ' facture(s)', 'info'); }, full);
+        r = await fetchInvoices(n => { if (manual && n) status('Lecture… ' + n + ' facture(s)', 'info'); }, full, onBatch);
       } catch (e) {
         if (e.kind === 'auth') { if (manual) status('Session Digipharmacie expirée — reconnectez-vous à Digipharmacie.', 'warn', 8000); return { ok: false }; }
         if (e.kind === 'html') { if (manual) status('Ouvrez d’abord votre page « Factures » sur Digipharmacie, puis réessayez.', 'warn', 9000); return { ok: false }; }
         if (manual) status('Erreur de lecture : ' + e.message, 'error', 8000);
         return { ok: false };
       }
+      if (needLogin) { if (manual) status('Connectez-vous à break-pharma via l’icône de l’extension.', 'warn', 7000); return { ok: false, needLogin: true }; }
+      if (importErr) { if (manual) status('Échec de l’envoi : ' + importErr, 'error', 8000); return { ok: false, error: importErr }; }
       if (!r.invoices.length) {
         await _markSynced();   // évite de re-scanner en boucle
         if (manual) {
@@ -187,15 +210,9 @@
         }
         return { ok: true, queued: 0 };
       }
-      const resp = await chrome.runtime.sendMessage({ type: 'bp-import', invoices: r.invoices });
-      if (resp && resp.ok) {
-        await _markSynced();
-        status('✓ break-pharma : ' + resp.queued + ' facture(s) synchronisée(s).', 'ok', 6000);
-        return { ok: true, queued: resp.queued };
-      }
-      if (resp && resp.needLogin) { if (manual) status('Connectez-vous à break-pharma via l’icône de l’extension.', 'warn', 7000); return { ok: false, needLogin: true }; }
-      if (manual) status('Échec de l’envoi : ' + ((resp && resp.error) || 'erreur inconnue'), 'error', 8000);
-      return { ok: false };
+      await _markSynced();
+      status('✓ break-pharma : ' + (r.queued || 0) + ' facture(s) synchronisée(s).', 'ok', 6000);
+      return { ok: true, queued: r.queued || 0 };
     } finally {
       window.__bpSyncing = false;
     }
@@ -218,8 +235,25 @@
     }
   });
 
-  // Au chargement d'une page Digi (utilisateur connecté) : tentative auto.
-  _autoSyncIfDue();
-  // Onglets laissés ouverts longtemps : re-vérifie périodiquement.
-  setInterval(_autoSyncIfDue, 6 * 3600 * 1000);
+  // Onglet ouvert EN ARRIÈRE-PLAN par la synchro auto (background.js, #bp-autosync) :
+  // on attend que le SPA ait chargé la liste (l'API factures devient découvrable via
+  // performance.getEntriesByType), on synchronise (sans verrou 20 h — le worker l'a
+  // déjà vérifié), puis on demande au worker de refermer cet onglet.
+  async function _autoSyncTabFlow() {
+    for (let i = 0; i < 25; i++) {                 // jusqu'à ~50 s d'attente du SPA
+      if (_discoverEndpoints().length) break;
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    try { await runSync({ full: false, manual: false }); } catch (_) {}
+    try { await chrome.runtime.sendMessage({ type: 'bp-sync-done' }); } catch (_) {}
+  }
+
+  if (/bp-autosync/.test(location.hash)) {
+    _autoSyncTabFlow();
+  } else {
+    // Au chargement d'une page Digi (utilisateur connecté) : tentative auto.
+    _autoSyncIfDue();
+    // Onglets laissés ouverts longtemps : re-vérifie périodiquement.
+    setInterval(_autoSyncIfDue, 6 * 3600 * 1000);
+  }
 })();
