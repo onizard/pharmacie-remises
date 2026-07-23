@@ -13806,7 +13806,8 @@ function initConnecteurModal() {
     const n = (state._grossisteUploads || []).length
             + _connCloudFiles().length
             + (state._monthMeta || []).length
-            + (state._fseUploads || []).length;
+            + (state._fseUploads || []).length
+            + (state._fseCloudFiles || []).length;
     const btn = document.getElementById('grossisteDetailsBtn');
     if (btn) btn.textContent = `Détails (${n} fichier${n !== 1 ? 's' : ''})`;
   }
@@ -13928,6 +13929,13 @@ function initConnecteurModal() {
     // (table fse_files, chargée en asynchrone par _loadFseFilesIndex).
     const fseFiles   = [...(state._fseUploads || []),
                         ...(state._fseCloudFiles || []).map(f => ({ ...f, _cloud: true }))];
+    // Compteur du bouton « Détails » = EXACTEMENT ce qui est affiché ci-dessous
+    // (recalculé à chaque rendu → jamais figé/désynchronisé de la liste réelle).
+    {
+      const _b = document.getElementById('grossisteDetailsBtn');
+      const _n = uploads.length + cloud.length + monthMeta.length + fseFiles.length;
+      if (_b) _b.textContent = `Détails (${_n} fichier${_n !== 1 ? 's' : ''})`;
+    }
     if (!uploads.length && !cloud.length && !monthMeta.length && !fseFiles.length) {
       el.innerHTML = `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0">// Aucun fichier déposé</div>`;
       return;
