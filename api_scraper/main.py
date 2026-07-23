@@ -12,6 +12,7 @@ Connecteurs supportés : ospharm, digipharmacie
 """
 
 import asyncio
+import hashlib as _hashlib
 import json
 import os
 import re as _re
@@ -1167,20 +1168,31 @@ def _insert_pending_digi_json(user_id: str, invoices: list, user_token: str = ""
     rows, seen = [], set()
     for inv in invoices:
         src = (inv.file or "").strip()
-        if not src or src in existing or src in seen:
+        if not src:
             continue
-        seen.add(src)
+        # Clé de dé-doublonnage STABLE = chemin de l'URL sans les paramètres signés
+        # (la signature change à chaque synchro, l'URL entière n'est donc pas stable).
+        path = src.split("?", 1)[0]
+        if path in existing or path in seen:
+            continue
+        seen.add(path)
         provider = (inv.provider_ref or inv.provider_name or "digi")[:80]
         bd = (inv.billing_date or "")[:10]
         fnd = ""
         m = _re.match(r'^(\d{4})-(\d{2})-(\d{2})', bd)
         if m:
-            # date encodée _JJMMAAAA → rattachement au mois pour les factures produits
+            # date encodée _JJMMAAAA À LA FIN → le parseur lit le mois ; l'id unique
+            # est inséré AVANT la date pour ne pas casser cette lecture.
             fnd = f"_{m.group(3)}{m.group(2)}{m.group(1)}"
         safe = _re.sub(r'[^A-Za-z0-9._-]+', '-', provider).strip('-') or "digi"
+        # Identifiant UNIQUE par facture (hash du chemin d'URL) → deux factures CSP de
+        # même DATE mais de LABO différent (« Centre-Specialites-Pharmaceutiques_<date> »)
+        # ne partagent plus le même nom et ne sont donc plus fusionnées par le
+        # dé-doublonnage. Stable dans le temps : re-synchro d'une même facture = même id.
+        uid8 = _hashlib.md5(path.encode("utf-8")).hexdigest()[:8]
         rows.append({
-            "storage_key": src,
-            "filename":    f"{safe}{fnd}.pdf",
+            "storage_key": path,
+            "filename":    f"{safe}_{uid8}{fnd}.pdf",
             "source_url":  src,
             "content_b64": inv.content_b64 or "",
             "status":      "pending",
