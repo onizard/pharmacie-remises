@@ -7852,21 +7852,35 @@ window._verifCopyLitige = function(key) {
 // qu'il n'y a rien à réclamer.
 function _verifRdpAttendueMonth(mk, selNorm, labDisplay) {
   const exact = (typeof _r2ExactForMonth === 'function') ? _r2ExactForMonth(mk, selNorm, labDisplay) : null;
-  const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
-  const paliers = (grosRow && Array.isArray(grosRow.paliers)) ? grosRow.paliers : [];
-  if (!paliers.length) return exact ? exact.total : null;
   const [y, m] = mk.split('-').map(Number);
   const cond = _verifGetCond(labDisplay, y, m);
   const cmap = {}; (cond?.rsfValues||[]).forEach(r => { const k=Math.abs(parseFloat(r.rsf_pct)); if(!isNaN(k)) cmap[k]=r; });
+  const _r2 = c => (c && c.remise2!=null && c.remise2!=='') ? parseFloat(String(c.remise2).replace(',','.')) : null;
+  const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
+  const paliers = (grosRow && Array.isArray(grosRow.paliers)) ? grosRow.paliers : [];
   let tot = 0, any = false;
-  paliers.forEach(p => {
-    if (p.taux == null) return;
-    const ex = exact ? (exact.byTaux[p.taux] != null ? exact.byTaux[p.taux] : exact.byTaux[String(p.taux)]) : null;
-    if (ex != null) { tot += ex; any = true; return; }
-    const cAll = cmap[Math.abs(p.taux)] || {};
-    const r2pct = (cAll.remise2!=null && cAll.remise2!=='') ? parseFloat(cAll.remise2) : null;
-    if (r2pct != null) { tot += (p.brut||0) * r2pct/100; any = true; }
-  });
+  // 1. Achats GROSSISTE (répartiteur) par palier — exact rsf_history si dispo, sinon barème.
+  if (paliers.length) {
+    paliers.forEach(p => {
+      if (p.taux == null) return;
+      const ex = exact ? (exact.byTaux[p.taux] != null ? exact.byTaux[p.taux] : exact.byTaux[String(p.taux)]) : null;
+      if (ex != null) { tot += ex; any = true; return; }
+      const r2pct = _r2(cmap[Math.abs(p.taux)]);
+      if (r2pct != null) { tot += (p.brut||0) * r2pct/100; any = true; }
+    });
+  } else if (exact && exact.total != null) {
+    tot += exact.total; any = true;                 // grossiste exact sans résumé palier
+  }
+  // 2. Achats DIRECTS CSP par palier (= taux de remise sur facture) × barème remise2.
+  //    Dus au même titre que le répartiteur (répartiteur + factures directes CSP, tout
+  //    contrat signé). Base brut ventilée par le batch dans pa_direct_by_pal.
+  const directByPal = (((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm) || {}).pa_direct_by_pal;
+  if (directByPal) {
+    Object.entries(directByPal).forEach(([palKey, brut]) => {
+      const r2pct = _r2(cmap[Math.abs(parseFloat(palKey))]);
+      if (r2pct != null && r2pct > 0 && brut > 0) { tot += brut * r2pct/100; any = true; }
+    });
+  }
   return any ? Math.round(tot*100)/100 : (exact ? exact.total : null);
 }
 

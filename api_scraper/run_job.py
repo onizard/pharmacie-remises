@@ -102,7 +102,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
     - Lignes presta    : clé = period_month,      cumule presta_total
     """
     def _zero():
-        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0, "facture_refs": [], "rdp_by_taux": {}}
+        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0, "facture_refs": [], "rdp_by_taux": {}, "pa_direct_by_pal": {}}
 
     acc: dict[str, dict] = {}
     for line in lines:
@@ -152,6 +152,21 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
             acc.setdefault(mk, {}).setdefault(labo, _zero())
             acc[mk][labo]["qty"]      += qty
             acc[mk][labo]["total_ht"]  = round(acc[mk][labo]["total_ht"] + tot, 2)
+            # Achats directs (facture CSP) ventilés par PALIER RSF = taux de remise
+            # sur la facture (10 %, 30 %…) → base de la RDP attendue sur les achats
+            # directs (remises dues sur répartiteur ET factures directes CSP, pour
+            # tout contrat signé). Base BRUT (prix tarif × qté), comme le répartiteur ;
+            # repli sur le montant net si le brut n'est pas disponible.
+            rp = line.get("remise_pct")
+            if rp is not None:
+                try:
+                    pal  = str(round(abs(float(rp)), 2))
+                    pb, q = line.get("prix_brut"), line.get("quantite")
+                    brut = (float(pb) * int(q)) if (pb and q) else tot
+                    d = acc[mk][labo]["pa_direct_by_pal"]
+                    d[pal] = round(d.get(pal, 0.0) + brut, 2)
+                except (TypeError, ValueError):
+                    pass
 
     return {
         mk: sorted(
@@ -162,6 +177,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
               "presta_total":     round(d["presta_total"], 2),
               "presta_total_ttc": round(d.get("presta_total_ttc", d["presta_total"] * 1.20), 2),
               "facture_refs":     list(dict.fromkeys(d["facture_refs"]))[:20],
+              "pa_direct_by_pal": d.get("pa_direct_by_pal", {}),
               "rdp_by_taux":      sorted(
                   [{"taux": tx, **v} for tx, v in d.get("rdp_by_taux", {}).items()],
                   key=lambda x: x["taux"])}
@@ -203,6 +219,10 @@ def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
                     # Produits : cumul (pas de clé de dédoublonnage).
                     ex["qty"]      += nr["qty"]
                     ex["total_ht"]  = round(ex["total_ht"] + nr["total_ht"], 2)
+                    # Achats directs par palier RSF : cumul additif (comme les produits).
+                    exd = ex.setdefault("pa_direct_by_pal", {})
+                    for _pal, _v in (nr.get("pa_direct_by_pal") or {}).items():
+                        exd[_pal] = round(exd.get(_pal, 0.0) + _v, 2)
                     # Avoirs (rdp / presta) : on n'ADDITIONNE que si de NOUVEAUX n° de
                     # facture apparaissent. Si tous les n° du nouveau lot sont déjà
                     # comptés (même avoir réimporté / mois re-scrapé), on ne ré-ajoute
