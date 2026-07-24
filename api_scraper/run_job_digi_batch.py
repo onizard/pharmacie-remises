@@ -480,21 +480,43 @@ def _dedupe(user_id: str) -> int:
     (un avoir apparaît parfois aussi en « facture_… » — on garde l'« avoir_ »,
     sinon le plus ancien id)."""
     key = _supa_key()
-    url = f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&select=id,filename&order=id.asc"
+    url = f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&select=id,filename,storage_key,status&order=id.asc"
     req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
     with urllib.request.urlopen(req, timeout=60) as r:
         rows = json.loads(r.read())
-    seen, dele = set(), []
+    dele, deleted = [], set()
+    # 0. Même FACTURE (même chemin d'URL) sous deux clés/noms : l'ancien schéma stocke
+    #    l'URL COMPLÈTE (avec signature), le nouveau le chemin seul (+ hash dans le nom).
+    #    Deux copies de la même facture ont donc des noms DIFFÉRENTS que le dé-doublonnage
+    #    par nom ne rapproche pas → on les collapse ici sur le chemin (sans les paramètres
+    #    signés). On garde la copie 'done' (sinon la plus récente = URL fraîche).
+    def _pscore(r):
+        return (1 if r.get("status") == "done" else 0, r["id"])
+    by_path = {}
     for row in rows:
+        path = (row.get("storage_key") or "").split("?", 1)[0]
+        if not path.startswith("http"):
+            continue
+        prev = by_path.get(path)
+        if prev is None:
+            by_path[path] = row
+            continue
+        keep, loser = (row, prev) if _pscore(row) >= _pscore(prev) else (prev, row)
+        by_path[path] = keep
+        dele.append(loser["id"]); deleted.add(loser["id"])
+    # 1. Doublon de NOM de fichier.
+    seen = set()
+    for row in rows:
+        if row["id"] in deleted:
+            continue
         fn = (row.get("filename") or "").strip()
         if not fn:
             continue
         if fn.lower() in seen:
-            dele.append(row["id"])          # doublon de nom → à supprimer
+            dele.append(row["id"]); deleted.add(row["id"])
         else:
             seen.add(fn.lower())
     # Même document sous deux noms différents (avoir_/facture_).
-    deleted = set(dele)
     by_sig: dict = {}
     for row in rows:
         if row["id"] in deleted:
