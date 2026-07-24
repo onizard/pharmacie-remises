@@ -89,16 +89,17 @@
     return (data && !Array.isArray(data) && data.next) ? data.next : null;
   }
 
-  // Connexion break-pharma (GoTrue). Rien n'est stocké : on redemande à chaque fois.
+  // Connexion break-pharma via l'API Render (qui autorise l'origine Digi en CORS et
+  // relaie GoTrue). Rien n'est stocké : on redemande à chaque lancement.
   async function bpLogin() {
     var email = prompt('E-mail break-pharma :'); if (!email) return null;
     var pass  = prompt('Mot de passe break-pharma :'); if (!pass) return null;
     try {
-      var r = await fetch(SUPA + '/auth/v1/token?grant_type=password', {
-        method: 'POST', headers: { apikey: ANON, 'Content-Type': 'application/json' },
+      var r = await fetch(API + '/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email, password: pass }) });
       var d = await r.json().catch(function () { return {}; });
-      if (!r.ok || !d.access_token) { alert('Connexion break-pharma refusée : ' + (d.error_description || d.msg || ('HTTP ' + r.status))); return null; }
+      if (!r.ok || !d.access_token) { alert('Connexion break-pharma refusée : ' + (d.detail || d.error_description || d.msg || ('HTTP ' + r.status))); return null; }
       return d.access_token;
     } catch (e) { alert('Connexion break-pharma impossible : ' + e.message); return null; }
   }

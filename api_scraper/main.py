@@ -64,6 +64,17 @@ class AssistLoginBody(BaseModel):
     email: str
     password: str
 
+
+class AuthLoginBody(BaseModel):
+    email: str
+    password: str
+
+
+# Clé anon (publique) self-hosted — sert d'apikey pour le grant mot de passe GoTrue.
+_ANON_KEY = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+             "eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLXNlbGYiLCJpYXQiOjE3ODM1NDU0MjV9."
+             "Ga5ubKMU5mnlcBncdb1TUgprBHxuDkRw0LBmGP81XwM")
+
 # ── App ────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(title="Break-Pharma Scraper API")
@@ -337,6 +348,31 @@ async def assist_login(body: AssistLoginBody):
         raise HTTPException(status_code=401, detail="Accès assistance refusé")
     _assist_fail[email] = []
     return await loop.run_in_executor(None, lambda: _assist_mint_session(email))
+
+
+@app.post("/auth/login")
+async def auth_login(body: AuthLoginBody):
+    """Relais du grant mot de passe GoTrue → renvoie les jetons break-pharma.
+    Sert au bookmarklet mobile « un onglet » : la CORS de GoTrue (api.break-pharma.fr)
+    n'autorise pas l'origine Digipharmacie, mais cette API-ci l'autorise. Le
+    bookmarklet se connecte donc via cet endpoint au lieu d'appeler GoTrue en direct."""
+    from supabase_client import SUPA_URL
+    data = json.dumps({"email": body.email, "password": body.password}).encode()
+    req  = urllib.request.Request(
+        f"{SUPA_URL}/auth/v1/token?grant_type=password", data=data, method="POST",
+        headers={"apikey": _ANON_KEY, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            d = json.loads(e.read() or b"{}")
+        except Exception:
+            d = {}
+        raise HTTPException(status_code=e.code if e.code in (400, 401, 422) else 401,
+                            detail=d.get("error_description") or d.get("msg") or "identifiants invalides")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"GoTrue injoignable: {e}")
 
 
 @app.post("/client-log")
