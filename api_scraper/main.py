@@ -1159,11 +1159,16 @@ def _insert_pending_digi_json(user_id: str, invoices: list, user_token: str = ""
     key    = SUPA_KEY
     bearer = user_token or key
 
-    # URLs déjà en base pour cet utilisateur → on ne réimporte pas.
+    # Factures déjà en base pour cet utilisateur → on ne réimporte pas. On compare
+    # sur le CHEMIN d'URL (sans les paramètres signés) : les anciennes lignes ont pour
+    # clé l'URL COMPLÈTE (ancien schéma), les nouvelles le chemin seul — normaliser les
+    # deux au chemin évite de re-créer un doublon d'une facture déjà présente lors
+    # d'une re-synchro (la signature change à chaque fois).
     gurl = f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&select=storage_key"
     greq = urllib.request.Request(gurl, headers={"apikey": key, "Authorization": f"Bearer {bearer}"})
     with urllib.request.urlopen(greq, timeout=30) as r:
-        existing = {row.get("storage_key") for row in json.loads(r.read())}
+        existing = {(row.get("storage_key") or "").split("?", 1)[0]
+                    for row in json.loads(r.read())}
 
     rows, seen = [], set()
     for inv in invoices:
