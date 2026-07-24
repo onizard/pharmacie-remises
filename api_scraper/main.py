@@ -74,6 +74,10 @@ app.add_middleware(
         "https://break-pharma.fr",
         "https://www.break-pharma.fr",
         "https://onizard.github.io",
+        # Bookmarklet mobile « un onglet » : lancé sur la page Digipharmacie, il poste
+        # directement les factures ici (pas de relais par onglet break-pharma, qui
+        # casse sur mobile car le navigateur met l'onglet d'arrière-plan en veille).
+        "https://app.digipharmacie.fr",
         "http://localhost:5500",
         "http://127.0.0.1:5500",
     ],
