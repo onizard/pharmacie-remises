@@ -1736,6 +1736,9 @@ async function _loadDigiPdfIndex() {
       (idx[mk] = idx[mk] || []).push({ key: r.storage_key, filename: r.filename, kinds: r.kinds || [] });
     }));
     state._digiPdfIndex = idx;
+    // L'index frais vient d'arriver → recaler le compteur « Détails (N) » (sinon il
+    // reste figé sur une valeur pré-chargement, ex. 62, jusqu'à l'ouverture du détail).
+    try { if (typeof _updateGrossisteBtn === 'function') _updateGrossisteBtn(); } catch (_) {}
   } catch (_) {}
 }
 // Relevés FSE archivés par le connecteur (table fse_files) — liste légère (sans
