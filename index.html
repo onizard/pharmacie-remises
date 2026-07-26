@@ -7371,10 +7371,22 @@ function _verifFillContractsSummary(year) {
   const dStyle = v => v==null ? '' : v>0.5 ? 'color:var(--red);font-weight:700' : v<-0.5 ? 'color:var(--green)' : '';
   const rows = labs.map(lab => {
     const norm = _verifNormLab(lab);
-    let att = 0, hasAtt = false;
+    let att = 0, hasAtt = false, caBrut = 0;
     for (let m = 1; m <= mMax; m++) {
-      const a = _verifRdpAttendueMonth(`${yr}-${String(m).padStart(2,'0')}`, norm, lab);
+      const mk = `${yr}-${String(m).padStart(2,'0')}`;
+      const a = _verifRdpAttendueMonth(mk, norm, lab);
       if (a != null) { att += a; hasAtt = true; }
+      // CA brut tarif (avant RSF) = répartiteur ca_brut + achats directs au BRUT
+      // (Σ pa_direct_by_pal), repli sur total_ht si le brut n'est pas ventilé.
+      ((state._grossisteMonthStats||{})[mk] || []).forEach(r => {
+        if (_verifNormLab(r.labo)===norm) caBrut += (r.ca_brut != null && r.ca_brut > 0 ? r.ca_brut : r.total_ht) || 0;
+      });
+      ((state._digiMonthStats||{})[mk] || []).forEach(r => {
+        if (_verifNormLab(r.labo)===norm) {
+          const brut = Object.values(r.pa_direct_by_pal || {}).reduce((s,v)=>s+(parseFloat(v)||0),0);
+          caBrut += brut > 0 ? brut : (r.total_ht || 0);
+        }
+      });
     }
     let rec2 = 0, rec3 = 0;
     Object.entries(_fseAssignMap(norm, lab)).forEach(([mk, c]) => {
@@ -7386,7 +7398,7 @@ function _verifFillContractsSummary(year) {
     try { _verifRenderLitige(yr, norm, lab); } catch(_) {}
     const ld = (window._litigeData || {})[`${norm}|${yr}`] || {};
     const nClaims = (ld.rows || []).filter(r => !r.officieux).length;
-    return { lab, att: hasAtt ? Math.round(att*100)/100 : null, rec2, rec3, due: ld.total || 0, nClaims };
+    return { lab, caBrut, att: hasAtt ? Math.round(att*100)/100 : null, rec2, rec3, due: ld.total || 0, nClaims };
   });
   const hasCoopCol = rows.some(r => r.rec3 > 0);
   const trs = rows.map(r => {
@@ -7394,6 +7406,7 @@ function _verifFillContractsSummary(year) {
     return `<tr onclick="_verifSelectLab('${escH(r.lab)}')" style="cursor:pointer"
         title="Cliquer pour ouvrir le détail ${escH(r.lab)}">
       <td style="text-align:left;font-weight:700;color:var(--cyan);white-space:nowrap">${escH(r.lab)}</td>
+      <td style="color:var(--cyan-dim);white-space:nowrap">${r.caBrut>0?fmtE(r.caBrut):'—'}</td>
       <td style="color:var(--amber)">${r.att!=null?fmtE(r.att):'—'}</td>
       <td style="color:var(--green)">${r.rec2>0?fmtE(r.rec2):'—'}</td>
       <td style="${dStyle(delta)}">${delta!=null?fmtE(delta):'—'}</td>
@@ -7407,6 +7420,7 @@ function _verifFillContractsSummary(year) {
       <table class="verif-tbl verif-palier">
         <thead><tr>
           <th style="text-align:left">LABO</th>
+          <th style="color:var(--cyan-dim)" title="CA brut tarif (avant RSF) — achats répartiteur + achats directs, jan→mois courant">CA BRUT</th>
           <th style="color:var(--amber)" title="Σ RDP attendue jan→mois courant (exact par CIP, sinon barème conditions × paliers répartiteur)">RDP ATT.</th>
           <th style="color:var(--green)" title="Virements RDP assignés aux mois de contrat de l'année">REC.</th>
           <th>Δ</th>
