@@ -7470,9 +7470,9 @@ function renderVerificateur() {
   if (!tb || !cnt) return;
   try { _fseApplyManual(); } catch (_) {}   // ré-injecte les virements saisis à la main
 
-  // ── Barre supérieure : bouton ℹ uniquement ──────────────────────────────
-  tb.innerHTML = `<button class="verif-tab-btn" onclick="_openManualVir()" style="margin-left:auto;color:var(--amber);font-size:11px;padding-bottom:9px;font-family:'Share Tech Mono',monospace" title="Saisir un virement que le connecteur FSE aurait raté">＋ virement manquant</button>`
-    + `<button class="verif-tab-btn" onclick="_verifOpenInfoModal()" style="margin-left:12px;color:var(--cyan-dim);font-size:14px;padding-bottom:9px" title="Aide &amp; définitions">ℹ</button>`;
+  // ── Barre supérieure : bouton ℹ uniquement (« ＋ virement manquant » déplacé
+  // tout en bas du vérificateur) ─────────────────────────────────────────────
+  tb.innerHTML = `<button class="verif-tab-btn" onclick="_verifOpenInfoModal()" style="margin-left:auto;color:var(--cyan-dim);font-size:14px;padding-bottom:9px" title="Aide &amp; définitions">ℹ</button>`;
 
   // ── Boutons années ────────────────────────────────────────────────────────
   const yr = new Date().getFullYear();
@@ -7490,6 +7490,9 @@ function renderVerificateur() {
     </div>
     <div id="verifLabPanel"></div>
     <div id="verifYearArea"></div>
+    <div style="margin-top:22px;text-align:center">
+      <button onclick="_openManualVir()" style="background:transparent;border:1px solid var(--amber);color:var(--amber);font-size:11px;padding:7px 16px;border-radius:4px;cursor:pointer;font-family:'Share Tech Mono',monospace;letter-spacing:1px" title="Saisir un virement que le connecteur FSE aurait raté">＋ virement manquant</button>
+    </div>
   `;
   _renderVerifDigiBanner(document.getElementById('verifDigiBanner'));
   if (state._digiJobRunning && !_verifDigiTimer) _startVerifDigiTimer();
