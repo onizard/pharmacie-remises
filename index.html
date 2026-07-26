@@ -13968,7 +13968,8 @@ function initConnecteurModal() {
         </div>
         <div class="conn-cat-files" style="display:none">${rowsHtml}</div>
       </div>`;
-    let html = order.map(cat => {
+    const catHtml = {};
+    order.forEach(cat => {
       const rows = cats[cat].map(entry => {
         if (entry.cloud) {
           const p = entry.cloud;
@@ -13991,8 +13992,11 @@ function initConnecteurModal() {
           <button class="conn-file-del" title="Supprimer" data-idx="${idx}">✕</button>
         </div>`;
       }).join('');
-      return section(cat, cats[cat].length, rows);
-    }).join('');
+      catHtml[cat] = section(cat, cats[cat].length, rows);
+    });
+    // « AUTRES » rendu en DERNIER (après OSPHARM et FSE Banque), tout en bas de la
+    // liste — les autres catégories (Grossiste, labos) d'abord.
+    let html = order.filter(cat => cat !== 'Autres').map(cat => catHtml[cat]).join('');
     if (monthMeta.length) {
       const mois = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
       const rows = [...monthMeta].sort((a,b)=>(b.year-a.year)||(b.month-a.month)).map(m => {
@@ -14027,6 +14031,8 @@ function initConnecteurModal() {
       }).join('');
       html += section('FSE Banque', fseFiles.length, rows);
     }
+    // Tout en bas : la catégorie « AUTRES » (fichiers non rattachés à un labo).
+    if (catHtml['Autres']) html += catHtml['Autres'];
     el.innerHTML = html;
     // Déplier / replier une catégorie au clic sur son en-tête.
     el.querySelectorAll('.conn-cat-head').forEach(h => {
