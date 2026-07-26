@@ -136,6 +136,13 @@ def _detect_format(text: str) -> str:
     if ("récapitulatif des remises" in t800 or "recapitulatif des remises" in t800
             or "remise de performance" in t800):
         return "rdp"
+    # PHARMEDISTORE — facture de « prestation » (vente d'espace publicitaire sur des
+    # sachets/sacs au visuel d'un labo) qui, en réalité, VERSE la remise 2 (RDP) du
+    # labo à l'officine. Intermédiaire de paiement (cf. Pharmedigroupe → Zydus /
+    # Viatris). Zydus n'a PAS de coop → ce versement est de la RDP, pas du R3. On
+    # l'intercepte AVANT le repli presta (qui le classerait en coopération/R3).
+    if "pharmedistore" in text.lower() or "pharmedigroupe" in text.lower():
+        return "pharmedi_rdp"
     # Prestations de services / Coopération commerciale — AVANT alloga (Alloga envoie aussi des presta)
     _presta_kw = (
         "facture de prestations de services",
@@ -764,6 +771,105 @@ def _extract_presta(text: str, provider: str, billing_date: str) -> list[dict]:
     }]
 
 
+# ── 7b. PHARMEDISTORE — versement RDP déguisé en « prestation publicitaire » ──
+#
+# Modèle réel (Zydus, facture FB2026004429) :
+#   PHARMEDISTORE  … Centre de traitement des factures
+#   FACTURE N° FB2026004429
+#   Le 20 Juillet 2026
+#   Objet : Zydus 06 Bag 2026
+#   Réglement du Programme du 29/06/2026 au 31/07/2026 :
+#   Vente espace publicitaire : 250 - Sachets papier kraft publicitaire ZYDUS …
+#   Coût H.T. : 270,00 €   TVA 20.00 % : 54,00 €   Total T.T.C.: 324,00 €
+#
+# Pharmedistore ACHÈTE à la pharmacie de l'espace publicitaire (sachets au visuel
+# du labo) : c'est le canal par lequel le labo verse sa remise 2 (RDP). On émet
+# donc type="rdp" (montant HT = valeur économique de la remise) et non "presta"
+# (qui serait compté en coopération/R3, or Zydus n'a pas de coop).
+
+def _extract_pharmedi_rdp(text: str, provider: str, billing_date: str) -> list[dict]:
+    # Labo cible nommé dans l'objet et/ou le libellé (« … publicitaire ZYDUS »).
+    labo = ""
+    up = text.upper()
+    for kw in sorted(LABOS_CIBLES, key=len, reverse=True):
+        if kw.upper() in up:
+            labo = kw.upper(); break
+    if not labo:
+        print(f"[PHARMEDI-DBG] labo introuvable | début: {text[:300]!r}", flush=True)
+        return []
+
+    # Montant HT (= valeur de la remise 2). Repli : TTC / (1+TVA).
+    total_ht = total_ttc = tva_pct = None
+    m = re.search(r'Co[ûu]t\s+H\.?\s*T\.?\s*:?[\s.]*([\d   .,]+?)\s*€', text, re.IGNORECASE)
+    if m:
+        total_ht = _to_float(m.group(1))
+    m = re.search(r'Total\s+T\.?\s*T\.?\s*C\.?\s*:?[\s.]*([\d   .,]+?)\s*€', text, re.IGNORECASE)
+    if m:
+        total_ttc = _to_float(m.group(1))
+    m = re.search(r'TVA\s+([\d.,]+)\s*%', text, re.IGNORECASE)
+    if m:
+        tva_pct = _to_float(m.group(1))
+    if total_ht is None and total_ttc is not None:
+        total_ht = round(total_ttc / (1 + (tva_pct or 20.0) / 100), 2)
+    if not total_ht:
+        print(f"[PHARMEDI-DBG] montant introuvable | labo={labo} | début: {text[:300]!r}", flush=True)
+        return []
+    if total_ttc is None:
+        total_ttc = round(total_ht * (1 + (tva_pct or 20.0) / 100), 2)
+
+    # Mois de rattachement : d'abord le mois de programme de l'objet
+    # (« … 06 … 2026 » → 2026-06), sinon le début de période (« du 29/06/2026 au »),
+    # sinon la date de facture.
+    period_month = ""
+    mo = re.search(r'Objet[^\n]*?\b(\d{2})\b[^\n]*?\b(20\d{2})\b', text, re.IGNORECASE)
+    if mo and 1 <= int(mo.group(1)) <= 12:
+        period_month = f"{mo.group(2)}-{mo.group(1)}"
+    if not period_month:
+        mp = re.search(r'du\s+(\d{2})/(\d{2})/(\d{4})\s+au', text, re.IGNORECASE)
+        if mp:
+            period_month = f"{mp.group(3)}-{mp.group(2)}"
+
+    # Date de facture (« Le 20 Juillet 2026 ») → billing_date si absente.
+    mb = re.search(r'\bLe\s+(\d{1,2})\s+([A-Za-zéûôîèàäëïüÉÛÔ]+)\s+(20\d{2})', text)
+    if mb:
+        mm = _MOIS_FR_LONG.get(mb.group(2).lower())
+        if mm:
+            billing_date = f"{mb.group(3)}-{mm}-{int(mb.group(1)):02d}"
+    if not period_month:
+        period_month = billing_date[:7]
+
+    # N° de facture (« FACTURE N° FB2026004429 ») — commence souvent par des lettres,
+    # donc _extract_doc_ref (qui exige un chiffre en tête) ne le capte pas.
+    facture_num = ""
+    mf = re.search(r'FACTURE\s+N[°ºo]\s*:?\s*([A-Z0-9]+)', text, re.IGNORECASE)
+    if mf:
+        facture_num = mf.group(1).upper()
+    else:
+        facture_num = _extract_doc_ref(text)
+
+    return [{
+        "type":         "rdp",              # remise 2 déguisée (PAS presta/coop)
+        "labo":         labo,
+        "fournisseur":  provider,
+        "billing_date": billing_date,
+        "period_month": period_month,
+        "montant":      total_ht,
+        "total_ht":     total_ht,
+        "total_ttc":    total_ttc,
+        "tva_pct":      tva_pct or 20.0,
+        "facture_num":  facture_num,
+        "rdp_lines":    [],                 # pas de ventilation par palier disponible
+        "quantite":     0,
+    }]
+
+
+_MOIS_FR_LONG = {
+    "janvier": "01", "février": "02", "fevrier": "02", "mars": "03", "avril": "04",
+    "mai": "05", "juin": "06", "juillet": "07", "août": "08", "aout": "08",
+    "septembre": "09", "octobre": "10", "novembre": "11", "décembre": "12", "decembre": "12",
+}
+
+
 # ── 8. MDL CERP — Statistique Marge Dégressive Lissée ────────────────────────
 #
 # Format : "STATISTIQUE DE LA MARGE DEGRESSIVE LISSEE DES SPECIALITES MEDICALES
@@ -1038,6 +1144,8 @@ def extract_invoice_lines(pdf_path: Path, provider: str, billing_date: str) -> l
                 lines = _extract_cooperation(full_text, provider, billing_date)
             elif fmt == "rdp":
                 lines = _extract_rdp(full_text, provider, billing_date)
+            elif fmt == "pharmedi_rdp":
+                lines = _extract_pharmedi_rdp(full_text, provider, billing_date)
             elif fmt == "presta":
                 lines = _extract_presta(full_text, provider, billing_date)
             else:
