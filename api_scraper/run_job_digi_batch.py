@@ -547,6 +547,55 @@ def _dedupe(user_id: str) -> int:
     return len(dele)
 
 
+def _purge_old_years(user_id: str) -> int:
+    """Ne conserve que les documents des années N-1 et N (année courante) : supprime
+    les digi_files dont l'année est antérieure à N-1. « Le programme ne garde que les
+    documents concernés par les années n-1 et n. » Fenêtre glissante : en 2027, garde
+    2026-2027 et purge 2025.
+
+    Année déterminée d'abord par les mois de rattachement (months), sinon par la DATE
+    DDMMYYYY du nom de fichier. Un fichier sans année fiable est CONSERVÉ (prudence :
+    on ne supprime jamais sur un simple « 20XX » qui pourrait venir d'un n° de facture)."""
+    from datetime import datetime as _dt
+    cur_year = _dt.now().year
+    keep = {cur_year, cur_year - 1}
+    key = _supa_key()
+    url = f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&select=id,filename,months&order=id.asc"
+    req = urllib.request.Request(url, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            rows = json.loads(r.read())
+    except urllib.error.HTTPError:
+        return 0
+    dele = []
+    for row in rows:
+        yrs = set()
+        for m in (row.get("months") or []):
+            mm = re.match(r'(\d{4})-\d{2}', str(m))
+            if mm:
+                yrs.add(int(mm.group(1)))
+        if yrs:
+            if not (yrs & keep):
+                dele.append(row["id"])
+            continue
+        # Pas de months → année depuis la DATE du nom (…_DDMMYYYY.pdf), fiable ;
+        # pas de repli « 20XX » générique (éviterait un faux positif sur un n° de doc).
+        m = re.search(r'(?:^|[_-])\d{2}\d{2}(20\d{2})(?:\.[Pp][Dd][Ff])?', row.get("filename") or "")
+        if m and int(m.group(1)) not in keep:
+            dele.append(row["id"])
+    if not dele:
+        return 0
+    for i in range(0, len(dele), 100):
+        ids = ",".join(str(x) for x in dele[i:i + 100])
+        durl = f"{SUPA_URL}/rest/v1/digi_files?user_id=eq.{user_id}&id=in.({ids})"
+        dreq = urllib.request.Request(durl, method="DELETE", headers={
+            "apikey": key, "Authorization": f"Bearer {key}", "Prefer": "return=minimal"})
+        with urllib.request.urlopen(dreq, timeout=60):
+            pass
+    print(f"→ purge N-1/N : {len(dele)} document(s) d'année antérieure supprimé(s)", flush=True)
+    return len(dele)
+
+
 def main():
     if not USER_ID:
         print("!! USER_ID manquant — abandon", flush=True)
@@ -620,6 +669,7 @@ def main():
     # Ré-indexation des avoirs existants mal datés / sans catégorie, puis dé-doublonnage.
     reidx = _reindex(USER_ID)
     nlabo = _backfill_labo_kinds(USER_ID)
+    npurge = _purge_old_years(USER_ID)   # ne garder que N-1 et N
     ndup  = _dedupe(USER_ID)
 
     parts = []
@@ -628,6 +678,7 @@ def main():
     if nfix:  parts.append(f"{nfix} réparé(s)")
     if reidx: parts.append(f"{reidx} ré-indexé(s)")
     if nlabo: parts.append(f"{nlabo} labo(s) taggé(s)")
+    if npurge: parts.append(f"{npurge} ancien(s) purgé(s)")
     if ndup:  parts.append(f"{ndup} doublon(s) supprimé(s)")
     _persist(USER_ID, acc, {"status": "done", "done": total, "total": total,
                             "message": "Terminé : " + (", ".join(parts) if parts else "rien à faire")})
