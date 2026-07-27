@@ -10295,8 +10295,18 @@ async function launchSimulation() {
     // que les déplacements de palier saisis à la main soient pris en compte au bon mois.
     try { _rebuildRsfMidyear(); } catch (_) {}
 
-    // Marquer l'année sur chaque condition pour que getRemise choisisse le bon rsf_pct_by_year
+    // Comparateur : TOUJOURS les conditions LES PLUS RÉCENTES de chaque labo. lp.conditions
+    // peut sinon refléter le mois actif de l'éditeur — ou la base figée si l'éditeur n'a jamais
+    // été ouvert pour ce labo — et rater le dernier barème (ex. Zydus : remise 2 du palier 10
+    // passée à 0 en avril 2026). On bascule vers la vue effective de décembre = le dernier
+    // override mensuel en vigueur dans l'année ; _baseConds{2026,2025} conserve la VRAIE base
+    // pour la sérialisation (l'éditeur la ré-échange ensuite au mois actif). Puis on marque
+    // l'année pour que getRemise choisisse le bon rsf_pct_by_year.
     state.labPages.forEach(lp => {
+      lp._baseConds2026 = lp._baseConds2026 || lp.conditions;
+      lp._baseConds2025 = lp._baseConds2025 || lp.conditions2025;
+      lp.conditions     = JSON.parse(JSON.stringify(getEffectiveCondsForMonth(lp, 2026, 12) || []));
+      lp.conditions2025 = JSON.parse(JSON.stringify(getEffectiveCondsForMonth(lp, 2025, 12) || []));
       (lp.conditions     || []).forEach(c => { c._year = 2026; });
       (lp.conditions2025 || []).forEach(c => { c._year = 2025; });
     });
