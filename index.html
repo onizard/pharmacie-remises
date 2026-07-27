@@ -757,7 +757,8 @@
   .verif-lab-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; padding: 6px 14px; cursor: pointer; border-radius: 2px; transition: border-color .12s, color .12s, background .12s; }
   .verif-lab-btn.active { border-color: var(--cyan-dim); color: var(--text); }
   .verif-lab-btn.selected { border-color: var(--amber) !important; color: var(--amber) !important; background: rgba(255,171,0,.08) !important; box-shadow: 0 0 8px rgba(255,171,0,.35); }
-  .verif-lab-btn:hover:not(.selected) { border-color: var(--text); color: var(--text); }
+  .verif-lab-btn:hover:not(.selected):not(:disabled) { border-color: var(--text); color: var(--text); }
+  .verif-lab-btn:disabled { opacity: .35; cursor: not-allowed; }
   .verif-contract-card { border: 1px solid var(--amber); background: rgba(255,171,0,.04); border-radius: 3px; padding: 12px 16px; margin-bottom: 8px; }
   .verif-contract-title { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; color: var(--amber); letter-spacing: 2px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
   .verif-contract-fields { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
@@ -7333,6 +7334,9 @@ function _verifAutoCondIdx(lab, condYear, conds) {
 
 // ── Sélection inline labo ──────────────────────────────────────────────────
 function _verifSelectLab(lab) {
+  // Garde-fou : un labo sans contrat signé sur l'année affichée n'est pas analysable
+  // (son bouton est déjà grisé/désactivé — ceci couvre les appels programmatiques).
+  if (lab && !_verifIsDirectContract(lab, parseInt(_verifSelYear))) return;
   _verifSelLab = (_verifSelLab === lab) ? null : lab;
   _verifRenderLabGrid();
   _verifRenderLabPanel();
@@ -7341,13 +7345,18 @@ function _verifSelectLab(lab) {
 
 function _verifRenderLabGrid() {
   const wrap = document.getElementById('verifLabGrid'); if (!wrap) return;
+  const yr = parseInt(_verifSelYear);
   wrap.innerHTML = LABS_ALL.map(lab => {
-    const lp_g  = (state.labPages || []).find(p => p.selectedLab === lab);
-    const isOn  = !!(lp_g?.contractSigned || lp_g?.contractSigned25);
+    // Contrat de l'ANNÉE AFFICHÉE — et non « signé sur l'une des deux années » : un
+    // labo sous contrat en N mais pas en N-1 (ex. Zydus, signé au 01/01/2026) n'est
+    // pas analysable en N-1 → bouton grisé et non cliquable, au lieu d'ouvrir une
+    // vue « simple proposition » qui donnait l'illusion d'un affichage obsolète.
+    const isOn  = _verifIsDirectContract(lab, yr);
     const isSel = _verifSelLab === lab;
-    return `<button class="verif-lab-btn${isOn ? ' active' : ''}${isSel ? ' selected' : ''}"
-      onclick="_verifSelectLab('${escH(lab)}')"
-    >${escH(lab)}</button>`;
+    return `<button class="verif-lab-btn${isOn ? ' active' : ''}${isSel ? ' selected' : ''}"${
+      isOn ? ` onclick="_verifSelectLab('${escH(lab)}')"`
+           : ` disabled title="Aucun contrat signé en ${yr} — à cocher dans MES CONDITIONS LABO"`
+    }>${escH(lab)}</button>`;
   }).join('');
 }
 
@@ -14971,7 +14980,7 @@ document.addEventListener('DOMContentLoaded', function() {
   <a id="footerFeedback">✉ une question, une suggestion ?</a>
   <a id="footerCgu">CGU</a>
   <!-- APP_VERSION : à incrémenter à chaque déploiement (repère « à jour ? » sur mobile) -->
-  <span id="footerVersion" title="Version déployée. Si ton mobile affiche une version antérieure, recharge la page (tire vers le bas)." style="opacity:.5;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.5px">v2026.07.27</span>
+  <span id="footerVersion" title="Version déployée. Si ton mobile affiche une version antérieure, recharge la page (tire vers le bas)." style="opacity:.5;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.5px">v2026.07.27b</span>
 </footer>
 
 <!-- ── Modale Feedback ────────────────────────────────────────────────────── -->
