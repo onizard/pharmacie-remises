@@ -14988,9 +14988,26 @@ document.addEventListener('DOMContentLoaded', function() {
 <footer class="site-footer">
   <a id="footerFeedback">✉ une question, une suggestion ?</a>
   <a id="footerCgu">CGU</a>
-  <!-- APP_VERSION : à incrémenter à chaque déploiement (repère « à jour ? » sur mobile) -->
-  <span id="footerVersion" title="Version déployée. Si ton mobile affiche une version antérieure, recharge la page (tire vers le bas)." style="opacity:.5;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.5px">v2026.07.27c</span>
+  <!-- APP_VERSION : renseignée automatiquement (voir le script ci-dessous) ; la valeur
+       écrite ici ne sert que de repli si l'en-tête Last-Modified est absent. -->
+  <span id="footerVersion" title="Date du fichier réellement chargé. Si ton mobile affiche une date antérieure au PC, recharge la page (tire vers le bas)." style="opacity:.5;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.5px">v2026.07.28</span>
 </footer>
+<script>
+  // Version = date de dernière modification du fichier RÉELLEMENT chargé par le
+  // navigateur (en-tête Last-Modified renvoyé par GitHub Pages, conservé y compris
+  // depuis le cache). Deux avantages sur un numéro écrit à la main : elle est
+  // toujours exacte (aucun bump à oublier ni à dater par erreur) et, sur un mobile
+  // servi depuis le cache, elle affiche la date de l'ANCIEN fichier — ce qui est
+  // précisément le signal recherché pour savoir s'il faut recharger.
+  (function () {
+    var el = document.getElementById('footerVersion');
+    if (!el) return;
+    var d = new Date(document.lastModified);
+    if (isNaN(d.getTime())) return;                 // en-tête absent → on garde le repli
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    el.textContent = 'v' + d.getFullYear() + '.' + p(d.getMonth() + 1) + '.' + p(d.getDate());
+  })();
+</script>
 
 <!-- ── Modale Feedback ────────────────────────────────────────────────────── -->
 <div id="labsInfoModal" class="bp-modal">
