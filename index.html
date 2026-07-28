@@ -7412,23 +7412,32 @@ function _verifFillContractsSummary(year) {
     const ld = (window._litigeData || {})[`${norm}|${yr}`] || {};
     const nClaims = (ld.rows || []).filter(r => !r.officieux).length;
     return { lab, caBrut, att: hasAtt ? Math.round(att*100)/100 : null,
-             coopAtt: Math.round(coopAtt*100)/100, rec2, rec3, due: ld.total || 0, nClaims };
+             coopAtt: Math.round(coopAtt*100)/100, rec2, rec3, nClaims };
   });
   // Colonnes coop affichées dès qu'un labo a une coop ATTENDUE ou REÇUE (avant, une
   // coop due mais jamais versée faisait disparaître le bloc → écart invisible).
   const hasCoopCol = rows.some(r => r.rec3 > 0 || r.coopAtt > 0);
   const trs = rows.map(r => {
-    const delta = r.att != null ? r.att - r.rec2 : null;
+    // « À réclamer » = somme des DEUX écarts (RDP + coop) → le tableau est
+    // arithmétiquement lisible de bout en bout : chaque Δ = ATT. − REC., et le total
+    // = Δ RDP + Δ coop. NB : un trop-perçu (Δ négatif) compense donc désormais un
+    // manque sur l'autre poste, et ce total peut différer du récap « À RÉCLAMER AU
+    // LABO » du détail (moteur litige mois par mois, coop exclue, délai M+2 respecté),
+    // qui reste seul à alimenter le courrier de réclamation.
+    const dRdp  = r.att != null ? r.att - r.rec2 : null;
+    const dCoop = r.coopAtt - r.rec3;
+    const due   = (dRdp || 0) + dCoop;
     return `<tr onclick="_verifSelectLab('${escH(r.lab)}')" style="cursor:pointer"
         title="Cliquer pour ouvrir le détail ${escH(r.lab)}">
       <td style="text-align:left;font-weight:700;color:var(--cyan);white-space:nowrap">${escH(r.lab)}</td>
       <td style="color:var(--cyan-dim);white-space:nowrap">${r.caBrut>0?fmtE(r.caBrut):'—'}</td>
       <td style="color:var(--amber)">${r.att!=null?fmtE(r.att):'—'}</td>
       <td style="color:var(--green)">${r.rec2>0?fmtE(r.rec2):'—'}</td>
-      <td style="${dStyle(delta)}">${delta!=null?fmtE(delta):'—'}</td>
+      <td style="${dStyle(dRdp)}">${dRdp!=null?fmtE(dRdp):'—'}</td>
       ${hasCoopCol?`<td style="color:var(--amber)">${r.coopAtt>0?fmtE(r.coopAtt):'—'}</td>
-      <td style="color:var(--green)">${r.rec3>0?fmtE(r.rec3):'—'}</td>`:''}
-      <td style="${r.due>0.5?'color:var(--red);font-weight:700':'color:var(--green)'}">${r.due>0.5?`${fmtE(r.due)} (${r.nClaims})`:'✓ rien'}</td>
+      <td style="color:var(--green)">${r.rec3>0?fmtE(r.rec3):'—'}</td>
+      <td style="${dStyle(dCoop)}">${(r.coopAtt>0||r.rec3>0)?fmtE(dCoop):'—'}</td>`:''}
+      <td style="${due>0.5?'color:var(--red);font-weight:700':'color:var(--green)'}">${due>0.5?`${fmtE(due)} (${r.nClaims})`:'✓ rien'}</td>
     </tr>`;
   }).join('');
   wrap.innerHTML = `
@@ -7440,10 +7449,11 @@ function _verifFillContractsSummary(year) {
           <th style="color:var(--cyan-dim)" title="CA brut tarif (avant RSF) — achats répartiteur + achats directs, jan→mois courant">CA BRUT</th>
           <th style="color:var(--amber)" title="Σ RDP attendue jan→mois courant (exact par CIP, sinon barème conditions × paliers répartiteur)">RDP ATT.</th>
           <th style="color:var(--green)" title="Virements RDP assignés aux mois de contrat de l'année">REC.</th>
-          <th>Δ</th>
+          <th title="Écart RDP = RDP attendue − RDP reçue (positif = manquant, négatif = trop perçu)">Δ</th>
           ${hasCoopCol?`<th style="color:var(--amber)" title="Σ coop attendue sur l'année (achats justificatif × remise 3 des conditions × 1,20 TTC × coefficient de réalisation du contrat)">COOP ATT.</th>
-          <th style="color:var(--green)" title="Virements coop assignés aux mois de contrat de l'année">COOP REC.</th>`:''}
-          <th title="Total officiel du récap « à réclamer » (coop exclue) — (n) = nombre de réclamations">À RÉCLAMER</th>
+          <th style="color:var(--green)" title="Virements coop assignés aux mois de contrat de l'année">COOP REC.</th>
+          <th title="Écart coop = coop attendue − coop reçue (positif = manquant, négatif = trop perçu)">Δ</th>`:''}
+          <th title="Somme des deux écarts (Δ RDP + Δ coop) — (n) = nombre de réclamations détectées par le récap détaillé">À RÉCLAMER</th>
         </tr></thead>
         <tbody>${trs}</tbody>
       </table>
