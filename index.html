@@ -8761,8 +8761,25 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
 function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   const digiRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
-  const paliers   = (grosRow && Array.isArray(grosRow.paliers))     ? grosRow.paliers     : [];
+  let   paliers   = (grosRow && Array.isArray(grosRow.paliers))     ? grosRow.paliers     : [];
   const rdpByTaux = (digiRow && Array.isArray(digiRow.rdp_by_taux)) ? digiRow.rdp_by_taux : [];
+  // MOIS EN COURS : ni justificatif répartiteur ni avoir RDP encore reçus, mais des
+  // achats DIRECTS déjà facturés (CSP/Digi). On reconstruit des paliers depuis
+  // pa_direct_by_pal (dont la clé EST la catégorie RSF de la ligne de facture) pour
+  // rendre le MÊME tableau que les mois échus, au lieu de retomber sur l'ancien
+  // affichage (« RSF — » puis le nom du labo). La remise RSF étant déjà accordée SUR
+  // la facture, attendue = reçue → écart nul, ce qui est exact. Ne s'applique QUE
+  // faute de données répartiteur/avoir : sinon les achats directs sont déjà comptés
+  // via le ca_direct de l'avoir, et on doublerait.
+  let directOnly = false;
+  if (!paliers.length && !rdpByTaux.length) {
+    paliers = Object.entries((digiRow && digiRow.pa_direct_by_pal) || {}).map(([pal, brut]) => {
+      const taux = Math.abs(parseFloat(pal)), b = parseFloat(brut) || 0;
+      return (isNaN(taux) || b <= 0) ? null
+        : { taux, qty: 0, brut: b, remise: b*taux/100, net: b*(1-taux/100) };
+    }).filter(Boolean).sort((a,b) => a.taux - b.taux);
+    directOnly = paliers.length > 0;
+  }
   if (!paliers.length && !rdpByTaux.length) return null;
   // Reçu = virements ASSIGNÉS à ce mois de contrat (période payée), pas les
   // virements encaissés ce mois-ci — voir _fseAssignMap.
@@ -8782,7 +8799,8 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const r2RecAnnounced = !(fseR2 > 0) && (digiRow?.rdp_total || 0) > 0;
   const r2RecTotal = fseR2 > 0 ? fseR2 : (digiRow?.rdp_total || 0);
   const [mkY, mkM] = mk.split('-').map(Number);
-  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, mkY, mkM, null, r2RecAnnounced)
+  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, mkY, mkM, null, r2RecAnnounced,
+                                null, directOnly ? 'achats directs — justificatif répartiteur non encore déposé' : null)
        + _verifRenderVirements([mk], selNorm, labDisplay, digiRow?.rdp_total || 0);
 }
 
@@ -8964,7 +8982,7 @@ function _rdpPairMap(rdpByTaux, paliers, cmap, emap) {
 
 // Rendu commun du tableau par palier (mensuel ou cumul annuel).
 // cumulYear : null pour un mois donné, l'année pour le cumul Jan→Déc.
-function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, year, monthForCond, cumulYear, r2RecAnnounced, rmapPre) {
+function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, year, monthForCond, cumulYear, r2RecAnnounced, rmapPre, achatsNote) {
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const fmtP = v => v != null ? (Math.round(v*100)/100).toString().replace('.',',') + ' %' : '—';
   const TVA_R3 = 1.20, isBio = _verifHasCoop(labDisplay, cumulYear || year);   // labo à coop (Biogaran) vs contrat direct RDP (Zydus)
@@ -9213,7 +9231,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       <span style="color:var(--amber);font-weight:700">▸ Attendue</span>
       <span style="color:var(--green)">▸ Reçue</span>
     </div>
-    ${bloc('ACHATS & RSF', headAchats, rowsD.map(r=>`<tr>${r.achats}</tr>`).join(''), totAchats, 'info répartiteur')}
+    ${bloc('ACHATS & RSF', headAchats, rowsD.map(r=>`<tr>${r.achats}</tr>`).join(''), totAchats, achatsNote || 'info répartiteur')}
     ${bloc('REMISE 2 / RDP', headR2, rowsD.map(r=>`<tr>${r.r2}</tr>`).join(''), totR2, '')}
     ${isBio ? bloc('REMISE 3 / COOP', headR3, rowsD.map(r=>`<tr>${r.r3}</tr>`).join(''), totR3, 'reçu = virements FSE (au TOTAL)') : ''}`;
 }
