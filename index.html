@@ -2854,10 +2854,20 @@ document.addEventListener('visibilitychange', () => {
 });
 // pagehide plus fiable que visibilitychange lors de la fermeture du navigateur
 window.addEventListener('pagehide', _flushState);
-// Sync périodique : sur 2 ordis physiques, les 2 onglets restent "visibles" sur leur écran
-// (visibilitychange ne se déclenche pas). Un poll régulier détecte une écriture faite depuis
-// un AUTRE poste et recharge le cloud (cloud fait foi). Ne touche pas si une save est en attente.
-setInterval(() => { if (!document.hidden && _initDone && !_cloudSavePending) _checkCloudSync(); }, 25000);
+// Sync périodique — volontairement PARCIMONIEUSE. La synchro de référence a lieu au
+// démarrage/à la connexion, puis à chaque retour sur l'onglet (visibilitychange
+// ci-dessus). Le poll ne sert donc plus qu'à un cas précis : faire apparaître tout
+// seuls les résultats d'un traitement EN COURS (OSPHARM, Digi, FSE), ou détecter une
+// écriture d'un autre poste resté visible en parallèle. On ne l'exécute donc que si
+// un job tourne, et à une cadence bien plus faible (2 min au lieu de 25 s) : au repos,
+// plus aucune requête de fond. (Depuis _adoptCloudState, une synchro ne recharge
+// de toute façon plus jamais la page.)
+const _SYNC_POLL_MS = 120000;
+setInterval(() => {
+  if (document.hidden || !_initDone || _cloudSavePending) return;
+  const jobRunning = !!(state._ospJobRunning || state._digiJobRunning || state._ospConnecting);
+  if (jobRunning) _checkCloudSync();
+}, _SYNC_POLL_MS);
 
 async function _checkCloudSync() {
   try {
