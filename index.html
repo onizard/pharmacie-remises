@@ -2874,16 +2874,91 @@ async function _checkCloudSync() {
     const _cloudTs   = cs.savedAt || 0;
     const _cloudLabs = (cs.labPages || []).filter(lp => lp.selectedLab).length;
     // Last-write-wins : si un autre appareil a écrit plus récemment, le cloud fait foi.
-    // On recharge pour adopter intégralement la dernière vérité (valeurs + suppressions).
+    // Adoption EN PLACE (plus de rechargement de page — voir _adoptCloudState).
     // Garde-fou : ignorer un cloud vide (0 labo) — ne jamais se faire écraser par du vide.
     if (_cloudTs > _truthSavedAt && _cloudLabs > 0) {
-      showToast('↺ Synchronisation depuis le cloud…');
-      setTimeout(() => location.reload(), 1200);
+      _adoptCloudState(cs, _cloudTs);
     } else if (_truthSavedAt > _cloudTs) {
       // Notre état local est plus récent → le pousser pour qu'il devienne la vérité partagée.
       saveState();
     }
   } catch(_) {}
+}
+
+// Adoption d'un état cloud plus récent SANS RECHARGER LA PAGE.
+// Avant, toute écriture cloud (autre appareil, scraper, connecteur) déclenchait un
+// location.reload() : avec deux appareils ouverts, chacun rechargeait l'autre en
+// boucle toutes les 25 s. On distingue désormais deux cas :
+//   • DONNÉES (stats mensuelles, virements, fichiers…) → adoptées en mémoire puis
+//     simple re-rendu de la page courante : mise à jour invisible et sans à-coup.
+//   • CONDITIONS LABO (labPages) → elles pilotent des formulaires DÉJÀ rendus ; les
+//     remplacer à chaud désynchroniserait le DOM. On ne touche à rien et on propose
+//     une actualisation explicite, déclenchée par l'utilisateur quand il le souhaite.
+function _adoptCloudState(cs, cloudTs) {
+  const _pick = (snake, camel) => (snake && Object.keys(snake).length) ? snake : camel;
+  const nonEmpty = v => v && (Array.isArray(v) ? v.length : Object.keys(v).length);
+
+  // 1) Les conditions ont-elles changé ailleurs ? (comparaison sur la forme sérialisée)
+  let condsChanged = false;
+  try {
+    condsChanged = JSON.stringify(cs.labPages || []) !== JSON.stringify(serializeState().labPages || []);
+  } catch(_) {}
+
+  // 2) Adoption des agrégats de données (jamais liés à un formulaire ouvert).
+  const set = (k, v) => { if (nonEmpty(v)) state[k] = v; };
+  set('_monthStats',          cs.monthStats);
+  set('_monthMeta',           cs.monthMeta);
+  set('_digiMonthStats',      _pick(cs.digi_month_stats,      cs.digiMonthStats));
+  set('_grossisteMonthStats', _pick(cs.grossiste_month_stats, cs.grossisteMonthStats));
+  set('_grossisteCipStats',   _pick(cs.grossiste_cip_stats,   cs.grossisteCipStats));
+  set('_fseMonthStats',       _pick(cs.fse_month_stats,       cs.fseMonthStats));
+  set('_escompteStats',       cs.escompteStats);
+  set('_mdlStats',            cs.mdlStats);
+  set('_fseOverrides',        cs.fseOverrides);
+  set('_fseManualVir',        cs.fseManualVir);
+  set('_grossisteUploads',    cs.grossisteUploads);
+  set('_grossisteGmailFiles', cs.grossisteGmailFiles);
+  set('_digiUploads',         cs.digiUploads);
+  set('_fseUploads',          cs.fseUploads);
+  if (cs.monthSavedAt) state._monthSavedAt = cs.monthSavedAt;
+  if (cs.digiSavedAt)  state._digiSavedAt  = cs.digiSavedAt;
+  if (cs.fseSavedAt)   state._fseSavedAt   = cs.fseSavedAt;
+
+  // 3) Cette version devient notre référence (sinon on la ré-adopterait en boucle),
+  //    et le cache local reste aligné pour le prochain démarrage.
+  _truthSavedAt = cloudTs;
+  try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
+
+  // 4) Re-rendu de la vue courante — ces pages se reconstruisent entièrement depuis
+  //    l'état, donc l'écran reflète les nouvelles données sans rechargement.
+  try {
+    if (state.currentPageId === 'verificateur')    renderVerificateur();
+    else if (state.currentPageId === 'recap')      renderRecap();
+    if (typeof _updateGrossisteBtn === 'function') _updateGrossisteBtn();
+    const l = document.getElementById('grossisteFileList');
+    if (l && l.style.display !== 'none' && typeof _renderGrossisteList === 'function') _renderGrossisteList();
+  } catch(e) { console.warn('[BP] adoption cloud — re-rendu :', e); }
+
+  if (condsChanged) _showCondsChangedBar();
+}
+
+// Bandeau discret : les conditions labo ont été modifiées depuis un autre appareil.
+// Non bloquant, affiché une seule fois — l'utilisateur choisit le moment d'actualiser.
+function _showCondsChangedBar() {
+  if (document.getElementById('condsChangedBar')) return;
+  const bar = document.createElement('div');
+  bar.id = 'condsChangedBar';
+  bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:100000;background:#0b2b33;'
+    + 'color:#d9fbff;border-top:1px solid #00e5ff;padding:9px 14px;font-family:system-ui,sans-serif;'
+    + 'font-size:13px;line-height:1.4;display:flex;align-items:center;gap:12px;justify-content:center;flex-wrap:wrap';
+  bar.innerHTML = '<span>↺ Vos <b>conditions labo</b> ont été modifiées depuis un autre appareil.</span>'
+    + '<button id="condsChangedReload" style="background:#00e5ff;color:#04060f;border:none;border-radius:6px;'
+    + 'padding:6px 14px;font-weight:700;font-size:12px;cursor:pointer">ACTUALISER</button>'
+    + '<button id="condsChangedDismiss" style="background:transparent;color:#8fd9e6;border:1px solid #2a6b78;'
+    + 'border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">Plus tard</button>';
+  document.body.appendChild(bar);
+  document.getElementById('condsChangedReload').addEventListener('click', () => location.reload());
+  document.getElementById('condsChangedDismiss').addEventListener('click', () => bar.remove());
 }
 
 async function saveRsfDefaults() {
@@ -4094,30 +4169,30 @@ async function syncDigiConnector() {
 
 // ── Activités pharmacien pendant chargement OSPHARM ──────────────────────────
 const _OSP_ACTIVITIES = [
-  { min: 45, emoji: '👵', label: '~45 min',  text: 'd\'aller vous occuper de votre plus ancienne cliente — elle veut parler de ses genoux, de son fils à Lyon, et du prix du beurre en 1987. Comptez large.' },
-  { min: 30, emoji: '🩺', label: '~30 min',  text: 'de faire un bilan de prévention complet. Si tant est que vous retrouviez le tensiomètre sous les boîtes de Doliprane.' },
-  { min: 20, emoji: '📦', label: '~20 min',  text: 'de ranger cette commande qui traîne sur le comptoir depuis ce matin. Ou depuis hier. On ne juge pas.' },
-  { min: 15, emoji: '🤝', label: '~15 min',  text: 'de honorer ce rendez-vous labo repoussé depuis trois semaines. Il a un nouveau générique Doliprane à vous présenter. Passionnant.' },
-  { min: 12, emoji: '💊', label: '~12 min',  text: 'de passer une commande — ou au moins de fixer l\'écran CERP d\'un air concentré.' },
-  { min: 10, emoji: '🎓', label: '~10 min',  text: 'de faire une formation DPC. Choisissez la plus courte. Personne ne contrôle vraiment.' },
-  { min: 8,  emoji: '😤', label: '~8 min',   text: 'de mettre fin à la carrière de ce collaborateur qui arrive en retard depuis novembre. C\'est le moment.' },
-  { min: 6,  emoji: '💰', label: '~6 min',   text: 'de faire les payes — activité presque aussi réjouissante que regarder cette barre progresser.' },
-  { min: 4,  emoji: '☕', label: '~4 min',   text: 'de prendre un café, de le finir tranquillement, et d\'en envisager sérieusement un deuxième.' },
-  { min: 2,  emoji: '☕☕', label: '~2 min', text: 'de prendre ce deuxième café. Vous le méritez amplement.' },
-  { min: 1,  emoji: '🥱', label: '~1 min',   text: 'de faire semblant d\'être très occupé devant le client qui vous observe depuis le fond de l\'officine.' },
-  { min: 0,  emoji: '🫵', label: '< 1 min',  text: 'à peine le temps de souffler. Restez là, le doigt sur F5.' },
+  { min: 45, emoji: '⏱', label: '~45 min',  text: 'estimé pour récupérer vos données de ventes. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 30, emoji: '⏱', label: '~30 min',  text: 'estimé pour récupérer vos données de ventes. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 20, emoji: '⏱', label: '~20 min',  text: 'estimé pour récupérer vos données de ventes. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 15, emoji: '⏱', label: '~15 min',  text: 'estimé pour récupérer vos données de ventes. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 12, emoji: '⏱', label: '~12 min',  text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 10, emoji: '⏱', label: '~10 min',  text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 8,  emoji: '⏱', label: '~8 min',   text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 6,  emoji: '⏱', label: '~6 min',   text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 4,  emoji: '⏱', label: '~4 min',   text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 2,  emoji: '⏱', label: '~2 min',   text: 'estimé. Les résultats s\'afficheront automatiquement.' },
+  { min: 1,  emoji: '⏱', label: '~1 min',   text: 'estimé. Les résultats s\'afficheront automatiquement.' },
+  { min: 0,  emoji: '⏱', label: '< 1 min',  text: 'estimé. Les résultats s\'afficheront automatiquement.' },
 ];
 
 let _ospProgressTimer = null;
 
 // ── Activités pharmacien pendant chargement DIGIPHARMACIE ─────────────────────
 const _DIGI_ACTIVITIES = [
-  { min: 8, emoji: '📄', label: '~8 min',   text: 'de ranger la paperasse sur votre bureau. Vos factures numériques arrivent — les papier, elles, attendent toujours.' },
-  { min: 6, emoji: '☕', label: '~6 min',   text: 'de prendre un café. Un vrai, pas la capsule de la salle de pause qui a le goût de plastique depuis 2019.' },
-  { min: 4, emoji: '💊', label: '~4 min',   text: 'd\'expliquer à ce client pourquoi son générique n\'est pas moins bien que la marque. Spoiler : ça prendra plus de 4 min.' },
-  { min: 2, emoji: '📱', label: '~2 min',   text: 'de répondre aux messages WhatsApp du groupe famille que vous ignorez depuis le week-end.' },
-  { min: 1, emoji: '🧾', label: '~1 min',   text: 'de vous demander pourquoi ces PDFs n\'existent pas en CSV. La réponse : personne ne sait.' },
-  { min: 0, emoji: '⚡', label: '< 1 min',  text: 'à peine. Restez là, ça arrive.' },
+  { min: 8, emoji: '⏱', label: '~8 min',   text: 'estimé pour récupérer et analyser vos factures. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 6, emoji: '⏱', label: '~6 min',   text: 'estimé pour récupérer et analyser vos factures. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 4, emoji: '⏱', label: '~4 min',   text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
+  { min: 2, emoji: '⏱', label: '~2 min',   text: 'estimé. Les résultats s\'afficheront automatiquement.' },
+  { min: 1, emoji: '⏱', label: '~1 min',   text: 'estimé. Les résultats s\'afficheront automatiquement.' },
+  { min: 0, emoji: '⏱', label: '< 1 min',  text: 'estimé. Les résultats s\'afficheront automatiquement.' },
 ];
 
 let _digiProgressTimer = null;
