@@ -4177,33 +4177,7 @@ async function syncDigiConnector() {
   return true;
 }
 
-// ── Activités pharmacien pendant chargement OSPHARM ──────────────────────────
-const _OSP_ACTIVITIES = [
-  { min: 45, emoji: '⏱', label: '~45 min',  text: 'estimé pour récupérer vos données de ventes. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 30, emoji: '⏱', label: '~30 min',  text: 'estimé pour récupérer vos données de ventes. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 20, emoji: '⏱', label: '~20 min',  text: 'estimé pour récupérer vos données de ventes. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 15, emoji: '⏱', label: '~15 min',  text: 'estimé pour récupérer vos données de ventes. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 12, emoji: '⏱', label: '~12 min',  text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 10, emoji: '⏱', label: '~10 min',  text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 8,  emoji: '⏱', label: '~8 min',   text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 6,  emoji: '⏱', label: '~6 min',   text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 4,  emoji: '⏱', label: '~4 min',   text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 2,  emoji: '⏱', label: '~2 min',   text: 'estimé. Les résultats s\'afficheront automatiquement.' },
-  { min: 1,  emoji: '⏱', label: '~1 min',   text: 'estimé. Les résultats s\'afficheront automatiquement.' },
-  { min: 0,  emoji: '⏱', label: '< 1 min',  text: 'estimé. Les résultats s\'afficheront automatiquement.' },
-];
-
 let _ospProgressTimer = null;
-
-// ── Activités pharmacien pendant chargement DIGIPHARMACIE ─────────────────────
-const _DIGI_ACTIVITIES = [
-  { min: 8, emoji: '⏱', label: '~8 min',   text: 'estimé pour récupérer et analyser vos factures. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 6, emoji: '⏱', label: '~6 min',   text: 'estimé pour récupérer et analyser vos factures. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 4, emoji: '⏱', label: '~4 min',   text: 'estimé. Le traitement se poursuit côté serveur : vous pouvez fermer la page.' },
-  { min: 2, emoji: '⏱', label: '~2 min',   text: 'estimé. Les résultats s\'afficheront automatiquement.' },
-  { min: 1, emoji: '⏱', label: '~1 min',   text: 'estimé. Les résultats s\'afficheront automatiquement.' },
-  { min: 0, emoji: '⏱', label: '< 1 min',  text: 'estimé. Les résultats s\'afficheront automatiquement.' },
-];
 
 let _digiProgressTimer = null;
 
@@ -4222,29 +4196,6 @@ function _renderDigiProgress(el) {
     return;
   }
 
-  function _calcRemainMin() {
-    const msg = state._digiJobMessage || '';
-    const m   = msg.match(/PDF\s+(\d+)\/(\d+)/i);
-    if (m) {
-      const cur = parseInt(m[1]), tot = parseInt(m[2]);
-      const remaining = tot - cur;
-      // Taux calculé depuis le 1er message de progression reçu
-      if (state._digiProgressFirstAt && state._digiProgressFirstNum != null) {
-        const done    = cur - state._digiProgressFirstNum;
-        const elapsed = Date.now() - state._digiProgressFirstAt;
-        if (done > 0) {
-          const msPerPdf = elapsed / done;
-          return Math.max(1, Math.ceil(remaining * msPerPdf / 60_000));
-        }
-      }
-      // Taux inconnu — estimation conservative 4s/PDF
-      return Math.max(1, Math.ceil(remaining * 4_000 / 60_000));
-    }
-    // Aucune progression encore — décrémente depuis 12 min
-    const elapsed = Date.now() - (state._digiJobStartedAt || Date.now());
-    return Math.max(2, 12 - Math.floor(elapsed / 60_000));
-  }
-
   function _statusText() {
     const msg = state._digiJobMessage || '';
     const m   = msg.match(/PDF\s+(\d+)\/(\d+)/i);
@@ -4252,29 +4203,22 @@ function _renderDigiProgress(el) {
   }
 
   if (!el.querySelector('#digiStatusLine')) {
-    const remainMin = _calcRemainMin();
-    const act       = _DIGI_ACTIVITIES.find(a => a.min <= remainMin) || _DIGI_ACTIVITIES[_DIGI_ACTIVITIES.length - 1];
-    const actHtml   = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
     el.innerHTML = `<div class="osp-ring-wrap">
       <div id="digiStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${_statusText()}</div>
       <div class="osp-ring spin">
         <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28"/></svg>
       </div>
-      <div id="digiActivityLine" class="osp-activity-line" style="text-align:center">${actHtml}</div>
     </div>`;
   } else {
     const stEl = document.getElementById('digiStatusLine');
     if (stEl) stEl.textContent = _statusText();
   }
 
+  // Seul le libellé d'état est rafraîchi ; le spinner tourne, sans phrase d'attente.
   _digiProgressTimer = setInterval(() => {
-    const actLine = document.getElementById('digiActivityLine');
-    const stEl    = document.getElementById('digiStatusLine');
-    if (!actLine) { clearInterval(_digiProgressTimer); return; }
-    if (stEl) stEl.textContent = _statusText();
-    const remainMin = _calcRemainMin();
-    const act = _DIGI_ACTIVITIES.find(a => a.min <= remainMin) || _DIGI_ACTIVITIES[_DIGI_ACTIVITIES.length - 1];
-    actLine.innerHTML = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${act.label}</span>— le temps ${act.text}`;
+    const stEl = document.getElementById('digiStatusLine');
+    if (!stEl) { clearInterval(_digiProgressTimer); return; }
+    stEl.textContent = _statusText();
   }, 5_000);
 }
 
@@ -4401,10 +4345,6 @@ function _renderOspProgress(el) {
     const remainMin = barPct > 0
       ? Math.ceil(Math.max(0, elapsed / (barPct / 100) - elapsed) / 60000)
       : Math.max(0, 45 - Math.floor(elapsed / 60000));
-    const act = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
-    const _tl  = remainMin <= 0 ? '< 1 min' : `~${remainMin} min`;
-    const actHtml = `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${_tl}</span>— le temps ${act.text}`;
-
     const _isStuck = elapsed > 95 * 60 * 1000;
     el.innerHTML = `<div class="osp-ring-wrap">
       <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${state._ospConnecting ? '// Connexion OSPHARM en cours…' : '// Analyse en cours — initialisation…'}</div>
@@ -4414,7 +4354,7 @@ function _renderOspProgress(el) {
       </div>
       ${_isStuck
         ? `<button class="btn btn-secondary" style="margin-top:16px;font-size:11px" id="ospStuckRelancer">⟳ JOB BLOQUÉ — RELANCER</button>`
-        : `<div id="ospActivityLine" class="osp-activity-line" style="text-align:center">${actHtml}</div>`
+        : ''
       }
     </div>`;
     if (_isStuck) {
@@ -4440,26 +4380,7 @@ function _renderOspProgress(el) {
     }
   }
 
-  // Rafraîchit la phrase ironique toutes les 5s en fonction du temps restant estimé
-  _ospProgressTimer = setInterval(() => {
-    const actLine = document.getElementById('ospActivityLine');
-    if (!actLine) { clearInterval(_ospProgressTimer); return; }
-    const { actHtml } = (function() {
-      const msg = state._ospJobMessage || '';
-      const m   = msg.match(/Mois\s+(\d+)\/(\d+)/i);
-      const cur = m ? parseInt(m[1]) : 0;
-      const tot = m ? parseInt(m[2]) : 0;
-      const elapsed   = Date.now() - (state._ospJobStartedAt || Date.now());
-      const pct       = (tot > 0 && cur > 0) ? Math.min(95, cur / tot * 100) : 0;
-      const remainMin = pct > 0
-        ? Math.ceil(Math.max(0, elapsed / (pct / 100) - elapsed) / 60000)
-        : Math.max(0, 45 - Math.floor(elapsed / 60000));
-      const act  = _OSP_ACTIVITIES.find(a => a.min <= remainMin) || _OSP_ACTIVITIES[_OSP_ACTIVITIES.length - 1];
-      const _tl2 = remainMin <= 0 ? '< 1 min' : `~${remainMin} min`;
-      return { actHtml: `<span class="osp-act-emoji">${act.emoji}</span>Revenez dans <span class="osp-act-time">${_tl2}</span>— le temps ${act.text}` };
-    })();
-    actLine.innerHTML = actHtml;
-  }, 60_000);
+  // Plus de phrase d'attente à rafraîchir : le spinner suffit.
 }
 
 function renderRecap() {
