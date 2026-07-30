@@ -94,6 +94,20 @@ def _norm_labo(raw: str) -> str:
     return n.upper()
 
 
+def _dedup_pharmedi(invoices: list[dict]) -> list[dict]:
+    """Dédoublonne les factures Pharmedistore par n° de facture (re-dépôt idempotent).
+    Les factures sans n° sont dédoublonnées par (ttc, ht, date)."""
+    seen: dict = {}
+    out: list[dict] = []
+    for inv in invoices or []:
+        key = (inv.get("facture") or "").upper() or (inv.get("ttc"), inv.get("ht"), inv.get("date"))
+        if key in seen:
+            continue
+        seen[key] = True
+        out.append(inv)
+    return out[:40]
+
+
 def _compute_digi_month_stats(lines: list[dict]) -> dict:
     """Agrège les lignes digi → {year-MM: [{labo, qty, total_ht, rdp_total, presta_total}]}.
 
@@ -102,7 +116,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
     - Lignes presta    : clé = period_month,      cumule presta_total
     """
     def _zero():
-        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0, "facture_refs": [], "rdp_by_taux": {}, "pa_direct_by_pal": {}}
+        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0, "facture_refs": [], "rdp_by_taux": {}, "pa_direct_by_pal": {}, "pharmedi_invoices": []}
 
     acc: dict[str, dict] = {}
     for line in lines:
@@ -129,6 +143,18 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
                 e["ca_" + canal]  = round(e["ca_" + canal]  + float(rl.get("ca_brut") or 0),     2)
             if line.get("facture_num"):
                 acc[mk][labo]["facture_refs"].append(str(line["facture_num"]))
+            # Versement via intermédiaire Pharmedistore (Zydus/Viatris) : on garde le
+            # montant PAR FACTURE (HT + TTC) pour pouvoir apparier le virement bancaire
+            # au centime dans le vérificateur, même quand le libellé bancaire ne porte
+            # pas le n° de facture. rdp_total (HT agrégé) ne suffit pas : le virement
+            # est encaissé TTC et plusieurs factures peuvent tomber le même mois.
+            if line.get("pharmedi"):
+                acc[mk][labo]["pharmedi_invoices"].append({
+                    "facture": str(line.get("facture_num") or ""),
+                    "ht":      round(float(line.get("total_ht")  or line.get("montant") or 0), 2),
+                    "ttc":     round(float(line.get("total_ttc") or 0), 2),
+                    "date":    str(line.get("billing_date") or ""),
+                })
 
         elif line_type == "presta":
             mk   = str(line.get("period_month") or line.get("billing_date", ""))[:7]
@@ -177,6 +203,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
               "presta_total":     round(d["presta_total"], 2),
               "presta_total_ttc": round(d.get("presta_total_ttc", d["presta_total"] * 1.20), 2),
               "facture_refs":     list(dict.fromkeys(d["facture_refs"]))[:20],
+              "pharmedi_invoices": _dedup_pharmedi(d.get("pharmedi_invoices", [])),
               "pa_direct_by_pal": d.get("pa_direct_by_pal", {}),
               "rdp_by_taux":      sorted(
                   [{"taux": tx, **v} for tx, v in d.get("rdp_by_taux", {}).items()],
@@ -237,6 +264,10 @@ def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
                         ex["presta_total"]     = round(ex.get("presta_total",0)     + nr.get("presta_total",0),     2)
                         ex["presta_total_ttc"] = round(ex.get("presta_total_ttc",0) + nr.get("presta_total_ttc",0), 2)
                     ex["facture_refs"] = list(dict.fromkeys(existing_refs + new_refs))[:20]
+                    # Factures Pharmedistore : fusion dédoublonnée par n° de facture —
+                    # re-dépôt de la même facture idempotent (pas de double appariement).
+                    ex["pharmedi_invoices"] = _dedup_pharmedi(
+                        (ex.get("pharmedi_invoices") or []) + (nr.get("pharmedi_invoices") or []))
                 else:
                     labo_map[labo] = dict(nr)
             result[mk] = sorted(labo_map.values(), key=lambda r: r["labo"])

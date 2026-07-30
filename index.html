@@ -1346,7 +1346,7 @@
       <div class="term-line"><span class="prompt">SYS:</span><span class="val">PRÊT</span><span class="cursor"></span><span id="saveBadge" class="save-badge">&nbsp;✓ sauvegardé</span></div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn-cond-labo" id="btnConditionsLabo" style="font-size:11px;padding:6px 14px">⚙ MES CONDITIONS LABO</button>
-        <button id="btnConnecteur" class="btn-connecteur" title="Déposer vos fichiers justificatifs (grossiste, RDP Digi, FSE…)">DÉPÔT DES FICHIERS</button>
+        <button id="btnConnecteur" class="btn-connecteur" title="Déposer vos fichiers justificatifs (grossiste, remise 2 Digi, FSE…)">DÉPÔT DES FICHIERS</button>
         <button id="btnTheme" class="btn-theme" title="Thème clair / sombre">☀</button>
 <div class="account-wrap">
   <button class="account-btn" id="btnAccount" title="Mon compte">
@@ -1391,7 +1391,7 @@
           <div id="grossisteDropZone" class="conn-drop-zone">
             <div class="conn-drop-icon">⬇</div>
             <div class="conn-drop-label">Déposer les fichiers ici — plusieurs fichiers acceptés</div>
-            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(255,255,255,.18);margin:3px 0">XLSX grossiste · PDF DIGI (factures, RDP, presta) · PDF escompte CERP · PDF MDL CERP · XLSX FSE banque</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(255,255,255,.18);margin:3px 0">XLSX grossiste · PDF DIGI (factures, remise 2, presta) · PDF escompte CERP · PDF MDL CERP · XLSX FSE banque</div>
             <label class="conn-drop-browse" for="grossisteFileInput">ou cliquer pour sélectionner</label>
             <input type="file" id="grossisteFileInput" multiple accept=".xlsx,.xls,.pdf,.csv" style="display:none">
           </div>
@@ -1616,9 +1616,9 @@
     <button onclick="_verifCloseInfoModal()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;line-height:1">&times;</button>
     <div style="font-family:'Orbitron',monospace;font-size:13px;font-weight:900;color:var(--cyan);letter-spacing:3px;margin-bottom:20px;text-align:center">◈ AIDE &amp; DÉFINITIONS</div>
     <div style="font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.8;color:var(--text)">
-      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">R2 — REMISE DE PERFORMANCE (RDP)</div>
-      <p style="color:var(--text-dim);margin:0 0 16px">Exonérée de TVA (art. 267-II-1° CGI) : le montant RDP est hors champ TVA → HT = TTC. L'avoir grossiste R2 est directement déductible du PA.</p>
-      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">R3 — PRESTATION DE COOPÉRATION COMMERCIALE</div>
+      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">REMISE 2 — REMISE DE PERFORMANCE</div>
+      <p style="color:var(--text-dim);margin:0 0 16px">Exonérée de TVA (art. 267-II-1° CGI) : le montant remise 2 est hors champ TVA → HT = TTC. L'avoir grossiste remise 2 est directement déductible du PA.</p>
+      <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">REMISE 3 — PRESTATION DE COOPÉRATION COMMERCIALE</div>
       <p style="color:var(--text-dim);margin:0 0 16px">Soumise à TVA 20% : la facture est émise en HT par le labo, le virement bancaire reçu est en TTC (HT × 1,20). Les colonnes affichent les deux montants pour pointer avec le relevé bancaire.</p>
       <div style="color:var(--amber);font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px">PALIER ACTIF — SÉLECTION AUTOMATIQUE (VENTES N-1)</div>
       <p style="color:var(--text-dim);margin:0 0 16px">Le palier de remise retenu est déterminé automatiquement à partir du CA réalisé l'année précédant le contrat (toutes sources : OSPHARM + achat direct + grossiste). Le seuil CA le plus élevé atteint est appliqué.</p>
@@ -5086,7 +5086,7 @@ function initLabPage(conf) {
             <input type="text" id="rgInp-${uid}-${cond.uid}" class="rsf-input" style="width:130px" placeholder="ex : 35.00" />
             <span class="rg-unit">%</span>
             ${['Teva','EG','Arrow'].includes(s.selectedLab) ? `
-            <div class="rg-label" style="margin-left:16px;color:var(--green)">COOP</div>
+            <div class="rg-label" style="margin-left:16px;color:var(--green)">REMISE 3</div>
             <input type="text" id="coopInp-${uid}-${cond.uid}" class="rsf-input" style="width:80px;border-color:rgba(0,255,136,.35)" placeholder="ex : 5" />
             <span class="rg-unit" style="color:var(--green)">%</span>
             ` : ''}
@@ -5119,7 +5119,7 @@ function initLabPage(conf) {
               <thead>
                 <tr>
                   <th>RSF&nbsp;% <button class="r3-toggle" id="ffBtn-${uid}-${cond.uid}" title="Forcer RSF First" style="display:none;font-size:11px;padding:2px 7px;vertical-align:middle;margin-left:4px"></button></th>
-                  <th id="thR2-${uid}-${cond.uid}">${(s.selectedLab === 'Biogaran' || s.contractSigned || s.contractSigned25) ? 'RDP&nbsp;(%)' : 'Remise&nbsp;2&nbsp;(%)'}</th>
+                  <th id="thR2-${uid}-${cond.uid}">Remise&nbsp;2&nbsp;(%)</th>
                   <th class="col-r3"><button class="r3-toggle" id="r3Btn-${uid}-${cond.uid}" title="Afficher / masquer la colonne Remise 3" style="font-size:11px;padding:2px 7px">+ REMISE 3</button></th>
                 </tr>
               </thead>
@@ -5647,7 +5647,7 @@ function initLabPage(conf) {
       });
 
       saveState();
-      showToast('✓ RDP et exceptions remplis depuis les CGV');
+      showToast('✓ Remise 2 et exceptions remplies depuis les CGV');
     } catch(e) { console.error('[BP] autoFillFromRsfHistory:', e); }
   }
 
@@ -5665,12 +5665,12 @@ function initLabPage(conf) {
       if (lab === 'Biogaran') {
         r3Btn.className = '';
         r3Btn.style.cssText = 'cursor:default;pointer-events:none;font-size:13px;color:var(--text-dim);background:none;border:none;padding:0;font-family:inherit;font-weight:700';
-        r3Btn.textContent = 'COOP (%)';
+        r3Btn.textContent = 'REMISE 3 (%)';
       } else if (!isAdmin) {
         r3Btn.style.display = 'none';
         table.classList.toggle('show-r3', cond.showR3);
       } else {
-        const r3Name = lab === 'Biogaran' ? 'COOP' : 'REMISE 3';
+        const r3Name = 'REMISE 3';
         r3Btn.className = 'r3-toggle';
         r3Btn.style.cssText = 'font-size:11px;padding:2px 7px';
         r3Btn.textContent = cond.showR3 ? `− ${r3Name}` : `+ ${r3Name}`;
@@ -6639,7 +6639,7 @@ function _refExcRow(lp, cond, e, paliers, showR3, box, year, activeMon) {
   }
   // Remise 2 (RDP)
   const r2w = document.createElement('div'); r2w.style.cssText = 'display:flex;align-items:center;gap:2px';
-  const r2l = document.createElement('span'); r2l.textContent = (lp.contractSigned || lp.contractSigned25 || lp.selectedLab === 'Biogaran') ? 'RDP' : 'R2'; r2l.style.color = 'var(--text-dim)';
+  const r2l = document.createElement('span'); r2l.textContent = 'R2'; r2l.style.color = 'var(--text-dim)';
   r2w.appendChild(r2l);
   r2w.appendChild(mkNum(e.remise2, '%', v => { const s = v.replace(',', '.').trim(); _refExcApply(lp, e, activeMon, yr, { remise2: s === '' ? null : parseFloat(s) }); _refExcSave(lp); _renderRefExceptions(lp, cond, box, year); }));
   row.appendChild(r2w);
@@ -6677,7 +6677,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onL
   tag.textContent = `RSF ${Math.abs(rsf_pct).toFixed(2)} %`;
   const txt = document.createElement('span');
   txt.className = 'excpt-block-text';
-  const r2lbl = labName === 'Biogaran' ? 'RDP' : 'remise 2';
+  const r2lbl = 'remise 2';
   txt.textContent = `Références avec une ${r2lbl} différente pour la catégorie RSF ${Math.abs(rsf_pct).toFixed(2)} %`;
   header.appendChild(tag); header.appendChild(txt);
   block.appendChild(header);
@@ -6703,7 +6703,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onL
   remisesRow.className = 'excpt-remise2-row';
 
   const lbl = document.createElement('span');
-  lbl.className = 'excpt-remise2-label'; lbl.textContent = labName === 'Biogaran' ? 'RDP spécifique' : 'Remise 2 spécifique';
+  lbl.className = 'excpt-remise2-label'; lbl.textContent = 'Remise 2 spécifique';
   const remInp = document.createElement('input');
   remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '80px'; remInp.autocomplete = 'off'; remInp.name = 'exc-r2';
   remInp.placeholder = 'ex : 3.00'; remInp.value = exc.remise2;
@@ -7453,13 +7453,13 @@ function _verifFillContractsSummary(year) {
         <thead><tr>
           <th style="text-align:left">LABO</th>
           <th style="color:var(--cyan-dim)" title="CA brut tarif (avant RSF) — achats répartiteur + achats directs, jan→mois courant">CA BRUT</th>
-          <th style="color:var(--amber)" title="Σ RDP attendue jan→mois courant (exact par CIP, sinon barème conditions × paliers répartiteur)">RDP ATT.</th>
-          <th style="color:var(--green)" title="Virements RDP assignés aux mois de contrat de l'année">REC.</th>
-          <th title="Écart RDP = RDP attendue − RDP reçue (positif = manquant, négatif = trop perçu)">Δ</th>
-          ${hasCoopCol?`<th style="color:var(--amber)" title="Σ coop attendue sur l'année (achats justificatif × remise 3 des conditions × 1,20 TTC × coefficient de réalisation du contrat)">COOP ATT.</th>
-          <th style="color:var(--green)" title="Virements coop assignés aux mois de contrat de l'année">COOP REC.</th>
-          <th title="Écart coop = coop attendue − coop reçue (positif = manquant, négatif = trop perçu)">Δ</th>`:''}
-          <th title="Somme des deux écarts (Δ RDP + Δ coop) — (n) = nombre de réclamations détectées par le récap détaillé">À RÉCLAMER</th>
+          <th style="color:var(--amber)" title="Σ remise 2 attendue jan→mois courant (exact par CIP, sinon barème conditions × paliers répartiteur)">REM. 2 ATT.</th>
+          <th style="color:var(--green)" title="Virements remise 2 assignés aux mois de contrat de l'année">REC.</th>
+          <th title="Écart remise 2 = remise 2 attendue − remise 2 reçue (positif = manquant, négatif = trop perçu)">Δ</th>
+          ${hasCoopCol?`<th style="color:var(--amber)" title="Σ remise 3 attendue sur l'année (achats justificatif × remise 3 des conditions × 1,20 TTC × coefficient de réalisation du contrat)">REM. 3 ATT.</th>
+          <th style="color:var(--green)" title="Virements remise 3 assignés aux mois de contrat de l'année">REM. 3 REC.</th>
+          <th title="Écart remise 3 = remise 3 attendue − remise 3 reçue (positif = manquant, négatif = trop perçu)">Δ</th>`:''}
+          <th title="Somme des deux écarts (Δ remise 2 + Δ remise 3) — (n) = nombre de réclamations détectées par le récap détaillé">À RÉCLAMER</th>
         </tr></thead>
         <tbody>${trs}</tbody>
       </table>
@@ -7812,22 +7812,22 @@ function _verifFillBiogaranCoop(year) {
     : `<span style="color:var(--amber)">CA cible (caCondition) non renseigné dans MES CONDITIONS LABO → coefficient de réalisation non appliqué.</span>`;
 
   wrap.innerHTML = `
-    <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:2px;margin:20px 0 8px">◈ COOP ${labDisplay.toUpperCase()} — ÉCHÉANCIER (plafond ${fmtE(CAP)}/mois)</div>
+    <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:2px;margin:20px 0 8px">◈ REMISE 3 ${labDisplay.toUpperCase()} — ÉCHÉANCIER (plafond ${fmtE(CAP)}/mois)</div>
     <div class="verif-note" style="margin-bottom:8px;font-size:11px;line-height:1.5">
       ${realInfo}<br>
-      Les virements coop (remise 3) sont plafonnés à ~${fmtE(CAP)}/mois ; l'excédent d'un mois est reporté sur les suivants jusqu'au solde de l'année. Un <b style="color:var(--amber)">écart positif</b> (dû &gt; reçu) en cours d'année est donc <b>normal</b> (rattrapage étalé), pas une anomalie.
+      Les virements remise 3 sont plafonnés à ~${fmtE(CAP)}/mois ; l'excédent d'un mois est reporté sur les suivants jusqu'au solde de l'année. Un <b style="color:var(--amber)">écart positif</b> (dû &gt; reçu) en cours d'année est donc <b>normal</b> (rattrapage étalé), pas une anomalie.
     </div>
     <div style="overflow-x:auto;margin-bottom:10px">
       <table class="verif-tbl">
         <thead><tr>
           <th style="text-align:left">MOIS</th>
-          <th title="Coop théorique du mois = achats HT × ${r3pct}% × TVA × coef réalisation (${coopCoef.toFixed(2)})">COOP DUE (TTC)</th>
+          <th title="Remise 3 théorique du mois = achats HT × ${r3pct}% × TVA × coef réalisation (${coopCoef.toFixed(2)})">REMISE 3 DUE (TTC)</th>
           <th>CUMUL DÛ</th>
-          <th title="Virements coop reçus (FSE) ce mois">VIRÉ (FSE)</th>
+          <th title="Virements remise 3 reçus (FSE) ce mois">VIRÉ (FSE)</th>
           <th>CUMUL VIRÉ</th>
           <th title="Cumul dû − cumul viré : reste à percevoir (étalé par le plafond)">SOLDE À VIRER</th>
         </tr></thead>
-        <tbody>${rows || `<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">// Aucune donnée coop ${labDisplay} ${yr}</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">// Aucune donnée remise 3 ${labDisplay} ${yr}</td></tr>`}</tbody>
       </table>
     </div>
     <div class="verif-note" style="font-size:11px;line-height:1.5">
@@ -7968,22 +7968,22 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
     const overdue = _mAge(mk) >= 3;                  // règlement habituel constaté : M+2
     // 1. Avoir émis mais non réglé
     if (annonce > 0 && annonce - verse > 1) {
-      rows.push({ mk, m, nature: 'unpaid', refs, annonce, verse, type: 'RDP — avoir émis NON RÉGLÉ', due: annonce - verse, urgent: overdue,
+      rows.push({ mk, m, nature: 'unpaid', refs, annonce, verse, type: 'Remise 2 — avoir émis NON RÉGLÉ', due: annonce - verse, urgent: overdue,
         preuve: `Avoir n° ${refs || '?'} émis par ${labDisplay} pour ${MOIS[m-1]} ${yr} : ${fmtE(annonce)}. `
               + `Versé : ${verse>0?fmtE(verse):'0 €'}. Aucun virement bancaire correspondant sur les relevés (rapprochement par n° de document). `
               + (overdue ? 'Échéance largement dépassée (règlement habituel constaté à M+2).' : 'Encore dans le délai habituel (M+2).') });
     }
     // 2. Avoir sous-facturé (attendu exact par référence >> annoncé)
     if (attendu != null && annonce > 0 && attendu - annonce > 50) {
-      rows.push({ mk, m, nature: 'underbilled', refs, annonce, attendu, type: 'RDP — avoir SOUS-FACTURÉ', due: attendu - annonce, urgent: true,
-        preuve: `Achats de ${MOIS[m-1]} (justificatif répartiteur, détail par référence) × barème RDP que ${labDisplay} applique lui-même `
+      rows.push({ mk, m, nature: 'underbilled', refs, annonce, attendu, type: 'Remise 2 — avoir SOUS-FACTURÉ', due: attendu - annonce, urgent: true,
+        preuve: `Achats de ${MOIS[m-1]} (justificatif répartiteur, détail par référence) × barème remise 2 que ${labDisplay} applique lui-même `
               + `les autres mois (taux vérifiés au centime sur les avoirs voisins) = ${fmtE(attendu)} attendus. Avoir émis : ${fmtE(annonce)} seulement.` });
     }
     // 3. Aucun avoir émis alors que la RDP est due (rien reçu non plus)
     if (attendu != null && annonce <= 0 && (attendu - verse) > 2 && overdue) {
       const due3 = Math.round((attendu - verse) * 100) / 100;
-      rows.push({ mk, m, nature: 'noavoir', attendu, verse, type: 'RDP — aucun avoir émis', due: due3, urgent: true,
-        preuve: `Contrat direct signé, actif depuis le ${csFr || '?'}. Achats de ${MOIS[m-1]} ${yr} au justificatif répartiteur × barème RDP `
+      rows.push({ mk, m, nature: 'noavoir', attendu, verse, type: 'Remise 2 — aucun avoir émis', due: due3, urgent: true,
+        preuve: `Contrat direct signé, actif depuis le ${csFr || '?'}. Achats de ${MOIS[m-1]} ${yr} au justificatif répartiteur × barème remise 2 `
               + `des conditions labo = ${fmtE(attendu)} dus.${verse>0?` Versé : ${fmtE(verse)}.`:''} Aucun avoir reçu à ce jour.` });
     }
   }
@@ -8003,9 +8003,9 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
       cm++; if (cm > 12) { cm = 1; cy++; }
     }
     if (coopAtt - coopRec > 50) {
-      rows.push({ mk: `depuis ${csFr}`, nature: 'coop', officieux: true, coopAtt, coopRec, type: 'COOP — prestations en retard', due: coopAtt - coopRec, urgent: false,
+      rows.push({ mk: `depuis ${csFr}`, nature: 'coop', officieux: true, coopAtt, coopRec, type: 'Remise 3 — prestations en retard', due: coopAtt - coopRec, urgent: false,
         preuve: `Cumul depuis le début du contrat (${csFr}) : prestations attendues ${fmtE(coopAtt)} (achats justificatif × remise3 contractuelle × 1,20 TTC × coef contrat) ; `
-              + `règlements coop reçus, toutes années confondues : ${fmtE(coopRec)}. À évoquer avec le délégué — ne figure pas dans le courrier de réclamation.` });
+              + `règlements remise 3 reçus, toutes années confondues : ${fmtE(coopRec)}. À évoquer avec le délégué — ne figure pas dans le courrier de réclamation.` });
     }
   }
   const offRows   = rows.filter(r => !r.officieux);   // réclamations OFFICIELLES (courrier)
@@ -8408,6 +8408,25 @@ function _fseDigiRefMonths(t, selNorm) {
   });
   return mks.sort();
 }
+// Factures Pharmedistore (intermédiaire de paiement Zydus/Viatris) dont un montant
+// — TTC encaissé, sinon HT — égale AU CENTIME celui du virement. 3e canal exact
+// quand le libellé bancaire ne porte pas le n° de facture : on ancre sur la facture
+// DÉPOSÉE (labo + montant connus), donc pas d'attribution au hasard entre labos d'un
+// même payeur. Retourne les mois de période correspondants (uniques et triés).
+function _fsePharmediMatch(t, selNorm) {
+  const cents = Math.round((t.montant || 0) * 100);
+  if (!cents) return [];
+  const mks = new Set();
+  Object.entries(state._digiMonthStats || {}).forEach(([mk, arr]) => {
+    const row = (arr || []).find(r => _verifNormLab(r.labo) === selNorm);
+    (row?.pharmedi_invoices || []).forEach(inv => {
+      const ttc = Math.round((inv.ttc || 0) * 100);
+      const ht  = Math.round((inv.ht  || 0) * 100);
+      if (cents === ttc || cents === ht) mks.add(mk);
+    });
+  });
+  return [...mks].sort();
+}
 // Carte d'assignation pour un labo : { 'YYYY-MM': { r2:[{t,amount,avoirs,via}], r3:[…] } }.
 // via : 'doc' (n° de document) ou 'chrono' (ordre chronologique depuis le début de contrat).
 // ── Virements saisis à la main (filet de sécurité) ─────────────────────────
@@ -8530,7 +8549,7 @@ function _renderManualVirList() {
   box.innerHTML = list.slice().sort((a,b)=>(a.encMk+a.date).localeCompare(b.encMk+b.date)).map(v =>
     `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:11px">
        <span style="flex:0 0 84px;color:var(--cyan)">${v.encMk}</span>
-       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.labo} · <span style="color:${v.vtype==='r2'?'var(--amber)':'var(--green)'}">${v.vtype==='r2'?'RDP':'Coop'}</span>${v.date?` · ${v.date}`:''}</span>
+       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.labo} · <span style="color:${v.vtype==='r2'?'var(--amber)':'var(--green)'}">${v.vtype==='r2'?'Remise 2':'Remise 3'}</span>${v.date?` · ${v.date}`:''}</span>
        <span style="flex:0 0 96px;text-align:right;color:var(--text)">${fmt(v.montant)}</span>
        <button onclick="_delManualVir('${v.id}')" title="Supprimer" style="flex:0 0 auto;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;cursor:pointer;font-size:11px;padding:1px 7px">✕</button>
      </div>`).join('');
@@ -8587,11 +8606,21 @@ function _fseAssignMap(selNorm, labDisplay) {
           const part = sum > 0 ? (t.montant || 0) * (tots[i] / sum) : (t.montant || 0) / refMks.length;
           cell(mk, vt).push({ t, amount: Math.round(part*100)/100, avoirs: [], via: 'doc' });
         });
-      } else if (!t._payer) {
-        // Virement d'un intermédiaire de paiement SANS n° de document rattachable
-        // à CE labo : on ne l'attribue pas (il appartient peut-être à un autre
-        // labo du même payeur) — il réapparaîtra dès que l'avoir sera importé.
-        leftovers[vt].push(t);
+      } else {
+        // 3e canal EXACT pour les intermédiaires de paiement (Pharmedistore →
+        // Zydus/Viatris) : le libellé bancaire ne porte pas toujours le n° de la
+        // facture de coop déposée. On apparie alors le virement au CENTIME sur le
+        // montant (TTC/HT) d'une facture Pharmedistore déposée pour CE labo.
+        const pMks = _fsePharmediMatch(t, selNorm);
+        if (pMks.length === 1) {
+          cell(pMks[0], vt).push({ t, amount: t.montant || 0, avoirs: [], via: 'amt' });
+        } else if (!t._payer) {
+          // Virement d'un intermédiaire de paiement SANS n° de document ni montant
+          // appariable à CE labo : on ne l'attribue pas (il appartient peut-être à
+          // un autre labo du même payeur) — il réapparaîtra dès que la facture/l'avoir
+          // sera déposé.
+          leftovers[vt].push(t);
+        }
       }
     }
   });
@@ -8689,7 +8718,7 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
     // aucun virement assigné ; sinon il faut resynchroniser le connecteur FSE.
     const anyDetail = Object.keys(_fseAssignMap(selNorm, labDisplay)).length > 0;
     return `<details style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px">
-      <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ VIREMENTS RDP / COOP — ${escH(labDisplay)}</summary>
+      <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ VIREMENTS REMISE 2 / REMISE 3 — ${escH(labDisplay)}</summary>
       <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px;color:${anyDetail?'var(--text-dim)':'var(--amber)'}">
         ${anyDetail
           ? 'Aucun virement assigné à ce mois de contrat (rien reçu pour cette période à ce jour).'
@@ -8706,12 +8735,12 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
     if (isR2) sR2 += amt; else sR3 += amt;
     const overridden = (state._fseOverrides||{})[key];
     const badge = isR2
-      ? '<span style="color:var(--cyan);font-weight:700">RDP</span>'
-      : '<span style="color:var(--text-dim)">COOP</span>';
+      ? '<span style="color:var(--cyan);font-weight:700">Remise 2</span>'
+      : '<span style="color:var(--text-dim)">Remise 3</span>';
     // Mois de contrat assigné + méthode : n° de document (sûr), ⇢ comblement
     // chronologique des prestas attendues (coop), ≈ mois d'encaissement.
-    const viaMark = t.via === 'fifo' ? ' <span title="coop réglée sans détail — virement affecté par ordre chronologique sur la presta attendue du mois (manque comblé par le virement suivant, surplus reporté au mois suivant)" style="color:var(--amber)">⇢</span>'
-                  : t.via === 'amt'  ? ' <span title="rattaché par MONTANT au centime (= RDP annoncée de cette période, libellé bancaire sans n° d\'avoir)" style="color:var(--amber)">≡</span>'
+    const viaMark = t.via === 'fifo' ? ' <span title="remise 3 réglée sans détail — virement affecté par ordre chronologique sur la presta attendue du mois (manque comblé par le virement suivant, surplus reporté au mois suivant)" style="color:var(--amber)">⇢</span>'
+                  : t.via === 'amt'  ? ' <span title="rattaché par MONTANT au centime (= montant annoncé de cette période — avoir remise 2 ou facture, libellé bancaire sans n° de document)" style="color:var(--amber)">≡</span>'
                   : t.via === 'chrono' ? ' <span title="assigné par ordre chronologique depuis le début du contrat" style="color:var(--amber)">~</span>'
                   : t.via === 'enc'    ? ' <span title="rattaché au mois d\'encaissement (aucune presta attendue restante à combler)" style="color:var(--text-dim)">≈</span>' : '';
     const split = t.amount != null && Math.abs((t.amount||0) - (t.montant||0)) >= 0.01
@@ -8738,12 +8767,12 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
   const divergent = ecart != null && Math.abs(ecart) >= 1;
   const flag = av <= 0 ? ''
     : sR2 <= 0
-      ? `<div style="margin-top:6px;color:var(--red);font-weight:700">⚠ L'avoir Digi annonce <b>${fmtE(av)}</b> de RDP pour cette période, mais AUCUN virement RDP correspondant n'a été encaissé dans tes relevés. Paiement en retard ou impayé à réclamer au labo.</div>`
+      ? `<div style="margin-top:6px;color:var(--red);font-weight:700">⚠ L'avoir Digi annonce <b>${fmtE(av)}</b> de remise 2 pour cette période, mais AUCUN virement remise 2 correspondant n'a été encaissé dans tes relevés. Paiement en retard ou impayé à réclamer au labo.</div>`
       : divergent
-        ? `<div style="margin-top:6px;color:var(--amber)">⚠ RDP encaissé (virements) <b>${fmtE(sR2)}</b> ≠ RDP annoncé par l'avoir Digi <b>${fmtE(av)}</b> — écart <b>${(ecart>0?'+':'')}${fmtE(ecart)}</b>. Le virement bancaire fait foi.</div>`
-        : `<div style="margin-top:6px;color:var(--green)">✓ RDP encaissé (virements) = avoir Digi annoncé (${fmtE(sR2)}).</div>`;
+        ? `<div style="margin-top:6px;color:var(--amber)">⚠ Remise 2 encaissée (virements) <b>${fmtE(sR2)}</b> ≠ remise 2 annoncée par l'avoir Digi <b>${fmtE(av)}</b> — écart <b>${(ecart>0?'+':'')}${fmtE(ecart)}</b>. Le virement bancaire fait foi.</div>`
+        : `<div style="margin-top:6px;color:var(--green)">✓ Remise 2 encaissée (virements) = avoir Digi annoncé (${fmtE(sR2)}).</div>`;
   return `<details style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px">
-    <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ VIREMENTS RDP / COOP — ${escH(labDisplay)} · ${transfers.length} virement(s)</summary>
+    <summary style="cursor:pointer;color:var(--text-dim);letter-spacing:1px">◈ VIREMENTS REMISE 2 / REMISE 3 — ${escH(labDisplay)} · ${transfers.length} virement(s)</summary>
     <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px">
       <div style="overflow-x:auto"><table class="verif-tbl" style="font-size:11px">
         <thead><tr>
@@ -8969,7 +8998,7 @@ function _rdpPairMap(rdpByTaux, paliers, cmap, emap) {
       }
     } else if (main.length === 1) {
       key = main[0];
-      if (exc.length) note = `Inclut aussi les références d'exception du palier ${exc.join(' % / ')} % (RDP ${e.taux} %) — l'avoir agrège par taux versé.`;
+      if (exc.length) note = `Inclut aussi les références d'exception du palier ${exc.join(' % / ')} % (remise 2 ${e.taux} %) — l'avoir agrège par taux versé.`;
     } else if (!main.length && exc.length === 1) {
       key = exc[0];
     } else {
@@ -9065,8 +9094,8 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const dirBrut  = caDir;
     // Écart entre le CA remisé par le labo (avoir) et tes achats grossiste (connecteur).
     const caDiv = (gBrutConn>0 && avoirCA>0 && Math.abs(gBrutConn-avoirCA) > Math.max(1, avoirCA*0.02));
-    const brutTitle = `Base RDP = CA brut réalisé (avoir) : ${fmtE(avoirCA)} (grossiste ${fmtE(caGros)} + direct ${fmtE(caDir)}) · CA total grossiste (connecteur) : ${fmtE(gBrutConn)}`
-      + (caDiv ? `\n\n⚠ Le CA sur lequel le labo a calculé la RDP (avoir) diffère de tes achats grossiste du mois (périmètres/dates d'arrêté différents). Ce n'est pas une erreur : la RDP est vérifiée sur le CA de l'avoir.` : '');
+    const brutTitle = `Base remise 2 = CA brut réalisé (avoir) : ${fmtE(avoirCA)} (grossiste ${fmtE(caGros)} + direct ${fmtE(caDir)}) · CA total grossiste (connecteur) : ${fmtE(gBrutConn)}`
+      + (caDiv ? `\n\n⚠ Le CA sur lequel le labo a calculé la remise 2 (avoir) diffère de tes achats grossiste du mois (périmètres/dates d'arrêté différents). Ce n'est pas une erreur : la remise 2 est vérifiée sur le CA de l'avoir.` : '');
     // ⚠ cliquable : sur mobile les infobulles n'existent pas.
     // encodeURIComponent NE protège PAS l'apostrophe ni les parenthèses ; or le
     // texte FR (« d'arrêté », « n'est »…) en contient → un ' littéral cassait la
@@ -9120,10 +9149,10 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     // attendu : « 1 699,33 € (30 %) ». Suffixe gris, compact, avec la note barème
     // 2025 le cas échéant et le badge d'exception du palier.
     const _r2PctTag = r2pctDisp!=null
-      ? ` <span style="color:var(--text-dim);font-size:9px"${_mixed&&r2pctDisp!==r2pct?` title="Barème 2025 (la RDP suit l'année du mois — vérifié sur les avoirs oct.–déc.). Conditions 2026 : ${r2pct!=null?fmtP(r2pct):'—'}."`:''}>(${fmtP(r2pctDisp)}${_mixed&&r2pctDisp!==r2pct?' · barème 2025':''})</span>`
+      ? ` <span style="color:var(--text-dim);font-size:9px"${_mixed&&r2pctDisp!==r2pct?` title="Barème 2025 (la remise 2 suit l'année du mois — vérifié sur les avoirs oct.–déc.). Conditions 2026 : ${r2pct!=null?fmtP(r2pct):'—'}."`:''}>(${fmtP(r2pctDisp)}${_mixed&&r2pctDisp!==r2pct?' · barème 2025':''})</span>`
       : '';
     const _r2ExcTag = (exc&&!_mixed)
-      ? ` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`
+      ? ` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à remise 2 ${exc.pct} %.\\n\\nLeur remise 2 est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à remise 2 ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`
       : '';
     const _r3PctTag = r3pct>0 ? ` <span style="color:var(--text-dim);font-size:9px">(${fmtP(r3pct)})</span>` : '';
     // Fragments par BLOC — tableaux empilés, lisibles sur smartphone sans défilement latéral.
@@ -9134,11 +9163,11 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
         `<td style="${G}">${fmtE(rsfR)}</td>` +
         `<td style="${dRsf}">${fmtE(rsfD)}</td>`,
       r2: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
-        `<td class="verif-r2" style="${A}"${r2Off?` title="RDP versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:(r2Aexact!=null?` title="Calcul EXACT par référence : Σ achats (justificatif) × taux RDP du CIP (rsf_history ${cumulYear||year}) — exceptions comprises"`:'')}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':((r2pct!=null||r2Aexact!=null)?`${fmtE(r2A)}${r2Aexact!=null?' <span style="font-size:8px;color:var(--cyan)" title="exact par référence">◎</span>':''}${_r2PctTag}${_r2ExcTag}`:'—')}</td>` +
+        `<td class="verif-r2" style="${A}"${r2Off?` title="Remise 2 versée au taux ${fmtP(tx)} — hors barème courant (transition 2025→2026) : pas d'attendu calculable sur ce palier"`:(r2Aexact!=null?` title="Calcul EXACT par référence : Σ achats (justificatif) × taux remise 2 du CIP (rsf_history ${cumulYear||year}) — exceptions comprises"`:'')}>${r2Off?'<span style="color:var(--text-dim);cursor:help">—</span>':((r2pct!=null||r2Aexact!=null)?`${fmtE(r2A)}${r2Aexact!=null?' <span style="font-size:8px;color:var(--cyan)" title="exact par référence">◎</span>':''}${_r2PctTag}${_r2ExcTag}`:'—')}</td>` +
         `<td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span onclick="alert(decodeURIComponent(\''+encodeURIComponent(rd._note).replace(/'/g,'%27').replace(/\(/g,'%28').replace(/\)/g,'%29')+'\'))" style="color:var(--amber);font-size:9px;cursor:pointer" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>` +
         `<td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>`,
       r3: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
-        `<td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(brut)} × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?`${fmtE(r3A)}${_r3PctTag}`:(r3pct>0&&isBio&&coef===0?'<span title="Coop bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>` +
+        `<td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(brut)} × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?`${fmtE(r3A)}${_r3PctTag}`:(r3pct>0&&isBio&&coef===0?'<span title="Remise 3 bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>` +
         `<td class="verif-r3" style="color:var(--text-dim)">—</td>` +
         `<td class="verif-r3" style="color:var(--text-dim)">—</td>`,
     };
@@ -9191,7 +9220,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       }
       return txt;                                // rien d'adapté → non cliquable
     }
-    const lbl  = wantKind === 'presta' ? 'coop' : 'RDP';
+    const lbl  = wantKind === 'presta' ? 'remise 3' : 'remise 2';
     if (cands.length === 1) {
       const pick = cands[0];
       return `<span onclick="_previewDigiPdf('${pick.key}')" title="Voir l'avoir ${lbl} : ${escH(pick.filename||'')}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${txt} <span style="font-size:9px">📄</span></span>`;
@@ -9209,7 +9238,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td></tr>`;
   const totR2 = `<tr style="${totStyle}">${totLbl}
     <td class="verif-r2" style="${A}">${fmtE(T.r2A)}</td>
-    <td class="verif-r2" style="${r2RecAnnounced?'color:var(--amber)':G}">${_recCell(r2Reff, 'rdp')}${r2RecAnnounced?` <span onclick="alert('Montant ANNONC\u00c9 par l\\'avoir Digipharmacie \u2014 aucun virement bancaire RDP encaiss\u00e9 pour cette p\u00e9riode dans tes relev\u00e9s FSE.\\n\\nSi le paiement tarde, c\\'est peut-\u00eatre un impay\u00e9 \u00e0 r\u00e9clamer au labo.')" title="Annonc\u00e9 par l'avoir \u2014 aucun virement encaiss\u00e9" style="cursor:pointer;font-size:9px">(annonc\u00e9 \u26a0)</span>`:''}</td>
+    <td class="verif-r2" style="${r2RecAnnounced?'color:var(--amber)':G}">${_recCell(r2Reff, 'rdp')}${r2RecAnnounced?` <span onclick="alert('Montant ANNONC\u00c9 par l\\'avoir Digipharmacie \u2014 aucun virement bancaire remise 2 encaiss\u00e9 pour cette p\u00e9riode dans tes relev\u00e9s FSE.\\n\\nSi le paiement tarde, c\\'est peut-\u00eatre un impay\u00e9 \u00e0 r\u00e9clamer au labo.')" title="Annonc\u00e9 par l'avoir \u2014 aucun virement encaiss\u00e9" style="cursor:pointer;font-size:9px">(annonc\u00e9 \u26a0)</span>`:''}</td>
     <td class="verif-r2" style="${dTr2}">${(T.r2A>0||r2Reff>0)?fmtE(T.r2A-r2Reff):'—'}</td></tr>`;
   const totR3 = `<tr style="${totStyle}">${totLbl}
     <td class="verif-r3" style="${A}">${T.r3A>0?fmtE(T.r3A):'—'}</td>
@@ -9238,8 +9267,8 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       <span style="color:var(--green)">▸ Reçue</span>
     </div>
     ${bloc('ACHATS & RSF', headAchats, rowsD.map(r=>`<tr>${r.achats}</tr>`).join(''), totAchats, achatsNote || 'info répartiteur')}
-    ${bloc('REMISE 2 / RDP', headR2, rowsD.map(r=>`<tr>${r.r2}</tr>`).join(''), totR2, '')}
-    ${isBio ? bloc('REMISE 3 / COOP', headR3, rowsD.map(r=>`<tr>${r.r3}</tr>`).join(''), totR3, 'reçu = virements FSE (au TOTAL)') : ''}`;
+    ${bloc('REMISE 2', headR2, rowsD.map(r=>`<tr>${r.r2}</tr>`).join(''), totR2, '')}
+    ${isBio ? bloc('REMISE 3', headR3, rowsD.map(r=>`<tr>${r.r3}</tr>`).join(''), totR3, 'reçu = virements FSE (au TOTAL)') : ''}`;
 }
 
 function _verifFillMonthDetail(mk) {
@@ -9367,7 +9396,7 @@ function _verifFillMonthDetail(mk) {
 }
 async function _verifOpenInvoices(type) {
   const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('fr') : '';
-  const title   = type === 'r2' ? 'AVOIRS / RDP — REMISE 2' : 'FSE BANQUE — REMISE 3';
+  const title   = type === 'r2' ? 'AVOIRS — REMISE 2' : 'FSE BANQUE — REMISE 3';
 
   let popup = document.getElementById('verifInvPopup');
   if (!popup) {
@@ -9381,7 +9410,7 @@ async function _verifOpenInvoices(type) {
   if (type === 'r2') {
     const files = state._digiUploads || [];
     if (!files.length) {
-      rows = `<div style="color:var(--text-dim);font-size:11px;line-height:1.6">Aucun PDF indexé.<br>Déposez vos PDFs avoirs/RDP Digipharmacie dans <span style="color:var(--cyan)">CONNECTEURS → DÉPÔT</span>.</div>`;
+      rows = `<div style="color:var(--text-dim);font-size:11px;line-height:1.6">Aucun PDF indexé.<br>Déposez vos PDFs avoirs (remise 2) Digipharmacie dans <span style="color:var(--cyan)">CONNECTEURS → DÉPÔT</span>.</div>`;
     } else {
       rows = files.map(f => `<div style="margin-bottom:6px"><span style="color:var(--text);font-size:11px">${escH(f.name)}</span> <span style="color:var(--text-dim);font-size:10px">${(f.months||[]).join(', ')}</span></div>`).join('');
     }
@@ -9440,7 +9469,7 @@ function _verifPrestaBlock(mk) {
   });
   if (!rows.length) return '';
   return `<div style="margin-top:12px;overflow-x:auto">
-    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">PRESTATIONS COOP — ${_MONTH_LABELS[mkM-1]} ${mkY} <span style="color:var(--amber);margin-left:8px">facturé ≠ reçu</span></div>
+    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">PRESTATIONS REMISE 3 — ${_MONTH_LABELS[mkM-1]} ${mkY} <span style="color:var(--amber);margin-left:8px">facturé ≠ reçu</span></div>
     <table class="verif-tbl">
       <thead><tr>
         <th style="text-align:left">LABO</th>
@@ -9743,7 +9772,7 @@ function _verifPrestaAnnualBlock(yr) {
     </tr>`;
   }).join('');
   return `<div style="margin-top:12px;overflow-x:auto">
-    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">PRESTATIONS COOP — CUMUL ${yr} <span style="color:var(--amber);margin-left:8px">facturé ≠ reçu</span></div>
+    <div style="font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px">PRESTATIONS REMISE 3 — CUMUL ${yr} <span style="color:var(--amber);margin-left:8px">facturé ≠ reçu</span></div>
     <table class="verif-tbl">
       <thead><tr>
         <th style="text-align:left">LABO</th>
@@ -12864,7 +12893,7 @@ async function saveProfile() {
             return rows.map(r => {
             const r2 = pct(r.remise2);
             const r2part = r.excluded ? 'Remise 2 : 0 %' : (r2 ? `Remise 2 : ${r2}` : '');
-            const rates = [r2part, coopVal ? `Coop : ${coopVal}` : ''].filter(Boolean).join(' | ') || '—';
+            const rates = [r2part, coopVal ? `Remise 3 : ${coopVal}` : ''].filter(Boolean).join(' | ') || '—';
             return `<div class="labs-info-row"><strong>RSF ${r.rsf_pct} %</strong> → ${rates}</div>`;
           }).join('');})() : '<div class="labs-info-row" style="font-style:italic">Aucun palier RSF configuré.</div>'}
         </div>`;
@@ -12884,7 +12913,7 @@ async function saveProfile() {
           <div class="labs-info-palier-title" style="color:var(--amber)">* Références avec conditions particulières</div>`;
         excEntries.forEach(([rsf_pct, exc]) => {
           const r2 = pct(exc.remise2); const r3 = pct(exc.remise3);
-          const rates = [r2 ? `Remise 2 : ${r2}` : '', r3 ? `Coop : ${r3}` : ''].filter(Boolean).join(' | ') || '—';
+          const rates = [r2 ? `Remise 2 : ${r2}` : '', r3 ? `Remise 3 : ${r3}` : ''].filter(Boolean).join(' | ') || '—';
           html += `<div class="labs-info-row" style="padding-top:6px">
             <strong>RSF ${rsf_pct} %</strong> → ${rates}
             <ul style="margin:4px 0 4px 16px;padding:0;list-style:disc">
@@ -15223,7 +15252,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <button class="bp-modal-close" onclick="_closeManualVir()">×</button>
     <div class="bp-modal-title">＋ VIREMENT MANUEL</div>
     <p style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);line-height:1.6;margin-bottom:14px">
-      Filet de sécurité : si un virement (RDP ou coop) est visible sur OSPHARM FSE
+      Filet de sécurité : si un virement (remise 2 ou remise 3) est visible sur OSPHARM FSE
       mais absent de la synchronisation, saisissez-le ici. Il entre dans la
       réconciliation exactement comme un virement scrapé — rattaché à sa période
       par avoir, par n° de facture, ou par montant au centime.
@@ -15236,8 +15265,8 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="profile-field" style="flex:0 0 150px;min-width:130px">
         <div class="profile-label">Type</div>
         <select class="profile-input" id="mvType">
-          <option value="r2">RDP (remise 2)</option>
-          <option value="r3" selected>Coop (remise 3)</option>
+          <option value="r2">Remise 2</option>
+          <option value="r3" selected>Remise 3</option>
         </select>
       </div>
     </div>

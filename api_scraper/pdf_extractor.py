@@ -849,6 +849,7 @@ def _extract_pharmedi_rdp(text: str, provider: str, billing_date: str) -> list[d
 
     return [{
         "type":         "rdp",              # remise 2 déguisée (PAS presta/coop)
+        "pharmedi":     True,               # versement via intermédiaire Pharmedistore
         "labo":         labo,
         "fournisseur":  provider,
         "billing_date": billing_date,
