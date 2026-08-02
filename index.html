@@ -1214,6 +1214,12 @@
   input[type="text"], input[type="date"], input[type="email"], input[type="password"], select {
     border-radius: 10px;
   }
+  /* Fenêtres (modales) et encadrés : même arrondi que les cartes, sinon les angles
+     vifs des popups juraient avec le reste une fois les boutons arrondis. */
+  .bp-modal-box { border-radius: 14px; }
+  .conn-drop-zone, .conn-card, .verif-contract-card, .cond-tabs, textarea {
+    border-radius: 12px;
+  }
 
   /* Mode sombre : la trame « scanlines » est un calque global posé PAR-DESSUS toute
      la page (body::before/after). Elle traversait donc la maquette et zébrait même
@@ -1747,7 +1753,7 @@
 <!-- ── Modal config contrat labo ── -->
 <!-- ── Modal info CGV / calcul remises ── -->
 <div id="verifInfoModal" style="display:none;position:fixed;inset:0;z-index:9800;background:rgba(4,6,15,.88);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--border);padding:28px;width:min(580px,92vw);position:relative;max-height:88vh;overflow-y:auto">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:28px;width:min(580px,92vw);position:relative;max-height:88vh;overflow-y:auto">
     <button onclick="_verifCloseInfoModal()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;line-height:1">&times;</button>
     <div style="font-family:'Orbitron',monospace;font-size:13px;font-weight:900;color:var(--cyan);letter-spacing:3px;margin-bottom:20px;text-align:center">◈ AIDE &amp; DÉFINITIONS</div>
     <div style="font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.8;color:var(--text)">
