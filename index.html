@@ -51,7 +51,11 @@
   [data-theme="light"] body::before,
   [data-theme="light"] body::after { display: none; }
   [data-theme="light"] .term-line { display: none; }
-  [data-theme="light"] header { background: #fff; border-bottom-color: #b8cdd8; }
+  /* Header transparent : posé sur le fond de page, il ne rivalise plus avec les
+     cartes de contenu (blanches). L'œil va d'abord au contenu, l'habillage
+     s'efface — et le header n'étant pas collant, rien ne défile dessous.
+     Le trait de séparation est adouci, sinon il ressort trop sans fond. */
+  [data-theme="light"] header { background: transparent; border-bottom-color: rgba(120,150,170,.28); }
   [data-theme="light"] .panel { background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
   [data-theme="light"] .panel::before,
   [data-theme="light"] .panel::after { border-color: #0066cc; }
