@@ -1214,6 +1214,44 @@
   input[type="text"], input[type="date"], input[type="email"], input[type="password"], select {
     border-radius: 10px;
   }
+  /* ── Tutoriel interactif (visite guidée) ──────────────────────────────────
+     Le « trou » de projecteur est obtenu par une ombre portée démesurée : le
+     bloc reste transparent, tout le reste de l'écran est assombri. Plus fiable
+     qu'un masque SVG et sans reflow. pointer-events:none sur la zone éclairée
+     pour que l'élément mis en avant reste cliquable. */
+  #tourOverlay { position: fixed; inset: 0; z-index: 100050; display: none; }
+  #tourOverlay.open { display: block; }
+  #tourHole {
+    position: absolute; border-radius: 12px; pointer-events: none;
+    box-shadow: 0 0 0 9999px rgba(3, 8, 18, .78);
+    outline: 2px solid var(--cyan); outline-offset: 3px;
+    transition: top .28s ease, left .28s ease, width .28s ease, height .28s ease;
+  }
+  #tourCard {
+    position: absolute; width: min(360px, calc(100vw - 28px));
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.45);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    transition: top .28s ease, left .28s ease;
+  }
+  #tourCard h4 { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--cyan); }
+  #tourCard p  { margin: 0 0 10px; font-size: 13px; line-height: 1.55; color: var(--text); }
+  #tourCard .tour-hint { font-size: 12px; color: var(--text-dim); }
+  #tourCard textarea {
+    width: 100%; min-height: 132px; font-size: 11.5px; line-height: 1.5; padding: 9px;
+    background: var(--bg2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; font-family: ui-monospace, 'Share Tech Mono', monospace; resize: vertical;
+  }
+  .tour-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .tour-step { font-size: 11px; color: var(--text-dim); margin-right: auto; }
+  .tour-btn {
+    border-radius: 980px; border: 1px solid var(--border); background: transparent;
+    color: var(--text); font-size: 12px; padding: 7px 15px; cursor: pointer;
+  }
+  .tour-btn.primary { background: var(--cyan); border-color: transparent; color: #fff; font-weight: 600; }
+  .tour-btn.ghost   { color: var(--text-dim); border-color: transparent; padding: 7px 8px; }
+
   /* Fenêtres (modales) et encadrés : même arrondi que les cartes, sinon les angles
      vifs des popups juraient avec le reste une fois les boutons arrondis. */
   .bp-modal-box { border-radius: 14px; }
@@ -13432,6 +13470,8 @@ async function saveProfile() {
 
   // Initialisation terminée : les sauvegardes sont maintenant autorisées
   _initDone = true;
+  // Visite guidée : proposée une seule fois, et seulement à un compte encore vide.
+  try { window._tourMaybeAutoStart?.(); } catch (_) {}
   // [DÉSACTIVÉ] Correctif auto-réparateur Biogaran 2025 : sa mission est faite (le cloud a déjà
   // les bonnes données 2025). On le désactive car il forçait une sauvegarde COMPLÈTE de l'état +
   // un reload à chaque nouvel appareil — ce qui pouvait propager/écraser avec un état périmé
@@ -15339,6 +15379,168 @@ document.addEventListener('DOMContentLoaded', function() {
   })();
 </script>
 
+<!-- ── Tutoriel interactif (visite guidée des nouveaux inscrits) ───────────── -->
+<div id="tourOverlay"><div id="tourHole"></div><div id="tourCard"></div></div>
+<script>
+(function () {
+  const LS_TOUR = 'bp_tour_done_v1';
+  let _tourI = 0;
+
+  // Mail prêt à envoyer au commercial du répartiteur. La signature reprend les
+  // coordonnées saisies dans MON COMPTE : l'utilisateur n'a qu'à copier-coller.
+  function _tourMail() {
+    const p = (window.state && state.userProfile) || {};
+    const sig = [p.nom, p.adresse, p.tel ? 'Tél. ' + p.tel : '', p.tva ? 'TVA ' + p.tva : '']
+      .filter(Boolean).join('\n');
+    const y = new Date().getFullYear();
+    return `Objet : Demande de justificatifs d'achats de génériques\n\n`
+      + `Bonjour,\n\n`
+      + `Dans le cadre du suivi de mes conditions commerciales, pourriez-vous me transmettre `
+      + `mes justificatifs d'achats de génériques pour ${y - 1} et ${y} : le récapitulatif par mois `
+      + `ainsi que le détail par référence, de préférence au format Excel.\n\n`
+      + `Ces documents me sont nécessaires pour contrôler les remises dues par les laboratoires.\n\n`
+      + `Vous en remerciant par avance,\nCordialement,\n\n`
+      + (sig || '[Renseignez vos coordonnées dans MON COMPTE pour compléter la signature]');
+  }
+
+  const STEPS = [
+    { sel: null, titre: 'Bienvenue sur BREAK-PHARMA',
+      html: `<p>En quelques minutes, mettons en place votre suivi de remises.</p>
+             <p class="tour-hint">3 étapes de configuration, puis la découverte des deux modules :
+             le <b>comparateur</b> (quels génériques acheter) et le <b>vérificateur</b>
+             (le labo vous a-t-il bien tout versé).</p>` },
+
+    { sel: '#btnAccount', titre: 'Avant tout : vos coordonnées',
+      html: `<p>Renseignez ici le nom, l'adresse et le téléphone de votre pharmacie.</p>
+             <p class="tour-hint">Ils servent à signer automatiquement vos courriers de réclamation
+             et le mail de demande de justificatifs présenté à l'étape suivante.</p>` },
+
+    { sel: '#btnConnecteur', titre: 'Étape 1 — Vos connecteurs',
+      html: `<p>Ouvrez <b>DÉPÔT DES FICHIERS</b>, puis la section
+             <b>CONNECTEURS AUTOMATIQUES</b>.</p>
+             <p>Reliez vos comptes : <b>OSPHARM</b> (vos ventes), <b>Digipharmacie</b>
+             (vos factures et avoirs) et <b>FSE / banque</b> (les virements reçus).</p>
+             <p class="tour-hint">Une fois connectés, ils se synchronisent seuls : c'est la
+             matière première de tous les calculs.</p>` },
+
+    { sel: '#btnConnecteur', titre: 'Étape 2 — Vos justificatifs d\'achats',
+      html: `<p>Il manque une pièce que seul votre <b>commercial répartiteur</b> peut fournir :
+             le justificatif d'achats de génériques. Déposez-le ensuite dans cette même fenêtre.</p>
+             <p class="tour-hint">Mail prêt à envoyer — cliquez pour copier :</p>
+             <textarea id="tourMailTxt" readonly></textarea>
+             <div class="tour-bar" style="margin-top:8px">
+               <button class="tour-btn" id="tourMailCopy">⧉ Copier le mail</button>
+             </div>` },
+
+    { sel: '#btnConditionsLabo', titre: 'Étape 3 — Vos conditions labo',
+      html: `<p>Saisissez, pour chaque laboratoire, les remises négociées : RSF, remise 2 (RDP)
+             et coop le cas échéant.</p>
+             <p>Indiquez surtout si le <b>contrat est signé</b> — et sa date. Sans contrat signé,
+             le laboratoire ne vous doit rien, et le vérificateur ne l'analysera pas.</p>
+             <p class="tour-hint">Précisez aussi si vous avez un contrat répartiteur : la RSF en dépend.</p>` },
+
+    { sel: '.main-tab[data-page="comparateur"]', titre: 'Module 1 — Le comparateur',
+      html: `<p>Il analyse vos ventes de l'an dernier et applique vos conditions actuelles pour
+             répondre à une question : <b>chez quel génériqueur acheter pour gagner le plus</b> ?</p>
+             <p class="tour-hint">Il compare vos achats réels aux scénarios possibles et chiffre
+             le gain de chacun. C'est votre feuille de route d'achats.</p>` },
+
+    { sel: '.main-tab[data-page="verificateur"]', titre: 'Module 2 — Le vérificateur',
+      html: `<p>Il confronte ce que le laboratoire <b>vous doit</b> à ce qu'il <b>vous a réellement versé</b>,
+             mois par mois et palier par palier.</p>
+             <p>Quand un écart apparaît, il génère un <b>courrier de réclamation</b> justifié, prêt à envoyer.</p>
+             <p class="tour-hint">C'est ici que vous récupérez l'argent oublié.</p>` },
+
+    { sel: null, titre: 'C\'est parti',
+      html: `<p>Vous pouvez relancer cette visite à tout moment depuis <b>MON COMPTE</b>.</p>
+             <p class="tour-hint">Commencez par les connecteurs : dès que les données arrivent,
+             les deux modules se remplissent tout seuls.</p>` },
+  ];
+
+  const ov = () => document.getElementById('tourOverlay');
+  const hole = () => document.getElementById('tourHole');
+  const card = () => document.getElementById('tourCard');
+
+  function _place(el) {
+    const h = hole(), c = card();
+    const pad = 6, vw = innerWidth, vh = innerHeight;
+    if (!el) {                                   // étape sans ancre → carte centrée
+      h.style.cssText += ';opacity:0';
+      c.style.top  = Math.max(12, vh / 2 - c.offsetHeight / 2) + 'px';
+      c.style.left = Math.max(12, vw / 2 - c.offsetWidth / 2) + 'px';
+      return;
+    }
+    h.style.opacity = '1';
+    const r = el.getBoundingClientRect();
+    h.style.top = (r.top - pad) + 'px';   h.style.left = (r.left - pad) + 'px';
+    h.style.width = (r.width + pad * 2) + 'px'; h.style.height = (r.height + pad * 2) + 'px';
+    // Carte sous l'élément si la place le permet, au-dessus sinon ; bornée à l'écran.
+    const ch = c.offsetHeight, cw = c.offsetWidth;
+    let top = r.bottom + 14;
+    if (top + ch > vh - 12) top = Math.max(12, r.top - ch - 14);
+    let left = r.left + r.width / 2 - cw / 2;
+    left = Math.min(Math.max(12, left), vw - cw - 12);
+    c.style.top = top + 'px'; c.style.left = left + 'px';
+  }
+
+  function _render() {
+    const s = STEPS[_tourI], c = card();
+    const last = _tourI === STEPS.length - 1;
+    c.innerHTML = `<h4>${s.titre}</h4>${s.html}
+      <div class="tour-bar">
+        <span class="tour-step">Étape ${_tourI + 1} / ${STEPS.length}</span>
+        ${_tourI > 0 ? '<button class="tour-btn" id="tourPrev">Précédent</button>' : ''}
+        <button class="tour-btn ghost" id="tourSkip">${last ? '' : 'Passer'}</button>
+        <button class="tour-btn primary" id="tourNext">${last ? 'Terminer' : 'Suivant'}</button>
+      </div>`;
+    const mail = document.getElementById('tourMailTxt');
+    if (mail) {
+      mail.value = _tourMail();
+      document.getElementById('tourMailCopy').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(mail.value); showToast('✓ Mail copié'); }
+        catch (_) { mail.select(); showToast('Sélectionné — faites Copier'); }
+      });
+    }
+    document.getElementById('tourNext').addEventListener('click', () => last ? _end(true) : _go(_tourI + 1));
+    document.getElementById('tourSkip').addEventListener('click', () => _end(true));
+    document.getElementById('tourPrev')?.addEventListener('click', () => _go(_tourI - 1));
+    const el = s.sel ? document.querySelector(s.sel) : null;
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setTimeout(() => _place(el), el ? 220 : 0);
+  }
+
+  function _go(i) { _tourI = Math.max(0, Math.min(STEPS.length - 1, i)); _render(); }
+
+  function _end(done) {
+    ov().classList.remove('open');
+    if (done) { try { localStorage.setItem(LS_TOUR, '1'); } catch (_) {} }
+  }
+
+  function _start() {
+    _tourI = 0;
+    ov().classList.add('open');
+    _render();
+  }
+  window._tourStart = _start;
+
+  addEventListener('resize', () => {
+    if (!ov()?.classList.contains('open')) return;
+    const s = STEPS[_tourI];
+    _place(s.sel ? document.querySelector(s.sel) : null);
+  });
+
+  // Démarrage automatique : uniquement pour un compte réellement neuf (aucun labo
+  // configuré) et jamais deux fois. On attend que l'init ait chargé l'état, sinon on
+  // prendrait un compte existant pour un nouveau.
+  window._tourMaybeAutoStart = function () {
+    try { if (localStorage.getItem(LS_TOUR)) return; } catch (_) { return; }
+    const hasLabs = ((window.state && state.labPages) || []).some(l => l.selectedLab);
+    if (hasLabs) { try { localStorage.setItem(LS_TOUR, '1'); } catch (_) {} return; }
+    setTimeout(_start, 900);
+  };
+})();
+</script>
+
 <!-- ── Modale Feedback ────────────────────────────────────────────────────── -->
 <div id="labsInfoModal" class="bp-modal">
   <div class="bp-modal-box">
@@ -15493,6 +15695,12 @@ document.addEventListener('DOMContentLoaded', function() {
     <div style="margin-top:22px;display:flex;gap:14px;align-items:center">
       <button class="btn btn-primary" id="profileSave">ENREGISTRER</button>
       <span id="profileStatus" style="font-family:'Share Tech Mono',monospace;font-size:12px;min-height:16px"></span>
+    </div>
+
+    <div style="margin-top:18px">
+      <button class="btn btn-secondary" id="profileTourBtn"
+        onclick="document.getElementById('profileModal').classList.remove('open');window._tourStart&&window._tourStart()">
+        ◎ Revoir le tutoriel de démarrage</button>
     </div>
 
     <!-- Admin : assistance — 2e mot de passe d'accès à MON compte, actif seulement
