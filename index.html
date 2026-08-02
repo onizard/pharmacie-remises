@@ -9211,6 +9211,29 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   const allTaux = [...new Set([...paliers.map(p=>p.taux), ...Object.keys(rmap).map(Number)])]
     .filter(t => t!=null && !isNaN(t)).sort((a,b)=>a-b);
 
+  // Historique des taux de remise 2, par palier, sur la période affichée.
+  // Un barème peut changer en cours d'année (Zydus : palier 10 à 20 % jusqu'en mars,
+  // 0 % ensuite). Sans cet historique, le cumul annuel affichait « 0 % » en face d'un
+  // attendu de 541 € calculé à 20 % en début d'année — incompréhensible. On mémorise
+  // la suite des taux distincts et le mois de bascule, pour afficher l'ancien taux
+  // barré à côté de l'actuel : « il y avait une RDP ici, elle n'existe plus ».
+  const _r2Hist = (() => {
+    const y = cumulYear || year;
+    const upTo = cumulYear ? 12 : monthForCond;
+    const hist = {};
+    for (let m = 1; m <= upTo; m++) {
+      const cm = _verifGetCond(labDisplay, y, m);
+      (cm?.rsfValues || []).forEach(r => {
+        const k = Math.abs(parseFloat(r.rsf_pct));
+        if (isNaN(k) || r.remise2 === '' || r.remise2 == null) return;
+        const v = Math.abs(parseFloat(r.remise2)) || 0;
+        const seq = hist[k] || (hist[k] = []);
+        if (!seq.length || seq[seq.length - 1].pct !== v) seq.push({ pct: v, m });
+      });
+    }
+    return hist;
+  })();
+
   // Δ positif = sous-remisé (rouge), négatif = sur-remisé (vert)
   const dStyle = v => v==null ? '' : v>0.5 ? 'color:var(--red);font-weight:700' : v<-0.5 ? 'color:var(--green)' : '';
   const A = 'color:var(--amber)', G = 'color:var(--green)';
@@ -9320,10 +9343,19 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     // suffixe accolé au montant : on peut refaire le calcul CA brut × taux de tête.
     // r2pctDisp = taux réellement utilisé par le calcul (barème 2025 sur les mois
     // hybrides de fin d'année, et non le taux des conditions 2026 remappées).
+    // Taux précédent, s'il a changé sur la période : affiché barré et à demi-opacité
+    // pour signaler qu'une RDP existait sur ce palier et n'existe plus (ou l'inverse).
+    const _MOISC = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+    const _seq   = _r2Hist[Math.abs(tx)] || [];
+    const _prev  = _seq.length > 1 ? _seq[_seq.length - 2] : null;
+    const _chg   = _seq.length > 1 ? _seq[_seq.length - 1] : null;
+    const _oldTag = (_prev && _chg && _prev.pct !== _chg.pct)
+      ? ` <span style="opacity:.5;text-decoration:line-through;font-size:10px" title="Ce palier ouvrait droit à une remise 2 de ${fmtP(_prev.pct)} jusqu'en ${_MOISC[Math.max(0,_chg.m-2)]} ${cumulYear||year} — passée à ${fmtP(_chg.pct)} à partir de ${_MOISC[_chg.m-1]}.">${fmtP(_prev.pct)}</span>`
+      : '';
     const _r2PctCell = r2pctDisp != null
-      ? `${fmtP(r2pctDisp)}${_mixed && r2pctDisp !== r2pct
+      ? `${fmtP(r2pctDisp)}${_oldTag}${_mixed && r2pctDisp !== r2pct
           ? ` <span style="color:var(--amber);font-size:9px" title="Barème 2025 (la RDP suit l'année du mois — vérifié sur les avoirs oct.–déc.). Conditions 2026 : ${r2pct!=null?fmtP(r2pct):'—'}.">·25</span>` : ''}`
-      : '—';
+      : (_prev ? `0 %${_oldTag}` : '—');
     const _r2ExcTag = (exc&&!_mixed)
       ? ` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`
       : '';
