@@ -3075,10 +3075,18 @@ function _adoptCloudState(cs, cloudTs) {
   if (cs.digiSavedAt)  state._digiSavedAt  = cs.digiSavedAt;
   if (cs.fseSavedAt)   state._fseSavedAt   = cs.fseSavedAt;
 
-  // 3) Cette version devient notre référence (sinon on la ré-adopterait en boucle),
-  //    et le cache local reste aligné pour le prochain démarrage.
-  _truthSavedAt = cloudTs;
-  try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
+  // 3) Référence de fraîcheur. À n'avancer QUE si l'on a tout adopté : si les
+  //    conditions du cloud n'ont PAS été reprises (formulaires déjà rendus), notre
+  //    état local reste périmé. L'annoncer comme à jour ferait passer ce poste pour
+  //    la vérité, et la prochaine sauvegarde écraserait dans le cloud les conditions
+  //    saisies ailleurs — exactement le scénario qui a fait sauter le barème Zydus
+  //    d'avril. Tant que le bandeau n'est pas validé, on ne s'arroge donc pas la
+  //    vérité (et `saveState()` de repli, conditionné à _truthSavedAt > _cloudTs,
+  //    ne peut plus se déclencher).
+  if (!condsChanged) {
+    _truthSavedAt = cloudTs;
+    try { localStorage.setItem(LS_KEY, JSON.stringify(cs)); } catch(_) {}
+  }
 
   // 4) Re-rendu de la vue courante — ces pages se reconstruisent entièrement depuis
   //    l'état, donc l'écran reflète les nouvelles données sans rechargement.
