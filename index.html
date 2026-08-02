@@ -1225,15 +1225,21 @@
     position: absolute; border-radius: 12px; pointer-events: none;
     box-shadow: 0 0 0 9999px rgba(3, 8, 18, .78);
     outline: 2px solid var(--cyan); outline-offset: 3px;
-    transition: top .28s ease, left .28s ease, width .28s ease, height .28s ease;
+    /* Même durée et même courbe que la bulle : les deux se déplacent ensemble. */
+    transition: top .18s cubic-bezier(.4,0,.2,1), left .18s cubic-bezier(.4,0,.2,1),
+                width .18s cubic-bezier(.4,0,.2,1), height .18s cubic-bezier(.4,0,.2,1);
   }
+  /* Premier affichage et repositionnement après défilement : aucune animation, sinon
+     le cadre partirait de sa position précédente et donnerait un effet de retard. */
+  #tourOverlay.no-anim #tourHole,
+  #tourOverlay.no-anim #tourCard { transition: none !important; }
   #tourCard {
     position: absolute; width: min(360px, calc(100vw - 28px));
     background: var(--panel); color: var(--text);
     border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px;
     box-shadow: 0 10px 40px rgba(0,0,0,.45);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    transition: top .28s ease, left .28s ease;
+    transition: top .18s cubic-bezier(.4,0,.2,1), left .18s cubic-bezier(.4,0,.2,1);
   }
   #tourCard h4 { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--cyan); }
   #tourCard p  { margin: 0 0 10px; font-size: 13px; line-height: 1.55; color: var(--text); }
@@ -15461,9 +15467,15 @@ document.addEventListener('DOMContentLoaded', function() {
   const hole = () => document.getElementById('tourHole');
   const card = () => document.getElementById('tourCard');
 
-  function _place(el) {
+  function _place(el, instant) {
     const h = hole(), c = card();
     const pad = 6, vw = innerWidth, vh = innerHeight;
+    // Désactive les transitions le temps de poser la nouvelle position, puis les
+    // réactive à l'image suivante : évite le glissement depuis l'ancienne position.
+    if (instant) {
+      ov().classList.add('no-anim');
+      requestAnimationFrame(() => requestAnimationFrame(() => ov()?.classList.remove('no-anim')));
+    }
     if (!el) {                                   // étape sans ancre → carte centrée
       h.style.cssText += ';opacity:0';
       c.style.top  = Math.max(12, vh / 2 - c.offsetHeight / 2) + 'px';
@@ -15483,7 +15495,7 @@ document.addEventListener('DOMContentLoaded', function() {
     c.style.top = top + 'px'; c.style.left = left + 'px';
   }
 
-  function _render() {
+  function _render(instant) {
     const s = STEPS[_tourI], c = card();
     const last = _tourI === STEPS.length - 1;
     c.innerHTML = `<h4>${s.titre}</h4>${s.html}
@@ -15504,9 +15516,23 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('tourNext').addEventListener('click', () => last ? _end(true) : _go(_tourI + 1));
     document.getElementById('tourSkip').addEventListener('click', () => _end(true));
     document.getElementById('tourPrev')?.addEventListener('click', () => _go(_tourI - 1));
+
     const el = s.sel ? document.querySelector(s.sel) : null;
-    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    setTimeout(() => _place(el), el ? 220 : 0);
+    // Le défilement n'a lieu QUE si la cible sort de l'écran, et il est INSTANTANÉ.
+    // Auparavant un défilement animé était lancé puis le placement calculé 220 ms plus
+    // tard : les coordonnées étaient lues en plein mouvement, d'où le décalage entre le
+    // cadre et la bulle — et ces 220 ms d'attente donnaient la sensation de lenteur.
+    let scrolled = false;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      if (r.top < 8 || r.bottom > innerHeight - 8) {
+        el.scrollIntoView({ block: 'center', behavior: 'auto' });
+        scrolled = true;
+      }
+    }
+    // Placement dans la même image que le rendu : le cadre et la bulle partent
+    // ensemble. Après un défilement, on place sans animation (la référence a bougé).
+    _place(el, instant || scrolled);
   }
 
   function _go(i) { _tourI = Math.max(0, Math.min(STEPS.length - 1, i)); _render(); }
@@ -15519,14 +15545,14 @@ document.addEventListener('DOMContentLoaded', function() {
   function _start() {
     _tourI = 0;
     ov().classList.add('open');
-    _render();
+    _render(true);        // ouverture : pose directe, sans glissement depuis 0,0
   }
   window._tourStart = _start;
 
   addEventListener('resize', () => {
     if (!ov()?.classList.contains('open')) return;
     const s = STEPS[_tourI];
-    _place(s.sel ? document.querySelector(s.sel) : null);
+    _place(s.sel ? document.querySelector(s.sel) : null, true);
   });
 
   // Démarrage automatique : uniquement pour un compte réellement neuf (aucun labo
