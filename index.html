@@ -8958,6 +8958,10 @@ function _palierAddDirect(agg, digiRow, cond) {
 }
 
 function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
+  // Déclaré en TÊTE : la fusion des achats directs (plus bas) a besoin du mois pour
+  // aller chercher le barème correspondant. Laissé plus bas, le `const` plaçait mkY
+  // dans sa zone morte temporelle → « Cannot access 'mkY' before initialization ».
+  const [mkY, mkM] = mk.split('-').map(Number);
   const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   const digiRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   let   paliers   = (grosRow && Array.isArray(grosRow.paliers))     ? grosRow.paliers     : [];
@@ -8992,7 +8996,6 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   // cas le montant est ANNONCÉ, pas encaissé → affiché comme tel.
   const r2RecAnnounced = !(fseR2 > 0) && (digiRow?.rdp_total || 0) > 0;
   const r2RecTotal = fseR2 > 0 ? fseR2 : (digiRow?.rdp_total || 0);
-  const [mkY, mkM] = mk.split('-').map(Number);
   const _note = directAdded <= 0 ? null
     : _noGros ? 'achats directs — justificatif répartiteur non encore déposé'
               : 'répartiteur + achats directs';
