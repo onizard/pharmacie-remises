@@ -1087,6 +1087,117 @@
   .cgu-body h3 { font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700; color: var(--cyan); letter-spacing: 2px; margin: 20px 0 8px; }
   .cgu-body p { margin: 0 0 8px; color: var(--text-dim); }
 
+  /* ═══════════════════════════════════════════════════════════════════════════
+     MAQUETTE « DESIGN MODERNE » — PORTÉE : PAGE VÉRIFICATEUR UNIQUEMENT
+     ───────────────────────────────────────────────────────────────────────────
+     Essai visuel avant généralisation : tout est préfixé par #page-verificateur,
+     donc AUCUNE autre page n'est affectée. Pour revenir en arrière, il suffit de
+     supprimer ce bloc — rien d'autre n'a été modifié.
+
+     Parti pris : on ne touche PAS à la palette (le rouge/vert/ambre porte du sens
+     métier). On ne change que la « forme » : police système, fin des majuscules et
+     de l'espacement de caractères, angles arrondis, ombres douces à la place des
+     halos, et plus de respiration. Le !important est nécessaire pour neutraliser
+     les styles écrits en ligne dans le JS (police et letter-spacing).
+     ═══════════════════════════════════════════════════════════════════════════ */
+  #page-verificateur {
+    --ui-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --ui-radius: 12px;
+    --ui-radius-sm: 9px;
+    --ui-shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 20px rgba(0,0,0,.06);
+  }
+  /* Typographie : une seule police, sans espacement ni majuscules forcées. */
+  #page-verificateur, #page-verificateur * {
+    font-family: var(--ui-font) !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    text-shadow: none !important;
+  }
+  /* Chiffres alignés en colonne (comportement des tableaux financiers soignés). */
+  #page-verificateur .verif-tbl td,
+  #page-verificateur .verif-tbl th { font-variant-numeric: tabular-nums; }
+
+  /* Carte principale : coins arrondis, ombre douce, sans équerres décoratives. */
+  #page-verificateur .panel {
+    border-radius: var(--ui-radius);
+    box-shadow: var(--ui-shadow);
+    border-color: rgba(128,128,128,.18);
+  }
+  #page-verificateur .panel::before,
+  #page-verificateur .panel::after { display: none; }
+  #page-verificateur .panel-title {
+    font-size: 20px; font-weight: 600; color: var(--text);
+  }
+
+  /* Tableaux : plus aérés, séparateurs discrets, en-têtes sobres. */
+  #page-verificateur .verif-tbl { font-size: 13px; }
+  #page-verificateur .verif-tbl th {
+    font-size: 11px; font-weight: 600; color: var(--text-dim);
+    border-bottom: 1px solid rgba(128,128,128,.16); padding: 10px 12px;
+  }
+  #page-verificateur .verif-tbl td {
+    padding: 11px 12px; border-bottom: 1px solid rgba(128,128,128,.10);
+  }
+  #page-verificateur .verif-tbl tr:hover td { background: rgba(128,128,128,.05); }
+  #page-verificateur .verif-tbl tfoot td,
+  #page-verificateur .verif-tbl tr[style*="border-top"] td { border-top: 1px solid rgba(128,128,128,.20); }
+
+  /* Boutons : pastilles arrondies, sans halo — état actif porté par le fond. */
+  #page-verificateur .verif-lab-btn,
+  #page-verificateur .verif-year-btn,
+  #page-verificateur .verif-mon-btn,
+  #page-verificateur .verif-type-btn {
+    border-radius: 980px; font-weight: 500; box-shadow: none;
+    border-color: rgba(128,128,128,.28); padding: 7px 15px;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  #page-verificateur .verif-mon-btn { padding: 6px 12px; font-size: 11px; }
+  #page-verificateur .verif-lab-btn { font-size: 12px; }
+  /* État actif : fond plein + texte blanc. Le !important est indispensable — les
+     règles d'origine posent déjà couleur/fond en !important, ce qui donnait sinon
+     du cyan sur cyan (illisible) et laissait transparaître la trame de fond. */
+  #page-verificateur .verif-lab-btn.selected,
+  #page-verificateur .verif-year-btn.active,
+  #page-verificateur .verif-mon-btn.active,
+  #page-verificateur .verif-type-btn.active {
+    background: var(--cyan) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+  #page-verificateur .verif-lab-btn:disabled { opacity: .32; }
+
+  /* Mobile : on resserre la densité, sinon les tableaux à 9 colonnes débordent
+     bien au-delà de l'écran (le confort de lecture prime sur l'espacement). */
+  @media (max-width: 760px) {
+    #page-verificateur .verif-tbl { font-size: 11.5px; }
+    #page-verificateur .verif-tbl th { padding: 8px 5px; }
+    #page-verificateur .verif-tbl td { padding: 9px 5px; }
+    #page-verificateur .panel-title { font-size: 17px; }
+    #page-verificateur .verif-lab-btn,
+    #page-verificateur .verif-year-btn { padding: 6px 13px; }
+  }
+
+  /* Intitulés de section : discrets, en gris, sans capitales ni espacement. */
+  #page-verificateur .verif-contract-label {
+    font-size: 12px; font-weight: 500; color: var(--text-dim);
+  }
+  /* Encadré du contrat + bandeaux : mêmes arrondis que la carte. */
+  #page-verificateur .verif-contract-card,
+  #page-verificateur .verif-cond-select,
+  #page-verificateur .verif-date-input,
+  #page-verificateur [style*="border:1px solid var(--border)"] {
+    border-radius: var(--ui-radius-sm);
+  }
+  #page-verificateur details > div { border-radius: var(--ui-radius-sm); }
+
+  /* Mode sombre : la trame « scanlines » est un calque global posé PAR-DESSUS toute
+     la page (body::before/after). Elle traversait donc la maquette et zébrait même
+     les boutons pleins. On la masque tant que le vérificateur est la page affichée
+     — le thème clair la désactivait déjà de son côté. */
+  body:has(#page-verificateur.active)::before,
+  body:has(#page-verificateur.active)::after { display: none; }
+
 </style>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -1603,7 +1714,7 @@
   <!-- ── PAGE VÉRIFICATEUR ── -->
   <div id="page-verificateur" class="page">
     <div class="panel" style="padding:0 0 28px">
-      <div class="panel-title" style="padding:16px 20px 12px">◈ VÉRIFICATEUR DE REMISE</div>
+      <div class="panel-title" style="padding:16px 20px 12px">Vérificateur de remise</div>
       <div id="verifTabBar" style="display:flex;border-bottom:1px solid var(--border);padding:0 20px"></div>
       <div id="verifContent" style="padding:16px 20px 0"></div>
     </div>
