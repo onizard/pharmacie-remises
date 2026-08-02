@@ -1221,9 +1221,13 @@
      pour que l'élément mis en avant reste cliquable. */
   #tourOverlay { position: fixed; inset: 0; z-index: 100050; display: none; }
   #tourOverlay.open { display: block; }
+  /* Assombrissement par QUATRE panneaux entourant la cible, au lieu d'une ombre
+     portée de 9999 px. L'ombre obligeait le navigateur à repeindre tout l'écran à
+     chaque déplacement, par-dessus un DOM lourd (tableaux du vérificateur) — coûteux
+     sur mobile. Quatre rectangles pleins se repeignent en une fraction du coût. */
+  .tour-mask { position: absolute; background: rgba(3, 8, 18, .78); pointer-events: auto; }
   #tourHole {
     position: absolute; border-radius: 12px; pointer-events: none;
-    box-shadow: 0 0 0 9999px rgba(3, 8, 18, .78);
     outline: 2px solid var(--cyan); outline-offset: 3px;
     /* Même durée et même courbe que la bulle : les deux se déplacent ensemble. */
     transition: top .18s cubic-bezier(.4,0,.2,1), left .18s cubic-bezier(.4,0,.2,1),
@@ -15386,7 +15390,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- ── Tutoriel interactif (visite guidée des nouveaux inscrits) ───────────── -->
-<div id="tourOverlay"><div id="tourHole"></div><div id="tourCard"></div></div>
+<div id="tourOverlay"><div class="tour-mask" id="tmT"></div><div class="tour-mask" id="tmB"></div><div class="tour-mask" id="tmL"></div><div class="tour-mask" id="tmR"></div><div id="tourHole"></div><div id="tourCard"></div></div>
 <script>
 (function () {
   const LS_TOUR = 'bp_tour_done_v1';
@@ -15467,6 +15471,20 @@ document.addEventListener('DOMContentLoaded', function() {
   const hole = () => document.getElementById('tourHole');
   const card = () => document.getElementById('tourCard');
 
+  // Pose les 4 panneaux d'assombrissement autour du rectangle éclairé.
+  function _mask(t, l, w, hgt) {
+    const vw = innerWidth, vh = innerHeight;
+    const S = (id, top, left, width, height) => {
+      const e = document.getElementById(id); if (!e) return;
+      e.style.top = top + 'px'; e.style.left = left + 'px';
+      e.style.width = Math.max(0, width) + 'px'; e.style.height = Math.max(0, height) + 'px';
+    };
+    S('tmT', 0, 0, vw, t);
+    S('tmB', t + hgt, 0, vw, vh - (t + hgt));
+    S('tmL', t, 0, l, hgt);
+    S('tmR', t, l + w, vw - (l + w), hgt);
+  }
+
   function _place(el, instant) {
     const h = hole(), c = card();
     const pad = 6, vw = innerWidth, vh = innerHeight;
@@ -15477,17 +15495,22 @@ document.addEventListener('DOMContentLoaded', function() {
       requestAnimationFrame(() => requestAnimationFrame(() => ov()?.classList.remove('no-anim')));
     }
     if (!el) {                                   // étape sans ancre → carte centrée
-      h.style.cssText += ';opacity:0';
+      h.style.opacity = '0';
+      _mask(0, 0, 0, 0);                         // écran entièrement assombri
       c.style.top  = Math.max(12, vh / 2 - c.offsetHeight / 2) + 'px';
       c.style.left = Math.max(12, vw / 2 - c.offsetWidth / 2) + 'px';
       return;
     }
     h.style.opacity = '1';
+    // TOUTES les mesures d'abord, les écritures ensuite : intercaler lecture et
+    // écriture forcerait le navigateur à recalculer la mise en page à chaque tour.
     const r = el.getBoundingClientRect();
-    h.style.top = (r.top - pad) + 'px';   h.style.left = (r.left - pad) + 'px';
-    h.style.width = (r.width + pad * 2) + 'px'; h.style.height = (r.height + pad * 2) + 'px';
-    // Carte sous l'élément si la place le permet, au-dessus sinon ; bornée à l'écran.
     const ch = c.offsetHeight, cw = c.offsetWidth;
+    const ht = r.top - pad, hl = r.left - pad, hw = r.width + pad * 2, hh = r.height + pad * 2;
+    h.style.top = ht + 'px';   h.style.left = hl + 'px';
+    h.style.width = hw + 'px'; h.style.height = hh + 'px';
+    _mask(ht, hl, hw, hh);
+    // Carte sous l'élément si la place le permet, au-dessus sinon ; bornée à l'écran.
     let top = r.bottom + 14;
     if (top + ch > vh - 12) top = Math.max(12, r.top - ch - 14);
     let left = r.left + r.width / 2 - cw / 2;
