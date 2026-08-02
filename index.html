@@ -8899,27 +8899,50 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
     </div></details>`;
 }
 
+// Fusionne les ACHATS DIRECTS (factures CSP/Digi, pa_direct_by_pal) dans les paliers
+// répartiteur, pour que le tableau détaillé totalise les MÊMES achats que la colonne
+// « CA BRUT » de la synthèse (avant, il n'affichait que le répartiteur : chez Zydus,
+// 93 % des achats — les directs — étaient invisibles).
+//
+// La clé de pa_direct_by_pal EST la catégorie RSF de la ligne de facture. La remise
+// correspondante étant DÉJÀ accordée sur la facture, on l'ajoute aussi bien à la base
+// (brut) qu'à la remise obtenue → l'écart RSF de la part directe est nul, ce qui est
+// exact ; seul le CA affiché grossit.
+//
+// GARDE-FOU ANTI-DOUBLE-COMPTAGE : à n'appeler QUE pour un mois SANS avoir RDP. Quand
+// un avoir existe, sa propre ventilation (ca_direct de rdp_by_taux) porte déjà les
+// achats directs — les rajouter les compterait deux fois.
+function _palierAddDirect(agg, digiRow) {
+  let added = 0;
+  Object.entries((digiRow && digiRow.pa_direct_by_pal) || {}).forEach(([pal, brut]) => {
+    const taux = Math.abs(parseFloat(pal)), b = parseFloat(brut) || 0;
+    if (isNaN(taux) || b <= 0) return;
+    const a = agg[taux] || (agg[taux] = { taux, qty: 0, brut: 0, remise: 0, net: 0 });
+    a.brut   += b;
+    a.remise += b * taux / 100;
+    a.net    += b * (1 - taux / 100);
+    added    += b;
+  });
+  return added;
+}
+
 function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   const digiRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   let   paliers   = (grosRow && Array.isArray(grosRow.paliers))     ? grosRow.paliers     : [];
   const rdpByTaux = (digiRow && Array.isArray(digiRow.rdp_by_taux)) ? digiRow.rdp_by_taux : [];
-  // MOIS EN COURS : ni justificatif répartiteur ni avoir RDP encore reçus, mais des
-  // achats DIRECTS déjà facturés (CSP/Digi). On reconstruit des paliers depuis
-  // pa_direct_by_pal (dont la clé EST la catégorie RSF de la ligne de facture) pour
-  // rendre le MÊME tableau que les mois échus, au lieu de retomber sur l'ancien
-  // affichage (« RSF — » puis le nom du labo). La remise RSF étant déjà accordée SUR
-  // la facture, attendue = reçue → écart nul, ce qui est exact. Ne s'applique QUE
-  // faute de données répartiteur/avoir : sinon les achats directs sont déjà comptés
-  // via le ca_direct de l'avoir, et on doublerait.
-  let directOnly = false;
-  if (!paliers.length && !rdpByTaux.length) {
-    paliers = Object.entries((digiRow && digiRow.pa_direct_by_pal) || {}).map(([pal, brut]) => {
-      const taux = Math.abs(parseFloat(pal)), b = parseFloat(brut) || 0;
-      return (isNaN(taux) || b <= 0) ? null
-        : { taux, qty: 0, brut: b, remise: b*taux/100, net: b*(1-taux/100) };
-    }).filter(Boolean).sort((a,b) => a.taux - b.taux);
-    directOnly = paliers.length > 0;
+  // Achats DIRECTS du mois : intégrés aux paliers pour que le tableau totalise les
+  // mêmes achats que la synthèse. Uniquement s'il n'y a PAS d'avoir ce mois-là
+  // (sinon le ca_direct de l'avoir les porte déjà — cf. _palierAddDirect).
+  // Couvre aussi le MOIS EN COURS (aucun justificatif répartiteur encore déposé) :
+  // le tableau garde alors la même présentation au lieu de l'ancien affichage.
+  const _noGros = !paliers.length;
+  let directAdded = 0;
+  if (!rdpByTaux.length) {
+    const agg = {};
+    paliers.forEach(p => { if (p.taux != null) agg[p.taux] = { ...p }; });
+    directAdded = _palierAddDirect(agg, digiRow);
+    if (directAdded > 0) paliers = Object.values(agg).sort((a, b) => a.taux - b.taux);
   }
   if (!paliers.length && !rdpByTaux.length) return null;
   // Reçu = virements ASSIGNÉS à ce mois de contrat (période payée), pas les
@@ -8940,8 +8963,11 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const r2RecAnnounced = !(fseR2 > 0) && (digiRow?.rdp_total || 0) > 0;
   const r2RecTotal = fseR2 > 0 ? fseR2 : (digiRow?.rdp_total || 0);
   const [mkY, mkM] = mk.split('-').map(Number);
+  const _note = directAdded <= 0 ? null
+    : _noGros ? 'achats directs — justificatif répartiteur non encore déposé'
+              : 'répartiteur + achats directs';
   return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, mkY, mkM, null, r2RecAnnounced,
-                                null, directOnly ? 'achats directs — justificatif répartiteur non encore déposé' : null)
+                                null, _note)
        + _verifRenderVirements([mk], selNorm, labDisplay, digiRow?.rdp_total || 0);
 }
 
@@ -8958,14 +8984,20 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
       a.qty+=p.qty||0; a.brut+=p.brut||0; a.remise+=p.remise||0; a.net+=p.net||0;
     });
   });
+  let directAdded = 0;
   Object.entries(state._digiMonthStats||{}).filter(([mk])=>mksY(mk)).forEach(([,arr])=>{
-    ((arr||[]).find(r=>_verifNormLab(r.labo)===selNorm)?.rdp_by_taux||[]).forEach(e=>{
+    const row = (arr||[]).find(r=>_verifNormLab(r.labo)===selNorm);
+    (row?.rdp_by_taux||[]).forEach(e=>{
       if (e.taux==null) return;
       const a = rAgg[e.taux] || (rAgg[e.taux]={taux:e.taux,grossiste:0,direct:0,ca_grossiste:0,ca_direct:0});
       a.grossiste+=e.grossiste||0; a.direct+=e.direct||0; a.ca_grossiste+=e.ca_grossiste||0; a.ca_direct+=e.ca_direct||0;
     });
+    // Achats directs du mois — ajoutés SEULEMENT si ce mois n'a pas d'avoir (test
+    // fait mois par mois : un labo peut avoir des avoirs sur janvier-avril et pas
+    // après, comme Biogaran ; ne pas mélanger les deux périodes).
+    if (row && !(row.rdp_by_taux||[]).length) directAdded += _palierAddDirect(gAgg, row);
   });
-  const paliers = Object.values(gAgg), rdpByTaux = Object.values(rAgg);
+  const paliers = Object.values(gAgg).sort((a,b)=>a.taux-b.taux), rdpByTaux = Object.values(rAgg);
   if (!paliers.length && !rdpByTaux.length) return null;
   // Reçu = virements ASSIGNÉS aux mois de contrat de l'année (un virement encaissé
   // en janvier N+1 qui paie décembre N compte dans l'année N).
@@ -9028,7 +9060,8 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
   // Vue TOUT : le récap litige (à réclamer au labo, avec preuves) vient JUSTE
   // après le bloc REMISE 3 / COOP (dernier bloc du core), avant le détail des
   // virements.
-  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr, r2RecAnnounced, rmapAgg)
+  return _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, labDisplay, yr, mRef, yr, r2RecAnnounced, rmapAgg,
+                                directAdded > 0 ? 'répartiteur + achats directs' : null)
        + _verifRenderLitige(yr, selNorm, labDisplay)
        + _verifRenderVirements(fseMksY, selNorm, labDisplay, rdpTotalSum);
 }
