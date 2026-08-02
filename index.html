@@ -1195,6 +1195,26 @@
   }
   #page-verificateur details > div { border-radius: var(--ui-radius-sm); }
 
+  /* ── Harmonisation globale : tous les boutons en pastilles ──────────────────
+     Les boutons étaient à angles vifs (aucun border-radius) alors que la maquette
+     du vérificateur les arrondit : rupture visuelle, très visible sur le header.
+     On aligne donc TOUS les boutons d'action sur le même rayon.
+     Exclus volontairement : les ONGLETS (.main-tab, .verif-tab-btn, .cond-tab),
+     dont l'état actif est un soulignement — les arrondir casserait ce repère.
+     Les champs de saisie reçoivent un rayon modéré : une pastille nuirait à la
+     lisibilité d'un champ texte. */
+  .btn, .btn-primary, .btn-secondary, .btn-theme, .btn-cond-labo, .btn-connecteur,
+  .btn-launch, .btn-refresh-comp, .btn-reset-hold, .auth-btn, .account-btn,
+  .conn-test-btn, .conn-copy-btn, .conn-disconnect-btn, .conn-change-link,
+  .lab-btn, .mon-btn, .month-btn, .conc-type-btn, .cond-tab-add,
+  .sim-dl-btn, .sim-start-btn, .try-again-btn, .rsf-send-btn, .step-add {
+    border-radius: 980px;
+  }
+  .profile-input, .verif-cond-select, .verif-date-input, .conn-input,
+  input[type="text"], input[type="date"], input[type="email"], input[type="password"], select {
+    border-radius: 10px;
+  }
+
   /* Mode sombre : la trame « scanlines » est un calque global posé PAR-DESSUS toute
      la page (body::before/after). Elle traversait donc la maquette et zébrait même
      les boutons pleins. On la masque tant que le vérificateur est la page affichée
