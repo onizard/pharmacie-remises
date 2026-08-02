@@ -8182,7 +8182,14 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
     + `\n\nTOTAL À RÉGLER : ${fmtE(total)}`
     + (coopRows.length ? `\n\n— Suivi coop (non inclus dans le courrier) —\n`
       + coopRows.map(r => `• ${r.mk} — ${r.type} : ${fmtE(r.due)}\n  ${r.preuve}`).join('\n\n') : '');
-  const title = `<div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:900;letter-spacing:2px;color:var(--red);margin:22px 0 8px">⚖ À RÉCLAMER AU LABO — ${escH(labDisplay)} ${yr}</div>`;
+  // Début de la période couverte par les réclamations : le 1er janvier de l'année
+  // affichée, ou la date de signature si le contrat a démarré en cours d'année (avant
+  // elle, _verifGetCond ne rend aucune condition → aucun mois n'est réclamable).
+  // Affiché en clair : sans repère de période, ce total se comparait à tort au suivi
+  // coop juste en dessous, qui cumule LUI depuis le début du contrat, toutes années.
+  const _litFrom = (cs && cs.slice(0, 4) === String(yr)) ? csFr : `01/01/${yr}`;
+  const title = `<div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:900;letter-spacing:2px;color:var(--red);margin:22px 0 8px">⚖ À RÉCLAMER AU LABO — ${escH(labDisplay)} ${yr}`
+    + `<span style="font-family:'Share Tech Mono',monospace;font-size:10px;font-weight:400;letter-spacing:0;color:var(--text-dim);margin-left:8px" title="Période couverte par les lignes ci-dessous. Le suivi coop, lui, cumule depuis le début du contrat, toutes années confondues.">depuis le ${_litFrom}</span></div>`;
   // Carte coop « officieuse » : ambre, badge explicite, affichée même quand il n'y
   // a rien à réclamer officiellement.
   const coopCards = coopRows.map(r => `
