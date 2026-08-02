@@ -8909,19 +8909,26 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
 // (brut) qu'à la remise obtenue → l'écart RSF de la part directe est nul, ce qui est
 // exact ; seul le CA affiché grossit.
 //
-// GARDE-FOU ANTI-DOUBLE-COMPTAGE : à n'appeler QUE pour un mois SANS avoir RDP. Quand
-// un avoir existe, sa propre ventilation (ca_direct de rdp_by_taux) porte déjà les
-// achats directs — les rajouter les compterait deux fois.
+// Pas de risque de double-comptage de la RDP : la base RDP d'un mois AVEC avoir vaut
+// `avoirCA` (ca_grossiste + ca_direct de l'avoir) et ne dépend pas des paliers — voir
+// `brut` dans _verifRenderPalierCore. Ce que l'on modifie ici n'alimente que la base
+// RSF (colonne CA BRUT), compensée par la remise correspondante.
+// Vérifié sur les données réelles : le `ca_direct` de l'avoir Biogaran (327 € en
+// janvier) n'est PAS le même agrégat que nos factures directes (6 802 €) — l'avoir ne
+// couvre que les paliers ouvrant droit à RDP. Les deux ne se recouvrent donc pas.
+// `_direct` mémorise la part ajoutée, pour que l'alerte de divergence CA continue de
+// comparer le connecteur grossiste à l'avoir sur le même périmètre.
 function _palierAddDirect(agg, digiRow) {
   let added = 0;
   Object.entries((digiRow && digiRow.pa_direct_by_pal) || {}).forEach(([pal, brut]) => {
     const taux = Math.abs(parseFloat(pal)), b = parseFloat(brut) || 0;
     if (isNaN(taux) || b <= 0) return;
-    const a = agg[taux] || (agg[taux] = { taux, qty: 0, brut: 0, remise: 0, net: 0 });
-    a.brut   += b;
-    a.remise += b * taux / 100;
-    a.net    += b * (1 - taux / 100);
-    added    += b;
+    const a = agg[taux] || (agg[taux] = { taux, qty: 0, brut: 0, remise: 0, net: 0, _direct: 0 });
+    a.brut    += b;
+    a.remise  += b * taux / 100;
+    a.net     += b * (1 - taux / 100);
+    a._direct  = (a._direct || 0) + b;
+    added     += b;
   });
   return added;
 }
@@ -8931,14 +8938,13 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   const digiRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   let   paliers   = (grosRow && Array.isArray(grosRow.paliers))     ? grosRow.paliers     : [];
   const rdpByTaux = (digiRow && Array.isArray(digiRow.rdp_by_taux)) ? digiRow.rdp_by_taux : [];
-  // Achats DIRECTS du mois : intégrés aux paliers pour que le tableau totalise les
-  // mêmes achats que la synthèse. Uniquement s'il n'y a PAS d'avoir ce mois-là
-  // (sinon le ca_direct de l'avoir les porte déjà — cf. _palierAddDirect).
+  // Achats DIRECTS du mois : toujours intégrés aux paliers, pour que le tableau
+  // totalise exactement les mêmes achats que la colonne CA BRUT de la synthèse.
   // Couvre aussi le MOIS EN COURS (aucun justificatif répartiteur encore déposé) :
   // le tableau garde alors la même présentation au lieu de l'ancien affichage.
   const _noGros = !paliers.length;
   let directAdded = 0;
-  if (!rdpByTaux.length) {
+  {
     const agg = {};
     paliers.forEach(p => { if (p.taux != null) agg[p.taux] = { ...p }; });
     directAdded = _palierAddDirect(agg, digiRow);
@@ -8992,10 +8998,9 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
       const a = rAgg[e.taux] || (rAgg[e.taux]={taux:e.taux,grossiste:0,direct:0,ca_grossiste:0,ca_direct:0});
       a.grossiste+=e.grossiste||0; a.direct+=e.direct||0; a.ca_grossiste+=e.ca_grossiste||0; a.ca_direct+=e.ca_direct||0;
     });
-    // Achats directs du mois — ajoutés SEULEMENT si ce mois n'a pas d'avoir (test
-    // fait mois par mois : un labo peut avoir des avoirs sur janvier-avril et pas
-    // après, comme Biogaran ; ne pas mélanger les deux périodes).
-    if (row && !(row.rdp_by_taux||[]).length) directAdded += _palierAddDirect(gAgg, row);
+    // Achats directs du mois, ajoutés dans tous les cas (la base RDP des mois avec
+    // avoir vient de l'avoir lui-même, elle n'est donc pas affectée).
+    if (row) directAdded += _palierAddDirect(gAgg, row);
   });
   const paliers = Object.values(gAgg).sort((a,b)=>a.taux-b.taux), rdpByTaux = Object.values(rAgg);
   if (!paliers.length && !rdpByTaux.length) return null;
@@ -9232,7 +9237,11 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const brut     = avoirCA > 0 ? avoirCA : (gBrutConn + caDir);   // PA BRUT = base RDP/coop
     const dirBrut  = caDir;
     // Écart entre le CA remisé par le labo (avoir) et tes achats grossiste (connecteur).
-    const caDiv = (gBrutConn>0 && avoirCA>0 && Math.abs(gBrutConn-avoirCA) > Math.max(1, avoirCA*0.02));
+    // On retire la part d'achats DIRECTS fusionnée dans le palier : l'avoir ne porte
+    // que le périmètre grossiste, comparer les deux bruts sinon déclencherait l'alerte
+    // à tort dès qu'il y a des factures directes.
+    const gBrutGros = gBrutConn - (g?._direct || 0);
+    const caDiv = (gBrutGros>0 && avoirCA>0 && Math.abs(gBrutGros-avoirCA) > Math.max(1, avoirCA*0.02));
     const brutTitle = `Base RDP = CA brut réalisé (avoir) : ${fmtE(avoirCA)} (grossiste ${fmtE(caGros)} + direct ${fmtE(caDir)}) · CA total grossiste (connecteur) : ${fmtE(gBrutConn)}`
       + (caDiv ? `\n\n⚠ Le CA sur lequel le labo a calculé la RDP (avoir) diffère de tes achats grossiste du mois (périmètres/dates d'arrêté différents). Ce n'est pas une erreur : la RDP est vérifiée sur le CA de l'avoir.` : '');
     // ⚠ cliquable : sur mobile les infobulles n'existent pas.
