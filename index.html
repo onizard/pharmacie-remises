@@ -8077,8 +8077,21 @@ function _verifRdpAttendueMonth(mk, selNorm, labDisplay) {
   // 2. Achats DIRECTS CSP par palier (= taux de remise sur facture) × barème remise2.
   //    Dus au même titre que le répartiteur (répartiteur + factures directes CSP, tout
   //    contrat signé). Base brut ventilée par le batch dans pa_direct_by_pal.
-  const directByPal = (((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm) || {}).pa_direct_by_pal;
-  if (directByPal) {
+  const _dRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm) || {};
+  const directByCip = _dRow.pa_direct_by_cip;
+  const directByPal = _dRow.pa_direct_by_pal;
+  const [_dy, _dm] = mk.split('-').map(Number);
+  if (directByCip && Object.keys(directByCip).length) {
+    // Ventilation par RÉFÉRENCE : permet d'appliquer une exception par CIP à un achat
+    // direct (ex. paracétamol Zydus à 37,5 %, invisible dans la moyenne du palier 2,5 %).
+    Object.entries(directByCip).forEach(([key, brut]) => {
+      const [cip, palKey] = String(key).split('|');
+      const ovr   = cip ? _refExcRdpOverride(selNorm, cip, _dy, _dm) : null;
+      const r2pct = ovr != null ? ovr : _r2(cmap[Math.abs(parseFloat(palKey))]);
+      if (r2pct != null && r2pct > 0 && brut > 0) { tot += brut * r2pct/100; any = true; }
+    });
+  } else if (directByPal) {
+    // Repli : anciennes données agrégées par palier seulement (avant ré-analyse).
     Object.entries(directByPal).forEach(([palKey, brut]) => {
       const r2pct = _r2(cmap[Math.abs(parseFloat(palKey))]);
       if (r2pct != null && r2pct > 0 && brut > 0) { tot += brut * r2pct/100; any = true; }
@@ -8936,23 +8949,44 @@ function _verifRenderVirements(mkList, selNorm, labDisplay, r2Avoir) {
 // mois (`_directR2`), et non au barème d'un mois de référence : sinon un changement de
 // barème en cours d'année fausserait le cumul annuel — cas réel Zydus, dont la remise 2
 // du palier 10 passe de 20 % à 0 % en avril 2026.
-function _palierAddDirect(agg, digiRow, cond) {
+function _palierAddDirect(agg, digiRow, cond, selNorm, year, month) {
   const r2map = {};
   (cond?.rsfValues || []).forEach(r => {
     const k = Math.abs(parseFloat(r.rsf_pct));
     if (!isNaN(k) && r.remise2 !== '' && r.remise2 != null) r2map[k] = Math.abs(parseFloat(r.remise2)) || 0;
   });
-  let added = 0;
-  Object.entries((digiRow && digiRow.pa_direct_by_pal) || {}).forEach(([pal, brut]) => {
-    const taux = Math.abs(parseFloat(pal)), b = parseFloat(brut) || 0;
-    if (isNaN(taux) || b <= 0) return;
+  const add = (taux, b, r2pct) => {
     const a = agg[taux] || (agg[taux] = { taux, qty: 0, brut: 0, remise: 0, net: 0, _direct: 0, _directR2: 0 });
     a.brut      += b;
     a.remise    += b * taux / 100;
     a.net       += b * (1 - taux / 100);
     a._direct    = (a._direct   || 0) + b;
-    a._directR2  = (a._directR2 || 0) + b * (r2map[taux] || 0) / 100;
-    added       += b;
+    a._directR2  = (a._directR2 || 0) + b * (r2pct || 0) / 100;
+  };
+  let added = 0;
+  // Ventilation PAR RÉFÉRENCE quand le batch l'a produite (clé « cip|palier ») : seule
+  // façon d'appliquer une exception par CIP à un achat DIRECT. Sans elle, une référence
+  // sous exception disparaissait dans la moyenne de son palier — cas du paracétamol
+  // Zydus (exception 37,5 %, acheté uniquement en direct, agrégé au palier 2,5 % dont
+  // la remise 2 vaut 0 % → RDP calculée à 0 au lieu de 307,80 €).
+  const byCip = (digiRow && digiRow.pa_direct_by_cip) || null;
+  if (byCip && Object.keys(byCip).length) {
+    Object.entries(byCip).forEach(([key, brut]) => {
+      const [cip, pal] = String(key).split('|');
+      const taux = Math.abs(parseFloat(pal)), b = parseFloat(brut) || 0;
+      if (isNaN(taux) || b <= 0) return;
+      const ovr = (selNorm && cip) ? _refExcRdpOverride(selNorm, cip, year, month) : null;
+      add(taux, b, ovr != null ? ovr : (r2map[taux] || 0));
+      added += b;
+    });
+    return added;
+  }
+  // Repli : anciennes données, agrégées par palier seulement (avant ré-analyse).
+  Object.entries((digiRow && digiRow.pa_direct_by_pal) || {}).forEach(([pal, brut]) => {
+    const taux = Math.abs(parseFloat(pal)), b = parseFloat(brut) || 0;
+    if (isNaN(taux) || b <= 0) return;
+    add(taux, b, r2map[taux] || 0);
+    added += b;
   });
   return added;
 }
@@ -8975,7 +9009,7 @@ function _verifRenderPalierDetail(mk, selNorm, labDisplay) {
   {
     const agg = {};
     paliers.forEach(p => { if (p.taux != null) agg[p.taux] = { ...p }; });
-    directAdded = _palierAddDirect(agg, digiRow, _verifGetCond(labDisplay, mkY, mkM));
+    directAdded = _palierAddDirect(agg, digiRow, _verifGetCond(labDisplay, mkY, mkM), selNorm, mkY, mkM);
     if (directAdded > 0) paliers = Object.values(agg).sort((a, b) => a.taux - b.taux);
   }
   if (!paliers.length && !rdpByTaux.length) return null;
@@ -9028,7 +9062,7 @@ function _verifRenderPalierCumul(year, selNorm, labDisplay) {
     // Achats directs du mois, ajoutés dans tous les cas (la base RDP des mois avec
     // avoir vient de l'avoir lui-même, elle n'est donc pas affectée). Le barème est
     // celui DU MOIS : un changement en cours d'année doit se refléter dans le cumul.
-    if (row) directAdded += _palierAddDirect(gAgg, row, _verifGetCond(labDisplay, yr, parseInt(mk.slice(5,7))));
+    if (row) directAdded += _palierAddDirect(gAgg, row, _verifGetCond(labDisplay, yr, parseInt(mk.slice(5,7))), selNorm, yr, parseInt(mk.slice(5,7)));
   });
   const paliers = Object.values(gAgg).sort((a,b)=>a.taux-b.taux), rdpByTaux = Object.values(rAgg);
   if (!paliers.length && !rdpByTaux.length) return null;

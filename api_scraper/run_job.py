@@ -102,7 +102,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
     - Lignes presta    : clé = period_month,      cumule presta_total
     """
     def _zero():
-        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0, "facture_refs": [], "rdp_by_taux": {}, "pa_direct_by_pal": {}}
+        return {"qty": 0, "total_ht": 0.0, "rdp_total": 0.0, "presta_total": 0.0, "presta_total_ttc": 0.0, "facture_refs": [], "rdp_by_taux": {}, "pa_direct_by_pal": {}, "pa_direct_by_cip": {}}
 
     acc: dict[str, dict] = {}
     for line in lines:
@@ -165,6 +165,18 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
                     brut = (float(pb) * int(q)) if (pb and q) else tot
                     d = acc[mk][labo]["pa_direct_by_pal"]
                     d[pal] = round(d.get(pal, 0.0) + brut, 2)
+                    # Ventilation PAR RÉFÉRENCE en plus du palier : sans elle, une
+                    # exception par CIP ne peut pas s'appliquer aux achats directs.
+                    # Cas réel : le paracétamol Zydus (exception RDP 37,5 %) n'est
+                    # acheté qu'en direct ; agrégé au seul palier 2,5 % — dont la
+                    # remise 2 vaut 0 % — sa RDP tombait à 0 au lieu de 307,80 €.
+                    # Clé « cip|palier » : sans ambiguïté si une même référence change
+                    # de palier en cours d'année.
+                    cip = str(line.get("cip") or "").strip()
+                    if cip:
+                        dc = acc[mk][labo]["pa_direct_by_cip"]
+                        k  = f"{cip}|{pal}"
+                        dc[k] = round(dc.get(k, 0.0) + brut, 2)
                 except (TypeError, ValueError):
                     pass
 
@@ -178,6 +190,7 @@ def _compute_digi_month_stats(lines: list[dict]) -> dict:
               "presta_total_ttc": round(d.get("presta_total_ttc", d["presta_total"] * 1.20), 2),
               "facture_refs":     list(dict.fromkeys(d["facture_refs"]))[:20],
               "pa_direct_by_pal": d.get("pa_direct_by_pal", {}),
+              "pa_direct_by_cip": d.get("pa_direct_by_cip", {}),
               "rdp_by_taux":      sorted(
                   [{"taux": tx, **v} for tx, v in d.get("rdp_by_taux", {}).items()],
                   key=lambda x: x["taux"])}
@@ -223,6 +236,10 @@ def _merge_digi_stats(existing: dict, new_partial: dict) -> dict:
                     exd = ex.setdefault("pa_direct_by_pal", {})
                     for _pal, _v in (nr.get("pa_direct_by_pal") or {}).items():
                         exd[_pal] = round(exd.get(_pal, 0.0) + _v, 2)
+                    # Idem pour la ventilation par référence (clé « cip|palier »).
+                    exc = ex.setdefault("pa_direct_by_cip", {})
+                    for _k, _v in (nr.get("pa_direct_by_cip") or {}).items():
+                        exc[_k] = round(exc.get(_k, 0.0) + _v, 2)
                     # Avoirs (rdp / presta) : on n'ADDITIONNE que si de NOUVEAUX n° de
                     # facture apparaissent. Si tous les n° du nouveau lot sont déjà
                     # comptés (même avoir réimporté / mois re-scrapé), on ne ré-ajoute
