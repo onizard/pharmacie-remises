@@ -1226,16 +1226,15 @@
      chaque déplacement, par-dessus un DOM lourd (tableaux du vérificateur) — coûteux
      sur mobile. Quatre rectangles pleins se repeignent en une fraction du coût. */
   .tour-mask { position: absolute; background: rgba(3, 8, 18, .78); pointer-events: auto; }
-  #tourHole {
-    position: absolute; border-radius: 12px; pointer-events: none;
-    outline: 2px solid var(--cyan); outline-offset: 3px;
-    /* Même durée et même courbe que la bulle : les deux se déplacent ensemble. */
-    transition: top .18s cubic-bezier(.4,0,.2,1), left .18s cubic-bezier(.4,0,.2,1),
-                width .18s cubic-bezier(.4,0,.2,1), height .18s cubic-bezier(.4,0,.2,1);
-  }
+  /* Le « trou » ne sert plus qu'à porter la géométrie de la zone éclairée : ni
+     bordure, ni animation. Son contour bleu était animé alors que les panneaux
+     d'assombrissement, eux, se posent instantanément — il arrivait donc toujours
+     après eux, ce qui se voyait comme un retard à chaque changement d'étape.
+     L'élément mis en avant reste parfaitement identifiable : il est le seul à ne
+     pas être assombri. */
+  #tourHole { position: absolute; pointer-events: none; }
   /* Premier affichage et repositionnement après défilement : aucune animation, sinon
      le cadre partirait de sa position précédente et donnerait un effet de retard. */
-  #tourOverlay.no-anim #tourHole,
   #tourOverlay.no-anim #tourCard { transition: none !important; }
   #tourCard {
     position: absolute; width: min(360px, calc(100vw - 28px));
