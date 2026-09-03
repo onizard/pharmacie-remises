@@ -96,12 +96,25 @@ def _parse_grossiste_bytes(xlsx_bytes: bytes) -> dict:
         ca_brut_raw = cell("brut")
         remise_raw  = cell("remise")
         ca_net      = cell("net")
-        if rep_dep == "Rep G" and labo_raw and qty:
+        # ⚠ La condition portait sur `qty` en VALEUR DE VÉRITÉ : une ligne à quantité 0
+        # mais à montant non nul (régularisation/avoir sur un palier) était donc
+        # purement ignorée, et le CA brut du mois ne collait plus au justificatif.
+        # Cas réel : BIOGARAN mars 2026, palier 15 % — qté 0, 12,86 € de vente brute,
+        # absents du total (23 290,78 € stockés contre 23 303,64 € au justificatif).
+        # On garde désormais la ligne dès qu'elle porte une quantité OU un montant ;
+        # le seuil à 0,005 € écarte le bruit de calcul du gabarit (valeurs en 1e-16).
+        try:
+            q = int(qty or 0)
+        except (TypeError, ValueError):
+            q = 0
+        try:
+            b = float(ca_brut_raw or 0)
+        except (TypeError, ValueError):
+            b = 0.0
+        if rep_dep == "Rep G" and labo_raw and (q != 0 or abs(b) >= 0.005):
             labo = _norm_grossiste_labo(labo_raw)
             acc  = month_acc[current_month].setdefault(
                 labo, {"qty": 0, "total_ht": 0.0, "ca_brut": 0.0, "paliers": {}})
-            q = int(qty or 0)
-            b = float(ca_brut_raw or 0)
             r = float(remise_raw or 0)
             n = float(ca_net or 0)
             acc["qty"]      += q

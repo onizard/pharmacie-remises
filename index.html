@@ -7608,17 +7608,23 @@ function _verifFillContractsSummary(year) {
       // même moteur que le détail et le récap litige. Cumul sur l'année affichée, comme
       // les autres colonnes du tableau (la coop REÇUE est elle aussi bornée à l'année).
       coopAtt += (typeof _verifCoopAttendue === 'function') ? _verifCoopAttendue(mk, norm, lab) : 0;
-      // CA brut tarif (avant RSF) = répartiteur ca_brut + achats directs au BRUT
-      // (Σ pa_direct_by_pal), repli sur total_ht si le brut n'est pas ventilé.
-      ((state._grossisteMonthStats||{})[mk] || []).forEach(r => {
-        if (_verifNormLab(r.labo)===norm) caBrut += (r.ca_brut != null && r.ca_brut > 0 ? r.ca_brut : r.total_ht) || 0;
+      // CA brut tarif (avant RSF) = justificatif répartiteur CERP + achats DIRECTS
+      // au brut. On passe par le MÊME agrégateur que le détail mensuel
+      // (_palierAddDirect) plutôt que par une somme parallèle de pa_direct_by_pal :
+      // c'est la seule façon de garantir que la synthèse et le tableau du mois
+      // affichent le même CA BRUT au centime, quelle que soit la ventilation
+      // disponible (par CIP ou par palier).
+      const _gRow = ((state._grossisteMonthStats||{})[mk] || []).find(r => _verifNormLab(r.labo)===norm);
+      const _dRow = ((state._digiMonthStats||{})[mk] || []).find(r => _verifNormLab(r.labo)===norm);
+      const _agg  = {};
+      ((_gRow && Array.isArray(_gRow.paliers)) ? _gRow.paliers : []).forEach(p => {
+        if (p.taux != null) _agg[p.taux] = { ...p };
       });
-      ((state._digiMonthStats||{})[mk] || []).forEach(r => {
-        if (_verifNormLab(r.labo)===norm) {
-          const brut = Object.values(r.pa_direct_by_pal || {}).reduce((s,v)=>s+(parseFloat(v)||0),0);
-          caBrut += brut > 0 ? brut : (r.total_ht || 0);
-        }
-      });
+      if (_dRow) _palierAddDirect(_agg, _dRow, _verifGetCond(lab, yr, m), norm, yr, m);
+      const _sum = Object.values(_agg).reduce((s, p) => s + (p.brut || 0), 0);
+      // Repli : justificatif sans ventilation par palier (ancien import) → ca_brut brut.
+      caBrut += _sum > 0 ? _sum
+                         : (((_gRow && (_gRow.ca_brut > 0 ? _gRow.ca_brut : _gRow.total_ht)) || 0));
     }
     let rec2 = 0, rec3 = 0;
     Object.entries(_fseAssignMap(norm, lab)).forEach(([mk, c]) => {
@@ -8077,15 +8083,35 @@ function _verifCoopCoef(labDisplay, yr) {
     if (cy === yr) m0 = cm;
     else if (cy > yr) return 1;   // contrat pas encore commencé cette année-là
   }
-  let tot = 0, n = 0;
+  // Dernier mois RENSEIGNÉ : le justificatif répartiteur arrive avec un décalage
+  // (mi-juillet pour janv.→juin). Compter jusqu'au mois calendaire courant faisait
+  // entrer 2 ou 3 mois VIDES dans la moyenne et écrasait la réalisation — cas réel
+  // Biogaran 2026 : 0,77 au lieu de 0,99, donc coop déclarée « bloquée » et coop
+  // attendue à 0 € alors que le labo avait déjà versé 36 282 € de coop sur l'année.
+  // Un mois sans données n'est pas un mois sans achats : on annualise sur la
+  // fenêtre réellement documentée.
+  const _hasData = mk =>
+    ((state._grossisteMonthStats||{})[mk] || []).some(r => _verifNormLab(r.labo)===selNorm) ||
+    ((state._digiMonthStats||{})[mk] || []).some(r => _verifNormLab(r.labo)===selNorm);
+  let mLast = 0;
   for (let i = m0; i <= mRef; i++) {
+    if (_hasData(`${yr}-${String(i).padStart(2,'0')}`)) mLast = i;
+  }
+  if (!mLast) return 1;                       // aucune donnée → pas de blocage inventé
+  let tot = 0, n = 0;
+  for (let i = m0; i <= mLast; i++) {
     const mk = `${yr}-${String(i).padStart(2,'0')}`;
-    ((state._grossisteMonthStats||{})[mk] || []).forEach(r => {
-      if (_verifNormLab(r.labo)===selNorm) tot += (r.ca_brut != null && r.ca_brut > 0 ? r.ca_brut : r.total_ht) || 0;
+    // MÊME base que la colonne CA BRUT : justificatif CERP + achats directs au
+    // BRUT (avant, le direct entrait au NET via total_ht — deux mesures mélangées).
+    const _gR = ((state._grossisteMonthStats||{})[mk] || []).find(r => _verifNormLab(r.labo)===selNorm);
+    const _dR = ((state._digiMonthStats||{})[mk] || []).find(r => _verifNormLab(r.labo)===selNorm);
+    const _ag = {};
+    ((_gR && Array.isArray(_gR.paliers)) ? _gR.paliers : []).forEach(p => {
+      if (p.taux != null) _ag[p.taux] = { ...p };
     });
-    ((state._digiMonthStats||{})[mk] || []).forEach(r => {
-      if (_verifNormLab(r.labo)===selNorm) tot += r.total_ht || 0;
-    });
+    if (_dR) _palierAddDirect(_ag, _dR, _verifGetCond(labDisplay, yr, i), selNorm, yr, i);
+    const _s = Object.values(_ag).reduce((s, p) => s + (p.brut || 0), 0);
+    tot += _s > 0 ? _s : (((_gR && (_gR.ca_brut > 0 ? _gR.ca_brut : _gR.total_ht)) || 0));
     n++;
   }
   if (!n) return 1;
@@ -8606,11 +8632,22 @@ function _digiPrestaTtc(mk, selNorm) {
 // contrat — le MÊME calcul que la colonne ATT du bloc REMISE 3 / COOP.
 function _verifCoopAttendue(mk, selNorm, labDisplay) {
   const grosRow = ((state._grossisteMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
-  const paliers = (grosRow && Array.isArray(grosRow.paliers)) ? grosRow.paliers : [];
-  if (!paliers.length) return 0;
+  const digiRow = ((state._digiMonthStats||{})[mk]||[]).find(r => _verifNormLab(r.labo)===selNorm);
   const [y, m] = mk.split('-').map(Number);
   const cond = _verifGetCond(labDisplay, y, m);
   if (!cond) return 0;
+  // Base coop = TES ACHATS du mois : justificatif répartiteur CERP + factures
+  // DIRECTES labo. Les achats directs manquaient ici alors que le détail mensuel
+  // les comptait → la synthèse et le détail annonçaient deux coop attendues
+  // différentes pour le même mois. Les remises labo portent sur l'ensemble des
+  // achats (répartiteur ET factures directes CSP), cf. contrat.
+  const _agg = {};
+  ((grosRow && Array.isArray(grosRow.paliers)) ? grosRow.paliers : []).forEach(p => {
+    if (p.taux != null) _agg[p.taux] = { ...p };
+  });
+  if (digiRow) _palierAddDirect(_agg, digiRow, cond, selNorm, y, m);
+  const paliers = Object.values(_agg);
+  if (!paliers.length) return 0;
   const hasCoop = _verifHasCoop(labDisplay, y);   // ex-« isBio » : labo à coop (Biogaran) vs contrat direct RDP (Zydus)
   const coef    = hasCoop ? _verifCoopCoef(labDisplay, y) : 1;
   const coopR3  = parseFloat(cond.coopR3) || 0;
@@ -9359,7 +9396,10 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   // Δ positif = sous-remisé (rouge), négatif = sur-remisé (vert)
   const dStyle = v => v==null ? '' : v>0.5 ? 'color:var(--red);font-weight:700' : v<-0.5 ? 'color:var(--green)' : '';
   const A = 'color:var(--amber)', G = 'color:var(--green)';
-  let T = {qty:0, brut:0, rsfA:0, rsfR:0, r2A:0, r2R:0, r3A:0};
+  // gros/dir : ventilation du CA BRUT total (justificatif CERP vs factures directes),
+  // pour que la ligne TOTAL se recoupe explicitement avec le tableau des achats
+  // génériques du répartiteur.
+  let T = {qty:0, brut:0, gros:0, dir:0, rsfA:0, rsfR:0, r2A:0, r2R:0, r3A:0};
 
   // RDP attendue EXACTE (achats par CIP × taux RDP du CIP, exceptions comprises)
   // quand le détail du justificatif et la carte rsf_history sont disponibles.
@@ -9384,29 +9424,43 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     const caGros = rd ? (rd.ca_grossiste||0) : 0;
     const caDir  = rd ? (rd.ca_direct||0)    : 0;
     const gBrutConn = g ? (g.brut||0) : 0;
-    // Deux bases DIFFÉRENTES :
-    //  • RSF (grossiste) → CA total du connecteur grossiste à ce taux.
-    //  • RDP / coop (labo) → CA brut RÉALISÉ de l'avoir (ce sur quoi le labo remise),
-    //    ventilé grossiste + direct. Repli sur les achats grossiste si pas d'avoir.
     const avoirCA  = caGros + caDir;
-    const rsfBrut  = gBrutConn || avoirCA;
-    const brut     = avoirCA > 0 ? avoirCA : (gBrutConn + caDir);   // PA BRUT = base RDP/coop
-    const dirBrut  = caDir;
+    // UNE SEULE base affichée : TES ACHATS DU MOIS = justificatif répartiteur CERP
+    // (« tableau des achats génériques », colonne « Mt Vente Brut ht euro ») + factures
+    // directes labo. Le total de la colonne CA BRUT doit donc se recouper au centime
+    // avec le tableau CERP du mois, une fois les commandes directes ajoutées.
+    //
+    // AVANT : la colonne montrait `avoirCA` (la base que le LABO a retenue dans son
+    // avoir) dès qu'un avoir existait. Sur Biogaran — seul labo à émettre des avoirs
+    // ventilés — cela gonflait le CA brut de +8 693 € en 2025 et +24 117 € en 2026,
+    // et affichait 20 074 € en juillet 2026 alors qu'AUCUN justificatif n'était encore
+    // déposé (CERP = 0). Les autres labos se recoupaient déjà au centime.
+    // La base de l'avoir reste utilisée pour la RDP (c'est bien ce sur quoi le labo
+    // calcule) et reste lisible dans l'infobulle de la cellule.
+    const achBrut  = gBrutConn;                                     // CA BRUT affiché + RSF
+    const rsfBrut  = gBrutConn;                                     // RSF : jamais sur la base avoir
+    const brut     = avoirCA > 0 ? avoirCA : (gBrutConn + caDir);   // base RDP (repli)
     // Écart entre le CA remisé par le labo (avoir) et tes achats grossiste (connecteur).
     // On retire la part d'achats DIRECTS fusionnée dans le palier : l'avoir ne porte
     // que le périmètre grossiste, comparer les deux bruts sinon déclencherait l'alerte
     // à tort dès qu'il y a des factures directes.
     const gBrutGros = gBrutConn - (g?._direct || 0);
+    const dirPart   = (g?._direct || 0);
     const caDiv = (gBrutGros>0 && avoirCA>0 && Math.abs(gBrutGros-avoirCA) > Math.max(1, avoirCA*0.02));
-    const brutTitle = `Base RDP = CA brut réalisé (avoir) : ${fmtE(avoirCA)} (grossiste ${fmtE(caGros)} + direct ${fmtE(caDir)}) · CA total grossiste (connecteur) : ${fmtE(gBrutConn)}`
-      + (caDiv ? `\n\n⚠ Le CA sur lequel le labo a calculé la RDP (avoir) diffère de tes achats grossiste du mois (périmètres/dates d'arrêté différents). Ce n'est pas une erreur : la RDP est vérifiée sur le CA de l'avoir.` : '');
+    const brutTitle = `CA BRUT = tes achats du mois à ce taux : justificatif répartiteur CERP ${fmtE(gBrutGros)} + factures directes ${fmtE(dirPart)} = ${fmtE(achBrut)}`
+      + (avoirCA > 0 ? `\n\nBase retenue par le labo dans son avoir (sert au calcul de la RDP) : ${fmtE(avoirCA)} (grossiste ${fmtE(caGros)} + direct ${fmtE(caDir)}).` : '')
+      + (caDiv ? `\n\n⚠ Le CA sur lequel le labo a calculé la RDP (avoir) diffère de tes achats grossiste du mois (périmètres/dates d'arrêté différents). Ce n'est pas une erreur : la RDP est vérifiée sur le CA de l'avoir, mais la colonne CA BRUT reste, elle, le reflet exact de tes achats.` : '');
     // ⚠ cliquable : sur mobile les infobulles n'existent pas.
     // encodeURIComponent NE protège PAS l'apostrophe ni les parenthèses ; or le
     // texte FR (« d'arrêté », « n'est »…) en contient → un ' littéral cassait la
     // chaîne single-quote de l'onclick (« missing ) after argument list »). On les
     // ré-encode (decodeURIComponent les restitue correctement).
     const _brutEnc = encodeURIComponent(brutTitle).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
-    const brutClick = caDiv ? ` onclick="alert(decodeURIComponent('${_brutEnc}'))"` : '';
+    // Cliquable dès qu'il y a quelque chose à détailler (part directe ou base avoir) :
+    // sur smartphone il n'y a pas d'infobulle, et c'est justement là que l'utilisateur
+    // veut recouper la ligne avec le tableau CERP.
+    const brutClick = (caDiv || dirPart > 0 || avoirCA > 0)
+      ? ` onclick="alert(decodeURIComponent('${_brutEnc}'))"` : '';
     const qty = g?(g.qty||0):0;
     const rsfA = rsfBrut*tx/100, rsfR = g?(g.remise||0):0, rsfD = rsfA-rsfR;
     const r2pct = (c.remise2!=null && c.remise2!=='') ? parseFloat(c.remise2) : null;
@@ -9458,8 +9512,13 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     // si réalisation ≥ 80 %, sinon coop bloquée → 0).
     const cAll = cmapAll[Math.abs(tx)] || {};
     const r3pct = (cAll.remise3!=null && cAll.remise3!=='') ? parseFloat(cAll.remise3) : (isBio ? coopR3 : 0);
-    const r3A = r3pct>0 ? brut*r3pct/100*TVA_R3*(isBio?coef:1) : 0;
-    T.qty+=qty; T.brut+=brut; T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
+    // Coop attendue sur la MÊME base que la colonne CA BRUT (tes achats), et non sur
+    // la base de l'avoir : le lecteur doit pouvoir refaire CA BRUT × remise 3 × 1,20
+    // × coef de tête. C'est aussi la base qu'utilise la synthèse (_verifCoopAttendue) —
+    // les deux tableaux donnaient sinon deux « coop attendue » différentes.
+    const r3A = r3pct>0 ? achBrut*r3pct/100*TVA_R3*(isBio?coef:1) : 0;
+    T.qty+=qty; T.brut+=achBrut; T.gros+=gBrutGros; T.dir+=dirPart;
+    T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
     const dRsf = dStyle(rsfD), dR2 = dStyle(r2D);
     // Le taux appliqué a désormais SA PROPRE COLONNE (« REM. 2 % »), au lieu d'un
     // suffixe accolé au montant : on peut refaire le calcul CA brut × taux de tête.
@@ -9485,7 +9544,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     // Fragments par BLOC — tableaux empilés, lisibles sur smartphone sans défilement latéral.
     return {
       achats: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
-        `<td title="${escH(brutTitle)}"${brutClick}${caDiv?' style="color:var(--amber);cursor:pointer"':' style="cursor:help"'}>${fmtE(brut)}${caDiv?' ⚠':''}</td>` +
+        `<td title="${escH(brutTitle)}"${brutClick}${caDiv?' style="color:var(--amber);cursor:pointer"':' style="cursor:help"'}>${fmtE(achBrut)}${caDiv?' ⚠':''}</td>` +
         `<td style="${A}">${fmtE(rsfA)}</td>` +
         `<td style="${G}">${fmtE(rsfR)}</td>` +
         `<td style="${dRsf}">${fmtE(rsfD)}</td>`,
@@ -9497,7 +9556,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
         `<td class="verif-r2" style="${G}"${rd&&rd._note?` title="${escH(rd._note)}"`:''}>${r2R>0?fmtE(r2R):'—'}${rd&&rd._note?' <span onclick="alert(decodeURIComponent(\''+encodeURIComponent(rd._note).replace(/'/g,'%27').replace(/\(/g,'%28').replace(/\)/g,'%29')+'\'))" style="color:var(--amber);font-size:9px;cursor:pointer" title="'+escH(rd._note)+'">ⓘ</span>':''}</td>` +
         `<td class="verif-r2" style="${dR2}">${r2D!=null?fmtE(r2D):'—'}</td>`,
       r3: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
-        `<td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(brut)} × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?`${fmtE(r3A)}${_r3PctTag}`:(r3pct>0&&isBio&&coef===0?'<span title="Coop bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>` +
+        `<td class="verif-r3" style="${A}" title="${r3pct>0?escH(`${fmtE(achBrut)} (CA brut) × ${fmtP(r3pct)} × 1,20 (TTC)${isBio?` × coef contrat ${(Math.round(coef*1000)/1000).toString().replace('.',',')}`:''}`):''}">${r3A>0?`${fmtE(r3A)}${_r3PctTag}`:(r3pct>0&&isBio&&coef===0?'<span title="Coop bloquée : réalisation annuelle < 80 % du CA contractuel" style="color:var(--red);cursor:help">bloquée</span>':'—')}</td>` +
         `<td class="verif-r3" style="color:var(--text-dim)">—</td>` +
         `<td class="verif-r3" style="color:var(--text-dim)">—</td>`,
     };
@@ -9561,8 +9620,15 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   };
   const totLbl = `<td style="color:var(--text-dim);font-size:10px;letter-spacing:1px">TOTAL</td>`;
   const totStyle = 'border-top:2px solid var(--border);font-weight:700;background:rgba(255,255,255,.03)';
+  // Ligne TOTAL : le montant doit être LE MÊME que le total du tableau des achats
+  // génériques CERP du mois, une fois les factures directes ajoutées. L'infobulle
+  // (et le clic, pour le mobile) donne la ventilation exacte.
+  const _totBrutTitle = `Total du mois = justificatif répartiteur CERP ${fmtE(T.gros)}`
+    + ` + factures directes labo ${fmtE(T.dir)} = ${fmtE(T.brut)}`
+    + `\n\nÀ recouper avec le total « Mt Vente Brut ht euro » du tableau des achats génériques CERP pour ce laboratoire et ce mois.`;
+  const _totBrutEnc = encodeURIComponent(_totBrutTitle).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
   const totAchats = `<tr style="${totStyle}">${totLbl}
-    <td>${fmtE(T.brut)}</td>
+    <td title="${escH(_totBrutTitle)}" onclick="alert(decodeURIComponent('${_totBrutEnc}'))" style="cursor:help">${fmtE(T.brut)}</td>
     <td style="${A}">${fmtE(T.rsfA)}</td>
     <td style="${G}">${fmtE(T.rsfR)}</td>
     <td style="${dTrsf}">${fmtE(T.rsfA-T.rsfR)}</td></tr>`;
@@ -9597,7 +9663,8 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       <span style="color:var(--amber);font-weight:700">▸ Attendue</span>
       <span style="color:var(--green)">▸ Reçue</span>
     </div>
-    ${bloc('ACHATS & RSF', headAchats, rowsD.map(r=>`<tr>${r.achats}</tr>`).join(''), totAchats, achatsNote || 'info répartiteur')}
+    ${bloc('ACHATS & RSF', headAchats, rowsD.map(r=>`<tr>${r.achats}</tr>`).join(''), totAchats,
+           achatsNote || 'justificatif répartiteur CERP + factures directes')}
     ${bloc('REMISE 2 / RDP', headR2, rowsD.map(r=>`<tr>${r.r2}</tr>`).join(''), totR2, '')}
     ${isBio ? bloc('REMISE 3 / COOP', headR3, rowsD.map(r=>`<tr>${r.r3}</tr>`).join(''), totR3, 'reçu = virements FSE (au TOTAL)') : ''}`;
 }
