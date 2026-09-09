@@ -9399,7 +9399,9 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   // gros/dir : ventilation du CA BRUT total (justificatif CERP vs factures directes),
   // pour que la ligne TOTAL se recoupe explicitement avec le tableau des achats
   // génériques du répartiteur.
-  let T = {qty:0, brut:0, gros:0, dir:0, rsfA:0, rsfR:0, r2A:0, r2R:0, r3A:0};
+  // off : part hors barème (gamme OTC / conseil facturée en direct) — comptée dans
+  // le CA brut et la réalisation, sans remise 2 ni remise 3.
+  let T = {qty:0, brut:0, gros:0, dir:0, off:0, rsfA:0, rsfR:0, r2A:0, r2R:0, r3A:0};
 
   // RDP attendue EXACTE (achats par CIP × taux RDP du CIP, exceptions comprises)
   // quand le détail du justificatif et la carte rsf_history sont disponibles.
@@ -9446,6 +9448,13 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     // à tort dès qu'il y a des factures directes.
     const gBrutGros = gBrutConn - (g?._direct || 0);
     const dirPart   = (g?._direct || 0);
+    // Taux porté par une facture DIRECTE mais absent du barème RSF du labo : gamme
+    // OTC / conseil (Biogaran : 57 %). Règle métier confirmée : ces achats COMPTENT
+    // dans le CA brut et dans la réalisation du CA contractuel, mais n'ouvrent droit
+    // à AUCUNE autre remise — la remise est déjà acquise sur la facture. Le calcul
+    // le faisait déjà (aucun taux remise2/remise3 en face) ; il manquait de le DIRE :
+    // la ligne s'affichait « CAT. RSF 57 % », un palier qui n'existe dans aucun barème.
+    const offScale = dirPart > 0 && cmapAll[Math.abs(tx)] === undefined;
     const caDiv = (gBrutGros>0 && avoirCA>0 && Math.abs(gBrutGros-avoirCA) > Math.max(1, avoirCA*0.02));
     const brutTitle = `CA BRUT = tes achats du mois à ce taux : justificatif répartiteur CERP ${fmtE(gBrutGros)} + factures directes ${fmtE(dirPart)} = ${fmtE(achBrut)}`
       + (avoirCA > 0 ? `\n\nBase retenue par le labo dans son avoir (sert au calcul de la RDP) : ${fmtE(avoirCA)} (grossiste ${fmtE(caGros)} + direct ${fmtE(caDir)}).` : '')
@@ -9518,6 +9527,7 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
     // les deux tableaux donnaient sinon deux « coop attendue » différentes.
     const r3A = r3pct>0 ? achBrut*r3pct/100*TVA_R3*(isBio?coef:1) : 0;
     T.qty+=qty; T.brut+=achBrut; T.gros+=gBrutGros; T.dir+=dirPart;
+    if (offScale) T.off += achBrut;
     T.rsfA+=rsfA; T.rsfR+=rsfR; T.r2A+=r2A; T.r2R+=r2R; T.r3A+=r3A;
     const dRsf = dStyle(rsfD), dR2 = dStyle(r2D);
     // Le taux appliqué a désormais SA PROPRE COLONNE (« REM. 2 % »), au lieu d'un
@@ -9541,9 +9551,20 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
       ? ` <span onclick="alert('Palier ${tx} % : ${exc.n} référence(s) d\\'exception à RDP ${exc.pct} %.\\n\\nLeur RDP est versée par le labo dans la ligne du taux ${exc.pct} % (l\\'avoir agrège par taux versé, pas par palier).')" title="${exc.n} référence(s) d'exception à RDP ${exc.pct} % — versée dans la ligne du taux ${exc.pct} %" style="color:var(--amber);cursor:pointer;font-size:9px;white-space:nowrap">+exc ${exc.pct}%</span>`
       : '';
     const _r3PctTag = r3pct>0 ? ` <span style="color:var(--text-dim);font-size:9px">(${fmtP(r3pct)})</span>` : '';
+    // Ligne hors barème : on nomme la chose plutôt que d'afficher une « CAT. RSF 57 % »
+    // qui n'existe dans aucun barème. Cliquable : pas d'infobulle sur smartphone.
+    const _offMsg = `Gamme OTC / conseil — ${fmtP(tx)} de remise accordée directement sur la facture du labo.\n\n`
+      + `Ce taux n'est pas une catégorie du barème RSF : ces achats COMPTENT dans ton CA brut et dans la réalisation `
+      + `du CA contractuel, mais n'ouvrent droit à AUCUNE remise 2 (RDP) ni remise 3 (coop) — la remise est déjà acquise `
+      + `sur la facture. C'est pour cela que les colonnes ATT. de ces deux blocs affichent « — » sur cette ligne.`;
+    const _offEnc = encodeURIComponent(_offMsg).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
+    const _offTag = offScale
+      ? ` <span onclick="alert(decodeURIComponent('${_offEnc}'))" title="${escH(_offMsg)}"
+              style="color:var(--amber);font-size:9px;cursor:pointer;font-weight:400;letter-spacing:0">OTC ⓘ</span>`
+      : '';
     // Fragments par BLOC — tableaux empilés, lisibles sur smartphone sans défilement latéral.
     return {
-      achats: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}</td>` +
+      achats: `<td style="font-weight:700;color:var(--cyan);white-space:nowrap">${fmtP(tx)}${_offTag}</td>` +
         `<td title="${escH(brutTitle)}"${brutClick}${caDiv?' style="color:var(--amber);cursor:pointer"':' style="cursor:help"'}>${fmtE(achBrut)}${caDiv?' ⚠':''}</td>` +
         `<td style="${A}">${fmtE(rsfA)}</td>` +
         `<td style="${G}">${fmtE(rsfR)}</td>` +
@@ -9625,7 +9646,11 @@ function _verifRenderPalierCore(paliers, rdpByTaux, fseR3, r2RecTotal, selNorm, 
   // (et le clic, pour le mobile) donne la ventilation exacte.
   const _totBrutTitle = `Total du mois = justificatif répartiteur CERP ${fmtE(T.gros)}`
     + ` + factures directes labo ${fmtE(T.dir)} = ${fmtE(T.brut)}`
-    + `\n\nÀ recouper avec le total « Mt Vente Brut ht euro » du tableau des achats génériques CERP pour ce laboratoire et ce mois.`;
+    + `\n\nÀ recouper avec le total « Mt Vente Brut ht euro » du tableau des achats génériques CERP pour ce laboratoire et ce mois.`
+    + (T.off > 0
+        ? `\n\nDont ${fmtE(T.off)} de gamme OTC / conseil (taux hors barème RSF) : comptés dans le CA brut et dans la `
+          + `réalisation du CA contractuel, sans remise 2 ni remise 3 — la remise est déjà acquise sur la facture.`
+        : '');
   const _totBrutEnc = encodeURIComponent(_totBrutTitle).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
   const totAchats = `<tr style="${totStyle}">${totLbl}
     <td title="${escH(_totBrutTitle)}" onclick="alert(decodeURIComponent('${_totBrutEnc}'))" style="cursor:help">${fmtE(T.brut)}</td>
