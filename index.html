@@ -3816,7 +3816,7 @@ async function autoRunOspharm(mode) {
       state._ospJobStartedAt = Date.now();
       state._ospJobMessage   = '';
     }
-    if (state.currentPageId === 'recap') renderRecap();
+    _ospRefreshProgressUI();
 
     // Polling toutes les 5 s, 75 min max (GitHub Actions OSPHARM peut prendre 60 min)
     const deadline = Date.now() + 75 * 60_000;
@@ -3832,7 +3832,7 @@ async function autoRunOspharm(mode) {
             state._ospJobMessage = job.message;
             const _m = job.message.match(/Mois\s+(\d+)\/(\d+)/i);
             if (_m) window._setConnProgressPct?.('osp', Math.round(parseInt(_m[1]) / parseInt(_m[2]) * 100));
-            if (state.currentPageId === 'recap') renderRecap();
+            _ospRefreshProgressUI();
           }
           continue;
         }
@@ -4545,9 +4545,27 @@ function _renderOspProgress(el) {
     const m   = msg.match(/Mois\s+(\d+)\/(\d+)/i);
     const cur = m ? parseInt(m[1]) : 0;
     const tot = m ? parseInt(m[2]) : 0;
-    const elapsed = Date.now() - (state._ospJobStartedAt || Date.now());
     const pct = (tot > 0 && cur > 0) ? Math.min(95, cur / tot * 100) : 0;
-    return pct > 0 ? Math.round(pct) : Math.min(8, Math.round(elapsed / 60000 / 10 * 8));
+    // Pas de compteur lisible → AUCUN pourcentage : anneau indéterminé + message
+    // du job. Avant, on affichait à la place une estimation au temps écoulé,
+    // plafonnée par Math.min(8, …) : elle atteignait 8 % en dix minutes puis
+    // restait figée sur « 8 % » pendant tout le reste du job (45 min et plus).
+    // Le job tournait normalement — c'est l'affichage qui donnait l'impression
+    // d'un blocage. Un anneau qui tourne avec le mois en cours est à la fois
+    // honnête et plus informatif qu'un pourcentage immobile.
+    return Math.round(pct);
+  }
+
+  // Ligne d'état = ce que le job dit vraiment de lui-même. Le compteur de mois
+  // préfixe désormais TOUS ses messages (cf. run_job_ospharm.py) : on l'isole
+  // pour l'afficher proprement, et on garde le libellé de l'étape en cours.
+  function _statusLine() {
+    if (state._ospConnecting) return '// Connexion OSPHARM en cours…';
+    const msg = (state._ospJobMessage || '').trim();
+    if (!msg) return '// Analyse en cours — initialisation…';
+    const m = msg.match(/^Mois\s+(\d+)\/(\d+)\s*[·:]?\s*(.*)$/i);
+    if (m) return `// Mois ${m[1]} / ${m[2]}${m[3] ? ' · ' + m[3] : ''}`;
+    return '// ' + msg;
   }
 
   const barPct = _barPct();
@@ -4560,7 +4578,7 @@ function _renderOspProgress(el) {
       : Math.max(0, 45 - Math.floor(elapsed / 60000));
     const _isStuck = elapsed > 95 * 60 * 1000;
     el.innerHTML = `<div class="osp-ring-wrap">
-      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${state._ospConnecting ? '// Connexion OSPHARM en cours…' : '// Analyse en cours — initialisation…'}</div>
+      <div id="ospStatusLine" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;text-align:center">${escH(_statusLine())}</div>
       <div class="osp-ring${barPct > 0 ? '' : ' spin'}">
         <svg viewBox="0 0 64 64"><circle class="osp-ring-track" cx="32" cy="32" r="28"/><circle class="osp-ring-fill" cx="32" cy="32" r="28" id="ospRecapArc"${barPct > 0 ? ` style="stroke-dashoffset:${175.9 * (1 - barPct / 100)}"` : ''}/></svg>
         <div class="osp-ring-label" id="ospRecapPct">${barPct > 0 ? barPct + '%' : ''}</div>
@@ -4586,14 +4604,55 @@ function _renderOspProgress(el) {
       if (ring)  ring.classList.remove('spin');
     }
     const stEl = document.getElementById('ospStatusLine');
-    if (stEl && state._ospConnecting) stEl.textContent = '// Connexion OSPHARM en cours…';
-    else if (stEl && state._ospJobMessage) {
-      const _m = state._ospJobMessage.match(/Mois\s+(\d+)\/(\d+)/i);
-      if (_m) stEl.textContent = `// Mois ${_m[1]} / ${_m[2]}`;
-    }
+    if (stEl) stEl.textContent = _statusLine();
   }
 
-  // Plus de phrase d'attente à rafraîchir : le spinner suffit.
+  // Auto-rafraîchissement de l'anneau, toutes les 5 s.
+  //
+  // Les boucles de polling existantes ne démarrent QU'AU lancement du connecteur
+  // (autoRunOspharm / _pollOspJobAndLaunch). Un utilisateur qui ouvre simplement
+  // le comparateur pendant qu'un job tourne — le cas courant, un job OSPHARM
+  // dure ~45 min — n'avait donc aucune boucle active : launchComparateur()
+  // peignait l'anneau une fois et plus rien ne bougeait jusqu'au rechargement
+  // de la page. C'est ce qui figeait la progression, et l'ancienne estimation
+  // au temps écoulé la figeait précisément sur « 8 % ».
+  clearInterval(_ospProgressTimer);
+  _ospProgressTimer = setInterval(async () => {
+    if (!el.isConnected) { clearInterval(_ospProgressTimer); return; }
+    try {
+      const { data: { session } } = await window._sbClient.auth.getSession();
+      if (!session) return;
+      const { data: row } = await window._sbClient.from('user_state')
+        .select('state_json').eq('user_id', session.user.id).maybeSingle();
+      const job = row?.state_json?.ospharm_job;
+      if (!job) return;
+      if (job.status === 'running') {
+        state._ospJobMessage = job.message || '';
+        _renderOspProgress(el);                 // ré-arme le timer
+        return;
+      }
+      clearInterval(_ospProgressTimer);
+      state._ospJobRunning = false;
+      if (job.status === 'done') { _simResultsReady = false; launchComparateur(); }
+      else renderRecap();
+    } catch (_) {}
+  }, 5_000);
+}
+
+// Rafraîchit l'anneau de progression OSPHARM là où il est réellement affiché.
+// Le récap et le COMPARATEUR le montrent tous les deux, mais les boucles de
+// polling ne rappelaient que renderRecap() : sur la page comparateur, l'anneau
+// était peint UNE SEULE FOIS par launchComparateur() et ne bougeait plus jamais.
+// Combiné à l'estimation temporelle plafonnée à 8 %, cela donnait une barre
+// définitivement arrêtée sur « 8 % » alors que le job tournait normalement.
+function _ospRefreshProgressUI() {
+  if (state.currentPageId === 'recap') { renderRecap(); return; }
+  if (state.currentPageId === 'results') {
+    const el = document.getElementById('simResults');
+    // Uniquement si c'est bien l'anneau OSPHARM qui occupe la zone : on ne
+    // remplace jamais l'écran START ni les résultats déjà calculés.
+    if (el && el.querySelector('#ospStatusLine')) _renderOspProgress(el);
+  }
 }
 
 function renderRecap() {
@@ -14070,7 +14129,7 @@ function initConnecteurModal() {
           state._ospJobMessage = job.message || '';
           const _m = (job.message || '').match(/Mois\s+(\d+)\/(\d+)/i);
           if (_m) _setConnProgressPct(prefix, Math.round(parseInt(_m[1]) / parseInt(_m[2]) * 100));
-          renderRecap();
+          _ospRefreshProgressUI();
           continue;
         }
         if (job.status === 'done') {

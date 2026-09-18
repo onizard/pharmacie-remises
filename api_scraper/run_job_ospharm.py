@@ -491,8 +491,23 @@ def _reauth_if_needed(page, creds, label=""):
     _login(page, creds)
 
 
-def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
+def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
     import tempfile, openpyxl, re as _re, os as _os
+
+    # Compteur de mois porté par TOUS les messages de progression.
+    # Avant : seul « Mois 9/12 : 2025-12… » portait le compteur, et il était
+    # immédiatement écrasé par les messages d'étape du même mois (« Sélection
+    # 2025-12… », « Export Excel (2025-12)… »). Le front, qui lit la progression
+    # avec /Mois (\d+)\/(\d+)/, ne voyait donc presque jamais de compteur : il
+    # retombait sur son estimation temporelle plafonnée à 8 % et la barre du
+    # comparateur restait figée sur « 8 % » pendant tout le job.
+    _mctx = {"i": 0, "n": 0}
+
+    def progress(msg):
+        m = str(msg)
+        if _mctx["n"] and not m.startswith("Mois "):
+            m = f"Mois {_mctx['i']}/{_mctx['n']} · {m}"
+        progress_cb(m)
 
     _screenshots: list[tuple[str, bytes]] = []
 
@@ -1417,9 +1432,11 @@ def run_ospharm(creds: dict, progress, user_id: str = "") -> tuple:
         total_months = (end_year - start_year) * 12 + (end_month - start_month) + 1
         year, month  = start_year, start_month
         m_idx        = 0
+        _mctx["n"]   = total_months          # arme le compteur porté par progress()
 
         while (year, month) <= (end_year, end_month):
             m_idx += 1
+            _mctx["i"] = m_idx
             lbl = f"{year}-{month:02d}"
             is_current = (year == today.year and month == today.month)
 
