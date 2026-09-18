@@ -3823,6 +3823,24 @@ async function autoRunOspharm(mode) {
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 5_000));
       try {
+        // Sonde LÉGÈRE : seuls le statut et le message, pas tout l'état.
+        // Avant, chaque tour téléchargeait `state_json` en entier (~2 Mo ici) :
+        // mesuré pendant une préparation de simulateur, 36 requêtes user_state
+        // pour 354 s cumulées — elles saturaient les ~6 connexions du navigateur
+        // et ralentissaient tout le reste de la page. L'état complet n'est
+        // rechargé qu'une fois, quand le job n'est plus « running ».
+        const { data: lite } = await window._sbClient.from('user_state')
+          .select('st:state_json->ospharm_job->>status, msg:state_json->ospharm_job->>message')
+          .eq('user_id', session.user.id).maybeSingle();
+        if (lite && lite.st === 'running') {
+          if (lite.msg) {
+            state._ospJobMessage = lite.msg;
+            const _m = lite.msg.match(/Mois\s+(\d+)\/(\d+)/i);
+            if (_m) window._setConnProgressPct?.('osp', Math.round(parseInt(_m[1]) / parseInt(_m[2]) * 100));
+            _ospRefreshProgressUI();
+          }
+          continue;
+        }
         const { data: row } = await window._sbClient.from('user_state')
           .select('state_json').eq('user_id', session.user.id).maybeSingle();
         const job = row?.state_json?.ospharm_job;
@@ -4618,22 +4636,29 @@ function _renderOspProgress(el) {
   // au temps écoulé la figeait précisément sur « 8 % ».
   clearInterval(_ospProgressTimer);
   _ospProgressTimer = setInterval(async () => {
-    if (!el.isConnected) { clearInterval(_ospProgressTimer); return; }
+    // On ne rafraîchit QUE tant que c'est bien notre anneau qui occupe la zone :
+    // si un autre rendu l'a remplacé (résultats, écran START…), on s'arrête au
+    // lieu de repeindre par-dessus.
+    if (!el.isConnected || !el.querySelector('#ospStatusLine')) {
+      clearInterval(_ospProgressTimer);
+      return;
+    }
     try {
       const { data: { session } } = await window._sbClient.auth.getSession();
       if (!session) return;
-      const { data: row } = await window._sbClient.from('user_state')
-        .select('state_json').eq('user_id', session.user.id).maybeSingle();
-      const job = row?.state_json?.ospharm_job;
-      if (!job) return;
-      if (job.status === 'running') {
-        state._ospJobMessage = job.message || '';
+      // Sonde légère : statut + message, pas tout l'état (cf. _pollOspJobAndLaunch).
+      const { data: lite } = await window._sbClient.from('user_state')
+        .select('st:state_json->ospharm_job->>status, msg:state_json->ospharm_job->>message')
+        .eq('user_id', session.user.id).maybeSingle();
+      if (!lite || !lite.st) return;
+      if (lite.st === 'running') {
+        state._ospJobMessage = lite.msg || '';
         _renderOspProgress(el);                 // ré-arme le timer
         return;
       }
       clearInterval(_ospProgressTimer);
       state._ospJobRunning = false;
-      if (job.status === 'done') { _simResultsReady = false; launchComparateur(); }
+      if (lite.st === 'done') { _simResultsReady = false; launchComparateur(); }
       else renderRecap();
     } catch (_) {}
   }, 5_000);
@@ -10759,14 +10784,24 @@ async function launchSimulation() {
     // 2. Fetch reference data from Supabase (batch by 200)
     const allCips = [...new Set(csvData.map(r => r.cip13))];
     _sp(4, `// ${allCips.length} produits identifiés`, 'Chargement des références pharmacie…');
+    // Paquets de 200 CIP, lancés EN PARALLÈLE. La boucle attendait chaque
+    // paquet avant de lancer le suivant : 8 allers-retours en série, 13,6 s
+    // mesurées ici pour 1 567 références. En parallèle, c'est un seul aller-retour.
     const CHUNK = 200;
     const refRows = [];
-    for (let i = 0; i < allCips.length; i += CHUNK) {
-      const chunk = allCips.slice(i, i + CHUNK);
-      const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&cip13=in.(${chunk.join(',')})&is_generic=eq.true&limit=1000`;
-      const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }).catch(e => { throw new Error(`Fetch refs: ${e.message}`); });
-      if (res.ok) refRows.push(...await res.json());
-      _sp(4 + Math.round((i + chunk.length) / allCips.length * 18));
+    {
+      const chunks = [];
+      for (let i = 0; i < allCips.length; i += CHUNK) chunks.push(allCips.slice(i, i + CHUNK));
+      let _done = 0;
+      const parts = await Promise.all(chunks.map(async chunk => {
+        const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&cip13=in.(${chunk.join(',')})&is_generic=eq.true&limit=1000`;
+        const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } })
+          .catch(e => { throw new Error(`Fetch refs: ${e.message}`); });
+        _done++;
+        _sp(4 + Math.round(_done / Math.max(chunks.length, 1) * 18));
+        return res.ok ? res.json() : [];
+      }));
+      parts.forEach(rows => refRows.push(...rows));
     }
     _sp(22, '// Références chargées', 'Analyse des équivalences moléculaires…');
 
@@ -10785,29 +10820,38 @@ async function launchSimulation() {
       libelleMap.get(r.libelle).push(r);
     });
 
-    // Second fetch: selected labs may have different CIPs for same molecules (not in CSV).
-    // Query by libellé + selected lab to find all their equivalents.
-    // All lab×chunk combinations are fetched in parallel.
+    // Équivalents des labos sélectionnés : CATALOGUE COMPLET, une requête par labo.
+    //
+    // Avant : une requête par (labo × paquet de 30 libellés), soit 261 requêtes
+    // mesurées sur ce compte — pour un résultat qui n'est qu'un SOUS-ENSEMBLE du
+    // catalogue du labo. Le navigateur ne tient que ~6 connexions simultanées par
+    // domaine : ces 261 requêtes faisaient la queue et pesaient à elles seules
+    // l'essentiel des 107 s de préparation du simulateur (une requête a attendu
+    // jusqu'à 39 s son tour dans la file).
+    // Neuf requêtes suffisent et ramènent PLUS : 6 339 références au total pour
+    // les neuf labos, soit ~1 Mo. Le catalogue complet était de toute façon
+    // rechargé plus bas (optimisation combinatoire, simulateur personnalisé) —
+    // on le fait maintenant, une seule fois, et ces deux blocs n'ont plus rien
+    // à charger.
+    // Effet de bord voulu : la recherche par libellé EXACT ratait les équivalents
+    // dont le libellé diffère (« DUTASTERIDE 30GELU » vs « …30CAPS »). Le
+    // catalogue complet les inclut, et formNormMap (construit plus bas À PARTIR
+    // de libelleMap) les rattrape désormais dès le premier scénario.
+    const _fullFetchedLabs = new Set();
     if (ourLabs.size > 0) {
-      const allLibelles = [...new Set(refRows.map(r => r.libelle).filter(l => l != null))];
-      const LIB_CHUNK = 30;
-      const HDR = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
-      const tasks = [];
-      for (const lab of ourLabs) {
-        for (let i = 0; i < allLibelles.length; i += LIB_CHUNK) {
-          const chunk = allLibelles.slice(i, i + LIB_CHUNK);
-          const libStr = chunk.map(l => `"${l.replace(/%/g, '%25').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
-          const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&libelle=in.(${libStr})&is_generic=eq.true&limit=2000`;
-          tasks.push(fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []));
-        }
-      }
+      const HDR  = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+      const labs = [...ourLabs];
       let _done = 0;
-      const results = await Promise.all(tasks.map(t => t.then(r => {
+      const cats = await Promise.all(labs.map(async lab => {
+        const url = `${SUPA_URL}/rest/v1/references_pharmacie?select=cip13,labo,libelle,puht,rsf_pct,rsf_first_pct&labo=eq.${encodeURIComponent(lab)}&is_generic=eq.true&limit=10000`;
+        const rows = await fetch(url, { headers: HDR }).then(r => r.ok ? r.json() : []).catch(() => []);
+        if (rows.length) _fullFetchedLabs.add(lab);
         _done++;
-        _sp(22 + Math.round(_done / Math.max(tasks.length, 1) * 11));
-        return r;
-      })));
-      results.forEach(rows => rows.forEach(r => {
+        _sp(22 + Math.round(_done / labs.length * 11));
+        return rows;
+      }));
+      cats.forEach(rows => rows.forEach(r => {
+        if (r.libelle == null) return;
         if (!libelleMap.has(r.libelle)) libelleMap.set(r.libelle, []);
         if (!libelleMap.get(r.libelle).some(x => x.cip13 === r.cip13 && x.labo === r.labo))
           libelleMap.get(r.libelle).push(r);
@@ -10838,15 +10882,18 @@ async function launchSimulation() {
     //         Permet à getRemise d'utiliser le bon groupe RSF selon l'année de la condition.
     const rsfHistMap = new Map(); // cip13 → {2025: rsf_pct, 2026: rsf_pct}
     if (ourLabs.size > 0) {
+      // UNE requête pour tous les labos et les deux années, au lieu de
+      // labos × années (18 requêtes ici, 91 s cumulées). Mesuré : la requête
+      // groupée ramène les 6 828 lignes en 1,0 s. `year` entre dans le select
+      // puisqu'on ne peut plus le déduire de l'URL.
       const _H = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
-      await Promise.all([...ourLabs].flatMap(lab => [2025, 2026].map(async yr => {
-        const url = `${SUPA_URL}/rest/v1/rsf_history?select=cip13,rsf_pct&labo=eq.${encodeURIComponent(lab)}&year=eq.${yr}&limit=5000`;
-        const rows = await fetch(url, { headers: _H }).then(r => r.ok ? r.json() : []).catch(() => []);
-        rows.forEach(r => {
-          if (!rsfHistMap.has(r.cip13)) rsfHistMap.set(r.cip13, {});
-          rsfHistMap.get(r.cip13)[yr] = r.rsf_pct;
-        });
-      })));
+      const _labList = [...ourLabs].map(l => `"${String(l).replace(/"/g, '\\"')}"`).join(',');
+      const url = `${SUPA_URL}/rest/v1/rsf_history?select=cip13,rsf_pct,year&labo=in.(${encodeURIComponent(_labList)})&year=in.(2025,2026)&limit=30000`;
+      const rows = await fetch(url, { headers: _H }).then(r => r.ok ? r.json() : []).catch(() => []);
+      rows.forEach(r => {
+        if (!rsfHistMap.has(r.cip13)) rsfHistMap.set(r.cip13, {});
+        rsfHistMap.get(r.cip13)[r.year] = r.rsf_pct;
+      });
     }
     const _applyRsfHist = ref => { const h = rsfHistMap.get(ref.cip13); if (h) ref.rsf_pct_by_year = h; };
     refMap.forEach(_applyRsfHist);
@@ -12040,7 +12087,9 @@ async function launchSimulation() {
     let totalScenarios = 1 + allOptScenarios.length;
 
     // ── Cache full-catalog + algo co-opt (chargement ET customSimBtn) ─────────
-    const _fullFetchedLabs = new Set();
+    // _fullFetchedLabs est désormais rempli DÈS le chargement des équivalences
+    // (catalogue complet par labo, plus haut) : les deux blocs ci-dessous qui
+    // s'en servent n'ont plus rien à télécharger pour les labos sélectionnés.
 
     function calcCustomScenario(priorities) {
       const active     = priorities.filter(Boolean);
@@ -12388,13 +12437,23 @@ async function launchSimulation() {
         let bestEntry = winnerEntry;
         let _permCount = 0;
         let _yieldIdx = 0;
+        let _lastSpPct = -1;
         const _totalPerms = Math.max(allPerms.length, 1);
         for (const perm of allPerms) {
           if (++_yieldIdx % 20 === 0) await _yield();
           try {
             const { scenario, assignment: asgn } = calcCustomScenario(perm);
             _permCount++;
-            _sp(88 + Math.floor(_permCount / _totalPerms * 10), '// Optimisation combinatoire', `${_permCount} / ${_totalPerms} combinaisons analysées…`);
+            // Écriture DOM seulement quand le pourcentage change (ou tous les 25
+            // tours pour garder le compteur vivant). Avant : 4 mutations DOM à
+            // CHAQUE permutation, soit ~14 400 sur les 3 600 combinaisons d'un
+            // compte à neuf génériqueurs — du travail de mise en page pur perte
+            // au cœur de la boucle la plus chaude du simulateur.
+            const _p = 88 + Math.floor(_permCount / _totalPerms * 10);
+            if (_p !== _lastSpPct || _permCount % 25 === 0) {
+              _lastSpPct = _p;
+              _sp(_p, '// Optimisation combinatoire', `${_permCount} / ${_totalPerms} combinaisons analysées…`);
+            }
             if (scenario.totalPaNet < bestEntry.scenario.totalPaNet) {
               const eKey = `custom_auto_${perm.join('_').replace(/\s+/g, '_')}`;
               scenarioStore.set(eKey, { assignment: asgn, labResults: scenario.labResults });
@@ -14120,18 +14179,27 @@ function initConnecteurModal() {
       try {
         const { data: { session } } = await window._sbClient.auth.getSession();
         if (!session) break;
-        const { data: row } = await window._sbClient.from('user_state')
-          .select('state_json').eq('user_id', session.user.id).maybeSingle();
-        const job = row?.state_json?.ospharm_job;
-        if (!job) continue;
-        if (job.status === 'running') {
+        // Sonde LÉGÈRE tant que le job tourne (statut + message seulement) :
+        // toutes les 2,5 s, l'ancien `.select('state_json')` rapatriait tout
+        // l'état — ~2 Mo par tour, de quoi saturer les connexions du navigateur
+        // pendant que le simulateur, lui, a besoin de charger ses références.
+        const { data: lite } = await window._sbClient.from('user_state')
+          .select('st:state_json->ospharm_job->>status, msg:state_json->ospharm_job->>message')
+          .eq('user_id', session.user.id).maybeSingle();
+        if (!lite || !lite.st) continue;
+        if (lite.st === 'running') {
           _setJobStatusEl('ospJobStatus', 'running', '');
-          state._ospJobMessage = job.message || '';
-          const _m = (job.message || '').match(/Mois\s+(\d+)\/(\d+)/i);
+          state._ospJobMessage = lite.msg || '';
+          const _m = (lite.msg || '').match(/Mois\s+(\d+)\/(\d+)/i);
           if (_m) _setConnProgressPct(prefix, Math.round(parseInt(_m[1]) / parseInt(_m[2]) * 100));
           _ospRefreshProgressUI();
           continue;
         }
+        // Job terminé → on a besoin des données : état complet, une seule fois.
+        const { data: row } = await window._sbClient.from('user_state')
+          .select('state_json').eq('user_id', session.user.id).maybeSingle();
+        const job = row?.state_json?.ospharm_job;
+        if (!job) continue;
         if (job.status === 'done') {
           _setConnProgress(prefix, 'reset');
           _setJobStatusEl('ospJobStatus', 'done', '');
