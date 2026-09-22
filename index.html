@@ -10773,7 +10773,28 @@ async function launchSimulation() {
   };
 
   try {
-    const _yield = () => new Promise(r => setTimeout(r, 0));
+    // Rendre la main au navigateur SANS passer par setTimeout.
+    //
+    // Chrome plafonne les minuteurs à UN déclenchement par seconde dans un onglet
+    // en arrière-plan. Or la boucle d'optimisation combinatoire rend la main tous
+    // les 20 essais, soit 180 fois sur 3 600 combinaisons : onglet caché, cela
+    // ajoutait ~3 minutes d'attente pure, pile dans la tranche 88 → 98 % de la
+    // barre. D'où l'impression d'un simulateur « bloqué à 95 % » dès qu'on passait
+    // sur un autre onglet ou qu'on réduisait la fenêtre.
+    //
+    // MessageChannel n'est pas soumis à ce plafonnement : le calcul garde sa
+    // vitesse même onglet caché, tout en laissant le navigateur respirer entre
+    // deux tâches. Repli sur setTimeout si l'API manque.
+    const _yield = (() => {
+      try {
+        const _ch = new MessageChannel();
+        const _q  = [];
+        _ch.port1.onmessage = () => { const r = _q.shift(); if (r) r(); };
+        return () => new Promise(r => { _q.push(r); _ch.port2.postMessage(0); });
+      } catch (_) {
+        return () => new Promise(r => setTimeout(r, 0));
+      }
+    })();
     // 1. Parse CSV
     const csvData = state.csvData;
     if (!csvData || !csvData.length) {
