@@ -680,7 +680,9 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
                 page.wait_for_timeout(6_000)
             print(f"  [explore] url : {page.url}")
             _snap("E1_mes_ventes")
-            _dump_page("E1_mes_ventes")
+            # PAS de dump HTML sur cette vue : la page embarque la fiche du compte
+            # OSPHARM (identifiant ET mot de passe en clair, dans le jeu de données
+            # webix `active_user`). Un dump partirait en artefact public.
             _vw = page.evaluate('''() => {
                 if (typeof webix === "undefined") return [];
                 const out = [];
@@ -725,34 +727,44 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
             # `datatable.data.serialize()` rend l'intégralité du jeu de données en
             # JSON, sans dépendre d'un téléchargement (celui-ci ne se déclenche pas
             # sur cette vue) ni du gabarit du classeur.
-            _tables = page.evaluate('''() => {
-                if (typeof webix === "undefined") return [];
-                const out = [];
-                for (const el of document.querySelectorAll("[view_id]")) {
-                    const vid = el.getAttribute("view_id");
-                    if (!vid || vid.startsWith("$")) continue;
-                    let v; try { v = webix.$$(vid); } catch(_) { continue; }
-                    if (!v || !v.data || !v.data.serialize) continue;
-                    if (!["datatable", "treetable", "dataview", "list"].includes(v.name)) continue;
-                    let rows = [];
-                    try { rows = v.data.serialize(); } catch(_) {}
-                    if (!rows.length) continue;
-                    let cols = [];
-                    try {
-                        cols = (v.config.columns || []).map(c =>
-                            (c.id || "?") + ":" + String(c.header && c.header[0]
-                                ? (c.header[0].text || c.header[0]) : (c.header || "")).slice(0, 30));
-                    } catch(_) {}
-                    out.push({ vid, name: v.name, n: rows.length, cols,
-                               sample: rows.slice(0, 3) });
-                }
-                return out;
-            }''')
-            for _t in (_tables or []):
-                print(f"  [explore] TABLE {_t['vid']} [{_t['name']}] — {_t['n']} lignes")
+            # ⚠ On ne sérialise QUE la table des ventes par présentation.
+            #
+            # La première version relevait TOUTES les tables de la page : elle a
+            # ainsi publié dans le journal d'Actions — dépôt PUBLIC — le jeu de
+            # données webix `active_user`, qui contient l'identifiant ET le mot de
+            # passe OSPHARM en clair. Faute corrigée à la racine : liste blanche
+            # d'un seul identifiant de table, et masquage de tout champ au nom
+            # sensible, au cas où le gabarit changerait.
+            _SENSIBLE = ("password", "pwd", "pass", "token", "secret", "email", "mail")
+            _t = page.evaluate('''([vid, sens]) => {
+                if (typeof webix === "undefined") return null;
+                let v; try { v = webix.$$(vid); } catch(_) { return null; }
+                if (!v || !v.data || !v.data.serialize) return null;
+                const rows = v.data.serialize() || [];
+                const redact = o => {
+                    const c = {};
+                    for (const k of Object.keys(o))
+                        c[k] = sens.some(s => k.toLowerCase().includes(s)) ? "***" : o[k];
+                    return c;
+                };
+                let cols = [];
+                try {
+                    cols = (v.config.columns || []).map(c =>
+                        (c.id || "?") + ":" + String(c.header && c.header[0]
+                            ? (c.header[0].text || c.header[0]) : (c.header || "")).slice(0, 30));
+                } catch(_) {}
+                return { n: rows.length, cols,
+                         keys: rows.length ? Object.keys(rows[0]) : [],
+                         sample: rows.slice(0, 2).map(redact) };
+            }''', ["dt_sellout_resume_productname", list(_SENSIBLE)])
+            if _t:
+                print(f"  [explore] dt_sellout_resume_productname — {_t['n']} lignes")
+                print(f"  [explore]   champs : {_t['keys']}")
                 print(f"  [explore]   colonnes : {_t['cols']}")
                 for _s in _t['sample']:
-                    print(f"  [explore]   ex : {json.dumps(_s, ensure_ascii=False)[:400]}")
+                    print(f"  [explore]   ex : {json.dumps(_s, ensure_ascii=False)[:900]}")
+            else:
+                print("  [explore] table dt_sellout_resume_productname introuvable")
 
             # Export : on réutilise la même détection de bouton que le scraping
             # mensuel (icône excel / export / télécharger).
@@ -795,7 +807,6 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
             except Exception as _ee:
                 print(f"  [explore] export KO : {_ee}")
                 _snap("E2_export_ko")
-                _dump_page("E2_export_ko")
 
             _upload_screenshots()
             browser.close()
