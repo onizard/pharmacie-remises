@@ -700,6 +700,60 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
             }''')
             print(f"  [explore] vues webix : {_vw}")
 
+            # Onglet « PAR PRÉSENTATION GENERIQUE » : c'est LUI qui porte le détail
+            # par référence dont le comparateur a besoin. Par défaut la vue ouvre
+            # « PAR LABORATOIRE » (dt_sellout_resume_manufacturer, 9 lignes).
+            _tab = page.evaluate('''() => {
+                const norm = t => (t || "").trim().toLowerCase();
+                for (const el of document.querySelectorAll(
+                        ".webix_item_tab,.webix_segment_0,.webix_segment_1,.webix_segment_N,button")) {
+                    const t = norm(el.textContent);
+                    if (!t.includes("présentation") && !t.includes("presentation")) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 2 || r.height < 2) continue;
+                    for (const ty of ["mousedown", "mouseup", "click"])
+                        el.dispatchEvent(new MouseEvent(ty, {bubbles:true, cancelable:true, view:window}));
+                    return "tab:" + el.textContent.trim().slice(0, 40);
+                }
+                return "no-tab";
+            }''')
+            print(f"  [explore] onglet présentation : {_tab}")
+            page.wait_for_timeout(5_000)
+            _snap("E1b_presentation")
+
+            # Lecture DIRECTE des données Webix plutôt que par export de fichier :
+            # `datatable.data.serialize()` rend l'intégralité du jeu de données en
+            # JSON, sans dépendre d'un téléchargement (celui-ci ne se déclenche pas
+            # sur cette vue) ni du gabarit du classeur.
+            _tables = page.evaluate('''() => {
+                if (typeof webix === "undefined") return [];
+                const out = [];
+                for (const el of document.querySelectorAll("[view_id]")) {
+                    const vid = el.getAttribute("view_id");
+                    if (!vid || vid.startsWith("$")) continue;
+                    let v; try { v = webix.$$(vid); } catch(_) { continue; }
+                    if (!v || !v.data || !v.data.serialize) continue;
+                    if (!["datatable", "treetable", "dataview", "list"].includes(v.name)) continue;
+                    let rows = [];
+                    try { rows = v.data.serialize(); } catch(_) {}
+                    if (!rows.length) continue;
+                    let cols = [];
+                    try {
+                        cols = (v.config.columns || []).map(c =>
+                            (c.id || "?") + ":" + String(c.header && c.header[0]
+                                ? (c.header[0].text || c.header[0]) : (c.header || "")).slice(0, 30));
+                    } catch(_) {}
+                    out.push({ vid, name: v.name, n: rows.length, cols,
+                               sample: rows.slice(0, 3) });
+                }
+                return out;
+            }''')
+            for _t in (_tables or []):
+                print(f"  [explore] TABLE {_t['vid']} [{_t['name']}] — {_t['n']} lignes")
+                print(f"  [explore]   colonnes : {_t['cols']}")
+                for _s in _t['sample']:
+                    print(f"  [explore]   ex : {json.dumps(_s, ensure_ascii=False)[:400]}")
+
             # Export : on réutilise la même détection de bouton que le scraping
             # mensuel (icône excel / export / télécharger).
             try:
