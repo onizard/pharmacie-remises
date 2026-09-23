@@ -628,6 +628,125 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
         _wait_webix(page)
         _snap("1_login")
 
+        # ── MODE EXPLORATION (OSPHARM_MODE=explore) ──────────────────────────
+        #
+        # « Analyse des ventes → Toutes les ventes » est CASSÉ CHEZ OSPHARM : la
+        # vue se charge mais ne remonte aucune ligne (constaté côté robot ET
+        # confirmé par le titulaire dans son propre navigateur, 23/09/2026).
+        # La source de remplacement est « Audit génériques → Mes ventes », qui
+        # affiche bien les ventes et propose un export.
+        #
+        # Ce mode ne scrape rien : il navigue vers cette vue, relève les
+        # identifiants du menu, télécharge l'export et journalise la STRUCTURE du
+        # fichier (feuilles, en-têtes, premières lignes). De quoi écrire ensuite
+        # le parseur sur des colonnes réelles plutôt que supposées.
+        if _os.environ.get("OSPHARM_MODE", "").lower() == "explore":
+            print("  [explore] === relevé de « Audit génériques → Mes ventes » ===")
+            _r = page.evaluate('''() => {
+                const norm = t => (t || "").trim().toLowerCase();
+                const items = [...document.querySelectorAll(".webix_tree_item,[webix_tm_id]")];
+                const parent = items.find(el => norm(el.textContent).startsWith("audit génériques")
+                                             || norm(el.textContent).startsWith("audit generiques"));
+                if (!parent) return "no-item";
+                const id = parent.getAttribute("webix_tm_id") || "?";
+                for (const t of ["mousedown", "mouseup", "click"])
+                    parent.dispatchEvent(new MouseEvent(t, {bubbles:true, cancelable:true, view:window}));
+                return "click:" + id;
+            }''')
+            print(f"  [explore] menu parent : {_r}")
+            page.wait_for_timeout(2_500)
+            _kids = page.evaluate('''() => {
+                const out = [];
+                for (const el of document.querySelectorAll(".webix_tree_item")) {
+                    if ((el.getAttribute("aria-level") || "") === "1") continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 1 || r.height < 1) continue;
+                    out.push((el.getAttribute("webix_tm_id") || "?") + "|" +
+                             (el.textContent || "").trim().slice(0, 40));
+                }
+                return out;
+            }''')
+            print(f"  [explore] sous-entrées : {_kids}")
+            _mv = next((k.split("|")[0] for k in (_kids or [])
+                        if "mes ventes" in k.split("|", 1)[-1].lower()), None)
+            print(f"  [explore] cible « Mes ventes » : {_mv}")
+            if _mv:
+                page.evaluate('''(kid) => {
+                    const el = document.querySelector('[webix_tm_id="' + kid + '"]');
+                    if (!el) return;
+                    for (const t of ["mousedown", "mouseup", "click"])
+                        el.dispatchEvent(new MouseEvent(t, {bubbles:true, cancelable:true, view:window}));
+                }''', _mv)
+                page.wait_for_timeout(6_000)
+            print(f"  [explore] url : {page.url}")
+            _snap("E1_mes_ventes")
+            _dump_page("E1_mes_ventes")
+            _vw = page.evaluate('''() => {
+                if (typeof webix === "undefined") return [];
+                const out = [];
+                for (const el of document.querySelectorAll("[view_id]")) {
+                    const vid = el.getAttribute("view_id");
+                    if (!vid || vid.startsWith("$")) continue;
+                    try {
+                        const v = webix.$$(vid);
+                        if (!v) continue;
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 1 || r.height < 1) continue;
+                        out.push(vid + "[" + (v.name || "?") + "]"
+                                 + (v.count ? "=" + v.count() : ""));
+                    } catch(_) {}
+                }
+                return out;
+            }''')
+            print(f"  [explore] vues webix : {_vw}")
+
+            # Export : on réutilise la même détection de bouton que le scraping
+            # mensuel (icône excel / export / télécharger).
+            try:
+                with page.expect_download(timeout=45_000) as _dlc:
+                    _btn = page.evaluate('''() => {
+                        const vis = el => { const r = el.getBoundingClientRect();
+                                            return r.width > 0 && r.height > 0; };
+                        if (typeof webix === "undefined") return "no-webix";
+                        for (const el of document.querySelectorAll("[view_id]")) {
+                            if (!vis(el)) continue;
+                            const v = webix.$$(el.getAttribute("view_id"));
+                            if (!v || v.name !== "button") continue;
+                            const icon = (typeof v.config?.icon === "string" ? v.config.icon : "").toLowerCase();
+                            if (["excel","xls","export","download","télécharger","file-"]
+                                    .some(k => icon.includes(k) || el.innerHTML.toLowerCase().includes(k))) {
+                                el.click(); return "btn:" + icon.slice(0, 40);
+                            }
+                        }
+                        return "no-btn";
+                    }''')
+                    print(f"  [explore] bouton export : {_btn}")
+                _dl = _dlc.value
+                _fd, _path = tempfile.mkstemp(suffix=".xlsx")
+                _os.close(_fd)
+                _dl.save_as(_path)
+                print(f"  [explore] fichier reçu : {_dl.suggested_filename} "
+                      f"({_os.path.getsize(_path):,} octets)")
+                _wb = openpyxl.load_workbook(_path, read_only=True, data_only=True)
+                print(f"  [explore] feuilles : {_wb.sheetnames}")
+                for _sn in _wb.sheetnames[:3]:
+                    _ws = _wb[_sn]
+                    print(f"  [explore] --- feuille « {_sn} » ---")
+                    for _i, _row in enumerate(_ws.iter_rows(values_only=True)):
+                        if _i > 8:
+                            break
+                        print(f"  [explore]   L{_i}: "
+                              f"{[('' if c is None else str(c)[:28]) for c in _row][:14]}")
+                _wb.close()
+            except Exception as _ee:
+                print(f"  [explore] export KO : {_ee}")
+                _snap("E2_export_ko")
+                _dump_page("E2_export_ko")
+
+            _upload_screenshots()
+            browser.close()
+            raise RuntimeError("mode exploration terminé (aucun scraping effectué)")
+
         # ── Navigation vers section ventes ────────────────────────────────────
 
         def _ventes_tabs_visible():

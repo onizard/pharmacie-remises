@@ -6,6 +6,11 @@ on:
       user_id:
         description: 'Supabase user ID'
         required: true
+      mode:
+        description: "normal = scraping ; explore = releve de structure, aucun scraping"
+        required: false
+        default: 'normal'
+        type: string
   workflow_call:
     inputs:
       user_id:
@@ -25,6 +30,7 @@ jobs:
         env:
           USER_ID: ${{ inputs.user_id }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OSPHARM_MODE: ${{ inputs.mode }}
         run: python3 api_scraper/run_job_ospharm.py
 
       # Captures d'écran + HTML de la page au moment de l'échec. Sans elles, un
