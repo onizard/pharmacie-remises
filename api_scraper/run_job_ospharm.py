@@ -663,16 +663,117 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
                 except Exception:
                     return False
 
+            def _rows_now() -> int:
+                try:
+                    return page.evaluate('''() => {
+                        if (typeof webix === "undefined") return -1;
+                        let mx = 0;
+                        for (const el of document.querySelectorAll("[view_id]")) {
+                            try {
+                                const v = webix.$$(el.getAttribute("view_id"));
+                                if (v && (v.name === "datatable" || v.name === "treetable") && v.count)
+                                    mx = Math.max(mx, v.count());
+                            } catch(_) {}
+                        }
+                        return mx;
+                    }''')
+                except Exception:
+                    return -1
+
+            # ── M0a : CLIC RÉEL sur l'entrée de menu, repérée par son LIBELLÉ ────
+            #
+            # Les identifiants du menu OSPHARM ont changé. L'entrée « Analyse des
+            # ventes » porte désormais webix_tm_id="/sellout" (avec barre oblique)
+            # et non plus "sellout.all" : sb.getItemNode("sellout.all") renvoyait
+            # donc null, aucun clic n'était émis, et seul sb.select() passait
+            # (journal : « M0: select-only »). Le routeur affichait bien la vue —
+            # bonne URL #!/top/sellout.all, bonnes colonnes — mais le chargement
+            # des données, déclenché par le gestionnaire de CLIC, ne partait jamais.
+            # D'où un tableau vide pour les douze mois, zéro requête réseau, et
+            # onze exécutions en échec entre le 3 et le 22 septembre 2026.
+            #
+            # On clique donc le nœud du DOM repéré par son libellé — ce qui résiste
+            # aux changements d'identifiants — puis, si le tableau reste vide, on
+            # déplie la branche et on essaie ses sous-entrées une à une.
+            try:
+                _rc = page.evaluate('''() => {
+                    const norm = t => (t || "").trim().toLowerCase();
+                    const items = [...document.querySelectorAll(".webix_tree_item,[webix_tm_id]")];
+                    const parent = items.find(el => norm(el.textContent).startsWith("analyse des ventes"));
+                    if (!parent) return "no-item";
+                    const id = parent.getAttribute("webix_tm_id") || "?";
+                    for (const type of ["mousedown", "mouseup", "click"]) {
+                        parent.dispatchEvent(new MouseEvent(type,
+                            { bubbles: true, cancelable: true, view: window }));
+                    }
+                    return "click:" + id;
+                }''')
+                print(f"  [nav] M0a clic libellé : {_rc}")
+                if _rc != "no-item":
+                    page.wait_for_timeout(2_500)
+                    _n = _rows_now()
+                    print(f"  [nav] M0a → {_n} ligne(s)")
+                    if _n > 0 and _ventes_tabs_visible():
+                        return True
+                    # Branche dépliée : essayer les sous-entrées
+                    _kids = page.evaluate('''() => {
+                        const out = [];
+                        for (const el of document.querySelectorAll(".webix_tree_item")) {
+                            const lvl = el.getAttribute("aria-level") || "";
+                            if (lvl === "1") continue;
+                            const r = el.getBoundingClientRect();
+                            if (r.width < 1 || r.height < 1) continue;
+                            out.push((el.getAttribute("webix_tm_id") || "?") + "|" +
+                                     (el.textContent || "").trim().slice(0, 40));
+                        }
+                        return out;
+                    }''')
+                    print(f"  [nav] sous-entrées : {_kids}")
+                    for _k in (_kids or []):
+                        _kid = _k.split("|")[0]
+                        page.evaluate('''(kid) => {
+                            const el = document.querySelector('[webix_tm_id="' + kid + '"]');
+                            if (!el) return;
+                            for (const type of ["mousedown", "mouseup", "click"]) {
+                                el.dispatchEvent(new MouseEvent(type,
+                                    { bubbles: true, cancelable: true, view: window }));
+                            }
+                        }''', _kid)
+                        page.wait_for_timeout(2_500)
+                        _n = _rows_now()
+                        print(f"  [nav] sous-entrée {_kid} → {_n} ligne(s)")
+                        if _n > 0 and _ventes_tabs_visible():
+                            return True
+            except Exception as _e:
+                print(f"  [nav] M0a err: {_e}")
+
             try:
                 _r0 = page.evaluate('''() => {
                     if (typeof webix === "undefined") return "no-webix";
                     const sb = webix.$$("top:menu")
                              || webix.$$(document.querySelector(".webix_sidebar")?.getAttribute("view_id"));
                     if (!sb) return "no-sb";
+                    // Identifiants essayés dans l'ordre : le format actuel
+                    // ("/sellout", relevé dans le DOM le 23/09/2026) d'abord, puis
+                    // les anciens. sb.select() seul ne déclenche PAS le chargement
+                    // des données — il faut un vrai clic sur le nœud, d'où la
+                    // recherche d'un identifiant pour lequel getItemNode répond.
+                    const ids = ["/sellout", "/sellout/all", "sellout.all", "sellout"];
+                    for (const id of ids) {
+                        try {
+                            const node = sb.getItemNode ? sb.getItemNode(id) : null;
+                            if (!node) continue;
+                            try { sb.open(id); } catch(e) {}
+                            try { sb.select(id); } catch(e) {}
+                            for (const type of ["mousedown", "mouseup", "click"]) {
+                                node.dispatchEvent(new MouseEvent(type,
+                                    { bubbles: true, cancelable: true, view: window }));
+                            }
+                            return "click-node:" + id;
+                        } catch(e) {}
+                    }
                     try { sb.open("sellout"); } catch(e) {}
-                    sb.select("sellout.all");
-                    const node = sb.getItemNode ? sb.getItemNode("sellout.all") : null;
-                    if (node) { node.dispatchEvent(new MouseEvent("click",{bubbles:true})); return "click-node"; }
+                    try { sb.select("sellout.all"); } catch(e) {}
                     return "select-only";
                 }''')
                 print(f"  [nav] M0: {_r0}")
