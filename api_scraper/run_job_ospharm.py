@@ -729,8 +729,15 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
                         return out;
                     }''')
                     print(f"  [nav] sous-entrées : {_kids}")
-                    for _k in (_kids or []):
-                        _kid = _k.split("|")[0]
+                    # La bonne vue est « Toutes les ventes » (sellout.all) et ELLE
+                    # SEULE : c'est la seule qui liste les ventes à la RÉFÉRENCE.
+                    # Ne jamais se rabattre sur une autre sous-entrée au prétexte
+                    # qu'elle, elle contient des lignes — « Familles Ospharm » en
+                    # renvoie 6, mais ce sont six familles, pas des produits, et le
+                    # comparateur en ferait n'importe quoi.
+                    _target = next((k.split("|")[0] for k in (_kids or [])
+                                    if k.split("|")[0] == "sellout.all"), None)
+                    if _target:
                         page.evaluate('''(kid) => {
                             const el = document.querySelector('[webix_tm_id="' + kid + '"]');
                             if (!el) return;
@@ -738,11 +745,39 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
                                 el.dispatchEvent(new MouseEvent(type,
                                     { bubbles: true, cancelable: true, view: window }));
                             }
-                        }''', _kid)
-                        page.wait_for_timeout(2_500)
+                        }''', _target)
+                        page.wait_for_timeout(3_000)
                         _n = _rows_now()
-                        print(f"  [nav] sous-entrée {_kid} → {_n} ligne(s)")
-                        if _n > 0 and _ventes_tabs_visible():
+                        print(f"  [nav] sous-entrée {_target} → {_n} ligne(s)")
+                        _snap("2b_sellout_all")
+                        if _n == 0:
+                            # Diagnostic : la vue « Toutes les ventes » se charge-t-elle
+                            # après un clic sur l'un de ses onglets ? Et que contient le
+                            # panneau de filtres ? On journalise avant de conclure.
+                            _diag = page.evaluate('''() => {
+                                const out = { onglets: [], filtres: "", total: "" };
+                                for (const el of document.querySelectorAll(
+                                        ".webix_item_tab,.webix_segment_0,.webix_segment_1,.webix_segment_N")) {
+                                    const t = (el.textContent || "").trim();
+                                    const r = el.getBoundingClientRect();
+                                    if (t && r.width > 1) out.onglets.push(t.slice(0, 24));
+                                }
+                                const fa = [...document.querySelectorAll("*")].find(
+                                    e => (e.textContent || "").trim() === "Filtres actifs");
+                                if (fa && fa.parentElement)
+                                    out.filtres = (fa.parentElement.innerText || "").trim().slice(0, 200);
+                                const tot = [...document.querySelectorAll("*")].find(
+                                    e => (e.textContent || "").trim().startsWith("Total:"));
+                                if (tot) out.total = (tot.innerText || "").trim().slice(0, 120);
+                                return out;
+                            }''')
+                            print(f"  [nav] sellout.all VIDE — onglets={_diag.get('onglets')}")
+                            print(f"  [nav] filtres actifs : {_diag.get('filtres')!r}")
+                            print(f"  [nav] ligne total : {_diag.get('total')!r}")
+                            _dump_page("2b_sellout_all")
+                        # On reste sur sellout.all même vide : c'est la bonne vue,
+                        # et le réglage de période qui suit peut la remplir.
+                        if _ventes_tabs_visible():
                             return True
             except Exception as _e:
                 print(f"  [nav] M0a err: {_e}")
