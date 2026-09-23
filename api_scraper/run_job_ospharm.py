@@ -64,10 +64,39 @@ def _supa_patch_state(state: dict):
     with urllib.request.urlopen(req, timeout=15): pass
 
 
+# Verrou + limiteur des écritures d'état.
+#
+# _update_job fait un LIRE-MODIFIER-ÉCRIRE de TOUT `state_json` (~2 Mo ici) et,
+# par défaut, dans un thread détaché. Un simple message de progression réécrit
+# donc l'état entier — conditions labo, pages labos, stats grossiste comprises.
+# Avec ~5 messages par mois sur 12 mois, cela fait ~60 cycles concurrents par
+# exécution : deux threads qui se chevauchent et la dernière écriture écrase ce
+# que l'autre (ou le navigateur) venait d'enregistrer. C'est la voie par
+# laquelle rows / month_meta / month_stats ont pu être remis à zéro.
+#
+# Le verrou sérialise les écritures ; le limiteur saute les mises à jour de
+# progression rapprochées (le statut ne change pas, seul le libellé bouge).
+# Tout ce qui change d'état ou porte des données passe sans condition.
+_JOB_LOCK      = threading.Lock()
+_LAST_PROGRESS = [0.0]
+_PROGRESS_MIN_S = 8.0
+
+
 def _update_job(status: str, message: str = "", rows=None, error: str = "",
                 blocking: bool = False, month_meta=None, month_stats=None,
                 period_start: str = "", period_end: str = ""):
+    import time as _t0
+    _is_progress_only = (status == "running" and rows is None
+                         and month_meta is None and month_stats is None
+                         and not period_start and not error)
+    if _is_progress_only:
+        _now = _t0.monotonic()
+        if _now - _LAST_PROGRESS[0] < _PROGRESS_MIN_S:
+            return                       # trop rapproché : on garde le message précédent
+        _LAST_PROGRESS[0] = _now
+
     def _do():
+      with _JOB_LOCK:
         try:
             state = _supa_get_state()
             import datetime as _dt
@@ -520,7 +549,39 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
             print(f"  [snap] {label} ERR: {_se}")
 
     def _upload_screenshots():
-        pass  # désactivé — quota Storage Supabase
+        """Écrit les captures sur le disque du runner, pour publication en
+        artefact GitHub Actions.
+
+        L'envoi vers Supabase Storage reste désactivé (quota), mais ne RIEN
+        conserver rendait tout échec de scraping impossible à diagnostiquer :
+        onze exécutions d'affilée ont échoué entre le 3 et le 22 septembre 2026
+        sans qu'on puisse voir ce que le robot avait sous les yeux. Le disque du
+        runner est gratuit et l'artefact est récupérable depuis l'interface
+        Actions."""
+        if not _screenshots:
+            return
+        out = _os.environ.get("OSPHARM_SNAP_DIR", "ospharm_snaps")
+        try:
+            _os.makedirs(out, exist_ok=True)
+            for i, (label, data) in enumerate(_screenshots):
+                with open(_os.path.join(out, f"{i:02d}_{label}.png"), "wb") as fh:
+                    fh.write(data)
+            print(f"  [snap] {len(_screenshots)} captures écrites dans {out}/")
+        except Exception as _de:
+            print(f"  [snap] écriture disque KO: {_de}")
+
+    def _dump_page(label: str):
+        """Sauve le HTML de la page courante à côté des captures : une capture
+        montre l'écran, le HTML dit pourquoi (message d'erreur masqué, table
+        vide, session expirée…)."""
+        out = _os.environ.get("OSPHARM_SNAP_DIR", "ospharm_snaps")
+        try:
+            _os.makedirs(out, exist_ok=True)
+            with open(_os.path.join(out, f"{label}.html"), "w", encoding="utf-8") as fh:
+                fh.write(page.content())
+            print(f"  [dump] {label}.html écrit")
+        except Exception as _de:
+            print(f"  [dump] {label} KO: {_de}")
 
     def _strip_html(v):
         if isinstance(v, str) and "<" in v:
@@ -679,6 +740,49 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
                 browser.close()
                 raise RuntimeError(f"Nav ventes échoué — url={page.url[:80]}")
             _snap("2_apres_nav")
+
+        # État du tableau JUSTE APRÈS la navigation, avant toute sélection de date.
+        # Diagnostic décisif : sur les échecs de septembre 2026, le journal montrait
+        # « dt: 0→0 » pour les douze mois — le tableau était déjà VIDE avant qu'on
+        # touche au sélecteur de dates. Chercher la panne du côté du date picker
+        # était donc une fausse piste : c'est la vue des ventes qui ne charge rien.
+        # On trace l'état initial pour que la prochaine panne se lise d'un coup d'œil.
+        # NB : _dt_row_count() n'est défini que plus bas dans la fonction — le
+        # comptage est donc refait ici, à l'identique, plutôt qu'appelé.
+        try:
+            _dt0 = page.evaluate('''() => {
+                if (typeof webix === "undefined") return -1;
+                let mx = 0;
+                for (const el of document.querySelectorAll("[view_id]")) {
+                    try {
+                        const v = webix.$$(el.getAttribute("view_id"));
+                        if (v && (v.name === "datatable" || v.name === "treetable") && v.count)
+                            mx = Math.max(mx, v.count());
+                    } catch(_) {}
+                }
+                return mx;
+            }''')
+            _msg = page.evaluate('''() => {
+                const out = [];
+                for (const sel of [".webix_overlay", ".webix_message", ".error", ".alert",
+                                   "[class*=empty]", "[class*=nodata]"]) {
+                    for (const el of document.querySelectorAll(sel)) {
+                        const t = (el.innerText || "").trim();
+                        const r = el.getBoundingClientRect();
+                        if (t && r.width > 0 && r.height > 0) out.push(t.slice(0, 120));
+                    }
+                }
+                return out.slice(0, 5);
+            }''')
+            print(f"  [nav] tableau après navigation : {_dt0} ligne(s) | url={page.url[:90]}")
+            if _msg:
+                print(f"  [nav] messages visibles : {_msg}")
+            if _dt0 == 0:
+                print("  [nav] ⚠ tableau VIDE dès la navigation — la vue des ventes "
+                      "n'a chargé aucune donnée (session, droits, ou interface modifiée)")
+                _dump_page("2_apres_nav")
+        except Exception as _ne:
+            print(f"  [nav] diagnostic KO: {_ne}")
 
         # ── Sélection d'un mois précis via date picker ────────────────────────
 
@@ -1432,6 +1536,7 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
         total_months = (end_year - start_year) * 12 + (end_month - start_month) + 1
         year, month  = start_year, start_month
         m_idx        = 0
+        _fail_streak = 0                     # mois consécutifs en échec (arrêt anticipé)
         _mctx["n"]   = total_months          # arme le compteur porté par progress()
 
         while (year, month) <= (end_year, end_month):
@@ -1461,9 +1566,26 @@ def run_ospharm(creds: dict, progress_cb, user_id: str = "") -> tuple:
                         "rows": len(compact), "file_url": file_url,
                     })
                     print(f"  [{lbl}] ✓ {len(compact)} lignes scraper")
+                    _fail_streak = 0
                 except Exception as _me:
                     print(f"  [{lbl}] ERREUR: {_me}")
                     month_errors.append(f"{lbl}: {_me}")
+                    _fail_streak += 1
+                    # ARRÊT ANTICIPÉ. Un mois en échec coûte ~210 s de timeouts
+                    # (120 s d'attente des données + 60 s de téléchargement + 60 s
+                    # de repli webix.toExcel). Douze mois qui échouent de la même
+                    # façon, c'est 42 minutes de runner pour rien — et côté site,
+                    # une barre qui avance pendant trois quarts d'heure avant de
+                    # ne rien donner. Si RIEN n'a encore été extrait après trois
+                    # mois consécutifs en échec, la cause est structurelle
+                    # (interface OSPHARM modifiée, session invalide, compte sans
+                    # données) et les neuf mois suivants échoueront pareil.
+                    if _fail_streak >= 3 and not all_compact_rows:
+                        print(f"  [abandon] {_fail_streak} mois consécutifs sans aucune "
+                              f"donnée — arrêt anticipé (les suivants échoueraient pareil)")
+                        _snap("9_abandon")
+                        _dump_page("9_abandon")
+                        break
 
             if month == 12:
                 year += 1
