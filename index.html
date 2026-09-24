@@ -3909,6 +3909,21 @@ async function autoRunOspharm(mode) {
 }
 
 function showCompError(msg) {
+  // Un job tourne (ou vient d'être relancé automatiquement) → on affiche sa
+  // progression, JAMAIS un bandeau d'erreur.
+  //
+  // Sans ce garde-fou, l'utilisateur voyait un liseré rouge AU-DESSUS d'une
+  // analyse en cours : launchComparateur() relance le job, puis un second appel
+  // (navigation, sonde) relit la base, y trouve encore l'ancien statut « error »
+  // — le nouveau job n'a pas encore écrit « running » — et, le relancement
+  // automatique étant déjà consommé, peignait l'erreur par-dessus le spinner.
+  // Message faux et inquiétant, alors que tout se passait bien.
+  if (state._ospJobRunning || state._ospConnecting) {
+    hideCompError();
+    const el = document.getElementById('simResults');
+    if (el && typeof _renderOspProgress === 'function') _renderOspProgress(el);
+    return;
+  }
   const banner = document.getElementById('compErrorBanner');
   const msgEl  = document.getElementById('compErrorMsg');
   if (!banner || !msgEl) return;
@@ -4005,6 +4020,24 @@ function _setupCachedPrecomputed(html) {
     _precomputedMeta = { cipCount: '—', labCount: '—' };
 }
 
+// Traduit l'erreur technique du scraper en une phrase utile.
+// Le bandeau affichait le message brut du backend, du genre : « Aucune donnée
+// extraite sur 12 mois. Erreurs: ['2025-01: Aucun fichier Excel reçu
+// (2025-01)', …] » — illisible, et qui ne dit pas quoi faire.
+function _ospHumanError(raw) {
+  const r = String(raw || '');
+  if (/Aucun fichier Excel|Aucune donnée extraite/i.test(r)) {
+    return "OSPHARM n'a renvoyé aucune donnée de ventes. La récupération sera retentée "
+         + "automatiquement au prochain chargement ; si cela persiste, vérifiez sur "
+         + "datastat.ospharm.org que vos ventes s'affichent bien.";
+  }
+  if (/Nav ventes|Connexion|identifiant|login/i.test(r)) {
+    return "Connexion à OSPHARM impossible — vérifiez vos identifiants dans les connecteurs.";
+  }
+  return "Récupération OSPHARM interrompue. Nouvelle tentative au prochain chargement."
+       + (r ? ` (${r.slice(0, 120)})` : '');
+}
+
 function _tryAutoRelaunchOspharm() {
   if (_ospAutoRelaunchDone) return false;
   if (state._ospJobRunning || state._ospConnecting) return false;
@@ -4040,7 +4073,7 @@ async function launchComparateur() {
       return;
     }
     if (job.status === 'error') {
-      if (!_tryAutoRelaunchOspharm()) showCompError(`Erreur OSPHARM : ${job.error || 'inconnue'}`);
+      if (!_tryAutoRelaunchOspharm()) showCompError(_ospHumanError(job.error));
       return;
     }
     if (job.status !== 'done') {
