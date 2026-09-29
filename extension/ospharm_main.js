@@ -177,8 +177,14 @@
     if (e.source !== window) return;
     const d = e.data;
     if (!d || d.source !== 'bp-ext') return;
+    // « ping » : ospharm.js (monde isolé) ne peut pas lire nos variables ; c'est
+    // sa seule façon de savoir que ce fichier est bien injecté. Il sonde jusqu'à
+    // obtenir une réponse, ce qui rend l'ordre de chargement des deux scripts
+    // indifférent (le « ready » initial peut partir avant qu'il n'écoute).
+    if (d.cmd === 'ping') { say('ready'); return; }
     if (d.cmd === 'collect') collect(d.year);
   });
 
+  console.log(TAG, 'collecteur de page chargé');
   say('ready');
 })();

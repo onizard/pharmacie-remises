@@ -43,10 +43,17 @@ comparateur.
 ## Installation (Firefox — ordinateur)
 
 1. Téléchargez et dézippez le dossier `extension/`.
-2. Ouvrez `about:debugging#/runtime/this-firefox`.
-3. Cliquez **« Charger un module complémentaire temporaire… »** et sélectionnez le
+2. **Renommez `manifest.firefox.json` en `manifest.json`** (en écrasant l'existant).
+3. Ouvrez `about:debugging#/runtime/this-firefox`.
+4. Cliquez **« Charger un module complémentaire temporaire… »** et sélectionnez le
    fichier **`manifest.json`** du dossier dézippé.
-4. L'extension **break-pharma connect** apparaît.
+5. L'extension **break-pharma connect** apparaît.
+
+> Pourquoi deux manifestes ? Chrome exige `background.service_worker` et refuse
+> `background.scripts` (« requires manifest version 2 or lower »), alors que Firefox
+> n'active pas encore les service workers d'arrière-plan par défaut et attend
+> `background.scripts`. Un seul fichier ne peut pas satisfaire les deux ; le
+> `manifest.json` du dépôt vise Chrome, `manifest.firefox.json` vise Firefox.
 
 > Note Firefox : une extension chargée ainsi est **temporaire** (retirée à la
 > fermeture de Firefox) — rechargez-la de la même façon au besoin. Une version
@@ -60,6 +67,24 @@ comparateur.
    fois par jour), sans aucun bouton à cliquer. Une bulle de confirmation apparaît puis
    disparaît. Un bouton **« Synchroniser maintenant »** reste disponible dans le popup.
 4. break-pharma analyse les factures en arrière-plan ; vos remises se mettent à jour.
+5. Pour OSPHARM : ouvrez [datastat.ospharm.org](https://datastat.ospharm.org) (connecté
+   via le portail ophicine). Une bulle apparaît en bas à droite et vous dit ce qui se
+   passe. La lecture des douze mois prend une dizaine de minutes. Le popup propose aussi
+   **« Lire mes ventes OSPHARM »**, qui force une lecture immédiate.
+
+## Dépannage — rien ne s'affiche sur DATASTAT
+
+La bulle en bas à droite doit **toujours** apparaître : elle dit soit ce qu'elle fait,
+soit pourquoi elle ne fait rien. Si vous ne voyez rien du tout :
+
+| Ce qui s'affiche | Ce que ça veut dire |
+|---|---|
+| « connectez-vous… » | L'extension n'a pas de jeton break-pharma : ouvrez son popup et connectez-vous. |
+| « déjà synchronisées il y a N h » | Verrou de 20 h. **Cliquez la bulle** pour relancer tout de suite. |
+| « le collecteur ne s'est pas chargé » | Rechargez DATASTAT avec Ctrl+Maj+R. Le monde `MAIN` exige Chrome 111 ou plus. |
+| *aucune bulle* | Le script de contenu n'est pas injecté : rechargez l'extension dans `chrome://extensions`, puis rechargez l'onglet DATASTAT. |
+
+La console du navigateur (F12) trace chaque décision sous l'étiquette `[bp-ospharm]`.
 
 ## Ce que l'extension voit / ne voit pas
 
@@ -80,5 +105,6 @@ en `"world": "MAIN"` pour lire les données, et `ospharm.js` — qui, lui, a acc
 
 ## Tests
 
-    node extension/test_ospharm_main.js        # collecteur, contre un faux DATASTAT
+    node extension/test_ospharm_main.js          # collecteur, contre un faux DATASTAT
+    node extension/test_ospharm_bridge.js        # pont : aucun abandon silencieux
     python3 api_scraper/test_ospharm_generic.py  # traitement serveur

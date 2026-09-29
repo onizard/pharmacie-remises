@@ -37,7 +37,7 @@
 </head>
 <body>
   <h1>break-pharma connect</h1>
-  <p class="sub">Envoie vos factures Digipharmacie vers break-pharma.fr.</p>
+  <p class="sub">Envoie vos factures Digipharmacie et vos ventes OSPHARM vers break-pharma.fr.</p>
 
   <!-- Écran connexion -->
   <div id="login">
@@ -60,7 +60,18 @@
     <div id="lastSync" class="sub" style="margin:8px 0 4px">Dernière synchro : —</div>
     <button id="btnSync">⟳ Synchroniser maintenant</button>
     <div id="syncMsg" style="font-size:12px;margin-top:8px"></div>
-    <button id="btnLogout" class="ghost" style="margin-top:12px">Se déconnecter</button>
+
+    <hr style="border:none;border-top:1px solid #16324a;margin:16px 0 12px">
+    <p class="sub" style="margin:0">
+      Ventes génériques <b>OSPHARM</b> : lues depuis
+      <a href="https://datastat.ospharm.org" target="_blank">DATASTAT</a>
+      quand vous y êtes connecté. Aucun mot de passe OSPHARM n’est stocké.
+    </p>
+    <div id="lastOsp" class="sub" style="margin:8px 0 4px">Dernière lecture : —</div>
+    <button id="btnOsp">⟳ Lire mes ventes OSPHARM</button>
+    <div id="ospMsg" style="font-size:12px;margin-top:8px"></div>
+
+    <button id="btnLogout" class="ghost" style="margin-top:16px">Se déconnecter</button>
   </div>
 
   <div id="msg"></div>

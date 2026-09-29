@@ -23,8 +23,9 @@ function _fmtAgo(ts) {
 
 async function refreshLastSync() {
   try {
-    const { bp_last_sync } = await chrome.storage.local.get('bp_last_sync');
-    $('lastSync').textContent = 'Dernière synchro : ' + _fmtAgo(bp_last_sync);
+    const s = await chrome.storage.local.get(['bp_last_sync', 'bp_osp_last_sync']);
+    $('lastSync').textContent = 'Dernière synchro : ' + _fmtAgo(s.bp_last_sync);
+    $('lastOsp').textContent  = 'Dernière lecture : ' + _fmtAgo(s.bp_osp_last_sync);
   } catch (_) {}
 }
 
@@ -74,6 +75,33 @@ $('btnSync').addEventListener('click', async () => {
     else { msg.textContent = 'Voir le détail dans l’onglet Digipharmacie (bulle en bas à droite).'; }
   } catch (_) {
     msg.innerHTML = 'Rechargez l’onglet <a href="https://app.digipharmacie.fr" target="_blank">Digipharmacie</a> puis réessayez.';
+    msg.className = 'err';
+  }
+  refreshLastSync();
+});
+
+// « Lire mes ventes OSPHARM » : la lecture se fait DANS l'onglet DATASTAT (session
+// utilisateur). Le bouton force la collecte même si le verrou 20 h est posé.
+$('btnOsp').addEventListener('click', async () => {
+  const msg = $('ospMsg');
+  msg.textContent = 'Recherche de l’onglet DATASTAT…'; msg.className = '';
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({ url: 'https://datastat.ospharm.org/*' }); } catch (_) {}
+  if (!tabs.length) {
+    msg.innerHTML = 'Ouvrez d’abord <a href="https://datastat.ospharm.org" target="_blank">datastat.ospharm.org</a> '
+                  + '(connecté via ophicine), puis réessayez.';
+    msg.className = 'err';
+    return;
+  }
+  try {
+    // Un content script non injecté ne répond pas : l'erreur est explicite plutôt
+    // que silencieuse (c'est exactement le symptôme qu'on cherchait à diagnostiquer).
+    await chrome.tabs.sendMessage(tabs[0].id, { type: 'bp-osp-sync-now' });
+    msg.textContent = 'Lecture lancée — suivez la bulle en bas à droite de DATASTAT '
+                    + '(une dizaine de minutes, 12 mois à parcourir).';
+  } catch (_) {
+    msg.innerHTML = 'Extension non injectée dans cet onglet : rechargez '
+                  + '<a href="https://datastat.ospharm.org" target="_blank">DATASTAT</a> (Ctrl+Maj+R) puis réessayez.';
     msg.className = 'err';
   }
   refreshLastSync();

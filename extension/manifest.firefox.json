@@ -1,4 +1,5 @@
 {
+  "_comment": "Variante Firefox. Firefox n'active pas les service workers d'arrière-plan par défaut (MV3 y utilise des scripts d'événements) tandis que Chrome refuse 'background.scripts' et affiche un avertissement. Un seul fichier ne peut pas satisfaire les deux : pour installer sous Firefox, renommez ce fichier en manifest.json (voir README).",
   "manifest_version": 3,
   "name": "break-pharma connect",
   "version": "1.5.1",
@@ -62,6 +63,14 @@
     }
   ],
   "background": {
-    "service_worker": "background.js"
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "break-pharma-connect@break-pharma.fr",
+      "strict_min_version": "128.0"
+    }
   }
 }

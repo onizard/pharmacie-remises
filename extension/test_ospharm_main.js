@@ -125,6 +125,12 @@ require('./ospharm_main.js');
   console.log('── collecte sur faux DATASTAT ──');
   check('signal « prêt » émis', recu.some((m) => m.type === 'ready'), true);
 
+  // Le pont (monde isolé) ne peut pas lire nos variables : il sonde. Sans réponse
+  // au ping, il conclurait à tort que le collecteur n'est pas injecté.
+  const readyAvant = recu.filter((m) => m.type === 'ready').length;
+  global.window.postMessage({ source: 'bp-ext', cmd: 'ping' });
+  check('réponse au ping', recu.filter((m) => m.type === 'ready').length, readyAvant + 1);
+
   global.window.postMessage({ source: 'bp-ext', cmd: 'collect', year: 2025 });
 
   const t0 = Date.now();
