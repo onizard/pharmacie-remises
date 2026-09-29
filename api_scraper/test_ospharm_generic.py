@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ospharm_generic import (norm_labo, extract_cip, normalize_rows,
                              build_month_stats, compact_rows, resolve_cips,
-                             parse_payload)
+                             parse_payload, merge_job)
 
 # Trois lignes authentiques du relevé.
 REELLES = [
@@ -193,6 +193,37 @@ for bad, why in [({}, "corps vide"),
         check(f"refus attendu ({why})", "accepté", "refusé")
     except ValueError:
         check(f"refus attendu ({why})", "refusé", "refusé")
+
+print("\n── fusion dans ospharm_job, à la maille du mois ──")
+# Un import partiel ne doit JAMAIS effacer les mois qu'il ne couvre pas : c'est
+# précisément ce qui faisait repartir l'ancien scraper de zéro à chaque tour.
+ancien = {
+    "rows": [{"cip13": "1", "key": "a", "qty": 1, "puht": 1, "year": 2025, "month": 1},
+             {"cip13": "2", "key": "b", "qty": 2, "puht": 2, "year": 2025, "month": 5}],
+    "month_meta": [{"year": 2025, "month": 1, "period_start": "2025-01-01",
+                    "period_end": "2025-01-31", "rows": 1},
+                   {"year": 2025, "month": 5, "period_start": "2025-05-01",
+                    "period_end": "2025-05-31", "rows": 1}],
+    "month_stats": {"2025-01": [{"labo": "ANCIEN"}], "2025-05": [{"labo": "GARDE"}]},
+    "status": "error", "error": "vieille panne",
+}
+nr = normalize_rows(REELLES, 2025, 1)          # on re-capture JANVIER seulement
+nm = [{"year": 2025, "month": 1, "period_start": "2025-01-01",
+       "period_end": "2025-01-31", "rows": len(nr)}]
+fus = merge_job(ancien, nr, nm, build_month_stats(nr))
+check("janvier remplacé", len([r for r in fus["rows"] if r["month"] == 1]), 3)
+check("mai conservé",     len([r for r in fus["rows"] if r["month"] == 5]), 1)
+check("stats mai intactes", fus["month_stats"]["2025-05"], [{"labo": "GARDE"}])
+check("stats janvier refaites", fus["month_stats"]["2025-01"][0]["labo"], "BIOGARAN")
+check("2 mois de métadonnées", len(fus["month_meta"]), 2)
+check("statut remis à done", fus["status"], "done")
+check("erreur effacée", fus["error"], "")
+check("total recalculé", fus["total"], 4)
+check("période globale", (fus["period_start"], fus["period_end"]),
+      ("2025-01-01", "2025-05-31"))
+
+vide = merge_job({}, nr, nm, build_month_stats(nr))
+check("fusion sur base vide", vide["total"], 3)
 
 print(f"\n{'='*52}\n  {_ok} réussis, {_ko} échoués\n{'='*52}")
 sys.exit(1 if _ko else 0)

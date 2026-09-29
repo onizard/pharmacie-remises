@@ -363,3 +363,78 @@ def parse_payload(payload: dict) -> tuple:
         raise ValueError("aucune ligne exploitable dans le corps reçu")
     meta.sort(key=lambda x: (x["year"], x["month"]))
     return all_rows, meta
+
+
+# ── Rapprochement au catalogue references_pharmacie ──────────────────────────
+
+def fetch_catalog(labos: set, supa_url: str, key: str, bearer: str = "") -> list:
+    """Charge les références génériques des laboratoires concernés.
+
+    Le catalogue orthographie les laboratoires à sa façon (« Biogaran », « Arrow
+    Génériques »…) tandis qu'OSPHARM a la sienne : on relève donc d'abord les
+    valeurs réellement présentes, on les rapproche par norm_labo, et on ne
+    télécharge que celles qui servent. Charger tout le catalogue marcherait aussi,
+    mais représente plusieurs dizaines de milliers de lignes à chaque import.
+    """
+    import json as _json
+    import urllib.parse as _up
+    import urllib.request as _ur
+
+    hdr = {"apikey": key, "Authorization": f"Bearer {bearer or key}"}
+
+    def _get(url):
+        req = _ur.Request(url, headers=hdr)
+        with _ur.urlopen(req, timeout=60) as r:
+            return _json.loads(r.read())
+
+    want = {norm_labo(l) for l in labos if l}
+    if not want:
+        return []
+
+    noms = _get(f"{supa_url}/rest/v1/references_pharmacie"
+                f"?select=labo&is_generic=eq.true&limit=50000")
+    cibles = sorted({str(r.get("labo") or "") for r in noms
+                     if r.get("labo") and norm_labo(r["labo"]) in want})
+    if not cibles:
+        return []
+
+    quoted = ",".join('"' + c.replace('"', '\\"') + '"' for c in cibles)
+    return _get(f"{supa_url}/rest/v1/references_pharmacie"
+                f"?select=cip13,labo,libelle,puht"
+                f"&labo=in.({_up.quote(quoted)})&is_generic=eq.true&limit=50000")
+
+
+def merge_job(existing: dict, rows: list, meta: list, stats: dict) -> dict:
+    """Fusionne un import dans ospharm_job, À LA MAILLE DU MOIS.
+
+    Les mois présents dans l'import REMPLACENT les anciens ; les autres sont
+    conservés intacts. Un envoi partiel — un seul mois re-capturé — ne doit
+    jamais faire disparaître les onze autres, faute de quoi chaque capture
+    repartirait de zéro comme le faisait l'ancien scraper.
+    """
+    existing = existing or {}
+    touched = {(m["year"], m["month"]) for m in meta}
+
+    old_rows = [r for r in (existing.get("rows") or [])
+                if (r.get("year"), r.get("month")) not in touched]
+    old_meta = [m for m in (existing.get("month_meta") or [])
+                if (m.get("year"), m.get("month")) not in touched]
+
+    new_stats = dict(existing.get("month_stats") or {})
+    new_stats.update(stats)
+
+    job = dict(existing)
+    job.update({
+        "status":      "done",
+        "message":     "",
+        "error":       "",
+        "rows":        old_rows + compact_rows(rows),
+        "month_meta":  sorted(old_meta + meta, key=lambda m: (m["year"], m["month"])),
+        "month_stats": new_stats,
+        "source":      "extension/generic.sellout",
+    })
+    job["total"] = len(job["rows"])
+    if job["month_meta"]:
+        job["period_start"] = job["month_meta"][0].get("period_start", "")
+        job["period_end"]   = job["month_meta"][-1].get("period_end", "")
+    return job

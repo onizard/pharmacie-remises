@@ -765,6 +765,70 @@ def _parse_grossiste_sync(user_id: str, storage_path: str) -> dict:
 # Le stockage self-hosted est du MinIO brut (auth S3) : supabase-js .upload() ne
 # peut pas s'y authentifier côté navigateur. On reçoit donc le fichier en multipart
 # direct (comme /parse/digi-pdf) et on parse en mémoire, sans passer par le bucket.
+# ── Import OSPHARM depuis l'extension navigateur ──────────────────────────────
+#
+# L'extension lit « Audit génériques → Mes ventes » DANS la session de
+# l'utilisateur et poste les lignes ici. Aucun identifiant OSPHARM n'est plus
+# stocké côté serveur : le scraping par mot de passe est devenu à la fois
+# impossible (portail ophicine.ospharm.org) et indésirable (OSPHARM conserve les
+# mots de passe en clair sans permettre de les changer).
+
+class OspharmImportBody(BaseModel):
+    months: list
+    replace: Optional[bool] = False
+
+
+@app.post("/import/ospharm")
+async def import_ospharm(body: OspharmImportBody, authorization: str = Header(default="")):
+    token = _extract_token(authorization)
+    try:
+        user_id = await verify_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor, lambda: _import_ospharm_sync(user_id, body.dict(), token))
+
+
+def _import_ospharm_sync(user_id: str, payload: dict, user_token: str = "") -> dict:
+    from supabase_client import _get_state_sync, _patch_state_sync, SUPA_URL, SUPA_KEY
+    import ospharm_generic as og
+
+    try:
+        rows, meta = og.parse_payload(payload)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Rattachement des codes produit. Un échec de catalogue ne doit PAS faire
+    # échouer l'import : les agrégats par laboratoire (le récap) n'en dépendent
+    # pas, seul le comparateur a besoin des CIP.
+    rapport = {"total": len(rows), "resolus": 0, "ambigus": 0, "echecs": len(rows)}
+    try:
+        catalog = og.fetch_catalog({r["labo"] for r in rows}, SUPA_URL, SUPA_KEY, user_token)
+        rapport = og.resolve_cips(rows, catalog)
+    except Exception as e:
+        print(f"  [warn] catalogue indisponible, CIP non résolus : {e}", flush=True)
+
+    stats = og.build_month_stats(rows)
+
+    state = _get_state_sync(user_id, user_token=user_token) or {}
+    base  = {} if payload.get("replace") else (state.get("ospharm_job") or {})
+    state["ospharm_job"] = og.merge_job(base, rows, meta, stats)
+    _patch_state_sync(user_id, state, user_token=user_token)
+
+    job = state["ospharm_job"]
+    return {
+        "ok": True,
+        "mois": [f"{m['year']}-{m['month']:02d}" for m in meta],
+        "lignes_importees": len(rows),
+        "lignes_en_base": job.get("total", 0),
+        "mois_en_base": len(job.get("month_meta") or []),
+        "cip": rapport,
+        "labos": sorted({r["labo"] for r in rows}),
+    }
+
+
 @app.post("/parse/grossiste-xlsx")
 async def parse_grossiste_xlsx(
     file: UploadFile = File(...),
