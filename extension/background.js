@@ -77,6 +77,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === 'bp-ospharm-import') {
+    (async () => {
+      const token = await getToken();
+      if (!token) { sendResponse({ ok: false, needLogin: true }); return; }
+      try {
+        const res = await fetch(`${API_URL}/import/ospharm`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ months: msg.months }),
+        });
+        if (res.status === 401) { sendResponse({ ok: false, needLogin: true }); return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          sendResponse({ ok: false, error: d.detail || ('API break-pharma ' + res.status) });
+          return;
+        }
+        sendResponse({ ok: true, ...d });
+      } catch (e) { sendResponse({ ok: false, error: e.message }); }
+    })();
+    return true;
+  }
+
   if (msg.type === 'bp-import') {
     (async () => {
       const token = await getToken();
@@ -135,6 +157,43 @@ async function backgroundAutoSync() {
     // content script synchronisera puis demandera lui-même la fermeture (bp-sync-done)
     // → aucun setTimeout côté worker (robuste face au cycle de vie MV3).
     chrome.tabs.create({ url: DIGI_FACTURES + '#bp-autosync', active: false });
+  } catch (_) {}
+}
+
+// ── Synchro AUTOMATIQUE OSPHARM ──────────────────────────────────────────────
+// Même principe que Digipharmacie, et pour la même raison : les données ne sont
+// lisibles que DANS une page DATASTAT, avec la session de l'utilisateur. Depuis
+// que l'authentification est passée derrière le portail ophicine.ospharm.org, un
+// serveur ne peut plus s'y connecter à sa place — et c'est tant mieux : plus
+// aucun mot de passe OSPHARM n'a besoin d'être stocké.
+const OSP_ALARM   = 'bp-ospharm-sync';
+// Le marqueur passe par la QUERY, pas par le fragment : l'URL DATASTAT porte
+// déjà « #!/top/generic.sellout » et le routeur Webix lit ce fragment. Un second
+// « # » le corromprait.
+const OSP_SELLOUT = 'https://datastat.ospharm.org/?bpsync=1#!/top/generic.sellout';
+const OSP_MIN_MS  = 20 * 3600 * 1000;
+
+function _armOspAlarm() {
+  chrome.alarms.create(OSP_ALARM, { delayInMinutes: 7, periodInMinutes: 360 });
+}
+chrome.runtime.onInstalled.addListener(_armOspAlarm);
+chrome.runtime.onStartup.addListener(_armOspAlarm);
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === OSP_ALARM) ospharmAutoSync(); });
+
+async function ospharmAutoSync() {
+  try {
+    const { bp_osp_last_sync } = await chrome.storage.local.get('bp_osp_last_sync');
+    if (bp_osp_last_sync && Date.now() - bp_osp_last_sync < OSP_MIN_MS) return;
+    const token = await getToken();
+    if (!token) return;
+    let tabs = [];
+    try { tabs = await chrome.tabs.query({ url: 'https://datastat.ospharm.org/*' }); } catch (_) {}
+    if (tabs.length) {
+      // Onglet déjà ouvert par l'utilisateur : on ne le ferme pas.
+      try { chrome.tabs.sendMessage(tabs[0].id, { type: 'bp-osp-sync-now' }); } catch (_) {}
+      return;
+    }
+    chrome.tabs.create({ url: OSP_SELLOUT, active: false });
   } catch (_) {}
 }
 

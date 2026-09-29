@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "break-pharma connect",
-  "version": "1.4.0",
-  "description": "Synchronise automatiquement vos factures/avoirs Digipharmacie vers break-pharma.fr, depuis votre session.",
+  "version": "1.5.0",
+  "description": "Synchronise automatiquement vos factures Digipharmacie et vos ventes génériques OSPHARM vers break-pharma.fr, depuis vos propres sessions.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -17,7 +17,9 @@
   "host_permissions": [
     "https://app.digipharmacie.fr/*",
     "https://pharmacie-remises.onrender.com/*",
-    "https://api.break-pharma.fr/*"
+    "https://api.break-pharma.fr/*",
+    "https://datastat.ospharm.org/*",
+    "https://ophicine.ospharm.org/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -36,6 +38,25 @@
       ],
       "js": [
         "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://datastat.ospharm.org/*"
+      ],
+      "js": [
+        "ospharm_main.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://datastat.ospharm.org/*"
+      ],
+      "js": [
+        "ospharm.js"
       ],
       "run_at": "document_idle"
     }

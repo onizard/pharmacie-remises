@@ -1,15 +1,36 @@
 # break-pharma connect — extension navigateur
 
-Récupère vos factures/avoirs **Digipharmacie** et les envoie vers **break-pharma.fr**,
-en un clic, depuis votre propre session Digipharmacie.
+Récupère vos factures/avoirs **Digipharmacie** et vos ventes génériques **OSPHARM**,
+et les envoie vers **break-pharma.fr** depuis vos propres sessions.
 
 ## Pourquoi une extension ?
 
-Digipharmacie protège son site par un anti-bot (Cloudflare) : un serveur ne peut pas
-s'y connecter à votre place. En revanche, **votre navigateur, lui, est déjà connecté**.
-L'extension lit la liste de vos factures via l'API Digipharmacie *dans votre session*
-(cookies inclus), puis l'envoie à break-pharma, qui télécharge et analyse chaque PDF
-côté serveur. Le traitement continue même si vous fermez l'onglet.
+Deux sites, une même raison.
+
+**Digipharmacie** protège son site par un anti-bot (Cloudflare) : un serveur ne peut
+pas s'y connecter à votre place.
+
+**OSPHARM** a déplacé son authentification derrière le portail `ophicine.ospharm.org`
+(septembre 2026). Là encore, un robot ne peut plus s'y connecter — et c'est une bonne
+nouvelle : **plus aucun mot de passe OSPHARM n'a besoin d'être conservé sur nos
+serveurs**. D'autant qu'OSPHARM stocke les mots de passe en clair et ne permet pas de
+les changer soi-même.
+
+Dans les deux cas, **votre navigateur, lui, est déjà connecté**. L'extension lit les
+données *dans votre session*, puis les envoie à break-pharma, qui fait le travail
+lourd côté serveur. **Le traitement continue même si vous fermez l'onglet.**
+
+### Ce que l'extension lit chez OSPHARM
+
+*Audit génériques → Mes ventes* (`datastat.ospharm.org`), onglet « PAR PRESENTATION
+GENERIQUE » : une ligne par présentation générique, avec laboratoire, quantité, PFHT
+unitaire et remise obtenue — sur les douze mois de l'année n-1, celle qu'analyse le
+comparateur.
+
+> Pourquoi pas « Analyse des ventes → Toutes les ventes » ? Parce que cette vue est
+> cassée chez OSPHARM depuis septembre 2026 : elle s'affiche, mais ne remonte aucune
+> ligne. Constaté côté robot sur toutes les périodes, puis confirmé dans le navigateur
+> du titulaire.
 
 ## Installation (Chrome / Edge / Brave — ordinateur)
 
@@ -42,8 +63,22 @@ côté serveur. Le traitement continue même si vous fermez l'onglet.
 
 ## Ce que l'extension voit / ne voit pas
 
-- Elle lit **uniquement** la liste de vos factures Digipharmacie (`/api/v1/invoices/`).
-- Elle n'enregistre **jamais** vos identifiants Digipharmacie.
+- Elle lit **uniquement** la liste de vos factures Digipharmacie (`/api/v1/invoices/`)
+  et le tableau de vos ventes génériques sur DATASTAT.
+- Elle n'enregistre **jamais** vos identifiants Digipharmacie ni OSPHARM.
 - Le jeton break-pharma est stocké **localement** dans le navigateur (jamais partagé).
-- Les seules destinations réseau autorisées sont `digipharmacie.fr`, `break-pharma.fr`
-  et l'API de traitement (voir `manifest.json` → `host_permissions`).
+- Les seules destinations réseau autorisées sont `digipharmacie.fr`, `ospharm.org`,
+  `break-pharma.fr` et l'API de traitement (voir `manifest.json` → `host_permissions`).
+
+## Note technique — pourquoi deux scripts pour OSPHARM
+
+Les données de DATASTAT vivent dans les composants **Webix** de la page. Un script de
+contenu ordinaire s'exécute dans un monde *isolé* : il voit le DOM mais pas les
+variables JavaScript de la page, donc pas `webix`. `ospharm_main.js` est donc déclaré
+en `"world": "MAIN"` pour lire les données, et `ospharm.js` — qui, lui, a accès à
+`chrome.runtime` — les transmet. Ils dialoguent par `window.postMessage`.
+
+## Tests
+
+    node extension/test_ospharm_main.js        # collecteur, contre un faux DATASTAT
+    python3 api_scraper/test_ospharm_generic.py  # traitement serveur
