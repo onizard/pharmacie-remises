@@ -2339,6 +2339,52 @@ window.addEventListener('error', e => {
 const LABS_ALL = ['Arrow','Biogaran','Viatris','EG','Sandoz','Teva','Zentiva','Cristers','Zydus'];
 let   LABS_SORTED = [...LABS_ALL].sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
 const LABS_BRAND_EXCL = new Set(['WEGOVY','OZEMPIC','VICTOZA','TRULICITY','BYDUREON','BYETTA']);
+// Libellé des achats dont la référence n'a pas de laboratoire renseigné. Ils
+// comptent dans le CA brut (ils sont bel et bien achetés) et n'ouvrent aucune
+// remise : les ranger ici les rend visibles au lieu de les faire disparaître.
+const LAB_NO_NAME = 'LABO NON RENSEIGNÉ';
+
+// Saisie décimale à la FRANÇAISE. Les taux sont stockés en texte puis relus avec
+// parseFloat, qui s'arrête à la virgule : « 7,5 » valait 7 et « 37,5 » valait 37.
+// Des deux côtés du problème (lecture ou écriture) c'est l'écriture qu'il faut
+// corriger, sinon il faudrait blinder chaque parseFloat du fichier. On normalise
+// donc à la saisie, et une passe rattrape les valeurs déjà enregistrées.
+function _decFR(v) {
+  if (v == null) return v;
+  const s = String(v);
+  return /^\s*-?\d*,\d*\s*$/.test(s) ? s.trim().replace(',', '.') : s;
+}
+// Normalise toutes les valeurs numériques des conditions déjà stockées (base,
+// overrides mensuels, exceptions par palier et par référence). Idempotente.
+function _normalizeCondDecimals(labPages) {
+  let n = 0;
+  const fixNum = (o, k) => {
+    if (!o || typeof o[k] !== 'string') return;
+    const v = _decFR(o[k]);
+    if (v !== o[k]) { o[k] = v; n++; }
+  };
+  const fixCond = c => {
+    if (!c) return;
+    ['caCondition', 'remiseGlobale', 'coopR3'].forEach(k => fixNum(c, k));
+    (c.rsfValues || []).forEach(r => ['remise2', 'remise3'].forEach(k => fixNum(r, k)));
+    Object.values(c.remise2Except || {}).forEach(e =>
+      ['remise2', 'remise3', 'remiseCible'].forEach(k => fixNum(e, k)));
+  };
+  (labPages || []).forEach(lp => {
+    (lp.conditions || []).forEach(fixCond);
+    (lp.conditions2025 || []).forEach(fixCond);
+    (lp._baseConds2026 || []).forEach(fixCond);
+    (lp._baseConds2025 || []).forEach(fixCond);
+    Object.values(lp.condsByMonth || {}).forEach(byMonth =>
+      Object.values(byMonth || {}).forEach(cs => (cs || []).forEach(fixCond)));
+    Object.values(lp.refExceptionsByMonth || {}).forEach(byMonth =>
+      Object.values(byMonth || {}).forEach(list =>
+        (list || []).forEach(e => ['remise2', 'remise3', 'rsfPct'].forEach(k => fixNum(e, k)))));
+    (lp.refExceptions || []).forEach(e =>
+      ['remise2', 'remise3', 'rsfPct'].forEach(k => fixNum(e, k)));
+  });
+  return n;
+}
 
 // ── State ──────────────────────────────────────────────────────────────────────
 function mkCondState(uid) {
@@ -6077,7 +6123,7 @@ function initLabPage(conf) {
       if (!isAdmin) inp2.readOnly = true;
       inp2.addEventListener('input', e => {
         if (!isAdmin) return;
-        cond.rsfValues[idx].remise2 = e.target.value;
+        cond.rsfValues[idx].remise2 = _decFR(e.target.value);
         cond.rsfValues[idx].remise2Manual = !!e.target.value.trim();
         inp2.classList.remove('auto-c');
         cond.rsfValues[idx].excluded = false;
@@ -6095,7 +6141,7 @@ function initLabPage(conf) {
       if (!isAdmin) inp3.readOnly = true;
       inp3.addEventListener('input', e => {
         if (!isAdmin) return;
-        const val = e.target.value;
+        const val = _decFR(e.target.value);
         cond.rsfValues[idx].remise3 = val;
         cond.rsfValues[idx].remise3Manual = !!val.trim();
         inp3.classList.remove('auto-a');
@@ -7038,7 +7084,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onL
   remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '80px'; remInp.autocomplete = 'off'; remInp.name = 'exc-r2';
   remInp.placeholder = 'ex : 3.00'; remInp.value = exc.remise2;
   if (!isAdmin) remInp.readOnly = true;
-  remInp.addEventListener('input', e => { exc.remise2 = e.target.value; saveState(); });
+  remInp.addEventListener('input', e => { exc.remise2 = _decFR(e.target.value); saveState(); });
   const unit = document.createElement('span');
   unit.className = 'rg-unit'; unit.textContent = '%';
 
@@ -7052,7 +7098,7 @@ function buildRowExceptBlock(rsf_pct, exc, labName = '', propagateR3 = null, onL
   remInp3.placeholder = 'ex : 2.00'; remInp3.value = exc.remise3 || '';
   if (!isAdmin) remInp3.readOnly = true;
   remInp3.addEventListener('input', e => {
-    exc.remise3 = e.target.value;
+    exc.remise3 = _decFR(e.target.value);
     if (propagateR3) propagateR3(e.target.value);
     else saveState();
   });
@@ -7106,7 +7152,7 @@ function buildExceptionContent(exc, rsf_pct = null, labName = '') {
   remInp.type = 'text'; remInp.className = 'rsf-input'; remInp.style.width = '100px'; remInp.autocomplete = 'off'; remInp.name = 'exc-cible';
   remInp.placeholder = 'ex : 10.00'; remInp.value = exc.remiseCible;
   if (!isAdmin) remInp.readOnly = true;
-  remInp.addEventListener('input', e => { exc.remiseCible = e.target.value; });
+  remInp.addEventListener('input', e => { exc.remiseCible = _decFR(e.target.value); });
   const unit = document.createElement('span');
   unit.className = 'rg-unit'; unit.textContent = '%';
   remonterRow.appendChild(lbl); remonterRow.appendChild(remInp); remonterRow.appendChild(unit);
@@ -11263,6 +11309,13 @@ async function launchSimulation() {
       return 1;  // signé avant l'année simulée ou non renseigné → plein
     }
 
+    // Année dont les conditions sont simulées. Sans elle, dès qu'AUCUN palier n'est
+    // atteint (cond = null), getRemise perdait l'année et retombait sur la colonne
+    // references_pharmacie.rsf_pct au lieu de rsf_history[année]. Sur ce compte la
+    // colonne est périmée pour 2 références (MACROGOL Zydus : -10 alors que le
+    // barème 2026 dit -2,5 depuis juin) → RSF surévalué sur les labos sous seuil.
+    const SIM_YEAR = 2026;
+
     function getBestCondFromArray(conditions, ca, forceMarketMet = false, prorataFactor = 1) {
       if (!conditions?.length) return null;
       const tol = state.condTolerance ?? 1.0;
@@ -11305,9 +11358,10 @@ async function launchSimulation() {
     // useRsf=false (contrat répartiteur non coché) → RSF = 0
     // bioCoeff={skipR2, r3Mult} → règle Biogaran (réalisation marché)
     function getRemise(ref, cond, firstMet = false, useRsf = true, bioCoeff = null, overrideRsf = null, overrideR2 = null, overrideR3 = null) {
+      const _rsfYear = cond?._year ?? SIM_YEAR;
       const yearRsf = overrideRsf != null ? overrideRsf
-        : (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
-        ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
+        : (ref.rsf_pct_by_year?.[_rsfYear] != null)
+        ? ref.rsf_pct_by_year[_rsfYear] : ref.rsf_pct;
       const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : yearRsf;
       const baseRSF = useRsf ? Math.abs(parseFloat(baseRSFPct) || 0) : 0;
       if (!cond) return baseRSF;
@@ -11339,9 +11393,10 @@ async function launchSimulation() {
     }
 
     function getRemiseSansR3(ref, cond, firstMet = false, useRsf = true, bioCoeff = null, overrideRsf = null, overrideR2 = null) {
+      const _rsfYear = cond?._year ?? SIM_YEAR;
       const yearRsf = overrideRsf != null ? overrideRsf
-        : (cond?._year && ref.rsf_pct_by_year?.[cond._year] != null)
-        ? ref.rsf_pct_by_year[cond._year] : ref.rsf_pct;
+        : (ref.rsf_pct_by_year?.[_rsfYear] != null)
+        ? ref.rsf_pct_by_year[_rsfYear] : ref.rsf_pct;
       const baseRSFPct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : yearRsf;
       const baseRSF = useRsf ? Math.abs(parseFloat(baseRSFPct) || 0) : 0;
       if (!cond) return baseRSF;
@@ -11366,7 +11421,10 @@ async function launchSimulation() {
 
     // 4. Helper: RSF de base sans conditions négociées
     function getRSFBase(ref, firstMet = false) {
-      const pct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : ref.rsf_pct;
+      // Même règle que getRemise : le barème de l'année simulée prime sur la colonne.
+      const yearRsf = ref.rsf_pct_by_year?.[SIM_YEAR] != null
+        ? ref.rsf_pct_by_year[SIM_YEAR] : ref.rsf_pct;
+      const pct = (firstMet && ref.rsf_first_pct != null) ? ref.rsf_first_pct : yearRsf;
       return Math.abs(parseFloat(pct) || 0);
     }
 
@@ -11382,11 +11440,17 @@ async function launchSimulation() {
       csvData.forEach(row => {
         const ref = assignment.get(row.cip13);
         if (!ref) return;
-        if (!labMap.has(ref.labo)) {
-          const lp = state.labPages.find(l => l.selectedLab === ref.labo);
-          labMap.set(ref.labo, { ca: 0, remise: 0, remiseSansR3: 0, qty: 0, lp, isSelected: !!lp, rows: [] });
+        // Référence sans laboratoire renseigné : on la RANGE SOUS UN LIBELLÉ au lieu
+        // de la laisser sous la clé null. Le filtre `name != null` en sortie faisait
+        // disparaître ces lignes du tableau ET du total : 12 535 € sur 318 lignes
+        // (3 004 unités) manquaient au CA brut de ce compte, sans aucun signalement.
+        // Elles n'ouvrent aucune remise (pas de rsf_pct), mais elles sont achetées.
+        const labKey = ref.labo || LAB_NO_NAME;
+        if (!labMap.has(labKey)) {
+          const lp = state.labPages.find(l => l.selectedLab === labKey);
+          labMap.set(labKey, { ca: 0, remise: 0, remiseSansR3: 0, qty: 0, lp, isSelected: !!lp, rows: [] });
         }
-        const e = labMap.get(ref.labo);
+        const e = labMap.get(labKey);
         const puht = row.puht || refMap.get(row.cip13)?.puht || ref.puht || 0;
         e.ca  += row.qty * puht;
         e.qty += row.qty;
@@ -13719,6 +13783,12 @@ async function saveProfile() {
       }
     }
     applyRsfDefaults();
+    // Rattrape les décimales saisies avec une virgule et déjà enregistrées
+    // (« 7,5 » que parseFloat lisait 7). Sauvegarde seulement si ça a changé.
+    try {
+      const _fixed = _normalizeCondDecimals(state.labPages);
+      if (_fixed) { console.log('[bp] décimales normalisées :', _fixed); saveState(); }
+    } catch (_) {}
     // Convertit d'emblée les exceptions de TOUS les labos au nouveau format par
     // référence (en fond) — plus besoin d'ouvrir chaque onglet.
     _migrateAllLabsExceptions();
