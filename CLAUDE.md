@@ -262,6 +262,60 @@ Thème rétro-terminal sombre : fond `#04060f`, cyan `#00e5ff`, amber `#ffab00`,
  3 files changed, 576 insertions(+)
 ```
 
+## Comparateur — pièges résolus (2026-10, vérifiés par recalcul parallèle)
+
+Le comparateur a été recalculé par un **second moteur indépendant** écrit depuis les règles
+métier, puis confronté ligne à ligne au moteur du site (8 709 lignes d'achat). Après les trois
+correctifs ci-dessous les deux moteurs tombent **au centime** (CA brut, remise, PA net ; 0 ligne
+divergente). Le classement des scénarios, lui, était déjà identique AVANT correction : les
+défauts portaient sur les montants, pas sur la recommandation.
+
+1. **Lignes sans laboratoire écartées du total.** `calcScenario` rangeait les réfs sans `labo`
+   sous la clé `null`, que le filtre de sortie `name != null` supprimait — du tableau ET du
+   total. 12 535 € / 318 lignes / 3 004 unités manquaient au CA brut. Désormais regroupées sous
+   `LAB_NO_NAME` (« LABO NON RENSEIGNÉ ») : zéro remise, CA brut juste, poste visible.
+2. **Décimales à la virgule.** Les taux sont stockés en TEXTE puis relus avec `parseFloat`, qui
+   s'arrête à la virgule : « 7,5 » valait 7, « 37,5 » valait 37. Corrigé **à l'écriture**
+   (`_decFR` sur les 5 champs de saisie) + passe idempotente `_normalizeCondDecimals` au
+   chargement pour les valeurs déjà en base (44 sur le compte admin). Ne pas « réparer » en
+   blindant chaque `parseFloat` : il y en a des dizaines.
+3. **Année du barème RSF perdue sous le seuil.** Quand AUCUN palier n'est atteint (`cond = null`),
+   `getRemise` retombait sur la colonne `references_pharmacie.rsf_pct` au lieu de
+   `rsf_history[année]`. `getRemise`, `getRemiseSansR3` et `getRSFBase` s'appuient maintenant sur
+   `SIM_YEAR`. La colonne était périmée pour 2 réfs sur 3 517 (MACROGOL Zydus, −10 au lieu de
+   −2,5 depuis juin 2026) → RSF surévalué sur les labos restés sous leur seuil. Colonne réalignée.
+
+**Deux conventions du site qui paraissent fausses et sont justes** (ne pas « corriger ») :
+- **CA brut toujours valorisé au PFHT du CIP ACHETÉ**, même quand le scénario réaffecte la ligne
+  à un autre labo. Valoriser au PFHT du labo visé semble plus correct mais c'est pire : les PFHT
+  du catalogue sont très dispersés pour une même présentation (PREGABALINE 25 mg ×56 : 2,13 €
+  Zentiva → 8,00 € Viatris ; 26 % des groupes multi-labos ont un écart max/min > 1,5 ; seules
+  27 % des réfs ont un PFHT constaté OSPHARM). La convention du site annule ce bruit et rend les
+  scénarios comparables — sans elle le CA brut variait de 288 k€ à 447 k€ pour un panier identique.
+- **La clause des 80 % est réservée à Biogaran** (`_getBiogCoeff` teste `selectedLab === 'Biogaran'`).
+  L'étendre à tout labo ayant une remise 3 inventerait une clause pour Teva/EG/Arrow et compterait
+  deux fois la condition de volume que les paliers chiffrent déjà.
+
+**Portée réelle du comparateur** : 356 442 € de 2 154 830 € de CA OSPHARM (16,5 %) — 1 768 CIP
+sur 7 728 ont une référence générique connue. Les gains annoncés portent sur ce sixième.
+
+## Tarifs laboratoires — import
+`import_zydus_tarif.py` / `import_biogaran_tarif.py` visaient l'ANCIEN Supabase en direct
+(psycopg2) ; ce projet est supprimé. L'écriture passe désormais par **PostgREST**
+(`PATCH /rest/v1/references_pharmacie?cip13=eq.X&labo=eq.Y`), un JWT utilisateur suffit.
+- Le tarif Zydus se lit bien avec `pdftotext -layout`. **Trois sections** : `SPECIALITES
+  REMBOURSEES` (= génériques, colonne PFHT), `NON REMBOURSEES - IPDE5` et `NON REMBOURSEES -
+  OTC / LNR` (colonne « Prix tarif », PAS un PFHT → ne jamais verser dans `puht`).
+- Le compte de la couverture (« 397 Présentations génériques ») **ne vaut pas** le nombre de
+  lignes remboursées : 395→369, 396→370, 397→370 sur mai/juin/octobre 2026. Contrôler plutôt
+  que tous les CIP du PDF sont capturés (416/416 en octobre).
+- **Ne pas insérer un nouveau CIP sans groupe RSF connu** (`rsf_history` ou la CGV) : un
+  `rsf_pct` par défaut fabrique une remise. Octobre 2026 : 9 nouveaux CIP laissés de côté.
+- Ne pas toucher `punet` : il vient de l'extraction CERP (`sync_supabase.py`), pas du tarif
+  labo, et le front recalcule son propre PU net.
+- ⚠️ Le scraper OSPHARM resynchronise `puht` depuis les montants catalogue : un PFHT de tarif
+  peut être réécrit par un passage OSPHARM ultérieur.
+
 ### Derniers changements significatifs
 - **GitHub Actions OSPHARM** : dispatch depuis Render, scraping sur runners 7 GB. Fichier : `.github/workflows/scraper_ospharm.yml`, script : `api_scraper/run_job_ospharm.py`.
 - **Popup connecteurs** : se ferme automatiquement et ouvre le comparateur quand OSPHARM réussit + données reconnues.
