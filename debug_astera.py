@@ -17,8 +17,12 @@ def load_env():
 
 load_env()
 
-USERNAME = os.environ.get("ASTERA_USER", "105216")
-PASSWORD = os.environ.get("ASTERA_PASSWORD", "Pharmacie95360!?")
+# Identifiants OBLIGATOIREMENT dans l'environnement (ou .env, non versionné).
+# Aucune valeur par défaut : un identifiant écrit ici finirait publié, ce dépôt
+# étant public. Mieux vaut un script qui refuse de démarrer qu'un mot de passe
+# lisible par tout le monde.
+USERNAME = os.environ["ASTERA_USER"]
+PASSWORD = os.environ["ASTERA_PASSWORD"]
 WEBUY_BASE = "https://webuy.astera.coop"
 GRP_ID = 84
 

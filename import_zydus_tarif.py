@@ -14,11 +14,15 @@ PDF_PATH = "cgv labos/Tarif Zydus France Mai 2026.pdf"
 LABO = "Zydus"
 DEFAULT_RSF = -30.0
 
-DB_HOST = "aws-0-eu-west-1.pooler.supabase.com"
-DB_PORT = 5432
-DB_USER = "postgres.fmterazwesiwpwjpkyqi"
-DB_PASS = "lDXWqP1SsuchEIRH"
-DB_NAME = "postgres"
+# Connexion lue dans l'environnement — jamais en dur (dépôt public).
+# Ces valeurs pointaient l'ancien projet Supabase, aujourd'hui supprimé ;
+# l'infrastructure actuelle est le PostgreSQL auto-hébergé derrière PostgREST.
+import os
+DB_HOST = os.environ["PGHOST"]
+DB_PORT = int(os.environ.get("PGPORT", 5432))
+DB_USER = os.environ["PGUSER"]
+DB_PASS = os.environ["PGPASSWORD"]
+DB_NAME = os.environ.get("PGDATABASE", "postgres")
 
 # ---------------------------------------------------------------------------
 # Normalisation des libellés

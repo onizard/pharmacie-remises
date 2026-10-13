@@ -21,17 +21,22 @@ def load_env():
 
 load_env()
 
-USERNAME = os.environ.get("ASTERA_USER", "105216")
-PASSWORD = os.environ.get("ASTERA_PASSWORD", "Pharmacie95360!?")
+# Identifiants OBLIGATOIREMENT dans l'environnement (ou .env, non versionné).
+# Aucune valeur par défaut : un identifiant écrit ici finirait publié, ce dépôt
+# étant public. Mieux vaut un script qui refuse de démarrer qu'un mot de passe
+# lisible par tout le monde.
+USERNAME = os.environ["ASTERA_USER"]
+PASSWORD = os.environ["ASTERA_PASSWORD"]
 WEBUY_BASE = "https://webuy.astera.coop"
 GRP_ID = 84
 
 MISSING_CIPS = ["3400930227978", "3400922495194"]
 
+# Connexion lue dans l'environnement — jamais en dur (dépôt public).
 DB_PARAMS = dict(
-    host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-    user="postgres.fmterazwesiwpwjpkyqi", password="lDXWqP1SsuchEIRH",
-    dbname="postgres"
+    host=os.environ["PGHOST"], port=int(os.environ.get("PGPORT", 5432)),
+    user=os.environ["PGUSER"], password=os.environ["PGPASSWORD"],
+    dbname=os.environ.get("PGDATABASE", "postgres"),
 )
 
 CIP_PATTERN = re.compile(r'^340\d{10}$')
