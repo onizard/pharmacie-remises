@@ -299,6 +299,41 @@ défauts portaient sur les montants, pas sur la recommandation.
 **Portée réelle du comparateur** : 356 442 € de 2 154 830 € de CA OSPHARM (16,5 %) — 1 768 CIP
 sur 7 728 ont une référence générique connue. Les gains annoncés portent sur ce sixième.
 
+## Barème Biogaran — sources et vérification (2026-10)
+
+**Les deux années sont vérifiées référence par référence contre leur source : 0 écart.**
+| Année | Source | Réfs | Écart RSF | Écart RDP |
+|---|---|---:|---:|---:|
+| 2025 | `BDC Biogaran - 20250520-122845.pdf` (bon de commande du 20 mai 2025) | 1 043 | 0 | 0 |
+| 2026 | `cgv biogaran 2026.pdf` | 841 | 0 | 0 |
+
+- **Le « BDC » EST la source du barème 2025.** Son nom ne le dit pas, mais il porte
+  `CIP | LIBELLE | PFHT | REMISE (1) | RDP (2) | COLISAGE | QUANTITE`, une ligne par produit —
+  mise en page bien plus régulière que la CGV. Il n'existe PAS de CGV 2025 : elle a été demandée
+  à la déléguée le 11/05/2026, seule une réponse automatique est revenue.
+- **Lire la CGV par COORDONNÉES de mots** (`pdfplumber.extract_words`), pas avec
+  `pdftotext -layout` : un tiers des libellés débordent sur plusieurs lignes et décalent les
+  colonnes (47 lignes deviennent même illisibles). Le BDC, lui, se lit très bien en texte brut.
+- **Ordre des colonnes CGV : PFHT | REMISE | RDP.** La REMISE est le PREMIER pourcentage après
+  le PFHT. Prendre le dernier revient à lire la RDP comme une remise sur les 471 lignes qui
+  portent les deux.
+- **Séparateur de milliers** : « 1 235,61 € » est découpé en deux jetons/cellules (« 1 » puis
+  « 235,61 € »). Recoller un entier de 1 à 3 chiffres suivi d'un groupe `\d{3},\d+`, sinon le
+  prix perd 1 000 €. Ce défaut avait touché 45 références Biogaran en base (dasatinib, sunitinib,
+  imatinib, bosutinib, erlotinib…) ; corrigé dans `import_biogaran_tarif.py` ET dans les données.
+- **62 références 2025 en base absentes du BDC** : inertes (jamais achetées, absentes de la CGV
+  2026). Elles expliquent les faux signalements « 23 réfs à RSF 10 % sans RDP ». Ne pas les
+  chasser. En revanche la référence isolée à **RSF 30 % / RDP 10 %** est authentique.
+- **Évolution 2025 → 2026** : 11 groupes RSF → 4 (2,5 / 10 / 20 / 30) ; RDP 30→20 sur le groupe
+  10 % et 20→10 sur le groupe 20 % ; coop 12 → 22 % ; **PDA : RSF 5 % sans RDP → RSF 2,5 % avec
+  RDP 27,5 %** (31 réfs).
+- ⚠️ **Les 31 PDA ne sont pas modélisées dans les conditions** : le palier −2,5 est « exclu,
+  RDP 0 » et aucune exception ne les rattrape → le COMPARATEUR leur applique 0 %. Le vérificateur
+  est juste (il lit `rsf_history.rdp_pct` par CIP).
+- **Réalisation 2025 : la fenêtre part de la DATE DE SIGNATURE** (1er juin 2025) → 87,9 % sur
+  juin-décembre contre un cible proratisé ×7/12. Sur l'année civile entière on lit 54,5 %, ce qui
+  fait croire à tort que le marché n'est pas validé.
+
 ## Tarifs laboratoires — import
 `import_zydus_tarif.py` / `import_biogaran_tarif.py` visaient l'ANCIEN Supabase en direct
 (psycopg2) ; ce projet est supprimé. L'écriture passe désormais par **PostgREST**

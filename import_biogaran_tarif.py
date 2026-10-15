@@ -224,11 +224,28 @@ def extract_pdf(pdf_path):
                     if not cip13:
                         continue
                     # Trouver le PFHT (contient €)
+                    #
+                    # PIÈGE DU SÉPARATEUR DE MILLIERS : pdfplumber découpe
+                    # « 1 235,61 € » en deux cellules (« 1 » puis « 235,61 € »).
+                    # En ne gardant que celle qui porte le « € », on enregistrait
+                    # 235,61 au lieu de 1 235,61 — soit 1 000 € de moins sur TOUS
+                    # les produits à quatre chiffres (45 références Biogaran :
+                    # dasatinib, sunitinib, imatinib, bosutinib, erlotinib…).
+                    # On recolle donc un entier isolé qui précède immédiatement un
+                    # groupe de 3 chiffres décimaux.
                     pfht = None
-                    for cell in reversed(row):
-                        if '€' in (cell or ''):
-                            pfht = parse_pfht(cell)
-                            break
+                    for i in range(len(row) - 1, -1, -1):
+                        cell = row[i] or ''
+                        if '€' not in cell:
+                            continue
+                        txt = cell
+                        body = re.sub(r'[€\s]', '', cell)
+                        if re.fullmatch(r'\d{3},\d+', body) and i > 0:
+                            prev = re.sub(r'[€\s]', '', row[i-1] or '')
+                            if re.fullmatch(r'\d{1,3}', prev):
+                                txt = prev + body
+                        pfht = parse_pfht(txt)
+                        break
                     if pfht is None:
                         continue
                     # Trouver le RSF (contient %, pas €)
