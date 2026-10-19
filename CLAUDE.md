@@ -285,6 +285,20 @@ défauts portaient sur les montants, pas sur la recommandation.
    `SIM_YEAR`. La colonne était périmée pour 2 réfs sur 3 517 (MACROGOL Zydus, −10 au lieu de
    −2,5 depuis juin 2026) → RSF surévalué sur les labos restés sous leur seuil. Colonne réalignée.
 
+4. **Simulateur personnalisé : l'ordre de priorité était ignoré, et même inversé.** Dès qu'un
+   SECOND labo ayant un CA cible était choisi, `calcCustomScenario` empruntait la branche de
+   co-optimisation (`_coLabs.length >= 2`), qui attribuait les références disputées au meilleur
+   score `rowCA / shortfall` — sans regarder l'ordre saisi. Le labo au plus GROS CA cible avait
+   le plus gros dénominateur, donc le plus petit score, et perdait toutes les références
+   disputées : Biogaran (cible 227 400 €) en priorité 1 obtenait 227 466 €, mais 256 425 € en
+   priorité 2. Les labos sont désormais servis **dans l'ordre saisi** (`_coLabs` porte déjà cet
+   ordre), chacun jusqu'à sa cible, les plus gros CA d'abord à l'intérieur d'un labo ; le reliquat
+   va au premier labo de la liste capable de le fournir. Toutes les cibles continuent d'être
+   atteintes (Biogaran + Teva + Zydus : les trois ✓), et le CA du labo 1 décroît maintenant quand
+   on le descend dans la liste. La liste principale des scénarios n'est pas affectée.
+   ⚠️ Reste un bloc `// DEBUG — à retirer après investigation` dans le gestionnaire de
+   `customSimBtn` : il reconstruit un assignment complet et écrit en console à CHAQUE clic.
+
 **Deux conventions du site qui paraissent fausses et sont justes** (ne pas « corriger ») :
 - **CA brut toujours valorisé au PFHT du CIP ACHETÉ**, même quand le scénario réaffecte la ligne
   à un autre labo. Valoriser au PFHT du labo visé semble plus correct mais c'est pire : les PFHT

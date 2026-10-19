@@ -12279,29 +12279,50 @@ async function launchSimulation() {
             lab.acc += rowCA;
             lab.shortfall = Math.max(0, lab.tCA - lab.acc);
           });
+          // Références que PLUSIEURS labos choisis peuvent fournir : elles sont
+          // attribuées dans l'ORDRE DE PRIORITÉ SAISI. Le labo 1 se sert d'abord,
+          // jusqu'à atteindre sa cible, puis le labo 2, et ainsi de suite.
+          //
+          // L'ancienne version les donnait au meilleur « score » rowCA / shortfall,
+          // sans regarder l'ordre choisi. Le labo au plus GROS CA cible avait donc le
+          // plus gros dénominateur, le score le plus faible, et perdait toutes les
+          // références disputées : mettre Biogaran (cible 227 400 €) en 1 lui donnait
+          // MOINS (227 466 €) que de le mettre en 2 (256 425 €). L'ordre saisi était
+          // non seulement ignoré, mais inversé dans les faits.
           const _sharedCips = [..._coAllCips].filter(c =>
             _coLabs.filter(l => _coMaps.get(l.name)?.has(c)).length > 1
           );
-          _sharedCips.sort((ca, cb) => {
-            const maxScore = cip => Math.max(0, ..._coLabs.map(l =>
-              l.shortfall > 0 ? (_coMaps.get(l.name)?.get(cip)?.rowCA || 0) / l.shortfall : 0));
-            return maxScore(cb) - maxScore(ca);
-          });
-          for (const cip13 of _sharedCips) {
-            let bestLab = null, bestScore = -1;
-            for (const lab of _coLabs) {
-              if (!lab.shortfall) continue;
-              const s = (_coMaps.get(lab.name)?.get(cip13)?.rowCA || 0) / lab.shortfall;
-              if (s > bestScore) { bestScore = s; bestLab = lab; }
+          // _coLabs est construit comme [labo 1, ...suivants] : il porte déjà l'ordre.
+          for (const lab of _coLabs) {
+            const m = _coMaps.get(lab.name);
+            if (!m) continue;
+            // Au sein d'un labo : les plus gros CA d'abord, pour atteindre la cible en
+            // déplaçant le moins de références possible.
+            const mine = _sharedCips
+              .filter(c => !cipLocked.has(c) && m.has(c))
+              .sort((a, b) => m.get(b).rowCA - m.get(a).rowCA);
+            for (const cip13 of mine) {
+              if (lab.shortfall <= 0) break;
+              const { labRef, rowCA } = m.get(cip13);
+              assignment.set(cip13, labRef);
+              cipLocked.add(cip13);
+              lab.acc += rowCA;
+              lab.shortfall = Math.max(0, lab.tCA - lab.acc);
             }
-            if (!bestLab) continue;
-            const _bestEntry = _coMaps.get(bestLab.name)?.get(cip13);
-            if (!_bestEntry) continue;
-            const { labRef, rowCA } = _bestEntry;
-            assignment.set(cip13, labRef);
-            cipLocked.add(cip13);
-            bestLab.acc += rowCA;
-            bestLab.shortfall = Math.max(0, bestLab.tCA - bestLab.acc);
+          }
+          // Disputées encore libres (toutes les cibles sont atteintes) : au premier
+          // labo de la liste capable de les fournir.
+          for (const cip13 of _sharedCips) {
+            if (cipLocked.has(cip13)) continue;
+            for (const lab of _coLabs) {
+              const e = _coMaps.get(lab.name)?.get(cip13);
+              if (!e) continue;
+              assignment.set(cip13, e.labRef);
+              cipLocked.add(cip13);
+              lab.acc += e.rowCA;
+              lab.shortfall = Math.max(0, lab.tCA - lab.acc);
+              break;
+            }
           }
           const _co1 = _coLabs.find(l => l.name === lab1Name);
           if (_co1) {
