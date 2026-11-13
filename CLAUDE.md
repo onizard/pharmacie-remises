@@ -313,6 +313,35 @@ défauts portaient sur les montants, pas sur la recommandation.
 **Portée réelle du comparateur** : 356 442 € de 2 154 830 € de CA OSPHARM (16,5 %) — 1 768 CIP
 sur 7 728 ont une référence générique connue. Les gains annoncés portent sur ce sixième.
 
+## Registre des litiges & relances (2026-11)
+
+Le moteur `_verifRenderLitige` dit CE QUI EST DÛ ; le registre dit CE QU'ON EN A FAIT. Les deux
+restent séparés, et c'est le point de conception à ne pas casser.
+
+- **Clé naturelle `labo|année|mois|nature`** (`_litigeKey`), sans identifiant généré : une
+  réclamation survit au recalcul, au rechargement et au re-scrape. Un écart qui disparaît (labo
+  qui régularise) garde son entrée en base sans s'afficher — rien n'est perdu s'il réapparaît.
+- **Le registre ne stocke JAMAIS de montant de travail** : seulement statut, dates, historique,
+  note, plus `montant0` (le montant au moment de la 1re réclamation, comme pièce). Les montants
+  affichés sont recalculés à chaque rendu, donc un justificatif déposé met le registre à jour
+  tout seul (cf. les 3 mois manquants qui faisaient lire 76,7 % au lieu de 108 %).
+- **Flux** `_LITIGE_FLOW` : à réclamer → réclamé (J+7) → 1re relance (J+15 au total) → 2e relance
+  (J+30) → mise en demeure ; `regle` / `abandonne` sont terminaux. L'échéance = date d'entrée
+  dans le statut + délai du statut.
+- **La coop est exclue du registre** (`officieux` / `nature === 'coop'`) : le moteur la suit à
+  l'écran mais elle ne se réclame pas par écrit. Ne pas la réintégrer.
+- **Courrier à 4 niveaux** : `_verifLitigeLetter(key, level)` avec level ∈ reclamation / relance1 /
+  relance2 / mise_en_demeure. Seuls l'objet, l'introduction et la demande finale changent — **les
+  paragraphes numérotés sont la PREUVE et restent identiques**, sinon le labo opposerait une
+  variation de notre propre argumentaire. Appel sans `level` = réclamation (rétro-compatible).
+- **Aucun envoi automatique** : on produit un brouillon, le titulaire relit et expédie. Pas de
+  détection de réponse dans la boîte mail, pas de LRAR générée — hors périmètre de cette brique.
+- Persisté via `user_state` (`litigeRegistry`, camel seulement : aucun scraper backend n'écrit
+  cette clé, contrairement à `fse_month_stats`).
+- **Test** : `node test_litige_registry.js` — il EXTRAIT le bloc et le générateur de courrier
+  d'`index.html` en direct, donc un renommage ou un changement de format de clé le fait échouer
+  (vérifié en simulant les deux régressions). 36 assertions.
+
 ## Barème Biogaran — sources et vérification (2026-10)
 
 **Les deux années sont vérifiées référence par référence contre leur source : 0 écart.**

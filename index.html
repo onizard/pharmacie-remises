@@ -2693,6 +2693,9 @@ let state = {
   _fseSavedAt:  null,    // timestamp ms du dernier sync FSE (concentrateur) réussi
   _fseOverrides: {},     // { [cléVirement]: { vtype:'r2'|'r3' } } — reclassements manuels RDP/Coop
   _fseManualVir: [],     // virements saisis à la main (filet si le scraper FSE en rate un)
+  // Suivi des réclamations : statut / dates / historique, PAS les montants
+  // (recalculés à chaque rendu par _verifRenderLitige). Clé : labo|année|mois|nature.
+  _litigeRegistry: {},
   _digiPdfIndex: {},     // { 'YYYY-MM': [{key, filename}] } — avoirs Digi cliquables (contenu en base)
   verifContracts: {},  // { [year]: { labKey: { active, type, startDate } } }
 };
@@ -2784,6 +2787,7 @@ function serializeState() {
     fseSavedAt:            state._fseSavedAt             || null,
     fseOverrides:          state._fseOverrides           || {},
     fseManualVir:          state._fseManualVir           || [],
+    litigeRegistry:        state._litigeRegistry         || {},
     labPages: state.labPages.map(lp => ({
       uid: lp.uid,
       selectedLab: lp.selectedLab,
@@ -3177,6 +3181,7 @@ function _adoptCloudState(cs, cloudTs) {
   set('_mdlStats',            cs.mdlStats);
   set('_fseOverrides',        cs.fseOverrides);
   set('_fseManualVir',        cs.fseManualVir);
+  set('_litigeRegistry',      cs.litigeRegistry);
   set('_grossisteUploads',    cs.grossisteUploads);
   set('_grossisteGmailFiles', cs.grossisteGmailFiles);
   set('_digiUploads',         cs.digiUploads);
@@ -7900,6 +7905,7 @@ function renderVerificateur() {
     <div id="verifDigiBanner"></div>
     <div style="display:flex;gap:8px;margin-bottom:16px">${yearBtns}</div>
     <div id="verifContractsSummary"></div>
+    <div id="verifLitigeRegistry"></div>
     <div style="margin-bottom:8px">
       <div class="verif-contract-label" style="margin-bottom:7px">LABOS — sélectionner un labo pour configurer &amp; analyser</div>
       <div class="verif-lab-grid" id="verifLabGrid"></div>
@@ -7913,6 +7919,9 @@ function renderVerificateur() {
   _renderVerifDigiBanner(document.getElementById('verifDigiBanner'));
   if (state._digiJobRunning && !_verifDigiTimer) _startVerifDigiTimer();
   try { _verifFillContractsSummary(_verifSelYear); } catch (e) { console.warn('[BP] synthèse contrats:', e); }
+  // Le registre doit passer APRÈS la synthèse : celle-ci peuple window._litigeData
+  // en appelant _verifRenderLitige pour chaque labo sous contrat.
+  try { _verifFillLitigeRegistry(); } catch (e) { console.warn('[BP] registre litiges:', e); }
   _verifRenderLabGrid();
   _verifRenderLabPanel();
   _verifRenderYear(_verifSelYear);
@@ -8490,7 +8499,12 @@ function _verifRenderLitige(year, selNorm, labDisplay) {
 // côté client, sans IA ni API : les montants viennent des données vérifiées,
 // les tournures sont des gabarits fixes par nature de litige → même qualité
 // d'argumentation pour tous les utilisateurs, zéro risque d'erreur de chiffre.
-function _verifLitigeLetter(key) {
+function _verifLitigeLetter(key, level) {
+  // `level` : reclamation (défaut) → relance1 → relance2 → mise_en_demeure.
+  // SEULS l'objet, l'introduction et la demande finale changent. Les paragraphes
+  // numérotés sont la PREUVE : ils restent identiques d'un niveau à l'autre, sinon
+  // le labo pourrait opposer une variation de notre propre argumentaire.
+  const lvl = ['reclamation','relance1','relance2','mise_en_demeure'].includes(level) ? level : 'reclamation';
   const d = (window._litigeData || {})[key];
   if (!d) return '';
   const fmtE = v => (v||0).toLocaleString('fr',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
@@ -8524,20 +8538,38 @@ function _verifLitigeLetter(key) {
     return '';
   }).filter(Boolean);
   const today = new Date().toLocaleDateString('fr-FR');
-  return `Objet : Réclamation — remises de performance (${d.labDisplay}, ${d.yr})\n\n`
+  const OBJ = {
+    reclamation:     `Objet : Réclamation — remises de performance (${d.labDisplay}, ${d.yr})`,
+    relance1:        `Objet : 1re relance — réclamation restée sans réponse (${d.labDisplay}, ${d.yr})`,
+    relance2:        `Objet : 2e relance — réclamation restée sans réponse (${d.labDisplay}, ${d.yr})`,
+    mise_en_demeure: `Objet : MISE EN DEMEURE de payer — ${fmtE(d.total)} (${d.labDisplay}, ${d.yr})`,
+  };
+  const INTRO = {
+    reclamation: `Dans le cadre de notre partenariat${d.csFr ? ` (contrat actif depuis le ${d.csFr})` : ''}, nous procédons chaque mois au rapprochement systématique de nos achats (relevés détaillés du répartiteur, référence par référence), des avoirs émis par vos services et de nos relevés bancaires.`,
+    relance1:    `Nous vous avons adressé une réclamation détaillée concernant les remises de performance dues au titre de l'exercice ${d.yr}. Sauf erreur de notre part, elle est demeurée sans réponse.`,
+    relance2:    `Nos deux précédents courriers concernant les remises de performance dues au titre de l'exercice ${d.yr} sont restés sans réponse ni règlement.`,
+    mise_en_demeure: `Nos courriers de réclamation et nos relances successives concernant les remises de performance dues au titre de l'exercice ${d.yr} sont restés sans réponse ni règlement. La présente vaut MISE EN DEMEURE de payer.`,
+  };
+  return OBJ[lvl] + `\n\n`
     + `Madame, Monsieur,\n\n`
-    + `Dans le cadre de notre partenariat${d.csFr ? ` (contrat actif depuis le ${d.csFr})` : ''}, nous procédons chaque mois au rapprochement systématique de nos achats (relevés détaillés du répartiteur, référence par référence), des avoirs émis par vos services et de nos relevés bancaires.\n\n`
-    + `Ce rapprochement, arrêté au ${today}, fait apparaître les anomalies suivantes, pour un total de ${fmtE(d.total)} en notre défaveur :\n\n`
+    + INTRO[lvl] + `\n\n`
+    + `${lvl === 'reclamation' ? 'Ce rapprochement' : 'Notre rapprochement'}, arrêté au ${today}, fait apparaître les anomalies suivantes, pour un total de ${fmtE(d.total)} en notre défaveur :\n\n`
     + paras.join('\n\n')
-    + `\n\nEn conséquence, nous vous remercions de bien vouloir procéder à la régularisation de la somme de ${fmtE(d.total)} sous trente (30) jours, ou, à défaut, de nous communiquer les éléments contradictoires que vous pourriez détenir.\n\n`
+    + `\n\n` + ({
+        reclamation: `En conséquence, nous vous remercions de bien vouloir procéder à la régularisation de la somme de ${fmtE(d.total)} sous trente (30) jours, ou, à défaut, de nous communiquer les éléments contradictoires que vous pourriez détenir.`,
+        relance1:    `Nous vous renouvelons notre demande de régularisation de la somme de ${fmtE(d.total)}, sous quinze (15) jours.`,
+        relance2:    `Nous vous demandons de procéder au règlement de la somme de ${fmtE(d.total)} sous huit (8) jours. À défaut, nous vous adresserons une mise en demeure par lettre recommandée avec accusé de réception.`,
+        mise_en_demeure: `Nous vous mettons en demeure de régler la somme de ${fmtE(d.total)} dans un délai de huit (8) jours à compter de la réception de la présente. À défaut, nous nous réservons le droit de réclamer, outre le principal, les intérêts de retard et l'indemnité forfaitaire pour frais de recouvrement prévus par le code de commerce entre professionnels, et de saisir la juridiction compétente.`,
+      }[lvl]) + `\n\n`
     + `L'ensemble des pièces justificatives (relevés répartiteur, avoirs, relevés bancaires) est tenu à votre disposition.\n\n`
+    + (lvl === 'mise_en_demeure' ? `Lettre recommandée avec accusé de réception.\n\n` : ``)
     + `Sous réserve de tous autres droits.\n\n`
     + `Nous vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.\n\n`
     + `[Nom de la pharmacie]\n[Adresse]\n[N° de compte client ${d.labDisplay}]`;
 }
-window._showLitigeLetter = function(key) {
+window._showLitigeLetter = function(key, level) {
   document.getElementById('litigeLetterOverlay')?.remove();
-  const txt = _verifLitigeLetter(key);
+  const txt = _verifLitigeLetter(key, level);
   if (!txt) { showToast('Aucun litige à mettre en courrier'); return; }
   const ov = document.createElement('div');
   ov.id = 'litigeLetterOverlay';
@@ -8569,6 +8601,241 @@ window._showLitigeLetter = function(key) {
       .catch(() => showToast('Copie impossible — sélectionne le texte manuellement'));
   });
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REGISTRE DES LITIGES & RELANCES
+// ═══════════════════════════════════════════════════════════════════════════
+// _verifRenderLitige dit, à chaque rendu, CE QUI EST DÛ aujourd'hui. Il ne dit
+// pas ce qu'on en a fait. Le registre stocke exactement cela — statut, dates,
+// historique, note — et RIEN d'autre : les montants restent recalculés à chaque
+// fois. Un justificatif déposé ou un barème corrigé met donc le registre à jour
+// tout seul, sans qu'on retouche une ligne (leçon des trois mois de justificatif
+// manquants, qui faisaient tomber la réalisation de 108 % à 76,7 %).
+//
+// CLÉ NATURELLE : `labo|année|mois|nature`. Elle ne dépend d'aucun identifiant
+// généré, donc une réclamation survit au recalcul, au rechargement et au
+// re-scrape. Si un écart disparaît (labo qui régularise), son entrée reste en
+// base sans s'afficher : rien n'est perdu s'il réapparaît.
+
+const _LITIGE_FLOW = {
+  a_reclamer:      { lbl: 'à réclamer',      suivant: 'reclame',         delai: 0,  action: 'Envoyer la réclamation',      niveau: 'reclamation' },
+  reclame:         { lbl: 'réclamé',         suivant: 'relance1',        delai: 7,  action: 'Relancer (1re relance)',      niveau: 'relance1' },
+  relance1:        { lbl: '1re relance',     suivant: 'relance2',        delai: 8,  action: 'Relancer (2e relance)',       niveau: 'relance2' },
+  relance2:        { lbl: '2e relance',      suivant: 'mise_en_demeure', delai: 15, action: 'Mettre en demeure (LRAR)',    niveau: 'mise_en_demeure' },
+  mise_en_demeure: { lbl: 'mise en demeure', suivant: null,              delai: 30, action: 'Sans réponse : arbitrage',    niveau: 'mise_en_demeure' },
+  regle:           { lbl: 'réglé',           suivant: null,              delai: 0,  action: '—', final: true },
+  abandonne:       { lbl: 'abandonné',       suivant: null,              delai: 0,  action: '—', final: true },
+};
+const _LITIGE_NATURE = {
+  unpaid:      'Avoir non réglé',
+  underbilled: 'Avoir sous-évalué',
+  noavoir:     "Absence d'avoir",
+};
+const _litigeToday = () => new Date().toISOString().slice(0, 10);
+const _litigeKey   = (norm, yr, r) => `${norm}|${yr}|${r.mk}|${r.nature}`;
+let   _litigeFilter = 'ouvert';          // ouvert | tous | a_traiter | regle
+
+function _litigeReg() { state._litigeRegistry = state._litigeRegistry || {}; return state._litigeRegistry; }
+function _litigeEntry(key) {
+  return _litigeReg()[key] || { statut: 'a_reclamer', depuis: null, note: '', historique: [] };
+}
+// Échéance de la prochaine action = date d'entrée dans le statut + délai du statut
+// (J+7 après la réclamation, puis J+15, puis J+30 au total, comme demandé).
+function _litigeDue(e) {
+  const f = _LITIGE_FLOW[e.statut] || _LITIGE_FLOW.a_reclamer;
+  if (f.final || !e.depuis || !f.delai) return null;
+  const d = new Date(e.depuis + 'T12:00:00');
+  d.setDate(d.getDate() + f.delai);
+  return d.toISOString().slice(0, 10);
+}
+const _litigeFrDate = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '—';
+
+// Liste COMPLÈTE des réclamations officielles : tous les labos à contrat signé ×
+// les deux années suivies. La coop est exclue — le moteur la marque `officieux`
+// et elle ne se réclame pas par écrit.
+function _litigeAllClaims() {
+  const out = [];
+  const yrNow = new Date().getFullYear();
+  for (const yr of [yrNow - 1, yrNow]) {
+    const labs = (state.labPages || [])
+      .filter(p => p.selectedLab && (yr === 2025 ? p.contractSigned25 : p.contractSigned))
+      .map(p => p.selectedLab);
+    for (const lab of labs) {
+      const norm = _verifNormLab(lab);
+      try { _verifRenderLitige(yr, norm, lab); } catch (_) { continue; }
+      const d = (window._litigeData || {})[`${norm}|${yr}`];
+      if (!d) continue;
+      (d.rows || []).filter(r => !r.officieux && r.nature !== 'coop').forEach(r => {
+        const key = _litigeKey(norm, yr, r);
+        const e   = _litigeEntry(key);
+        out.push({ key, norm, lab, yr, row: r, entry: e, due: _litigeDue(e), montant: r.due });
+      });
+    }
+  }
+  return out;
+}
+
+// Changement de statut : trace systématiquement l'historique (date, transition,
+// montant au moment du geste) — c'est la pièce qui permet de défendre un montant
+// réclamé des mois plus tard.
+window._litigeSetStatut = function(key, statut) {
+  if (!isAdmin) { showToast('Lecture seule'); return; }
+  if (!_LITIGE_FLOW[statut]) return;
+  const reg = _litigeReg();
+  const e = Object.assign({ statut: 'a_reclamer', depuis: null, note: '', historique: [] }, reg[key] || {});
+  const claim = _litigeAllClaims().find(c => c.key === key);
+  e.historique = (e.historique || []).concat([{
+    d: _litigeToday(), de: e.statut, vers: statut, montant: claim ? claim.montant : null,
+  }]);
+  if (e.montant0 == null && claim) e.montant0 = claim.montant;
+  e.statut = statut;
+  e.depuis = _litigeToday();
+  reg[key] = e;
+  saveState();
+  showToast('→ ' + (_LITIGE_FLOW[statut].lbl || statut));
+  _verifFillLitigeRegistry();
+};
+window._litigeSetNote = function(key, txt) {
+  if (!isAdmin) return;
+  const reg = _litigeReg();
+  const e = Object.assign({ statut: 'a_reclamer', depuis: null, note: '', historique: [] }, reg[key] || {});
+  e.note = String(txt || '').slice(0, 500);
+  reg[key] = e;
+  saveState();
+};
+window._litigeSetFilter = function(f) { _litigeFilter = f; _verifFillLitigeRegistry(); };
+
+// Brouillon de relance pour UN labo/année, au niveau du litige le plus avancé.
+// Jamais d'envoi : on produit le texte, le titulaire relit et expédie.
+window._litigeDraft = function(norm, yr) {
+  const claims = _litigeAllClaims().filter(c => c.norm === norm && c.yr === yr);
+  if (!claims.length) { showToast('Aucun litige ouvert pour ce labo'); return; }
+  const ordre = ['a_reclamer', 'reclame', 'relance1', 'relance2', 'mise_en_demeure'];
+  let niveau = 'reclamation';
+  let rang = -1;
+  claims.forEach(c => {
+    const i = ordre.indexOf(c.entry.statut);
+    if (i > rang) { rang = i; niveau = (_LITIGE_FLOW[c.entry.statut] || {}).niveau || 'reclamation'; }
+  });
+  window._showLitigeLetter(`${norm}|${yr}`, niveau);
+};
+
+function _verifFillLitigeRegistry() {
+  const wrap = document.getElementById('verifLitigeRegistry');
+  if (!wrap) return;
+  const fmtE = v => (v || 0).toLocaleString('fr', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  let claims;
+  try { claims = _litigeAllClaims(); } catch (e) { console.warn('[BP] registre litiges:', e); wrap.innerHTML = ''; return; }
+  if (!claims.length) { wrap.innerHTML = ''; return; }
+
+  const today = _litigeToday();
+  const estFinal   = c => !!(_LITIGE_FLOW[c.entry.statut] || {}).final;
+  const estATraiter = c => !estFinal(c) && (c.entry.statut === 'a_reclamer' || (c.due && c.due <= today));
+  const ouverts   = claims.filter(c => !estFinal(c));
+  const aTraiter  = claims.filter(estATraiter);
+  const regles    = claims.filter(c => c.entry.statut === 'regle');
+  const totalOuvert = ouverts.reduce((s, c) => s + c.montant, 0);
+  const totalRegle  = regles.reduce((s, c) => s + (c.entry.montant0 != null ? c.entry.montant0 : c.montant), 0);
+
+  const vues = { ouvert: ouverts, tous: claims, a_traiter: aTraiter, regle: regles };
+  let liste = (vues[_litigeFilter] || ouverts).slice();
+  // En retard d'abord, puis par échéance, puis par montant décroissant.
+  liste.sort((a, b) => {
+    const ra = estATraiter(a) ? 0 : 1, rb = estATraiter(b) ? 0 : 1;
+    if (ra !== rb) return ra - rb;
+    if (a.due && b.due && a.due !== b.due) return a.due < b.due ? -1 : 1;
+    if (a.due && !b.due) return -1;
+    if (!a.due && b.due) return 1;
+    return b.montant - a.montant;
+  });
+
+  const chip = (f, lbl, n, couleur) =>
+    `<button onclick="_litigeSetFilter('${f}')" style="background:${_litigeFilter === f ? couleur : 'transparent'};`
+    + `border:1px solid ${couleur};color:${_litigeFilter === f ? '#04060f' : couleur};font-family:'Share Tech Mono',monospace;`
+    + `font-size:10px;letter-spacing:1px;padding:5px 11px;border-radius:4px;cursor:pointer">${lbl} ${n}</button>`;
+
+  const trs = liste.map(c => {
+    const f = _LITIGE_FLOW[c.entry.statut] || _LITIGE_FLOW.a_reclamer;
+    const retard = estATraiter(c);
+    const periode = c.row.m ? `${MOIS[c.row.m - 1]} ${c.yr}` : c.row.mk;
+    const suiv = f.suivant
+      ? `<button onclick="_litigeSetStatut('${c.key}','${f.suivant}')" title="${f.action}"
+           style="background:transparent;border:1px solid var(--cyan);color:var(--cyan);font-size:10px;
+           padding:3px 7px;border-radius:3px;cursor:pointer;font-family:'Share Tech Mono',monospace">→ ${(_LITIGE_FLOW[f.suivant] || {}).lbl}</button>`
+      : '';
+    const regl = f.final ? '' :
+      `<button onclick="_litigeSetStatut('${c.key}','regle')" title="Marquer comme réglé"
+         style="background:transparent;border:1px solid var(--green);color:var(--green);font-size:10px;
+         padding:3px 7px;border-radius:3px;cursor:pointer;font-family:'Share Tech Mono',monospace">✓ réglé</button>`;
+    const abd = f.final ? '' :
+      `<button onclick="_litigeSetStatut('${c.key}','abandonne')" title="Abandonner cette réclamation"
+         style="background:transparent;border:1px solid var(--border);color:var(--text-dim);font-size:10px;
+         padding:3px 7px;border-radius:3px;cursor:pointer;font-family:'Share Tech Mono',monospace">abandon</button>`;
+    const hist = (c.entry.historique || []).length
+      ? `<span title="${(c.entry.historique || []).map(h => `${_litigeFrDate(h.d)} : ${(_LITIGE_FLOW[h.de] || {}).lbl || h.de} → ${(_LITIGE_FLOW[h.vers] || {}).lbl || h.vers}`).join('&#10;')}"
+           style="color:var(--text-dim);cursor:help">·${(c.entry.historique || []).length}</span>` : '';
+    return `<tr style="${retard ? 'background:rgba(255,51,102,.07)' : ''}">
+      <td style="white-space:nowrap;${retard ? 'color:var(--red);font-weight:700' : 'color:var(--text-dim)'}">
+        ${c.entry.statut === 'a_reclamer' ? 'à envoyer' : _litigeFrDate(c.due)}</td>
+      <td style="white-space:nowrap"><b>${c.lab}</b></td>
+      <td style="white-space:nowrap;color:var(--text-dim)">${periode}</td>
+      <td>${_LITIGE_NATURE[c.row.nature] || c.row.nature}</td>
+      <td style="text-align:right;white-space:nowrap;font-weight:700">${fmtE(c.montant)}</td>
+      <td style="white-space:nowrap">${f.lbl} ${hist}</td>
+      <td><input value="${(c.entry.note || '').replace(/"/g, '&quot;')}" placeholder="note…"
+            onchange="_litigeSetNote('${c.key}', this.value)"
+            style="width:100%;min-width:90px;background:#0a1020;border:1px solid var(--border);border-radius:3px;
+            color:var(--text);font-size:10px;padding:3px 5px;font-family:'Share Tech Mono',monospace"></td>
+      <td style="white-space:nowrap;display:flex;gap:4px">${suiv}${regl}${abd}</td>
+    </tr>`;
+  }).join('');
+
+  // Un brouillon par labo/année encore ouvert
+  const parLab = {};
+  ouverts.forEach(c => { parLab[`${c.norm}|${c.yr}`] = { norm: c.norm, yr: c.yr, lab: c.lab, n: (parLab[`${c.norm}|${c.yr}`]?.n || 0) + 1 }; });
+  const drafts = Object.values(parLab).map(x =>
+    `<button onclick="_litigeDraft('${x.norm}',${x.yr})"
+       style="background:transparent;border:1px solid var(--amber);color:var(--amber);font-family:'Share Tech Mono',monospace;
+       font-size:10px;letter-spacing:1px;padding:6px 12px;border-radius:4px;cursor:pointer">✉ ${x.lab} ${x.yr} (${x.n})</button>`
+  ).join('');
+
+  wrap.innerHTML = `
+    <div class="verif-contract-label" style="margin-bottom:7px">REGISTRE DES LITIGES &amp; RELANCES</div>
+    <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:18px">
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <div><span style="font-size:20px;font-weight:700;color:${aTraiter.length ? 'var(--red)' : 'var(--green)'}">${aTraiter.length}</span>
+          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px"> À TRAITER</span></div>
+        <div><span style="font-size:20px;font-weight:700;color:var(--amber)">${fmtE(totalOuvert)}</span>
+          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px"> OUVERT (${ouverts.length})</span></div>
+        <div><span style="font-size:20px;font-weight:700;color:var(--green)">${fmtE(totalRegle)}</span>
+          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px"> RÉCUPÉRÉ (${regles.length})</span></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        ${chip('a_traiter', 'À TRAITER', aTraiter.length, 'var(--red)')}
+        ${chip('ouvert', 'OUVERTS', ouverts.length, 'var(--amber)')}
+        ${chip('regle', 'RÉGLÉS', regles.length, 'var(--green)')}
+        ${chip('tous', 'TOUS', claims.length, 'var(--cyan)')}
+      </div>
+      <div style="overflow-x:auto">
+        <table class="verif-table" style="width:100%;font-size:11px">
+          <thead><tr>
+            <th style="text-align:left">ÉCHÉANCE</th><th style="text-align:left">LABO</th>
+            <th style="text-align:left">PÉRIODE</th><th style="text-align:left">NATURE</th>
+            <th style="text-align:right">MONTANT</th><th style="text-align:left">STATUT</th>
+            <th style="text-align:left">NOTE</th><th style="text-align:left">ACTION</th>
+          </tr></thead>
+          <tbody>${trs || '<tr><td colspan="8" style="color:var(--text-dim);padding:10px">Rien dans cette vue.</td></tr>'}</tbody>
+        </table>
+      </div>
+      ${drafts ? `<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px">BROUILLON :</span>${drafts}</div>` : ''}
+      <div style="font-size:10px;color:var(--text-dim);margin-top:9px;line-height:1.5">
+        Les montants sont recalculés à chaque affichage ; le registre ne garde que le suivi.
+        Aucun envoi automatique : le brouillon se copie, vous relisez et vous expédiez.
+      </div>
+    </div>`;
+}
 
 // ── Détail virement par virement (rapprochement RDP) ───────────────────────
 // Clé stable d'un virement (date + montant + début de libellé) pour l'override.
