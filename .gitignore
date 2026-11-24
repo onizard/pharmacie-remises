@@ -31,3 +31,9 @@ nas_tunnel_key.pub
 
 # Backups de données de compte (ne pas exposer publiquement)
 backups/*user_state*
+
+# Exports de conditions commerciales (export_conditions.py) — le dépôt est PUBLIC
+conditions_labos*.md
+conditions_labos*.json
+conditions.md
+conditions.json

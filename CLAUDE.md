@@ -377,6 +377,32 @@ restent séparés, et c'est le point de conception à ne pas casser.
   juin-décembre contre un cible proratisé ×7/12. Sur l'année civile entière on lit 54,5 %, ce qui
   fait croire à tort que le marché n'est pas validé.
 
+## Exporter les conditions pour une nouvelle conversation
+`export_conditions.py` met à plat TOUTES les conditions labo d'un compte en un brief Markdown
+à donner à Claude en début de conversation (ou en JSON avec `--json`).
+```bash
+export BP_EMAIL="…" BP_PASSWORD="…"      # ou BP_ASSIST_EMAIL + BP_ASSIST_CODE
+python3 export_conditions.py --out ~/conditions.md
+python3 export_conditions.py --labo Biogaran --annee 2026 --out ~/bio.md
+```
+- **Variables DÉDIÉES `BP_*`, jamais `SUPABASE_URL`/`SUPABASE_ANON_KEY`** : ces noms
+  génériques traînent dans l'environnement et pointaient encore l'ANCIEN projet Supabase
+  (supprimé) — l'export partait vers un serveur mort. `BP_SUPA_URL` surcharge au besoin.
+- **Le script REFUSE d'écrire dans un dépôt git** (`--force` passe outre) : la sortie contient
+  les conditions commerciales et ce dépôt est public. `conditions_labos*.md|json` sont ignorés.
+- **Compression par grille** : beaucoup de labos déclinent la MÊME grille de paliers sur
+  plusieurs seuils de CA (Viatris 14 → 1 grille, EG 6 → 1, Teva 3 → 1). La grille est imprimée
+  une fois, suivie du tableau des seuils (CA cible / remise globale / coop / RSF first).
+  Sans ce regroupement le brief fait 96 Ko au lieu de 55.
+- Les overrides mensuels ne montrent que **ce qui diffère de la base** ; les exceptions par
+  référence montrent l'état en vigueur en décembre + les bascules de mois à mois, CIP résolus
+  en libellés.
+- Le brief se termine par **« Comment lire ces conditions »** : RDP vide = calculée
+  (`remise globale − |palier|`), « exclu » = RDP seule, priorité exception réf > RDP manuelle >
+  CGV, héritage mensuel, barème de l'année du mois, clause 80 % propre à Biogaran, réalisation
+  depuis la date de signature, remises sur les ACHATS. Ces règles ne se déduisent pas des
+  tableaux et les ignorer donne des calculs faux.
+
 ## Tarifs laboratoires — import
 `import_zydus_tarif.py` / `import_biogaran_tarif.py` visaient l'ANCIEN Supabase en direct
 (psycopg2) ; ce projet est supprimé. L'écriture passe désormais par **PostgREST**
